@@ -2,9 +2,13 @@
 // addresses over the map, the fare inside the chosen vehicle, and a fixed
 // bar with the payment icon and "Find a driver".
 import 'dart:async';
+import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderObject, RenderRepaintBoundary, debugDisableShadows;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/app_display.dart';
@@ -33,9 +37,13 @@ import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/features/ride/auto_accept.dart';
-import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmSwitch, DemandNote, addStopSteps;
+import 'package:get_ride/src/core/page_styles.dart' show PageStyles;
+import 'package:get_ride/src/features/ride/confirm_parts.dart'
+    show ConfirmSwitch, DemandNote, SheetTopBar, addStopSteps, demandBandColor;
+import 'package:get_ride/src/features/ride/promo_parts.dart' show ConfirmPromoBar;
 import 'package:get_ride/src/features/ride/home_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/page_style_host.dart' show PageStyleScope;
 import 'package:get_ride/src/widgets/web_overlay_back.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
@@ -223,6 +231,55 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
+/// The whole screen, for reading its pixels.
+final _screen = GlobalKey();
+
+/// The screen as drawn: its pixels (RGBA) and its width. With
+/// `--dart-define=BAR_SHOTS=<dir>` it is saved there too as `<name>.png`.
+/// Shadows are drawn soft, as on a phone (tests draw them as solid black
+/// edges otherwise, which would read as map between the bars).
+Future<({ByteData rgba, int width})> _shoot(WidgetTester tester, String name) async {
+  final boundary = _screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  void repaint(RenderObject o) {
+    o.markNeedsPaint();
+    o.visitChildren(repaint);
+  }
+  debugDisableShadows = false;
+  addTearDown(() => debugDisableShadows = true);
+  repaint(boundary);
+  await tester.pump();
+  final out = await tester.runAsync(() async {
+    final image = await boundary.toImage();
+    final rgba = (await image.toByteData())!;
+    const dir = String.fromEnvironment('BAR_SHOTS');
+    if (dir.isNotEmpty) {
+      final png = (await image.toByteData(format: ui.ImageByteFormat.png))!;
+      File('$dir/$name.png').writeAsBytesSync(png.buffer.asUint8List());
+    }
+    final w = image.width;
+    image.dispose();
+    return (rgba: rgba, width: w);
+  });
+  debugDisableShadows = true;
+  repaint(boundary);
+  await tester.pump();
+  return out!;
+}
+
+/// The colour at [p] of a [_shoot].
+Color _pixel(({ByteData rgba, int width}) shot, Offset p) {
+  final i = (p.dy.floor() * shot.width + p.dx.floor()) * 4;
+  final d = shot.rgba;
+  return Color.fromARGB(d.getUint8(i + 3), d.getUint8(i), d.getUint8(i + 1), d.getUint8(i + 2));
+}
+
+/// How far apart two colours are: the most any channel differs (0–255).
+int _apart(Color a, Color b) => [
+  ((a.r - b.r) * 255).round().abs(),
+  ((a.g - b.g) * 255).round().abs(),
+  ((a.b - b.b) * 255).round().abs(),
+].reduce(math.max);
+
 Future<ProviderContainer> _pump(
   WidgetTester tester,
   _Rides rides, {
@@ -234,6 +291,7 @@ Future<ProviderContainer> _pump(
   ScheduledRidesConfig? scheduled,
   Brightness brightness = Brightness.light,
   Size size = const Size(400, 860),
+  PageStyles? styles,
 }) async {
   SharedPreferences.setMockInitialValues({});
   tester.view.physicalSize = size;
@@ -273,9 +331,15 @@ Future<ProviderContainer> _pump(
     ],
   );
   await tester.pumpWidget(
-    UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp.router(theme: appTheme(brightness), routerConfig: router),
+    RepaintBoundary(
+      key: _screen,
+      child: PageStyleScope(
+        styles: styles ?? PageStyles.none,
+        child: UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp.router(theme: appTheme(brightness), routerConfig: router),
+        ),
+      ),
     ),
   );
   for (var i = 0; i < 5; i++) {
@@ -428,7 +492,8 @@ void main() {
         // Both bars on screen, the band above the promo code.
         final band = tester.getRect(find.byKey(const ValueKey('high-demand')));
         expect(band.top, greaterThanOrEqualTo(0));
-        expect(band.bottom, lessThanOrEqualTo(tester.getRect(promo).top + 1));
+        // Its foot runs on behind the promo bar, past that bar's rounded corners.
+        expect(band.bottom, tester.getRect(promo).top + SheetTopBar.underlap);
         // Its visible top; the foot tucks under the sheet.
         await tester.tapAt(tester.getRect(promo).topCenter + const Offset(0, 12));
         for (var i = 0; i < 6; i++) {
@@ -437,6 +502,95 @@ void main() {
         expect(find.text('Promo code'), findsWidgets, reason: 'the promo code is still usable');
       }
     });
+  }
+
+  // ---- The bars over the sheet: no map shows under or between them ----
+  /// The fare judged high (or low), for the demand band.
+  Future<void> judged(WidgetTester tester, _SlowAi ai, [FareTrendDirection dir = FareTrendDirection.up]) async {
+    ai.answer.complete((
+      estimate: RouteEstimate(distanceKm: 12, durationMin: 30, trend: FareTrend(direction: dir, fromFareRange: true)),
+      unavailable: false,
+    ));
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
+  /// The admin's Map sheet top curve, deeper than the app's 20.
+  const deep = 40.0;
+  PageStyles? curve(double? r) => r == null ? null : PageStyles({'app': {'mapSheetRadius': r}});
+  String mode(bool bidding) => bidding ? 'bidding' : 'fixed';
+
+  for (final b in Brightness.values) {
+    for (final bidding in const [false, true]) {
+      for (final radius in const [null, deep]) {
+        testWidgets('band over the promo bar: its foot behind the promo bar, the promo bar\'s behind the sheet '
+            '(${mode(bidding)}, curve ${radius ?? 'default'}, ${b.name})', (tester) async {
+          final ai = _SlowAi();
+          await _pump(tester, _Rides(bidding: bidding), ai: ai, brightness: b, promos: _Promos([_ride5]), styles: curve(radius));
+          await judged(tester, ai);
+          expect(tester.takeException(), isNull);
+          final t = Theme.of(tester.element(find.byType(HomeScreen)));
+          // The demand band shows for a fixed fare and for an offer alike.
+          final band = tester.getRect(find.byKey(const ValueKey('high-demand')));
+          final promo = tester.getRect(find.byKey(const ValueKey('confirm-promo-bar')));
+          final sheetTop = tester.getRect(find.byKey(const ValueKey('map-sheet-header'))).top;
+          final r = radius ?? 20;
+          // The promo bar's foot runs behind the sheet past its rounded corners,
+          // the band's behind the promo bar past that bar's (16).
+          expect(promo.bottom - sheetTop, greaterThan(r));
+          expect(band.bottom - promo.top, greaterThan(16));
+          expect(band.top, lessThan(promo.top), reason: 'the band stands above the promo bar');
+          // And as drawn: in the sheet's corner the promo bar's fill shows, in
+          // the promo bar's corner the band's, never the map.
+          final shot = await _shoot(tester, 'bars_${mode(bidding)}_${b.name}${radius == null ? '' : '_curve40'}');
+          expect(_apart(_pixel(shot, Offset(1, sheetTop + 1)), ConfirmPromoBar.fillFor(t, applied: true)), lessThan(40));
+          expect(_apart(_pixel(shot, Offset(1, promo.top + 1)), t.colorScheme.surfaceContainerHighest), lessThan(40));
+        });
+      }
+
+      testWidgets('the band alone: its foot behind the sheet past a deep curve (${mode(bidding)}, ${b.name})',
+          (tester) async {
+        final ai = _SlowAi();
+        await _pump(tester, _Rides(bidding: bidding), ai: ai, brightness: b, styles: curve(deep));
+        await judged(tester, ai, FareTrendDirection.down);
+        final t = Theme.of(tester.element(find.byType(HomeScreen)));
+        final band = tester.getRect(find.byKey(const ValueKey('low-demand')));
+        expect(find.byKey(const ValueKey('confirm-promo-bar')), findsNothing);
+        final sheetTop = tester.getRect(find.byKey(const ValueKey('map-sheet-header'))).top;
+        expect(band.bottom - sheetTop, greaterThan(deep));
+        final shot = await _shoot(tester, 'bars_${mode(bidding)}_band_${b.name}');
+        expect(_apart(_pixel(shot, Offset(1, sheetTop + 1)), demandBandColor(t)), lessThan(40));
+        expect(_apart(_pixel(shot, Offset(1, sheetTop + deep - 6)), demandBandColor(t)), lessThan(40));
+      });
+    }
+
+    for (final radius in const [null, deep]) {
+      testWidgets('a bar in front of the sheet: a foot fills the sheet\'s corners (curve ${radius ?? 'default'}, ${b.name})',
+          (tester) async {
+        final ai = _SlowAi();
+        await _pump(
+          tester,
+          _Rides(),
+          ai: ai,
+          brightness: b,
+          promos: _Promos([_ride5]),
+          styles: curve(radius),
+          display: const {'discountBarInFront': true},
+        );
+        await judged(tester, ai);
+        final t = Theme.of(tester.element(find.byType(HomeScreen)));
+        final promo = tester.getRect(find.byKey(const ValueKey('confirm-promo-bar')));
+        final foot = tester.getRect(find.byKey(const ValueKey('confirm-bar-foot')));
+        final sheetTop = tester.getRect(find.byKey(const ValueKey('map-sheet-header'))).top;
+        final r = radius ?? 20;
+        expect(promo.bottom, moreOrLessEquals(sheetTop), reason: 'it stands on the sheet\'s top edge');
+        expect(foot.top, lessThan(promo.bottom), reason: 'from behind the bar');
+        expect(foot.bottom - sheetTop, greaterThan(r), reason: 'down past the sheet\'s corners');
+        final shot = await _shoot(tester, 'bars_front_${b.name}${radius == null ? '' : '_curve40'}');
+        expect(_apart(_pixel(shot, Offset(1, sheetTop + 1)), ConfirmPromoBar.fillFor(t, applied: true)), lessThan(40));
+      });
+    }
   }
 
   testWidgets('an up trend that does not raise the fare shows no uplift and no note', (tester) async {
@@ -472,12 +626,18 @@ void main() {
     for (var i = 0; i < 6; i++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
-    // The chosen card's fare and the other card's price.
-    expect(find.byKey(const ValueKey('fare-trend-up')), findsNWidgets(2));
+    // The chosen card's fare and the other card's price; the demand bar
+    // over the list carries its own (bidding too).
+    final band = find.byKey(const ValueKey('high-demand'));
+    expect(band, findsOneWidget, reason: 'the demand bar shows while bidding too');
+    const up = ValueKey('fare-trend-up');
+    expect(find.descendant(of: band, matching: find.byKey(up)), findsOneWidget);
+    int onCards() => find.byKey(up).evaluate().length - find.descendant(of: band, matching: find.byKey(up)).evaluate().length;
+    expect(onCards(), 2);
     expect(find.bySemanticsLabel(RegExp('10 min longer than on clear roads')), findsWidgets);
     await tester.tap(find.byKey(const ValueKey('fare-raise')));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.byKey(const ValueKey('fare-trend-up')), findsOneWidget, reason: 'only the untouched card');
+    expect(onCards(), 1, reason: 'only the untouched card');
   });
 
   for (final dir in FareTrendDirection.values) {
