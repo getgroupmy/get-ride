@@ -23,7 +23,7 @@ class RideChatRepository {
   final SupabaseClient _db;
 
   Future<List<RideMessage>> messages(String requestId) async {
-    final rows = await _db.from('ride_messages').select().eq('request_id', requestId).order('created_at');
+    final rows = await _db.from('ride_messages').select().eq('request_id', requestId).order('created_at', ascending: true);
     unawaited(_saveCache(requestId, rows));
     return [for (final r in rows) ?RideMessage.fromRow(r)];
   }

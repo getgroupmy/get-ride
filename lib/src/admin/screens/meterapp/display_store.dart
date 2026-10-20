@@ -41,7 +41,7 @@ class DisplaySettingsStore {
   /// Settings entries of another category (read only), e.g. the services the
   /// home boxes link to.
   Future<List<Map<String, dynamic>>> entries(String category) async => List<Map<String, dynamic>>.from(
-        await _db.from('settings_entries').select('id, values, position').eq('category', category).order('position'),
+        await _db.from('settings_entries').select('id, values, position').eq('category', category).order('position', ascending: true).order('created_at', ascending: true),
       );
 }
 

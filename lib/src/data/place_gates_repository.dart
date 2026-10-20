@@ -25,8 +25,8 @@ final placeGatesProvider = FutureProvider<GateCatalogue>((ref) async {
   }
 
   final results = await Future.wait([
-    read(() => db.from('multi_gate').select('id, kind, values, position').order('position')),
-    read(() => db.from('airport_areas').select('id, values, position').order('position')),
+    read(() => db.from('multi_gate').select('id, kind, values, position').order('position', ascending: true).order('created_at', ascending: true)),
+    read(() => db.from('airport_areas').select('id, values, position').order('position', ascending: true).order('created_at', ascending: true)),
   ]);
   final multi = results[0];
   return (
@@ -47,7 +47,7 @@ final placeGatesProvider = FutureProvider<GateCatalogue>((ref) async {
 final airportAreasProvider = FutureProvider<List<AirportArea>>((ref) async {
   ref.watchLive('airport_areas');
   try {
-    final rows = await ref.watch(supabaseProvider).from('airport_areas').select('id, values').order('position');
+    final rows = await ref.watch(supabaseProvider).from('airport_areas').select('id, values').order('position', ascending: true).order('created_at', ascending: true);
     return [
       for (final r in rows) ?AirportArea.fromEntry('${r['id']}', Map<String, dynamic>.from((r['values'] as Map?) ?? const {})),
     ];

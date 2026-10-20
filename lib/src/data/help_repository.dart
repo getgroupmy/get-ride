@@ -70,7 +70,7 @@ class HelpRepository {
 
   /// Every article, inactive ones included (admins only, by RLS).
   Future<List<HelpArticle>> articles() async {
-    final rows = await _db.from('help_articles').select().order('sort').order('title');
+    final rows = await _db.from('help_articles').select().order('sort', ascending: true).order('title', ascending: true);
     return [for (final r in rows) HelpArticle.fromJson(r)];
   }
 

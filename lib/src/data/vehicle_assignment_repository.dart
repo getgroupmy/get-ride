@@ -99,7 +99,7 @@ class VehicleAssignmentRepository {
             .from('vehicle_user_assignment')
             .select('id, user_id, role, is_active, approval')
             .eq('vehicle_id', vehicleId)
-            .order('assigned_at'),
+            .order('assigned_at', ascending: false),
       );
     } on PostgrestException {
       // A database without 0251's approval.
@@ -108,7 +108,7 @@ class VehicleAssignmentRepository {
             .from('vehicle_user_assignment')
             .select('id, user_id, role, is_active')
             .eq('vehicle_id', vehicleId)
-            .order('assigned_at'),
+            .order('assigned_at', ascending: false),
       );
     }
     final session = await _db

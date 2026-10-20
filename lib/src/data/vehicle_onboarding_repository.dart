@@ -44,7 +44,7 @@ class VehicleOnboardingRepository {
             .from('vehicle')
             .select()
             .or('owner_partner_id.eq.$partnerId,auth_user_id.eq.$_uid')
-            .order('created_at'),
+            .order('created_at', ascending: false),
       );
 
   Future<Map<String, dynamic>?> vehicle(String id) => _db.from('vehicle').select().eq('id', id).maybeSingle();

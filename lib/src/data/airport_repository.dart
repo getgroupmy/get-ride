@@ -85,7 +85,7 @@ class AirportRepository {
     final rows = await _db
         .from('airport_waiting_zones')
         .select()
-        .order('position');
+        .order('position', ascending: true).order('created_at', ascending: true);
     return [for (final r in rows) AirportZone.fromRow(r)];
   }
 
@@ -93,7 +93,7 @@ class AirportRepository {
     final rows = await _db
         .from('airport_fare_zones')
         .select()
-        .order('position');
+        .order('position', ascending: true).order('created_at', ascending: true);
     return [for (final r in rows) AirportZone.fromRow(r)];
   }
 

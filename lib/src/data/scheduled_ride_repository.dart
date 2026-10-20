@@ -51,8 +51,16 @@ class ScheduledRideRepository {
   });
 
   /// The rider's bookings, soonest first, the upcoming ones before the rest.
+  /// The latest 100 by pickup are read (newest first, so a long history
+  /// never crowds out what is still to come) and turned round here.
   Future<List<ScheduledRide>> mine(String uid) async => [
-    for (final r in await _db.from(_table).select().eq('rider_id', uid).order('pickup_at').limit(100))
+    for (final r in (await _db
+            .from(_table)
+            .select()
+            .eq('rider_id', uid)
+            .order('pickup_at', ascending: false)
+            .limit(100))
+        .reversed)
       ScheduledRide.fromRow(r),
   ];
 
@@ -89,7 +97,7 @@ class ScheduledRideRepository {
             )
             .eq('partner_id', uid)
             .inFilter('status', ['assigned', 'released'])
-            .order('pickup_at'))
+            .order('pickup_at', ascending: true))
       ScheduledRide.fromRow(r),
   ];
 

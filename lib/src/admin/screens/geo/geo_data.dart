@@ -67,7 +67,7 @@ class GeoAdminRepository {
     var failures = 0;
     final results = await Future.wait(RegionLevel.values.map((l) async {
       try {
-        final rows = await _db.from(regionTables[l]!).select(_regionSelects[l]!).order('position');
+        final rows = await _db.from(regionTables[l]!).select(_regionSelects[l]!).order('position', ascending: true).order('created_at', ascending: true);
         return (l, List<Map<String, dynamic>>.from(rows));
       } catch (e) {
         firstError ??= e;
@@ -124,7 +124,7 @@ class GeoAdminRepository {
         .from('settings_entries')
         .select('id, values, position')
         .eq('category', 'service-settings')
-        .order('position');
+        .order('position', ascending: true).order('created_at', ascending: true);
     return sortServices([
       for (final r in rows)
         (id: r['id'] as String, values: Map<String, dynamic>.from((r['values'] as Map?) ?? const {})),
@@ -141,12 +141,12 @@ class GeoAdminRepository {
           .from('settings_entries')
           .select('id, category, values, position')
           .inFilter('category', [masterServiceCategory, ...subServiceCategories])
-          .order('position'),
+          .order('position', ascending: true).order('created_at', ascending: true),
       ...await _db
           .from('settings_entries')
           .select('id, category, values, position')
           .not('values->parentServices', 'is', null)
-          .order('position'),
+          .order('position', ascending: true).order('created_at', ascending: true),
     ];
     final byId = <String, Map<String, dynamic>>{};
     for (final r in rows) {
@@ -181,7 +181,7 @@ class GeoAdminRepository {
         .from('settings_entries')
         .select('id, values, position')
         .eq('category', 'vehicle-services')
-        .order('position');
+        .order('position', ascending: true).order('created_at', ascending: true);
     return sortServices([
       for (final r in rows)
         (id: r['id'] as String, values: Map<String, dynamic>.from((r['values'] as Map?) ?? const {})),
@@ -195,7 +195,7 @@ class GeoAdminRepository {
         .from('settings_entries')
         .select('id, values, position')
         .eq('category', 'vehicle-services')
-        .order('position');
+        .order('position', ascending: true).order('created_at', ascending: true);
     final byId = {
       for (final r in rows) r['id'] as String: Map<String, dynamic>.from((r['values'] as Map?) ?? const {}),
     };
@@ -215,7 +215,7 @@ class GeoAdminRepository {
   // Airport areas ------------------------------------------------------------
 
   Future<List<GeoEntry>> airports() async =>
-      (await _db.from('airport_areas').select('id, values, position').order('position')).map(GeoEntry.fromRow).toList();
+      (await _db.from('airport_areas').select('id, values, position').order('position', ascending: true).order('created_at', ascending: true)).map(GeoEntry.fromRow).toList();
 
   Future<void> saveAirport({String? id, required Map<String, dynamic> values, int position = 0}) => _db
       .from('airport_areas')
@@ -226,7 +226,7 @@ class GeoAdminRepository {
   // Multi-gate (kind 'place' / 'gate') ---------------------------------------
 
   Future<List<GeoEntry>> multiGate(String kind) async =>
-      (await _db.from('multi_gate').select('id, values, position').eq('kind', kind).order('position'))
+      (await _db.from('multi_gate').select('id, values, position').eq('kind', kind).order('position', ascending: true).order('created_at', ascending: true))
           .map(GeoEntry.fromRow)
           .toList();
 

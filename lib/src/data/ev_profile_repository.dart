@@ -79,7 +79,7 @@ class EvProfileRepository {
 
   /// Every profile, active or not (an admin's row-level access).
   Future<List<EvProfile>> adminList() async {
-    final rows = await _db().from('ev_profiles').select().order('make').order('model');
+    final rows = await _db().from('ev_profiles').select().order('make', ascending: true).order('model', ascending: true);
     return parseEvProfiles(rows);
   }
 
