@@ -15,6 +15,7 @@ import '../../widgets/admin_widgets.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
+import 'driver_extras_card.dart';
 import '../../../data/live_tables.dart';
 
 /// Everything the partner forms look up.
@@ -573,6 +574,10 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
                 subtitle: 'Review, approve, or re-upload partner documents below.',
               ),
             ),
+            if (p['auth_user_id'] case final String uid when uid.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              DriverExtrasOffCard(driverId: uid),
+            ],
             const SizedBox(height: 16),
             if (canEdit)
               BusyButton.filled(

@@ -10,6 +10,7 @@ import '../core/ride_payment.dart';
 import '../core/ride_assistance.dart';
 import '../core/ride_option_charges.dart';
 import '../core/ride_option_settings.dart' show RideOptionKind, bookedOptionName;
+import '../core/ride_extras.dart';
 import '../core/ride_pets.dart';
 import '../core/ride_stops.dart';
 import 'geo_service.dart';
@@ -352,6 +353,11 @@ class RideRequest {
 
   /// An option's name as booked, when the admin had renamed it.
   String? renamedOption(RideOptionKind k) => bookedOptionName(optionNames, k);
+
+  /// The extras it carries, as the driver reads them before answering
+  /// (core/ride_extras.dart, migration 0253).
+  List<RideExtra> get extras =>
+      rideExtrasOf(pets: pets, assistance: assistance, names: optionNames, passengers: passengers);
 
   /// The fare the trip will actually be billed at.
   double? get effectiveFare => _d(raw['ride_fare']) ?? fare;

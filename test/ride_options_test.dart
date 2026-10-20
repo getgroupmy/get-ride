@@ -15,7 +15,6 @@ import 'package:get_ride/src/admin/screens/meterapp/display_store.dart';
 import 'package:get_ride/src/admin/screens/geo/geo_data.dart' show regionsProvider;
 import 'package:get_ride/src/admin/screens/geo/geo_logic.dart' show RegionEntry;
 import 'package:get_ride/src/app.dart' show appTheme;
-import 'package:get_ride/src/core/format.dart' show formatMoney;
 import 'package:get_ride/src/core/option_charge.dart';
 import 'package:get_ride/src/core/request_viewers.dart';
 import 'package:get_ride/src/core/ride_assistance.dart';
@@ -367,29 +366,21 @@ void main() {
         await unmount(tester);
       });
 
-      testWidgets('pet types added, edited with a charge, removed; size extras, the most and the photo',
+      testWidgets('pet types added, renamed, removed; the sizes, the most and the photo; charges by place',
           (tester) async {
         final store = await pump(tester);
         await _tapKey(tester, 'ride-option-pet-settings');
         expect(find.text('Pet types'), findsOneWidget);
-        expect(find.text('Amounts in MYR (Malaysia)'), findsOneWidget);
+        // The charges moved to Charges and where offered.
+        expect(find.byKey(const ValueKey('charges-by-place')), findsOneWidget);
+        expect(find.byKey(const ValueKey('pet-size-extra-L')), findsNothing);
 
         await _tapKey(tester, 'pet-type-add');
+        expect(find.byKey(const ValueKey('pet-type-charge')), findsNothing);
         await tester.enterText(find.byKey(const ValueKey('pet-type-name')), 'Iguana');
-        await tester.enterText(find.byKey(const ValueKey('pet-type-charge')), '6');
-        await _tap(tester, find.text('Once per ride'));
         await _tapKey(tester, 'pet-type-save');
         var c = petConfigOf(store.blob);
         expect(c.types.last, 'Iguana');
-        expect(c.chargeFor('Iguana'), const PetCharge(charge: OptionCharge(value: 6), perPet: false));
-        expect(find.textContaining('per ride'), findsOneWidget);
-
-        // A charge for dogs as a percentage of the fare.
-        await _tapKey(tester, 'pet-type-edit-Dog');
-        await _tap(tester, find.text('% of the fare'));
-        await tester.enterText(find.byKey(const ValueKey('pet-type-charge')), '10');
-        await _tapKey(tester, 'pet-type-save');
-        expect(petConfigOf(store.blob).chargeFor('Dog').charge, const OptionCharge(kind: OptionChargeKind.percent, value: 10));
 
         // A duplicate name is refused in the dialog.
         await _tapKey(tester, 'pet-type-add');
@@ -403,17 +394,6 @@ void main() {
         c = petConfigOf(store.blob);
         expect(c.types, ['Dog', 'Cat', 'Rabbit', 'Guinea pig', 'Iguana']);
 
-        await _tapKey(tester, 'pet-size-extra-L');
-        await tester.enterText(find.byKey(const ValueKey('text-dialog-field')), '2');
-        await _tapKey(tester, 'text-dialog-save');
-        expect(petConfigOf(store.blob).sizeExtras, {'L': 2});
-        expect(find.text('+RM2'), findsOneWidget);
-        // Viewed for another country: its currency, the same amount.
-        await _tapKey(tester, 'charge-currency-change');
-        await _tap(tester, find.text('Singapore').last);
-        expect(find.text('Amounts in SGD (Singapore)'), findsOneWidget);
-        expect(find.text('+${formatMoney(2, 'SGD', 0)}'), findsOneWidget);
-
         await _tapKey(tester, 'pet-size-offered-XS');
         expect(petConfigOf(store.blob).sizes, ['S', 'M', 'L', 'XL']);
         await _tap(tester, find.descendant(of: find.byKey(const ValueKey('pet-max-per-type')), matching: find.byTooltip('Increase')));
@@ -424,7 +404,7 @@ void main() {
         await unmount(tester);
       });
 
-      testWidgets('the assistance catalogue: add with choices and a charge, edit, hide, reorder, remove',
+      testWidgets('the assistance catalogue: add with choices, edit, hide, reorder, remove',
           (tester) async {
         final store = await pump(tester);
         await _tapKey(tester, 'ride-option-assistance-settings');
@@ -441,7 +421,9 @@ void main() {
         await _tapKey(tester, 'assist-choice-add');
         await tester.enterText(find.byKey(const ValueKey('assist-choice-field-0')), 'BIM');
         await tester.enterText(find.byKey(const ValueKey('assist-choice-field-1')), 'ASL');
-        await tester.enterText(find.byKey(const ValueKey('assist-charge')), '4');
+        // Its charge is set by place now.
+        expect(find.byKey(const ValueKey('assist-charge')), findsNothing);
+        expect(find.byKey(const ValueKey('assist-charge-by-place')), findsOneWidget);
         await _tapKey(tester, 'assist-save');
         var c = assistanceOf(store.blob);
         final sign = c.items.last;
@@ -449,21 +431,18 @@ void main() {
         expect(sign.emoji, '🤟');
         expect(sign.group, 'Talking');
         expect(sign.choices, ['BIM', 'ASL']);
-        expect(sign.charge, const OptionCharge(value: 4));
+        expect(sign.charge, OptionCharge.none);
         expect(sign.id, startsWith('custom-'));
         expect(find.text('Talking'), findsOneWidget);
 
-        // Edited: renamed, a choice gone, a percentage.
+        // Edited: renamed, a choice gone.
         await _tapKey(tester, 'assist-admin-edit-${sign.id}');
         await tester.enterText(find.byKey(const ValueKey('assist-name')), 'Sign language (BIM)');
         await _tapKey(tester, 'assist-choice-remove-1');
-        await _tap(tester, find.text('% of the fare'));
-        await tester.enterText(find.byKey(const ValueKey('assist-charge')), '5');
         await _tapKey(tester, 'assist-save');
         c = assistanceOf(store.blob);
         expect(c.byId(sign.id)!.name, 'Sign language (BIM)');
         expect(c.byId(sign.id)!.choices, ['BIM']);
-        expect(c.byId(sign.id)!.charge, const OptionCharge(kind: OptionChargeKind.percent, value: 5));
 
         // The guide dog can't be charged.
         await _tapKey(tester, 'assist-admin-edit-$guideDogAssistanceId');

@@ -1,5 +1,5 @@
-/// What the rider's pets and the assistance they ask for add to the fare
-/// (Admin → Display Settings → Ride Options → charges, all zero until set).
+/// What the rider's options add to the fare (Admin → Display Settings →
+/// Ride Options → Charges and where offered, by place; all free until set).
 /// The charges go into the fare itself, as quoted on the vehicle cards and
 /// booked, so a promo code and the commission apply to the total as they
 /// do to any fare. They are stamped on the ride (`option_charges`,
@@ -16,13 +16,15 @@ import 'ride_pets.dart';
 class OptionChargeLine {
   const OptionChargeLine({required this.kind, required this.name, required this.amount});
 
-  /// 'pet' or 'assistance'.
+  /// 'pet', 'assistance', 'child-seat' or 'more-passengers'.
   final String kind;
   final String name;
   final double amount;
 
   static const petName = 'Pet charge';
   static const assistanceName = 'Assistance charge';
+  static const childSeatName = 'Child seat charge';
+  static const morePassengersName = 'Extra passengers charge';
 
   Map<String, Object> toJson() => {'kind': kind, 'name': name, 'amount': amount};
 
@@ -68,16 +70,25 @@ double assistanceChargeFor(List<AssistancePick> items, double fare, AssistanceCa
   return cents(total);
 }
 
-/// The lines [options] add to [fare]; none for nothing charged.
+/// The lines [options] add to [fare]; none for nothing charged. The
+/// amounts are the pickup's (Ride Options by place, core/ride_option_places.dart):
+/// [pets] and [assistance] carry them, [childSeat] is for each seat and
+/// [morePassengers] once for the ride.
 List<OptionChargeLine> rideOptionCharges(
   RideOptions options,
   double fare, {
   PetConfig pets = const PetConfig(),
   AssistanceCatalogue assistance = const AssistanceCatalogue(),
+  OptionCharge childSeat = OptionCharge.none,
+  OptionCharge morePassengers = OptionCharge.none,
 }) {
+  final seat = options.childSeat ? cents(childSeat.on(fare) * options.childSeats) : 0.0;
+  final more = options.morePassengers ? morePassengers.on(fare) : 0.0;
   final pet = options.pet ? petChargeFor(options.pets, fare, pets) : 0.0;
   final help = options.assistance == null ? 0.0 : assistanceChargeFor(options.assistance!.items, fare, assistance);
   return [
+    if (seat > 0) OptionChargeLine(kind: 'child-seat', name: OptionChargeLine.childSeatName, amount: seat),
+    if (more > 0) OptionChargeLine(kind: 'more-passengers', name: OptionChargeLine.morePassengersName, amount: more),
     if (pet > 0) OptionChargeLine(kind: 'pet', name: OptionChargeLine.petName, amount: pet),
     if (help > 0) OptionChargeLine(kind: 'assistance', name: OptionChargeLine.assistanceName, amount: help),
   ];

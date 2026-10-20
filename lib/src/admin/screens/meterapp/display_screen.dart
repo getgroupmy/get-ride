@@ -11,16 +11,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
-import '../../../config.dart' show AppConfig;
-import '../../../core/format.dart' show formatMoney;
 import '../../../core/option_charge.dart';
 import '../../../core/ride_assistance.dart';
 import '../../../core/ride_option_settings.dart';
 import '../../../core/ride_pets.dart';
-import '../../../core/trip_charges.dart' show parseChargeAmount;
-import '../../../core/profile_identity.dart' show homeCountry;
-import '../geo/geo_data.dart' show regionsProvider;
-import '../geo/geo_logic.dart' show RegionEntry, RegionLevel, regionCurrency;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
@@ -30,6 +24,9 @@ import 'demo_accounts.dart';
 import 'display_logic.dart';
 import '../../../core/demo_mode.dart' show demoDriverIdsKey, demoRiderIdsKey;
 import 'display_store.dart';
+import 'ride_option_places_screen.dart' show RideOptionPlacesScreen;
+import '../../../core/ride_option_places.dart' show OptionChargeKey;
+import '../../../data/ride_option_places_repository.dart' show rideOptionPlacesRepositoryProvider;
 import 'pick_image.dart';
 import '../../../core/raise_nudge.dart';
 import '../../../core/sheet_min_height.dart';
@@ -1105,74 +1102,27 @@ class _MenuItemDialogState extends State<_MenuItemDialog> {
 // Ride Options
 // ---------------------------------------------------------------------------
 
-/// An amount for a charge in [currency], as the admin sees it.
-String _rideOptionMoney(double v, String currency) => formatMoney(v, currency, v == v.roundToDouble() ? 0 : 2);
-
-/// The country whose currency the option charges are shown in on these
-/// pages: the home country until the admin picks another. Each country's
-/// riders pay the amounts in its own currency (no conversion).
-class _ChargeCountry extends Notifier<String> {
-  @override
-  String build() => homeCountry;
-
-  void set(String country) => state = country;
-}
-
-final _chargeCountryProvider = NotifierProvider<_ChargeCountry, String>(_ChargeCountry.new);
-
-/// The currency of the country being viewed (Country information), else
-/// the app's default.
-String _chargeCurrency(WidgetRef ref) {
-  final regions = ref.watch(regionsProvider).value ?? const <RegionEntry>[];
-  return regionCurrency(regions, ref.watch(_chargeCountryProvider)) ?? AppConfig.currency;
-}
-
-/// "Amounts in MYR (Malaysia)", with Change to view another country's.
-class _ChargeCurrencyBar extends ConsumerWidget {
-  const _ChargeCurrencyBar();
+/// Where the charges went: Ride Options → Charges and where offered.
+class _ChargesByPlaceNote extends StatelessWidget {
+  const _ChargesByPlaceNote();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final t = Theme.of(context);
-    final country = ref.watch(_chargeCountryProvider);
-    final currency = _chargeCurrency(ref);
-    final regions = ref.watch(regionsProvider).value ?? const <RegionEntry>[];
-    final countries = {
-      for (final r in regions)
-        if (r.level == RegionLevel.country && r.country.trim().isNotEmpty) r.country.trim(),
-    }.toList()
-      ..sort();
-    return Card(
-      child: ListTile(
-        key: const ValueKey('charge-currency'),
-        leading: const Icon(Icons.payments_outlined),
-        title: Text('Amounts in $currency ($country)', key: const ValueKey('charge-currency-label')),
-        subtitle: Text(
-          "Riders in each country pay the amounts in that country's currency, as their fares are. Nothing is converted.",
-          style: t.textTheme.bodySmall,
+  Widget build(BuildContext context) => Card(
+        child: ListTile(
+          key: const ValueKey('charges-by-place'),
+          leading: const Icon(Icons.payments_outlined),
+          title: const Text('Charges and where offered'),
+          subtitle: const Text('Set by place: Default (everywhere), or a country, state, city or suburb.'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openOptionPlaces(context),
         ),
-        trailing: countries.length < 2
-            ? null
-            : TextButton(
-                key: const ValueKey('charge-currency-change'),
-                onPressed: () async {
-                  final picked = await showSearchPicker<String>(
-                    context,
-                    title: 'Show amounts for',
-                    selected: country,
-                    choices: [
-                      for (final c in countries)
-                        (value: c, label: c, subtitle: regionCurrency(regions, c), leading: null),
-                    ],
-                  );
-                  if (picked != null) ref.read(_chargeCountryProvider.notifier).set(picked);
-                },
-                child: const Text('Change'),
-              ),
-      ),
-    );
-  }
+      );
 }
+
+/// Ride Options → Charges and where offered.
+Future<void> _openOptionPlaces(BuildContext context) => Navigator.of(context).push(AppPageRoute(id: 'display.ride-option-places',
+      builder: (_) => const RideOptionPlacesScreen(),
+    ));
 
 /// One line of text in a dialog: the trimmed text when saved, null when
 /// cancelled.
@@ -1336,7 +1286,7 @@ class RideOptionsCard extends ConsumerWidget {
           if (c.order[i] == RideOptionKind.pet)
             settingsRow(
               'ride-option-pet-settings',
-              'Pet types, sizes and charges',
+              'Pet types and sizes',
               '${pets.types.length} ${pets.types.length == 1 ? 'type' : 'types'} · sizes ${pets.sizes.join(', ')} · '
                   'up to ${pets.maxPerType} of a type · photo ${pets.photoRequired ? 'required' : 'optional'}',
               () => Navigator.of(context).push(AppPageRoute(id: 'display.pet-options',
@@ -1346,7 +1296,7 @@ class RideOptionsCard extends ConsumerWidget {
           if (c.order[i] == RideOptionKind.assistance)
             settingsRow(
               'ride-option-assistance-settings',
-              'Help offered and charges',
+              'Help offered',
               '${help.items.length} ${help.items.length == 1 ? 'item' : 'items'}, ${help.visible.length} shown',
               () => Navigator.of(context).push(AppPageRoute(id: 'display.assistance-options',
                 builder: (_) => const AssistanceOptionsScreen(),
@@ -1370,21 +1320,30 @@ class RideOptionsCard extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
           child: Text(
-            'Pet and assistance charges are set under each option and are part of the fare.',
+            'Option charges are part of the fare. Set them, switch an option off or block it on some services for '
+            'everywhere or for a country, state, city or suburb.',
             style: t.textTheme.bodySmall?.copyWith(color: muted),
           ),
+        ),
+        ListTile(
+          key: const ValueKey('ride-option-places'),
+          leading: const Icon(Icons.map_outlined),
+          title: const Text('Charges and where offered'),
+          subtitle: const Text('By place: Default (everywhere), then each country, state, city or suburb'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _openOptionPlaces(context),
         ),
         BusySwitchListTile(
           key: const ValueKey('option-charges-commission'),
           title: const Text('Commission applies to option charges'),
-          subtitle: const Text('Off: commission is worked out on the fare less the pet and assistance charges'),
+          subtitle: const Text('Off: commission is worked out on the fare less the option charges'),
           value: rules.commission,
           onChanged: canEdit ? (v) => edit((x) => setOptionChargeRules(x, commission: v)) : null,
         ),
         BusySwitchListTile(
           key: const ValueKey('option-charges-promo'),
           title: const Text('Promo codes discount option charges'),
-          subtitle: const Text('Off: a promo code discounts the fare less the pet and assistance charges'),
+          subtitle: const Text('Off: a promo code discounts the fare less the option charges'),
           value: rules.promo,
           onChanged: canEdit ? (v) => edit((x) => setOptionChargeRules(x, promo: v)) : null,
         ),
@@ -1410,17 +1369,12 @@ class PetOptionsScreen extends ConsumerWidget {
         data: (s) {
           final t = Theme.of(context);
           final c = petConfigOf(s);
-          final currency = _chargeCurrency(ref);
-          String money(double v) => _rideOptionMoney(v, currency);
           Future<void> edit(DisplayEdit e) => applyDisplay(context, ref, e);
-          String chargeText(PetCharge p) => p.isZero
-              ? 'No charge'
-              : '${p.charge.describe(money)} ${p.perPet ? 'per pet' : 'per ride'}';
           return ListView(padding: const EdgeInsets.symmetric(vertical: 16), children: [
             ResponsiveCenter(
               maxWidth: 820,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                const _ChargeCurrencyBar(),
+                const _ChargesByPlaceNote(),
                 const _Section('Pet types'),
                 Card(
                   child: ListSearchFilter(
@@ -1440,7 +1394,6 @@ class PetOptionsScreen extends ConsumerWidget {
                                   : () => edit((x) => movePetType(x, c.types[i], 1)),
                             ),
                             title: Text(c.types[i]),
-                            subtitle: Text(chargeText(c.chargeFor(c.types[i]))),
                             trailing: canEdit
                                 ? Row(mainAxisSize: MainAxisSize.min, children: [
                                     BusyIconButton(
@@ -1449,9 +1402,17 @@ class PetOptionsScreen extends ConsumerWidget {
                                       icon: const Icon(Icons.edit_outlined),
                                       onPressed: () async {
                                         final type = c.types[i];
-                                        final r = await _editPetType(context, c, currency, type: type);
-                                        if (r != null && context.mounted) {
-                                          await edit((x) => updatePetType(x, type, name: r.name, charge: r.charge));
+                                        final name = await _editPetType(context, c, type: type);
+                                        if (name != null && context.mounted) {
+                                          await edit((x) => updatePetType(x, type, name: name));
+                                          // Its charges by place go with it.
+                                          if (name != type && context.mounted) {
+                                            await runAdminAction(
+                                              context,
+                                              () => ref.read(rideOptionPlacesRepositoryProvider)
+                                                  .renameCharge(OptionChargeKey.pet(type), OptionChargeKey.pet(name)),
+                                            );
+                                          }
                                         }
                                       },
                                     ),
@@ -1485,10 +1446,8 @@ class PetOptionsScreen extends ConsumerWidget {
                       onPressed: c.types.length >= PetConfig.maxTypes
                           ? null
                           : () async {
-                              final r = await _editPetType(context, c, currency);
-                              if (r != null && context.mounted) {
-                                await edit((x) => addPetType(x, r.name, charge: r.charge));
-                              }
+                              final name = await _editPetType(context, c);
+                              if (name != null && context.mounted) await edit((x) => addPetType(x, name));
                             },
                       child: const Text('Add pet type'),
                     ),
@@ -1509,37 +1468,6 @@ class PetOptionsScreen extends ConsumerWidget {
                             onSelected: canEdit ? (v) => edit((x) => setPetSizeOffered(x, z, v)) : null,
                           ),
                       ]),
-                      const SizedBox(height: 8),
-                      Text(
-                        'An extra by size is added for each pet of that size, on top of its type\'s charge.',
-                        style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t, background: cardSurfaceColor(t))),
-                      ),
-                      for (final z in c.sizes)
-                        ListTile(
-                          key: ValueKey('pet-size-extra-$z'),
-                          contentPadding: EdgeInsets.zero,
-                          title: Text('Extra for size $z'),
-                          trailing: Text(
-                            c.sizeExtraFor(z) > 0 ? '+${money(c.sizeExtraFor(z))}' : 'None',
-                            key: ValueKey('pet-size-extra-value-$z'),
-                          ),
-                          enabled: canEdit,
-                          onTap: () async {
-                            final v = await showAppDialog<String>(id: 'display.pet-size-extra',
-                              context: context,
-                              builder: (_) => _TextDialog(
-                                title: 'Extra for size $z',
-                                label: 'Amount ($currency)',
-                                initial: c.sizeExtraFor(z) > 0 ? trimNumber(c.sizeExtraFor(z)) : '',
-                                helper: 'Empty or 0 for none.',
-                                problem: _amountProblem,
-                              ),
-                            );
-                            if (v != null && context.mounted) {
-                              await edit((x) => setPetSizeExtra(x, z, parseChargeAmount(v) ?? 0));
-                            }
-                          },
-                        ),
                     ]),
                   ),
                 ),
@@ -1577,27 +1505,18 @@ class PetOptionsScreen extends ConsumerWidget {
   }
 }
 
-String? _amountProblem(String v) {
-  final n = parseChargeAmount(v);
-  if (n == null) return 'Enter an amount, e.g. 2.50.';
-  if (n > OptionCharge.maxAmount) return 'At most ${OptionCharge.maxAmount.toStringAsFixed(0)}.';
-  return null;
-}
 
-/// A pet type as its dialog hands it back.
-typedef _PetTypeEdit = ({String name, PetCharge charge});
-
-/// The pet type dialog: a name and its charge. Null when cancelled.
-Future<_PetTypeEdit?> _editPetType(BuildContext context, PetConfig c, String currency, {String? type}) =>
-    showAppDialog<_PetTypeEdit>(id: 'display.pet-type',
+/// The pet type dialog: its name (a new type when [type] is null). Null
+/// when cancelled. Its charges are set by place (Charges and where offered).
+Future<String?> _editPetType(BuildContext context, PetConfig c, {String? type}) =>
+    showAppDialog<String>(id: 'display.pet-type',
       context: context,
-      builder: (_) => _PetTypeDialog(config: c, currency: currency, type: type),
+      builder: (_) => _PetTypeDialog(config: c, type: type),
     );
 
 class _PetTypeDialog extends StatefulWidget {
-  const _PetTypeDialog({required this.config, required this.currency, this.type});
+  const _PetTypeDialog({required this.config, this.type});
   final PetConfig config;
-  final String currency;
   final String? type;
 
   @override
@@ -1605,29 +1524,20 @@ class _PetTypeDialog extends StatefulWidget {
 }
 
 class _PetTypeDialogState extends State<_PetTypeDialog> {
-  late final PetCharge _start = widget.type == null ? PetCharge.none : widget.config.chargeFor(widget.type!);
   late final _name = TextEditingController(text: widget.type ?? '');
-  late final _amount = TextEditingController(text: _start.isZero ? '' : trimNumber(_start.charge.value));
-  late OptionChargeKind _kind = _start.charge.kind;
-  late bool _perPet = _start.perPet;
   String? _error;
 
   @override
   void dispose() {
     _name.dispose();
-    _amount.dispose();
     super.dispose();
   }
 
   void _save() {
     final others = [for (final o in widget.config.types) if (o != widget.type) o];
-    final problem = petTypeProblem(_name.text, others) ?? _chargeProblem(_amount.text, _kind);
+    final problem = petTypeProblem(_name.text, others);
     if (problem != null) return setState(() => _error = problem);
-    final v = parseChargeAmount(_amount.text) ?? 0;
-    Navigator.pop(context, (
-      name: cleanPetTypeName(_name.text),
-      charge: PetCharge(charge: OptionCharge(kind: _kind, value: v), perPet: _perPet),
-    ));
+    Navigator.pop(context, cleanPetTypeName(_name.text));
   }
 
   @override
@@ -1635,39 +1545,20 @@ class _PetTypeDialogState extends State<_PetTypeDialog> {
         title: Text(widget.type == null ? 'Add pet type' : 'Edit pet type'),
         content: SizedBox(
           width: 420,
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              TextField(
-                key: const ValueKey('pet-type-name'),
-                controller: _name,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Name', hintText: 'e.g. Bird', helperText: 'A name only, no emoji'),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            TextField(
+              key: const ValueKey('pet-type-name'),
+              controller: _name,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                hintText: 'e.g. Bird',
+                helperText: 'A name only, no emoji',
+                errorText: _error,
               ),
-              const SizedBox(height: 16),
-              _ChargeFields(
-                amount: _amount,
-                kind: _kind,
-                onKind: (k) => setState(() => _kind = k),
-                fieldKey: const ValueKey('pet-type-charge'),
-                currency: widget.currency,
-              ),
-              const SizedBox(height: 12),
-              SegmentedButton<bool>(
-                key: const ValueKey('pet-type-per'),
-                segments: const [
-                  ButtonSegment(value: true, label: Text('Per pet')),
-                  ButtonSegment(value: false, label: Text('Once per ride')),
-                ],
-                selected: {_perPet},
-                onSelectionChanged: (v) => setState(() => _perPet = v.first),
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.only(top: 12),
-                  child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                ),
-            ]),
-          ),
+              onSubmitted: (_) => _save(),
+            ),
+          ]),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
@@ -1676,59 +1567,9 @@ class _PetTypeDialogState extends State<_PetTypeDialog> {
       );
 }
 
-String? _chargeProblem(String amount, OptionChargeKind kind) {
-  final n = parseChargeAmount(amount);
-  if (n == null) return 'Enter the charge as a number, e.g. 5.';
-  if (kind == OptionChargeKind.percent && n > OptionCharge.maxPercent) return 'A percentage is at most 100%.';
-  if (n > OptionCharge.maxAmount) return 'A charge is at most ${OptionCharge.maxAmount.toStringAsFixed(0)}.';
-  return null;
-}
-
-/// A charge: a fixed amount or a percentage of the fare, and how much.
-class _ChargeFields extends StatelessWidget {
-  const _ChargeFields({
-    required this.amount,
-    required this.kind,
-    required this.onKind,
-    required this.fieldKey,
-    required this.currency,
-  });
-  final TextEditingController amount;
-  final OptionChargeKind kind;
-  final ValueChanged<OptionChargeKind> onKind;
-  final Key fieldKey;
-  final String currency;
-
-  @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SegmentedButton<OptionChargeKind>(
-            segments: const [
-              ButtonSegment(value: OptionChargeKind.fixed, label: Text('Fixed amount')),
-              ButtonSegment(value: OptionChargeKind.percent, label: Text('% of the fare')),
-            ],
-            selected: {kind},
-            onSelectionChanged: (v) => onKind(v.first),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            key: fieldKey,
-            controller: amount,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: kind == OptionChargeKind.percent ? 'Charge (%)' : 'Charge ($currency)',
-              helperText: 'Empty or 0 for no charge',
-            ),
-          ),
-        ],
-      );
-}
-
 /// The assistance catalogue: every kind of help offered, by group, each
-/// with an emoji, a name, a short description, optional choices and a
-/// charge; added, edited, hidden, reordered and removed here.
+/// with an emoji, a name, a short description and optional choices; added,
+/// edited, hidden, reordered and removed here. Charges are set by place.
 class AssistanceOptionsScreen extends ConsumerWidget {
   const AssistanceOptionsScreen({super.key});
 
@@ -1743,7 +1584,7 @@ class AssistanceOptionsScreen extends ConsumerWidget {
             onPressed: () async {
               final s = value.value;
               if (s == null) return;
-              final item = await _editAssistanceItem(context, assistanceOf(s), _chargeCurrency(ref));
+              final item = await _editAssistanceItem(context, assistanceOf(s));
               if (item != null && context.mounted) await applyDisplay(context, ref, (x) => addAssistanceItem(x, item));
             },
           )
@@ -1758,14 +1599,12 @@ class AssistanceOptionsScreen extends ConsumerWidget {
           final t = Theme.of(context);
           final muted = mutedTextColor(t, background: cardSurfaceColor(t));
           final c = assistanceOf(s);
-          final currency = _chargeCurrency(ref);
-          String money(double v) => _rideOptionMoney(v, currency);
           Future<void> edit(DisplayEdit e) => applyDisplay(context, ref, e);
           return ListView(padding: EdgeInsets.fromLTRB(0, 16, 0, addActionListBottomPadding(context)), children: [
             ResponsiveCenter(
               maxWidth: 820,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                const _ChargeCurrencyBar(),
+                const _ChargesByPlaceNote(),
                 Text(
                   'What riders can ask for under "Assistance required". Each one shows its emoji on the rider\'s sheet; '
                   'choices make the rider pick one. A guide or service dog is always free.',
@@ -1802,11 +1641,12 @@ class AssistanceOptionsScreen extends ConsumerWidget {
                                   if (item.description.isNotEmpty) Text(item.description),
                                   if (item.choices.isNotEmpty)
                                     Text('Choices: ${item.choices.join(' / ')}', style: TextStyle(color: muted)),
-                                  Text(
-                                    item.isGuideDog ? 'Always free' : item.charge.describe(money),
-                                    key: ValueKey('assist-admin-charge-${item.id}'),
-                                    style: TextStyle(color: muted),
-                                  ),
+                                  if (item.isGuideDog)
+                                    Text(
+                                      'Always free',
+                                      key: ValueKey('assist-admin-charge-${item.id}'),
+                                      style: TextStyle(color: muted),
+                                    ),
                                   Wrap(crossAxisAlignment: WrapCrossAlignment.center, children: [
                                     BusyIconButton(
                                       key: ValueKey('assist-admin-up-${item.id}'),
@@ -1830,7 +1670,7 @@ class AssistanceOptionsScreen extends ConsumerWidget {
                                         tooltip: 'Edit',
                                         icon: const Icon(Icons.edit_outlined),
                                         onPressed: () async {
-                                          final next = await _editAssistanceItem(context, c, currency, item: item);
+                                          final next = await _editAssistanceItem(context, c, item: item);
                                           if (next != null && context.mounted) {
                                             await edit((x) => updateAssistanceItem(x, next));
                                           }
@@ -1876,19 +1716,17 @@ class AssistanceOptionsScreen extends ConsumerWidget {
 /// cancelled.
 Future<AssistanceItem?> _editAssistanceItem(
   BuildContext context,
-  AssistanceCatalogue c,
-  String currency, {
+  AssistanceCatalogue c, {
   AssistanceItem? item,
 }) =>
     showAppDialog<AssistanceItem>(id: 'display.assistance-item',
       context: context,
-      builder: (_) => _AssistanceItemDialog(catalogue: c, currency: currency, item: item),
+      builder: (_) => _AssistanceItemDialog(catalogue: c, item: item),
     );
 
 class _AssistanceItemDialog extends StatefulWidget {
-  const _AssistanceItemDialog({required this.catalogue, required this.currency, this.item});
+  const _AssistanceItemDialog({required this.catalogue, this.item});
   final AssistanceCatalogue catalogue;
-  final String currency;
   final AssistanceItem? item;
 
   @override
@@ -1901,14 +1739,10 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
   late final _name = TextEditingController(text: _i?.name ?? '');
   late final _description = TextEditingController(text: _i?.description ?? '');
   late final _newGroup = TextEditingController();
-  late final _amount = TextEditingController(
-    text: _i == null || _i.charge.isZero ? '' : trimNumber(_i.charge.value),
-  );
   late final List<TextEditingController> _choices = [
     for (final c in _i?.choices ?? const <String>[]) TextEditingController(text: c),
   ];
   late String? _group = _i?.group ?? assistanceDefaultGroups.first;
-  late OptionChargeKind _kind = _i?.charge.kind ?? OptionChargeKind.fixed;
   String? _error;
 
   bool get _guideDog => _i?.isGuideDog ?? false;
@@ -1922,7 +1756,7 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
 
   @override
   void dispose() {
-    for (final c in [_emoji, _name, _description, _newGroup, _amount, ..._choices]) {
+    for (final c in [_emoji, _name, _description, _newGroup, ..._choices]) {
       c.dispose();
     }
     super.dispose();
@@ -1930,7 +1764,6 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
 
   void _save() {
     final group = (_group ?? _newGroup.text).trim();
-    final chargeProblem = _guideDog ? null : _chargeProblem(_amount.text, _kind);
     final choices = <String>[];
     for (final c in _choices) {
       final t = c.text.trim();
@@ -1944,9 +1777,10 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
       group: group,
       choices: choices,
       hidden: _i?.hidden ?? false,
-      charge: _guideDog ? OptionCharge.none : OptionCharge(kind: _kind, value: parseChargeAmount(_amount.text) ?? 0),
+      // Kept as it was: charges are set by place now.
+      charge: _guideDog ? OptionCharge.none : (_i?.charge ?? OptionCharge.none),
     );
-    final problem = chargeProblem ?? assistanceItemProblem(item);
+    final problem = assistanceItemProblem(item);
     if (problem != null) return setState(() => _error = problem);
     Navigator.pop(context, item);
   }
@@ -2054,12 +1888,10 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
                 style: t.textTheme.bodyMedium,
               )
             else
-              _ChargeFields(
-                amount: _amount,
-                kind: _kind,
-                onKind: (k) => setState(() => _kind = k),
-                fieldKey: const ValueKey('assist-charge'),
-                currency: widget.currency,
+              Text(
+                'Its charge is set by place: Ride Options > Charges and where offered.',
+                key: const ValueKey('assist-charge-by-place'),
+                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
               ),
             if (_error != null)
               Padding(

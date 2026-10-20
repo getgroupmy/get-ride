@@ -47,6 +47,7 @@ import 'data/session_guard.dart';
 import 'data/session_tracker.dart';
 import 'features/dispatch/dispatch_screen.dart';
 import 'features/partner/stand_groups_screen.dart';
+import 'features/partner/ride_extras_parts.dart' show RideExtrasScreen;
 import 'features/install/app_install_screen.dart';
 import 'features/auth/otp_screen.dart';
 import 'features/ev/ev_order_screen.dart';
@@ -439,6 +440,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                           GoRoute(path: 'delete', builder: (_, _) => const DeleteAccountScreen()),
                           GoRoute(path: 'show-location', builder: (_, _) => const ShowLocationScreen()),
                           GoRoute(path: 'app-icon', builder: (_, _) => const AppIconScreen()),
+                          GoRoute(path: 'ride-extras', builder: (_, _) => const RideExtrasScreen()),
                         ],
                       ),
                       GoRoute(

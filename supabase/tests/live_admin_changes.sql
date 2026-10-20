@@ -53,7 +53,9 @@ begin
     -- Airports' settings, waiting zones and fare zones (migration 0249).
     'airport_settings', 'airport_waiting_zones', 'airport_fare_zones', 'vehicle_service_order',
     -- The service order for every booking (migration 0250).
-    'service_order_settings'
+    'service_order_settings',
+    -- Ride Options by place, and the extras each driver takes (migration 0253).
+    'ride_option_places', 'driver_ride_extras'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables
