@@ -27,6 +27,7 @@ void main() {
       'provider_documents': 'auth_user_id',
       'vehicle': 'auth_user_id',
       'vehicle_documents': 'auth_user_id',
+      'driver_ride_extras': 'driver_id',
     });
     for (final t in liveOwnTables.keys) {
       expect(liveSettingTables, isNot(contains(t)), reason: 'followed for the account only, not every row');

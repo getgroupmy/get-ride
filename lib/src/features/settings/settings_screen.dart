@@ -10,6 +10,7 @@ import '../../data/obd/obd_session.dart';
 import '../../data/permission_rules.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
+import '../partner/ride_extras_parts.dart' show RideExtrasSettingsTile;
 import '../safety/voice_protection_card.dart';
 import 'app_icon_screen.dart';
 import 'change_pin_screen.dart';
@@ -84,6 +85,8 @@ class SettingsScreen extends ConsumerWidget {
             const PasskeysTile(),
             const ShowLocationTile(),
             const ObdReaderSettingsTile(),
+            // Partners: the extras they take (0253).
+            const RideExtrasSettingsTile(),
             const RulesTermsCard(),
             Card(
               child: ListTile(

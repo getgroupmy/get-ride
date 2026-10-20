@@ -44,6 +44,8 @@ const liveSettingTables = <String>[
   'cities',
   'suburbs',
   'fare_tariffs',
+  // Ride Options by place: charges, offered here, blocked services (0253).
+  'ride_option_places',
   'get_coin_rate_history',
   'required_document',
   'document_type',
@@ -96,6 +98,8 @@ const liveOwnTables = <String, String>{
   'provider_documents': 'auth_user_id',
   'vehicle': 'auth_user_id',
   'vehicle_documents': 'auth_user_id',
+  // The ride extras the driver turned off (0253).
+  'driver_ride_extras': 'driver_id',
 };
 
 /// The region tables (Admin → Country / States / Cities / Suburbs, and the
@@ -259,6 +263,8 @@ const liveAdminTables = <String>[
   'promo_redemptions',
   // Claude Code access (0228): the admin page follows the list live.
   'claude_access_rules',
+  // The ride extras each driver turned off (0253): their admin page.
+  'driver_ride_extras',
 ];
 
 /// Rides and sessions change every few seconds while trips run; an admin

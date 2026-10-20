@@ -51,6 +51,7 @@ import 'online_gate.dart';
 import 'partner_menu.dart';
 import 'partner_mode_picker.dart' show pendingPartnerModeProvider;
 import 'request_sheet.dart';
+import 'ride_extras_parts.dart';
 import 'partner_status_panel.dart';
 import 'scheduled_jobs_screen.dart' show PartnerUpcomingBookingCard;
 import 'vehicle_picker.dart';
@@ -658,8 +659,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// A counter-offer on [r]: [preset] when one was tapped, else the amount
   /// the driver types. [accepting] is an Accept at the rider's own fare.
   Future<void> _offer(RideRequest r, Partner partner, {double? preset, bool accepting = false}) async {
+    // "Passenger added extras" first (0253). The extras ticked to stop
+    // showing are saved either way: at once on Cancel, after the answer
+    // went through otherwise (saved first, the request would be hidden
+    // from this driver before they answer it).
+    var stop = const <String>{};
+    final extras = await askRideExtras(context, r, accepting: accepting);
+    if (extras != null) {
+      if (!extras.go) return stopRideExtras(ref, extras.stop);
+      stop = extras.stop;
+    }
+    if (!mounted) return stopRideExtras(ref, stop);
     final amount = preset ?? await askCounterOffer(context, r);
-    if (amount == null || !mounted) return;
+    if (amount == null || !mounted) return stopRideExtras(ref, stop);
     setState(() => _accepting = r.id);
     final repo = ref.read(rideRepositoryProvider);
     RideRequest? sent;
@@ -679,6 +691,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       return;
     } finally {
       if (mounted) setState(() => _accepting = null);
+      unawaited(stopRideExtras(ref, stop));
     }
     if (!mounted) return;
     final me = ref.read(currentUserIdProvider);
@@ -1356,11 +1369,20 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           // A request showing (a demo one above, or a real one over the
           // map on a desktop): not "waiting" beside it.
           if (demoShown || list.any((r) => r.id == _alertId)) return const SizedBox.shrink();
-          return const EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.');
+          return Column(children: [
+            HiddenExtrasLine(feed: [for (final r in list) r.id].join(',')),
+            const Expanded(
+              child: EmptyState(icon: Icons.radar, title: 'Waiting for requests…', message: 'New requests appear here instantly.'),
+            ),
+          ]);
         }
+        // "1 request not shown: it includes an extra you turned off" (0253).
+        final hidden = HiddenExtrasLine(feed: [for (final r in list) r.id].join(','));
         return ListView.builder(
-          itemCount: sorted.length + (alert == null ? 0 : 1),
+          itemCount: sorted.length + (alert == null ? 0 : 1) + 1,
           itemBuilder: (_, index) {
+            if (index == 0) return hidden;
+            index--;
             if (alert != null && index == 0) return _alertCard(alert, partner);
             return _requestCard(sorted[alert == null ? index : index - 1], partner);
           },

@@ -61,6 +61,12 @@ import '../../data/route_estimate_repository.dart';
 import '../../data/ride_pet_repository.dart' show petConfigProvider;
 import '../../data/ride_option_providers.dart';
 import '../../core/ride_option_charges.dart';
+import '../../core/partner_type_rules.dart' show RegionScope;
+import '../../core/ride_assistance.dart' show AssistanceCatalogue;
+import '../../core/ride_option_places.dart';
+import '../../core/ride_option_settings.dart' show RideOptionsConfig;
+import '../../core/ride_pets.dart' show PetConfig;
+import '../../data/ride_option_places_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_drag_pin.dart';
@@ -446,6 +452,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// Where the pickup is, for the tariff card that prices it (0109); null
   /// until the geocoder answers, when the master card (if any) applies.
   AreaInfo? _pickupArea;
+
+  /// The pickup's place for Ride Options (0253), as the server reads it.
+  RegionScope? _optionPlace;
 
   /// Admin → Display → On-map vehicle icons: simulated cars around the
   /// pickup, as Expo drew them (not real drivers).
@@ -1021,7 +1030,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final area = ref.read(geoServiceProvider).reverseArea(pickup);
     unawaited(area.then((a) {
       if (mounted && _biddingAt == pickup) setState(() => _pickupArea = a);
-    }, onError: (_) {}));
+      return a;
+    }, onError: (_) => null).then((a) async {
+      // The place the server reads the options at (Ride Options by place,
+      // 0253): asked once per pickup, the geocoder's names meanwhile.
+      if (!mounted || _biddingAt != pickup) return;
+      setState(() => _optionPlace = optionPlaceFromArea(a));
+      RegionScope? place;
+      try {
+        place = await ref.read(rideOptionPlacesRepositoryProvider).placeAt(pickup, a);
+      } catch (_) {}
+      if (place != null && mounted && _biddingAt == pickup) setState(() => _optionPlace = place);
+    }));
     final rides = ref.read(rideRepositoryProvider);
     // Each on its own: an unreadable pricing never switches bidding off.
     Future<T> orElse<T>(Future<T> Function() f, T fallback) async {
@@ -1082,26 +1102,51 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             .fare;
   }
 
-  /// The options as they can be booked now: what the admin no longer offers
-  /// (Display Settings → Ride Options) is off.
-  RideOptions get _bookable =>
-      ref.read(rideOptionsConfigProvider).allowed(_options, catalogue: ref.read(assistanceCatalogueProvider));
+  /// Ride Options at the pickup (Admin → Display Settings → Ride Options →
+  /// Charges and where offered): what is offered there and what it costs.
+  /// The blob's amounts until the places are read.
+  RideOptionsHere get _optionsHere {
+    final places = ref.read(rideOptionPlacesProvider).value ??
+        OptionPlaces.fromBlob(ref.read(displaySettingsBlobProvider).value ?? const <String, dynamic>{});
+    return places.here(_optionPlace ?? RegionScope.all);
+  }
 
-  /// What the rider's pets and assistance add to a route fare of [fare]
-  /// (Admin → Display Settings → Ride Options; nothing until set).
-  List<OptionChargeLine> _optionChargesOn(double fare) => rideOptionCharges(
-        _bookable,
-        fare,
-        pets: ref.read(petConfigProvider),
-        assistance: ref.read(assistanceCatalogueProvider),
-      );
+  /// The Options sheet's settings for [s] at the pickup: an option off
+  /// there, or blocked for [s], is hidden.
+  RideOptionsConfig _optionsConfigFor(RideService s) =>
+      _optionsHere.config(ref.read(rideOptionsConfigProvider), serviceId: s.id);
+
+  PetConfig get _petsHere => _optionsHere.pets(ref.read(petConfigProvider));
+
+  AssistanceCatalogue get _helpHere => _optionsHere.assistance(ref.read(assistanceCatalogueProvider));
+
+  /// The options as they can be booked for [s] now: what the admin no
+  /// longer offers (Display Settings → Ride Options), or not here or on
+  /// [s], is off.
+  RideOptions _bookableFor(RideService s) => _optionsConfigFor(s).allowed(_options, catalogue: _helpHere);
+
+  RideOptions get _bookable => _bookableFor(_service);
+
+  /// What the rider's options add to a route fare of [fare] for [s]
+  /// (charges by place; nothing until set).
+  List<OptionChargeLine> _optionChargesOn(double fare, [RideService? s]) {
+    final here = _optionsHere;
+    return rideOptionCharges(
+      _bookableFor(s ?? _service),
+      fare,
+      pets: here.pets(ref.read(petConfigProvider)),
+      assistance: here.assistance(ref.read(assistanceCatalogueProvider)),
+      childSeat: here.childSeat,
+      morePassengers: here.morePassengers,
+    );
+  }
 
   /// [s]'s recommended fare: the route's, plus what the options add, so the
   /// vehicle cards, the offer and the booked fare all include them.
   double _recommendedFor(RideService s) {
     if (_basis == null) return 0;
     final route = _routeFareFor(s);
-    return _pricing.roundFare(route + optionChargesTotal(_optionChargesOn(route)));
+    return _pricing.roundFare(route + optionChargesTotal(_optionChargesOn(route, s)));
   }
 
   /// [s]'s fare priced on the plain road route, without the AI's traffic:
@@ -1112,7 +1157,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final route =
         quoteFare(_tariffFor(s), r.distanceKm, r.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
             .fare;
-    return _pricing.roundFare(route + optionChargesTotal(_optionChargesOn(route)));
+    return _pricing.roundFare(route + optionChargesTotal(_optionChargesOn(route, s)));
   }
 
   /// The fare promo codes work on: less the option charges when the admin
@@ -1328,9 +1373,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               options: _options,
               onChanged: (o) => setState(() => _options = o),
               note: _note,
-              petConfig: ref.read(petConfigProvider),
-              config: ref.read(rideOptionsConfigProvider),
-              assistance: ref.read(assistanceCatalogueProvider),
+              petConfig: _petsHere,
+              config: _optionsConfigFor(_service),
+              assistance: _helpHere,
             ),
             onChanged: (v) => latest = v,
           ),
@@ -1432,7 +1477,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final optionCharges = _optionCharges;
       // The admin's names for the options: in the note, and stamped on the
       // ride so the driver reads it as it was booked.
-      final optionsConfig = ref.read(rideOptionsConfigProvider);
+      final optionsConfig = _optionsConfigFor(_service);
       final optionNames = optionsConfig.namesFor(options);
       // One of the admin's demo riders (Admin → Display Settings → Demo
       // riders): the request stays on this phone, where the demo drivers
@@ -2398,6 +2443,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.watch(paymentChoicesProvider); // and when Admin → Payment Type changes
     ref.watch(coinTradeQuoteProvider); // and when the GET.coin balance does
     ref.watch(fareTariffsProvider); // re-quote when the tariff cards arrive
+    ref.watch(rideOptionPlacesProvider); // and when the option charges by place do
     final earnRate = ref.watch(coinTradeQuoteProvider).value?.settings.earnCoinsPerCurrency ?? 0;
     final coins = _coins;
     final coinOffer = coins == null ? null : fareCoinOffer(_fareFor(_service), coins.balance, coins.rate);
@@ -2421,9 +2467,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               options: _options,
               onChanged: (o) => setState(() => _options = o),
               note: _note,
-              petConfig: ref.read(petConfigProvider),
-              config: ref.read(rideOptionsConfigProvider),
-              assistance: ref.read(assistanceCatalogueProvider),
+              petConfig: _petsHere,
+              config: _optionsConfigFor(_service),
+              assistance: _helpHere,
             ).then((_) {
               if (mounted) setState(() {}); // the note may have changed
             }),
