@@ -235,6 +235,6 @@ create policy "ride pets read"
 
 create policy "ride pets admin delete"
   on storage.objects for delete to authenticated
-  using (bucket_id = 'ride-pets' and public.caller_admin_can_write('storage:ride-pets'));
+  using (bucket_id = 'ride-pets' and (select public.caller_admin_can_write('storage:ride-pets')));
 
 notify pgrst, 'reload schema';
