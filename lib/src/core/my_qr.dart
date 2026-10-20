@@ -554,6 +554,10 @@ enum QrBookingFailure {
 
   /// The database can't book by code yet (migration 0161 not applied).
   notAvailable,
+
+  /// The driver's vehicle is a lower service than the one booked, while the
+  /// service order applies to every booking: `SERVICE_ORDER_DIRECT` (0250).
+  serviceTooLow,
 }
 
 /// A GET.now booking the database refused.
@@ -567,6 +571,7 @@ class QrBookingError implements Exception {
     if (m.contains('QR_EXPIRED')) return const QrBookingError(QrBookingFailure.expired);
     if (m.contains('QR_SELF_BOOKING')) return const QrBookingError(QrBookingFailure.selfBooking);
     if (m.contains('QR_DRIVER_UNAVAILABLE')) return const QrBookingError(QrBookingFailure.driverUnavailable);
+    if (m.contains('SERVICE_ORDER_DIRECT')) return const QrBookingError(QrBookingFailure.serviceTooLow);
     return null;
   }
 
@@ -576,6 +581,8 @@ class QrBookingError implements Exception {
     QrBookingFailure.selfBooking => "You can't book yourself with your own GET.now code.",
     QrBookingFailure.driverUnavailable => "This driver can't take rides right now.",
     QrBookingFailure.notAvailable => "Booking a driver by QR isn't available yet. Please try again later.",
+    QrBookingFailure.serviceTooLow =>
+      "This driver's vehicle can't take this service. Choose another service, or book without the code.",
   };
 }
 

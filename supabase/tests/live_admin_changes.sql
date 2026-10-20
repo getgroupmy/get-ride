@@ -51,7 +51,9 @@ begin
     -- Claude Code access (migration 0228).
     'claude_access_rules',
     -- Airports' settings, waiting zones and fare zones (migration 0249).
-    'airport_settings', 'airport_waiting_zones', 'airport_fare_zones', 'vehicle_service_order'
+    'airport_settings', 'airport_waiting_zones', 'airport_fare_zones', 'vehicle_service_order',
+    -- The service order for every booking (migration 0250).
+    'service_order_settings'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

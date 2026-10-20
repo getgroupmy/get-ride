@@ -34,6 +34,8 @@ const liveSettingTables = <String>[
   'airport_fare_zones',
   // Vehicle services, lowest to highest (0249).
   'vehicle_service_order',
+  // Whether that order applies to every booking (0250).
+  'service_order_settings',
   'ip_access_rules',
   'admin_access',
   'vehicle_make_models',

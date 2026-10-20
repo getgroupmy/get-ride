@@ -10,6 +10,7 @@ import '../../../core/format.dart';
 import '../../../data/airport_repository.dart'
     show AirportZone, zoneSourceLabel;
 import '../../../widgets/search_select.dart';
+import '../catalogue/service_order_screen.dart' show ServiceOrderEditor;
 import '../../../widgets/storage_image.dart';
 
 const _gap = SizedBox(height: 12);
@@ -842,7 +843,7 @@ class AirportQueueTab extends StatelessWidget {
     this.map,
     this.services = const [],
     this.serviceOrder = const ServiceOrder([]),
-    this.onServiceOrder,
+    this.onOpenServiceOrder,
   });
   final AirportSettings settings;
   final List<AirportZone> zones;
@@ -850,7 +851,8 @@ class AirportQueueTab extends StatelessWidget {
   /// Every vehicle service (id, name), and their order lowest first.
   final List<({String id, String name})> services;
   final ServiceOrder serviceOrder;
-  final ValueChanged<ServiceOrder>? onServiceOrder;
+  /// Opens the shared Service order page.
+  final VoidCallback? onOpenServiceOrder;
   final ValueChanged<AirportSettings>? onChanged;
   final VoidCallback? onAddZone;
   final void Function(AirportZone z)? onEditZone, onRemoveZone;
@@ -990,11 +992,19 @@ class AirportQueueTab extends StatelessWidget {
           'Order: the earliest drop-off goes first, and one drop-off gives one place.',
         ),
         _gap,
-        ServiceOrderEditor(
-          services: services,
-          order: serviceOrder,
-          onChanged: onServiceOrder,
-        ),
+        // The order is shared by every booking: edited on Vehicle Services →
+        // Service order (0250), shown here.
+        ServiceOrderEditor(services: services, order: serviceOrder),
+        if (onOpenServiceOrder != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('airport-open-service-order'),
+              onPressed: onOpenServiceOrder,
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('Edit the service order'),
+            ),
+          ),
       ],
     );
   }
@@ -1711,91 +1721,6 @@ class AirportChargesTab extends StatelessWidget {
         ),
         const AirportNote(
           "The charge goes to the airport fee line on the receipt and isn't part of the driver's commission base.",
-        ),
-      ],
-    );
-  }
-}
-
-/// The vehicle services from lowest to highest, dragged into order. A driver
-/// whose vehicle's service is higher may get orders for a lower one; a lower
-/// one never sees a higher one's. Shared by every airport.
-class ServiceOrderEditor extends StatelessWidget {
-  const ServiceOrderEditor({
-    super.key,
-    required this.services,
-    required this.order,
-    this.onChanged,
-  });
-  final List<({String id, String name})> services;
-  final ServiceOrder order;
-  final ValueChanged<ServiceOrder>? onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    String name(String id) =>
-        services.where((s) => s.id == id).firstOrNull?.name ?? id;
-    final ids = order.ids;
-    final on = onChanged;
-    return Column(
-      key: const ValueKey('airport-service-order'),
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Service order (lowest to highest)',
-          style: t.textTheme.labelLarge,
-        ),
-        Text(
-          'A driver whose vehicle is a higher service can get orders for the lower ones; a lower one never sees a '
-          "higher one's. An order goes to its own service's line first, then to each higher line in this order. "
-          'The same for every airport.',
-          style: t.textTheme.bodySmall,
-        ),
-        const SizedBox(height: 6),
-        if (ids.isEmpty)
-          Text('No vehicle services yet.', style: t.textTheme.bodySmall),
-        ReorderableListView(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          buildDefaultDragHandles: false,
-          onReorderItem: (from, to) => on?.call(order.moved(from, to)),
-          children: [
-            for (var i = 0; i < ids.length; i++)
-              Card(
-                key: ValueKey('airport-service-${ids[i]}'),
-                margin: const EdgeInsets.only(bottom: 4),
-                child: ListTile(
-                  leading: on == null
-                      ? CircleAvatar(radius: 13, child: Text('${i + 1}'))
-                      : ReorderableDragStartListener(
-                          index: i,
-                          child: const Icon(Icons.drag_indicator),
-                        ),
-                  title: Text('${i + 1}. ${name(ids[i])}'),
-                  trailing: on == null
-                      ? null
-                      : Wrap(
-                          children: [
-                            IconButton(
-                              tooltip: 'Move ${name(ids[i])} lower',
-                              onPressed: i == 0
-                                  ? null
-                                  : () => on(order.moved(i, i - 1)),
-                              icon: const Icon(Icons.arrow_upward, size: 18),
-                            ),
-                            IconButton(
-                              tooltip: 'Move ${name(ids[i])} higher',
-                              onPressed: i == ids.length - 1
-                                  ? null
-                                  : () => on(order.moved(i, i + 1)),
-                              icon: const Icon(Icons.arrow_downward, size: 18),
-                            ),
-                          ],
-                        ),
-                ),
-              ),
-          ],
         ),
       ],
     );

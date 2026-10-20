@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
@@ -8,6 +9,7 @@ import '../../admin_settings_models.dart';
 import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
+import 'service_order_screen.dart' show serviceOrderPath;
 import 'catalogue_widgets.dart';
 import '../../../core/service_tree.dart' show serviceParentIds;
 import '../../../widgets/search_select.dart';
@@ -23,6 +25,7 @@ class _PriorityList extends ConsumerStatefulWidget {
     required this.edit,
     required this.isDefault,
     required this.deleteMessage,
+    this.header,
   });
 
   final SettingsCategory category;
@@ -33,6 +36,9 @@ class _PriorityList extends ConsumerStatefulWidget {
   final Future<void> Function(BuildContext, List<SettingEntry> all, SettingEntry? e) edit;
   final bool Function(SettingEntry e) isDefault;
   final String deleteMessage;
+
+  /// Above the list (Vehicle Services: the service order).
+  final Widget? header;
 
   @override
   ConsumerState<_PriorityList> createState() => _PriorityListState();
@@ -90,6 +96,7 @@ class _PriorityListState extends ConsumerState<_PriorityList> {
             maxWidth: 820,
             child: Column(children: [
               CatalogueSearch(onChanged: (v) => setState(() => _query = v)),
+              ?widget.header,
               Expanded(
                 child: rows.isEmpty
                     ? EmptyState(icon: Icons.inbox_outlined, title: widget.emptyTitle, message: c.subtitle)
@@ -302,6 +309,17 @@ class VehicleServicesScreen extends ConsumerWidget {
         addLabel: 'Add Vehicle Service',
         deleteMessage: 'Remove this vehicle service?',
         isDefault: (_) => false,
+        // Which services may take which orders (0249, 0250).
+        header: Card(
+          child: ListTile(
+            key: const ValueKey('vehicle-services-service-order'),
+            leading: const Icon(Icons.stairs_outlined),
+            title: const Text('Service order'),
+            subtitle: const Text('Lowest to highest: a higher service may take a lower one\'s orders'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(serviceOrderPath),
+          ),
+        ),
         edit: (ctx, all, e) => _edit(ctx, ref, all, e),
         tile: (e) {
           final v = e.values;
