@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../data/dispatch_repository.dart' show dispatchRepositoryProvider;
 import '../../data/scheduled_ride_repository.dart';
 import '../../data/active_location.dart';
 import '../../core/destination_mode.dart';
@@ -38,6 +39,7 @@ import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
 import 'direct_booking_badge.dart';
+import 'stand_order_label.dart';
 import 'driver_home_map.dart';
 import '../support/call/mic_gate.dart' show primeMicForCalls;
 import 'driver_online.dart';
@@ -287,6 +289,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       if (fare != null) _declinedFare[id] = fare;
       // An airport order passed on goes to the next driver now (0249).
       if (req != null && req.airportHold) unawaited(declineAirportOffer(ref, id));
+      // A stand order said no to goes back to the stand at once (0251).
+      if (req != null && standOrderOf(req, _myId) != null) unawaited(ref.read(dispatchRepositoryProvider).decline(id));
     }
     setState(() => _alertId = null);
     _syncAlert(ref.read(openRequestsProvider).value ?? const []);
@@ -1249,10 +1253,13 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     // Booked directly with this driver (GET.now) on top, then starred (My
     // Ride) requests; the one tapped on the map above all.
     final sorted = focusFirst(
-      pinDirectFirst(
-        pinStarredFirst(
-          destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
-          _starred,
+      pinAssignedFirst(
+        pinDirectFirst(
+          pinStarredFirst(
+            destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+            _starred,
+          ),
+          _myId,
         ),
         _myId,
       ),
@@ -1400,6 +1407,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           ]),
           MyRideForYouLabel(request: r, me: _myId, clock: ref.read(requestAlertClockProvider)),
           DirectBookingLabel(request: r, me: _myId),
+          StandOrderLabel(request: r, me: _myId),
           if (destinationOn && _towardDestination(r))
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -1528,6 +1536,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           ),
           MyRideForYouLabel(request: r, me: _myId, clock: ref.read(requestAlertClockProvider)),
           DirectBookingLabel(request: r, me: _myId),
+          StandOrderLabel(request: r, me: _myId),
           if (_raisedFrom[r.id] case final was?)
             Padding(
               padding: const EdgeInsets.only(top: 6),

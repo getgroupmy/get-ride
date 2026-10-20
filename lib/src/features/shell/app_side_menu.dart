@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../admin/admin_providers.dart';
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
+import '../../data/dispatch_repository.dart' show dispatchRolesProvider;
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
 import '../../data/obd/obd_session.dart';
 import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
@@ -224,6 +225,10 @@ class SideMenuPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final profile = ref.watch(profileProvider).value;
     final isAdmin = ref.watch(adminAccessProvider).value?.isAdmin ?? false;
+    // A stand's admin or staff, or a fleet owner (0251); admins have it in
+    // the admin panel.
+    final dispatch = !isAdmin && (ref.watch(dispatchRolesProvider).value?.any ?? false);
+    final outline = SideMenuStyle.outlineOn(Theme.of(context).brightness);
     return SideMenuFrame(
       header: showProfile
           ? SideMenuHeader(
@@ -238,6 +243,26 @@ class SideMenuPanel extends ConsumerWidget {
       buttonKey: modeKey,
       onButton: onMode,
       footer: [
+        if (dispatch)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: OutlinedButton.icon(
+              key: const ValueKey('menu-dispatch'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+                foregroundColor: outline,
+                side: BorderSide(color: outline),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.storefront_outlined),
+              label: const Text('Dispatch'),
+              onPressed: () {
+                final router = GoRouter.of(context);
+                SideMenuHost.of(context)?.close();
+                router.go('/dispatch');
+              },
+            ),
+          ),
         if (isAdmin)
           Padding(
             padding: const EdgeInsets.only(top: 10),

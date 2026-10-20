@@ -14,6 +14,7 @@ class VehicleDriver {
     this.name,
     this.phone,
     this.drivingNow = false,
+    this.approval = 'approved',
   });
 
   final String assignmentId;
@@ -23,6 +24,11 @@ class VehicleDriver {
   final String? name;
   final String? phone;
   final bool drivingNow;
+
+  /// A fleet owner's assignment waits for an admin (migration 0251):
+  /// 'pending', 'approved' or 'rejected'. Only an approved one is driven.
+  final String approval;
+  bool get pending => approval == 'pending';
 }
 
 /// `vehicle_user_assignment` + `vehicle_active_session` (migrations 0031 /
@@ -86,13 +92,25 @@ class VehicleAssignmentRepository {
   // ---- Admin -----------------------------------------------------------------
 
   Future<List<VehicleDriver>> driversFor(String vehicleId) async {
-    final rows = List<Map<String, dynamic>>.from(
-      await _db
-          .from('vehicle_user_assignment')
-          .select('id, user_id, role, is_active')
-          .eq('vehicle_id', vehicleId)
-          .order('assigned_at'),
-    );
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = List<Map<String, dynamic>>.from(
+        await _db
+            .from('vehicle_user_assignment')
+            .select('id, user_id, role, is_active, approval')
+            .eq('vehicle_id', vehicleId)
+            .order('assigned_at'),
+      );
+    } on PostgrestException {
+      // A database without 0251's approval.
+      rows = List<Map<String, dynamic>>.from(
+        await _db
+            .from('vehicle_user_assignment')
+            .select('id, user_id, role, is_active')
+            .eq('vehicle_id', vehicleId)
+            .order('assigned_at'),
+      );
+    }
     final session = await _db
         .from('vehicle_active_session')
         .select('user_id')
@@ -113,6 +131,7 @@ class VehicleAssignmentRepository {
           name: byId['${r['user_id']}']?['name'] as String?,
           phone: byId['${r['user_id']}']?['phone'] as String?,
           drivingNow: session != null && '${session['user_id']}' == '${r['user_id']}',
+          approval: (r['approval'] as String?) ?? 'approved',
         ),
     ];
   }
@@ -137,6 +156,12 @@ class VehicleAssignmentRepository {
 
   Future<void> setActive(String assignmentId, bool active) =>
       _db.from('vehicle_user_assignment').update({'is_active': active}).eq('id', assignmentId);
+
+  /// An admin approves or rejects a fleet owner's assignment (0251).
+  Future<void> setApproval(String assignmentId, bool approved) => _db
+      .from('vehicle_user_assignment')
+      .update({'approval': approved ? 'approved' : 'rejected'})
+      .eq('id', assignmentId);
 
   Future<void> remove(String assignmentId) => _db.from('vehicle_user_assignment').delete().eq('id', assignmentId);
 

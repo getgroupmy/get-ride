@@ -32,6 +32,7 @@ const _nav = [
   _NavItem('commission', Icons.percent),
   _NavItem('fare-tariffs', Icons.price_change_outlined),
   _NavItem('messaging', Icons.sms_outlined),
+  _NavItem('dispatch', Icons.storefront_outlined),
   _NavItem('settings', Icons.tune),
   _NavItem('sub-admins', Icons.admin_panel_settings_outlined),
 ];
