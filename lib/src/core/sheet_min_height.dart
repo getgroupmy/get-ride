@@ -18,7 +18,7 @@ const sheetMinAdjustStep = 10;
 
 /// The ride-confirm sheet may rest as low as this, in px with the Find a
 /// driver bar under it; the vehicles above it are a pull away.
-const confirmSheetMinFloor = 150;
+const confirmSheetMinFloor = 140;
 
 /// The lowest adjustment for the sheet at [key]: the ride-confirm one goes
 /// far enough to reach [confirmSheetMinFloor].

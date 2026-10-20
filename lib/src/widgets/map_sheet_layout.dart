@@ -141,6 +141,7 @@ class MapSheetLayout extends StatefulWidget {
     this.footer,
     this.aboveFooter,
     this.front,
+    this.behind,
     this.padBottom = true,
     this.revealMax,
     this.besideWhenShort = false,
@@ -211,6 +212,12 @@ class MapSheetLayout extends StatefulWidget {
   /// top edge rides it all the way up): the confirm screen's discount bar
   /// when the admin puts it in front. It should only fill what it draws.
   final Widget? front;
+
+  /// Drawn just under the sheet, over the map, with the same uncapped
+  /// [MapBottomInset] as [front]: what fills the sheet's rounded top
+  /// corners under a bar standing in front (so no map shows there, however
+  /// high the sheet is dragged). It should only fill what it draws.
+  final Widget? behind;
 
   /// Room under the sheet's content for the home indicator or Android's
   /// navigation bar (the bottom view padding) where no [footer] sits there,
@@ -691,7 +698,22 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 child: widget.map,
               ),
             ),
+            if (widget.behind != null)
+              // Keyed, as the sheet is: coming and going, it never takes the
+              // sheet's place (which would build the sheet anew).
+              Positioned.fill(
+                key: const ValueKey('map-sheet-behind'),
+                child: MapBottomInset(
+                  extent: _extent,
+                  height: h,
+                  cap: h,
+                  pull: _bounce,
+                  rest: math.min(h * _min, h * (1 - widget.mapMinFraction)),
+                  child: widget.behind!,
+                ),
+              ),
             Positioned(
+              key: const ValueKey('map-sheet-slot'),
               left: side,
               right: side,
               top: 0,

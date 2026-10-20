@@ -2032,8 +2032,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // A destination chosen: the confirm step (Expo ride-confirm).
     final confirming = _drop != null;
     final layout = ConfirmLayout.fromSettings(blob);
-    // A fixed fare off the usual: inDrive's demand band in the promo bar's place.
-    final demand = !_biddingFor(_service) && _basis != null && !_routing ? _ai?.trend : null;
+    // A fare off the usual, fixed or offered (bidding): inDrive's demand
+    // band in the promo bar's place.
+    final demand = _basis != null && !_routing ? _ai?.trend : null;
     // The promo bar (0242) only when a code fits the trip: one applied, or
     // some to pick from. A demo rider's trips get none.
     _syncPromos(confirming);
@@ -2060,41 +2061,70 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Widget aboveSheet(Widget Function(double inset) build) => Positioned.fill(
       child: Builder(builder: (c) => MapBottomInset.listen(c, (inset) => Stack(children: [build(inset)]))),
     );
+    // How far the bars' feet run behind the sheet: past its rounded top
+    // corners, however deep the admin made them.
+    final footUnder = SheetTopBar.footUnder(SurfaceStyle.ofPage(context).number('mapSheetRadius'));
     // The promo bar (0242): the code applied, or the codes that fit.
-    Widget confirmPromoBar() => ConfirmPromoBar(
+    Widget confirmPromoBar(double foot) => ConfirmPromoBar(
           offers: _promoOffers,
           applied: _promo,
           auto: _promoAuto,
           fare: _fareFor(_service),
           currency: _currency,
           onTap: _openPromoSheet,
+          foot: foot,
         );
+    // A fare off the usual takes the bar's place: inDrive's demand band,
+    // opening why. The promo bar stays under it, so a code can still be used.
+    Widget bars(double foot) => demand == null
+        ? confirmPromoBar(foot)
+        : bothBars
+        ? DemandPromoBars(
+            trend: demand,
+            onDemand: () => showDemandSheet(context, demand, factor: _upliftFor(_service)?.factor),
+            promo: confirmPromoBar(foot),
+          )
+        : DemandBanner(
+            trend: demand,
+            onTap: () => showDemandSheet(context, demand, factor: _upliftFor(_service)?.factor),
+            foot: foot,
+          );
     // The discount bar; in front of the sheet it is drawn on the sheet's
     // layer instead of the map's (Admin → Display → Discount bar in front).
-    Widget promoBar() => aboveSheet(
-          (inset) => Positioned(
+    Widget promoBar() => aboveSheet((inset) {
+          final offset = layout.promoBarOffset;
+          // In front it stands whole on the sheet's top edge.
+          if (layout.promoBarInFront) {
+            return Positioned(left: 0, right: 0, bottom: inset - offset, child: bars(SheetTopBar.tuck));
+          }
+          // Behind, its foot runs under the sheet's top edge. Moved down by
+          // the admin more of it is behind; moved up, the foot grows by as
+          // much, so it still reaches behind the sheet with no map between.
+          return Positioned(
             left: 0,
             right: 0,
-            // Behind, its foot tucks under the sheet's top edge; in front it
-            // stands whole on that edge.
-            bottom: inset - (layout.promoBarInFront ? 0 : SheetTopBar.tuck) - layout.promoBarOffset,
-            // A fixed fare off the usual takes the bar's place: inDrive's
-            // demand band, opening why.
-            // The promo bar stays under it, so a code can still be used.
-            child: demand == null
-                ? confirmPromoBar()
-                : bothBars
-                ? DemandPromoBars(
-                    trend: demand,
-                    onDemand: () => showDemandSheet(context, demand, factor: _upliftFor(_service)?.factor),
-                    promo: confirmPromoBar(),
-                  )
-                : DemandBanner(
-                    trend: demand,
-                    onTap: () => showDemandSheet(context, demand, factor: _upliftFor(_service)?.factor),
-                  ),
-          ),
-        );
+            bottom: inset - footUnder - math.max(0.0, offset),
+            child: bars(footUnder + math.max(0.0, -offset)),
+          );
+        });
+    // The bar in front stands on the sheet's top edge, whose corners are
+    // rounded: under the sheet a foot of the bar's fill runs from behind the
+    // bar down past them, so no map shows there.
+    Widget promoBarFoot() => aboveSheet((inset) {
+          final t = Theme.of(context);
+          return Positioned(
+            left: 0,
+            right: 0,
+            bottom: inset - footUnder,
+            height: math.max(0.0, footUnder + 8 - layout.promoBarOffset),
+            child: IgnorePointer(
+              child: ColoredBox(
+                key: const ValueKey('confirm-bar-foot'),
+                color: showPromo ? ConfirmPromoBar.fillFor(t, applied: _promo != null) : demandBandColor(t),
+              ),
+            ),
+          );
+        });
     // Home: the rider stands in a promo zone (an auto-apply code about the pickup).
     Widget promoZoneBar() => aboveSheet(
           (inset) => Positioned(
@@ -2672,6 +2702,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                 ),
           front: confirming && !wide && (showPromo || demand != null) && layout.promoBarInFront ? Stack(children: [promoBar()]) : null,
+          behind: confirming && !wide && (showPromo || demand != null) && layout.promoBarInFront
+              ? Stack(children: [promoBarFoot()])
+              : null,
         );
         }),
       )),

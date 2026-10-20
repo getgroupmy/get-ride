@@ -1852,6 +1852,15 @@ abstract final class SheetTopBar {
 
   /// How far the bar reaches under the sheet.
   static const tuck = 22.0;
+
+  /// How far a bar runs on behind the bar stacked under it: past that
+  /// bar's rounded top corners, so no map shows between the two.
+  static const underlap = 20.0;
+
+  /// How far a bar's foot runs behind the sheet: [tuck], or past the
+  /// sheet's own rounded top corners where the admin made them deeper
+  /// (App Page Settings, Map sheet top curve), so no map shows in them.
+  static double footUnder(double sheetRadius) => math.max(tuck, sheetRadius + 2);
 }
 
 /// "Earn 12 GC on this booking", or null for none.
@@ -2077,18 +2086,21 @@ Future<bool> confirmAddStop(
   return ok == true;
 }
 
-/// inDrive's band over a fixed-fare list while the fare is off the usual:
-/// in the discount bar's place, tucked under the sheet's top edge, opening
-/// [showDemandSheet].
+/// inDrive's band over the vehicle list while the fare is off the usual
+/// (a fixed fare or an offer): in the discount bar's place, tucked under
+/// the sheet's top edge, opening [showDemandSheet].
 class DemandBanner extends StatelessWidget {
-  const DemandBanner({super.key, required this.trend, required this.onTap, this.tucked = true});
+  const DemandBanner({super.key, required this.trend, required this.onTap, this.foot = SheetTopBar.tuck, this.color});
 
   final FareTrend trend;
   final VoidCallback onTap;
 
-  /// Its foot tucked under the sheet (alone); false when the promo bar
-  /// stands under it ([DemandPromoBars]).
-  final bool tucked;
+  /// How far it runs on below its visible part, behind what stands under
+  /// it: the sheet (alone), or the promo bar ([DemandPromoBars]).
+  final double foot;
+
+  /// Its fill; null for [demandBandColor].
+  final Color? color;
 
   @override
   Widget build(BuildContext context) {
@@ -2103,13 +2115,13 @@ class DemandBanner extends StatelessWidget {
       onTap: onTap,
       child: Material(
       key: ValueKey(up ? 'high-demand' : 'low-demand'),
-      color: t.colorScheme.surfaceContainerHigh,
+      color: color ?? demandBandColor(t),
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: InkWell(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         onTap: onTap,
         child: Padding(
-          padding: EdgeInsets.fromLTRB(16, 8, 12, tucked ? SheetTopBar.tuck + 8 : 8),
+          padding: EdgeInsets.fromLTRB(16, 8, 12, foot + 8),
           child: SizedBox(
             height: SheetTopBar.visibleHeight - 16,
             child: Row(
@@ -2133,8 +2145,14 @@ class DemandBanner extends StatelessWidget {
   }
 }
 
+/// The demand band alone, over the sheet.
+Color demandBandColor(ThemeData t) => t.colorScheme.surfaceContainerHigh;
+
 /// The demand band and the promo bar together, the band on top: while the
-/// fare is off the usual the promo code stays within reach.
+/// fare is off the usual the promo code stays within reach. The band runs
+/// on behind the promo bar, so only the bars' top corners show rounded and
+/// no map shows between them; it is a shade deeper than the promo bar so
+/// the promo bar's top still reads.
 class DemandPromoBars extends StatelessWidget {
   const DemandPromoBars({super.key, required this.trend, required this.onDemand, required this.promo});
 
@@ -2145,20 +2163,26 @@ class DemandPromoBars extends StatelessWidget {
   final Widget promo;
 
   /// How much taller the pair stands than the promo bar alone.
-  static const extraHeight = SheetTopBar.visibleHeight + 1;
+  static const extraHeight = SheetTopBar.visibleHeight;
 
   @override
-  Widget build(BuildContext context) => Column(
+  Widget build(BuildContext context) => Stack(
     key: const ValueKey('demand-promo-bars'),
-    mainAxisSize: MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      DemandBanner(trend: trend, onTap: onDemand, tucked: false),
-      ColoredBox(
-        color: Theme.of(context).colorScheme.surfaceContainerHigh,
-        child: const Divider(height: 1, indent: 16, endIndent: 16),
+      // Drawn first: its foot is behind the promo bar's top.
+      Positioned(
+        left: 0,
+        right: 0,
+        top: 0,
+        child: DemandBanner(
+          trend: trend,
+          onTap: onDemand,
+          foot: SheetTopBar.underlap,
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        ),
       ),
-      promo,
+      // The pair's size: the promo bar, under the band's visible part.
+      Padding(padding: const EdgeInsets.only(top: extraHeight), child: promo),
     ],
   );
 }

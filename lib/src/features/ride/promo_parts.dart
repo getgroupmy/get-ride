@@ -112,6 +112,7 @@ class ConfirmPromoBar extends StatelessWidget {
     required this.fare,
     required this.onTap,
     this.currency = 'MYR',
+    this.foot = SheetTopBar.tuck,
   });
 
   final List<PromoOffer> offers;
@@ -121,8 +122,16 @@ class ConfirmPromoBar extends StatelessWidget {
   final String currency;
   final VoidCallback onTap;
 
+  /// How far it runs on below its visible part, behind the sheet's top
+  /// edge (in front of the sheet: the blank foot it stands on).
+  final double foot;
+
   static const visibleHeight = SheetTopBar.visibleHeight;
   static const tuck = SheetTopBar.tuck;
+
+  /// Its fill: tinted once a code is applied.
+  static Color fillFor(ThemeData t, {required bool applied}) =>
+      applied ? _promoColours(t).bg : t.colorScheme.surfaceContainerHigh;
 
   @override
   Widget build(BuildContext context) {
@@ -139,13 +148,13 @@ class ConfirmPromoBar extends StatelessWidget {
         : 'You pay about ${formatMoney(pay! < 0 ? 0 : pay, currency)} after promo';
     return Material(
       key: const ValueKey('confirm-promo-bar'),
-      color: p == null ? t.colorScheme.surfaceContainerHigh : c.bg,
+      color: fillFor(t, applied: p != null),
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: InkWell(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 12, tuck + 4),
+          padding: EdgeInsets.fromLTRB(16, 4, 12, foot + 4),
           child: SizedBox(
             height: visibleHeight - 8,
             child: Row(children: [

@@ -287,12 +287,12 @@ void main() {
         expect(_text(tester, '$confirmSheetMinAdjustKey-value'), '${e.automatic} px');
         expect(_text(tester, '$confirmSheetMinAdjustKey-breakdown'), contains('your adjustment 0 px'));
         expect(_enabled(tester, '$confirmSheetMinAdjustKey-increase'), isTrue);
-        // The ride-confirm sheet goes down to 150 px and stops there.
+        // The ride-confirm sheet goes down to 140 px and stops there.
         for (var i = 0; i < 60 && _enabled(tester, '$confirmSheetMinAdjustKey-decrease'); i++) {
           await _tap(tester, find.byKey(const ValueKey('$confirmSheetMinAdjustKey-decrease')));
         }
         expect(_text(tester, '$confirmSheetMinAdjustKey-value'), '$confirmSheetMinFloor px');
-        expect(_enabled(tester, '$confirmSheetMinAdjustKey-decrease'), isFalse, reason: 'at 150 px');
+        expect(_enabled(tester, '$confirmSheetMinAdjustKey-decrease'), isFalse, reason: 'at 140 px');
         expect(tester.takeException(), isNull);
         await _unmount(tester);
       });
