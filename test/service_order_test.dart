@@ -102,12 +102,25 @@ void main() {
           200,
           scrollable: find.byType(Scrollable).first,
         );
-        expect(find.text('2. Premium'), findsOneWidget);
+        final premium = find.byKey(const ValueKey('airport-service-p'));
+        expect(
+          find.descendant(of: premium, matching: find.text('Premium')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: premium, matching: find.text('2')),
+          findsOneWidget,
+        );
+        expect(find.text('Highest (2)'), findsOneWidget);
         expect(
           find.byTooltip('Move Ride higher'),
           findsNothing,
           reason: 'read-only here',
         );
+        await tester.ensureVisible(
+          find.byKey(const ValueKey('airport-open-service-order')),
+        );
+        await tester.pumpAndSettle();
         await tester.tap(
           find.byKey(const ValueKey('airport-open-service-order')),
         );
