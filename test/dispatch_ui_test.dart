@@ -890,6 +890,27 @@ void main() {
       });
     });
   }
+
+  for (final b in Brightness.values) {
+    testWidgets('stand form: code and kind line up, the example follows the code, address searches (${b.name})', (
+      tester,
+    ) async {
+      await _pump(tester, const StandEditor(), _Repo(), b: b, size: const Size(1280, 1000));
+      final code = tester.getRect(find.byKey(const ValueKey('stand-code')));
+      final kind = tester.getRect(find.byKey(const ValueKey('stand-kind')));
+      expect(code.top, kind.top);
+      await tester.enterText(find.byKey(const ValueKey('stand-code')), 'klia1');
+      await tester.pump();
+      expect(find.text('Starts each ticket: KLIA1-0041'), findsOneWidget);
+      expect(
+        tester.getRect(find.byKey(const ValueKey('stand-code-example'))).top,
+        greaterThanOrEqualTo(code.bottom),
+      );
+      final address = tester.widget<TextField>(find.byKey(const ValueKey('stand-address')));
+      expect(address.readOnly, isTrue);
+      expect(address.onTap, isNotNull);
+    });
+  }
 }
 
 /// [_Repo] whose new order is [made] (a card / e-wallet one).
