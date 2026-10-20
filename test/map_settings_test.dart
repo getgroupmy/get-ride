@@ -15,7 +15,9 @@ import 'package:get_ride/src/admin/screens/maps/maps_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/admin/screens/security/api_keys_logic.dart';
 import 'package:get_ride/src/admin/screens/security/security_data.dart';
+import 'package:get_ride/src/core/map_appearance.dart';
 import 'package:get_ride/src/core/map_profile.dart';
+import 'package:get_ride/src/data/map_appearance_repository.dart';
 import 'package:get_ride/src/data/function_region.dart' show functionDbRegion;
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/map_profile_repository.dart' show GeoProxy, mapRole;
@@ -481,13 +483,21 @@ void main() {
     });
   });
 
+  final savedAppearance = <MapAppearance>[];
+  var appearance = MapAppearance.phone;
+  setUp(() {
+    savedAppearance.clear();
+    appearance = MapAppearance.phone;
+  });
+
   Future<(_FakeRepo, _FakeProbe)> pump(
     WidgetTester tester, {
     bool dark = false,
     bool edit = true,
     Set<String> fallbacks = const {},
     SecurityRepository? security,
-    Size size = const Size(500, 5000),
+    // Tall enough for the whole Devices tab (Map appearance last), so nothing scrolls.
+    Size size = const Size(500, 6400),
   }) async {
     final repo = _FakeRepo()..fallbacks = fallbacks;
     final probe = _FakeProbe();
@@ -505,6 +515,8 @@ void main() {
             (_) async => const [MapUsageRow(provider: 'here', kind: 'search', calls: 42, cached: 30, failures: 1)],
           ),
           mapTestProbeProvider.overrideWithValue(probe),
+          mapAppearanceProvider.overrideWith((_) async => appearance),
+          mapAppearanceSaverProvider.overrideWithValue((m) async => savedAppearance.add(m)),
         ],
         child: MaterialApp(theme: appTheme(dark ? Brightness.dark : Brightness.light), home: const AdminMapsScreen()),
       ),
@@ -543,6 +555,25 @@ void main() {
       expect(tileBox.width, greaterThan(300));
       expect(find.textContaining("Built in (this build's map: TomTom)"), findsWidgets);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Map appearance: Follow phone by default, saved for every map at once ($mode)', (tester) async {
+      await pump(tester, dark: dark);
+      expect(find.byKey(const ValueKey('maps-appearance')), findsOneWidget);
+      expect(find.text('Follow phone'), findsWidgets);
+      await choose(tester, 'maps-appearance-phone', 'Always dark');
+      expect(savedAppearance, [MapAppearance.dark]);
+      expect(find.byKey(const ValueKey('maps-save')), findsNothing, reason: 'saved on its own, not with the page');
+    });
+
+    testWidgets('Map appearance shows what is set; read-only without edit ($mode)', (tester) async {
+      appearance = MapAppearance.app;
+      await pump(tester, dark: dark, edit: false);
+      expect(find.byKey(const ValueKey('maps-appearance-app')), findsOneWidget);
+      expect(find.text('Follow app theme'), findsWidgets);
+      await tester.tap(find.byKey(const ValueKey('maps-appearance-app')));
+      await tester.pumpAndSettle();
+      expect(savedAppearance, isEmpty);
     });
 
     testWidgets("Google's search on Google's map: no note ($mode)", (tester) async {

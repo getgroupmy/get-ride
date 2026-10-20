@@ -1,14 +1,18 @@
 // Admin → Settings → Maps (migration 0200): for riders and partners on each
 // kind of device, which map tiles they see and which providers answer place
 // search, address lookup and routes (in order), and which saved API key
-// each provider uses. Applies live, without an app release.
+// each provider uses; and Map appearance, whether every map is light or
+// dark (app_settings 'map_appearance', no migration). Applies live, without
+// an app release.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/format.dart' show formatDateTime;
+import '../../../core/map_appearance.dart';
 import '../../../core/map_profile.dart';
 import '../../../data/geo_service.dart' show defaultCenter;
+import '../../../data/map_appearance_repository.dart';
 import '../../../data/map_profile_repository.dart' show GeoProxy;
 import '../../../providers.dart';
 import '../../../widgets/common.dart';
@@ -345,7 +349,79 @@ class _DevicesTab extends ConsumerWidget {
             onChanged: (p) => onChanged(settings.withProfile(role, d, p)),
             onCopyToAll: () => onChanged(settings.copiedToAllDevices(role, d)),
           ),
+        _MapAppearanceCard(canEdit: canEdit),
       ],
+    );
+  }
+}
+
+/// Map appearance: whether every map, for riders, partners and admins on
+/// every device, is drawn light or dark (widgets/map_brightness.dart). Saved
+/// as soon as it is picked, apart from the page's Save.
+class _MapAppearanceCard extends ConsumerStatefulWidget {
+  const _MapAppearanceCard({required this.canEdit});
+
+  final bool canEdit;
+
+  @override
+  ConsumerState<_MapAppearanceCard> createState() => _MapAppearanceCardState();
+}
+
+class _MapAppearanceCardState extends ConsumerState<_MapAppearanceCard> {
+  bool _saving = false;
+
+  Future<void> _pick(MapAppearance mode) async {
+    setState(() => _saving = true);
+    final ok = await runAdminAction(
+      context,
+      () => ref.read(mapAppearanceSaverProvider)(mode),
+      success: 'Map appearance saved: ${mode.label}. Apps change at once.',
+    );
+    if (ok) ref.invalidate(mapAppearanceProvider);
+    if (mounted) setState(() => _saving = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final current = ref.watch(mapAppearanceProvider).value ?? MapAppearance.phone;
+    return Card(
+      key: const ValueKey('maps-appearance'),
+      margin: const EdgeInsets.only(top: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Map appearance', style: t.textTheme.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              'Light or dark map on every map page, for every rider, partner and admin on every device: '
+              "Apple's and Google's maps, Amazon's, the map tiles, and the pins, buttons and status bar over "
+              'them. Saved as soon as you pick.',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
+            const SizedBox(height: 12),
+            SearchableDropdownFormField<MapAppearance>(
+              // Keyed by the value so a change saved elsewhere shows here.
+              key: ValueKey('maps-appearance-${current.name}'),
+              initialValue: current,
+              isExpanded: true,
+              decoration: const InputDecoration(labelText: 'Map appearance', isDense: true),
+              items: [
+                for (final m in MapAppearance.values)
+                  DropdownMenuItem(
+                    value: m,
+                    child: Text(m.label, overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+              onChanged: widget.canEdit && !_saving
+                  ? (v) => v == null || v == current ? null : _pick(v)
+                  : null,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

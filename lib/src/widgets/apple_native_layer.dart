@@ -12,8 +12,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 
+import 'map_brightness.dart';
+
 /// Whether this device can draw Apple's map: iPhone and iPad.
 bool get appleNativeSupported => !kIsWeb && Platform.isIOS;
+
+/// Sets Apple's maps light or dark (ios/Runner/AppDelegate.swift).
+const appleMapAppearanceChannel = MethodChannel('get_ride/map_appearance');
 
 class AppleNativeBaseLayer extends StatefulWidget {
   const AppleNativeBaseLayer({super.key, required this.fallback, this.satellite = false, this.mapType});
@@ -75,19 +80,36 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
     }
   }
 
+  /// The look last handed to MapKit (null: none yet for this map), and the
+  /// one the setting asks for now.
+  bool? _styled;
+  bool _wanted = false;
+
+  /// Tells MapKit to draw light or [dark] (ios/Runner/AppDelegate.swift's
+  /// MapAppearancePlugin): left alone, it follows the phone.
+  void _style(bool dark) {
+    if (_map == null || _styled == dark) return;
+    _styled = dark;
+    unawaited(
+      appleMapAppearanceChannel.invokeMethod<void>('set', {'style': dark ? 'dark' : 'light'}).catchError((_) {}),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (!appleNativeSupported) return widget.fallback;
     final camera = MapCamera.of(context);
+    final dark = _wanted = mapIsDark(context);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _follow(camera);
+      if (!mounted) return;
+      _follow(camera);
+      _style(dark);
     });
-    // Apple draws its map light or dark by the phone's setting, not the
-    // app's, and imagery is dark: the status bar over it goes by what is
-    // drawn. Inside the page's own region, this one wins where the map shows.
-    final darkMap = widget.type != 'roadmap' || MediaQuery.platformBrightnessOf(context) == Brightness.dark;
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: darkMap ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+    // Light or dark as Admin → Maps → Map appearance says (map_brightness.
+    // dart): MapKit is told which, rather than following the phone. Imagery
+    // is dark: the status bar over it goes by what is drawn.
+    return MapStatusBarRegion(
+      imagery: widget.type != 'roadmap',
       child: IgnorePointer(
         child: SizedBox.fromSize(
           size: camera.nonRotatedSize,
@@ -96,7 +118,9 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
             onMapCreated: (c) {
               _map = c;
               _shown = null;
+              _styled = null;
               _follow(MapCamera.of(context));
+              _style(_wanted);
             },
             mapType: switch (widget.type) {
               'satellite' => am.MapType.satellite,

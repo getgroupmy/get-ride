@@ -29,6 +29,10 @@ import 'google_js_map.dart' show googleJsSupported;
 import 'apple_native_layer.dart';
 import 'google_native_layer.dart';
 import 'maplibre_layer.dart';
+import 'map_brightness.dart';
+
+// Every map page reads its light / dark look from here (map_brightness.dart).
+export 'map_brightness.dart';
 
 /// How the app's maps take the keyboard: arrow keys pan once the map is
 /// focused, but a map never takes the focus by itself, so on a desktop Tab
@@ -80,7 +84,7 @@ class TileSource {
   final String attribution;
 }
 
-/// Picks the tile source for the current theme from the configured URLs.
+/// Picks the tile source for the map's brightness ([mapBrightnessOf]) from the configured URLs.
 ///
 /// A dark-style URL is used as-is in dark mode. Without one, dark mode reuses
 /// the light tiles and darkens them; light mode never darkens. Satellite
@@ -104,7 +108,7 @@ TileSource resolveTileSource({
 }
 
 /// The tiles Admin → Settings → Maps (migration 0200) set for this user and
-/// device, for the theme or satellite; null where it keeps the app's own.
+/// device, for the map's brightness or satellite; null where it keeps the app's own.
 /// MapLibre maps only on the [web]; Google's JavaScript map there and where
 /// a web view can draw it ([googleJs]); Google's own map where this build
 /// can draw it ([googleNative]).
@@ -165,9 +169,10 @@ http.Client retryingTileClient() => RetryClient(
 );
 
 /// The tiles a map in [context] draws: Admin → Settings → Maps' for this
-/// user and device, else the app's own, for the theme or satellite.
+/// user and device, else the app's own, light or dark as Admin → Maps → Map
+/// appearance says ([mapBrightnessOf]), or satellite.
 TileSource currentTileSource(BuildContext context, {bool satellite = false}) {
-  final dark = Theme.of(context).brightness == Brightness.dark;
+  final dark = mapIsDark(context);
   return profileTileSource(activeMapProfile, dark: dark, satellite: satellite) ??
       builtInTileSource(dark: dark, satellite: satellite);
 }
@@ -178,20 +183,27 @@ TileSource builtInTileSource({required bool dark, bool satellite = false, bool? 
     ? TileSource(satellite ? 'apple-native:satellite' : 'apple-native:roadmap', darken: false)
     : resolveTileSource(dark: dark, satellite: satellite);
 
-/// The base layer for [context]'s theme, or satellite imagery: tiles, or
+/// The base layer for the map's brightness ([mapBrightnessOf]), or satellite imagery: tiles, or
 /// Google's JavaScript map or a MapLibre map (with the app's own tiles
 /// should it fail). Blank while the app waits for this user's map settings
-/// ([mapProfileListenable]), then what they set.
+/// ([mapProfileListenable]), then what they set. The status bar over it goes
+/// by the map's brightness, light over imagery ([MapStatusBarRegion]).
 Widget baseTileLayer(BuildContext context, {bool satellite = false}) => ValueListenableBuilder<MapProfile?>(
   valueListenable: mapProfileListenable,
-  builder: (context, profile, _) => profile == null
-      ? SizedBox.expand(
-          key: const ValueKey('map-waiting'),
-          child: ColoredBox(
-            color: Theme.of(context).brightness == Brightness.dark ? const Color(0xFF242F3E) : const Color(0xFFE5E3DF),
-          ),
-        )
-      : currentBaseLayer(context, satellite: satellite),
+  builder: (context, profile, _) {
+    final type = profile == null ? null : googleMapTypeOf(currentTileSource(context, satellite: satellite).url);
+    return MapStatusBarRegion(
+      imagery: satellite || type == 'satellite' || type == 'hybrid',
+      child: profile == null
+          ? SizedBox.expand(
+              key: const ValueKey('map-waiting'),
+              child: ColoredBox(
+                color: mapIsDark(context) ? const Color(0xFF242F3E) : const Color(0xFFE5E3DF),
+              ),
+            )
+          : currentBaseLayer(context, satellite: satellite),
+    );
+  },
 );
 
 /// [baseTileLayer]'s layer for the profile in use now.
@@ -235,12 +247,12 @@ Widget currentBaseLayer(BuildContext context, {bool satellite = false}) {
 
 /// The app's own tiles, under a browser-drawn map should it fail.
 TileSource fallbackTileSource(BuildContext context, {bool satellite = false}) =>
-    resolveTileSource(dark: Theme.of(context).brightness == Brightness.dark, satellite: satellite);
+    resolveTileSource(dark: mapIsDark(context), satellite: satellite);
 
 /// What shows when the map set can't draw: Apple's map on iPhones (migration
 /// 0214), the app's own tiles elsewhere (and under Apple's, should it fail).
 TileSource fallbackShownSource(BuildContext context, {bool satellite = false}) =>
-    builtInTileSource(dark: Theme.of(context).brightness == Brightness.dark, satellite: satellite);
+    builtInTileSource(dark: mapIsDark(context), satellite: satellite);
 
 Widget _fallbackLayer(BuildContext context, {bool satellite = false}) {
   final tiles = _tileLayer(fallbackTileSource(context, satellite: satellite));

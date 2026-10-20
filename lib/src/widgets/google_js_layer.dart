@@ -8,6 +8,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'google_js_map.dart';
+import 'map_brightness.dart';
 import 'map_traffic.dart' show googleTrafficProvider, mapTrafficProvider;
 
 /// Set once Google refused the key or the API failed to load on this page;
@@ -35,7 +36,7 @@ class GoogleJsBaseLayer extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final traffic = ref.watch(googleTrafficProvider) && ref.watch(mapTrafficProvider);
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dark = mapIsDark(context);
     return ValueListenableBuilder<bool>(
       valueListenable: googleJsFailed,
       builder: (context, failed, _) {

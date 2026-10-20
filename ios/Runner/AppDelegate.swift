@@ -4,6 +4,7 @@ import CoreBluetooth
 import CoreLocation
 import CoreTelephony
 import Flutter
+import MapKit
 import Network
 import PushKit
 import UIKit
@@ -58,6 +59,9 @@ import flutter_callkit_incoming
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AppIconPlugin") {
       AppIconPlugin.register(with: registrar)
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "MapAppearancePlugin") {
+      MapAppearancePlugin.register(with: registrar)
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NetworkInfoPlugin") {
       NetworkInfoPlugin.register(with: registrar)
@@ -161,6 +165,48 @@ final class MicStatusPlugin: NSObject, FlutterPlugin {
       }
     default:
       result(FlutterMethodNotImplemented)
+    }
+  }
+}
+
+/// Apple's map light or dark as Admin → Settings → Maps → Map appearance says
+/// (lib/src/widgets/map_brightness.dart): `set` with a style of "light",
+/// "dark" or "unspecified" (the phone's) overrides every MapKit view on
+/// screen. Only the maps: the rest of the app keeps the phone's style.
+final class MapAppearancePlugin: NSObject, FlutterPlugin {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "get_ride/map_appearance", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(MapAppearancePlugin(), channel: channel)
+  }
+
+  private static func apply(_ style: UIUserInterfaceStyle, to view: UIView) {
+    if let map = view as? MKMapView {
+      map.overrideUserInterfaceStyle = style
+    }
+    for sub in view.subviews {
+      apply(style, to: sub)
+    }
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "set" else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    let name = (call.arguments as? [String: Any])?["style"] as? String
+    let style: UIUserInterfaceStyle = name == "dark" ? .dark : (name == "light" ? .light : .unspecified)
+    MapAppearancePlugin.applyEverywhere(style)
+    // A map just created may join the window a moment later: once more then.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { MapAppearancePlugin.applyEverywhere(style) }
+    result(nil)
+  }
+
+  private static func applyEverywhere(_ style: UIUserInterfaceStyle) {
+    for scene in UIApplication.shared.connectedScenes {
+      guard let windows = (scene as? UIWindowScene)?.windows else { continue }
+      for window in windows {
+        apply(style, to: window)
+      }
     }
   }
 }

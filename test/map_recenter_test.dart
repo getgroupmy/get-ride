@@ -84,6 +84,9 @@ void main() {
   for (final b in Brightness.values) {
     testWidgets('the recenter button is a white disc with a black arrow in light, charcoal with white in dark ($b)',
         (tester) async {
+      // Phone and app both the same: the default Map appearance (Follow phone) draws the map so.
+      tester.platformDispatcher.platformBrightnessTestValue = b;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
       var taps = 0;
       await tester.pumpWidget(MaterialApp(
         theme: ThemeData(brightness: b),

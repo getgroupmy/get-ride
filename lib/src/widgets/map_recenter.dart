@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart' hide Path;
 import 'focus_order.dart';
+import 'map_brightness.dart';
 
 /// Street zoom a recentred map lands on (Expo's recenter animates to 16).
 const recenterZoom = 16.0;
@@ -39,7 +40,7 @@ class RecenterButton extends StatelessWidget {
   Widget build(BuildContext context) => FocusLast(child: _build(context));
 
   Widget _build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dark = mapIsDark(context);
     final ink = dark ? Colors.white : const Color(0xFF111111);
     return Tooltip(
       message: tooltip,
@@ -82,7 +83,7 @@ class RouteFitButton extends StatelessWidget {
   Widget build(BuildContext context) => FocusLast(child: _build(context));
 
   Widget _build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dark = mapIsDark(context);
     final ink = dark ? Colors.white : const Color(0xFF111111);
     return Tooltip(
       message: tooltip,

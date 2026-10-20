@@ -136,6 +136,9 @@ import 'widgets/notifications_off_banner.dart';
 import 'widgets/map_sheet_layout.dart' show appBottomSheetTheme;
 import 'core/map_profile.dart' show waitForMapProfile;
 import 'data/map_profile_repository.dart' show mapProfileProvider;
+import 'data/map_appearance_repository.dart' show mapAppearanceProvider;
+import 'core/map_appearance.dart' show MapAppearance;
+import 'widgets/map_brightness.dart' show MapAppearanceScope;
 
 const brandAccent = Color(0xFF2DABE2);
 
@@ -942,18 +945,21 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     final mode = ref.watch(themeModeProvider);
     final router = ref.watch(routerProvider);
     final styles = ref.watch(pageStylesProvider).value ?? PageStyles.none;
+    // Admin → Settings → Maps → Map appearance, for every map (live).
+    final maps = ref.watch(mapAppearanceProvider).value ?? MapAppearance.phone;
     final live = _branding?.latest;
-    if (live == null) return _app(widget.branding?.branding, mode, router, styles);
+    if (live == null) return _app(widget.branding?.branding, mode, router, styles, maps);
     return ValueListenableBuilder<AppBranding?>(
       valueListenable: live,
-      builder: (_, latest, _) => _app(latest ?? widget.branding?.branding, mode, router, styles),
+      builder: (_, latest, _) => _app(latest ?? widget.branding?.branding, mode, router, styles, maps),
     );
   }
 
   /// The app under [branding]'s theme colours (Admin → App Settings), which
   /// change live as the admin saves them, and App Page Settings' [styles]
-  /// for every page, sheet and modal.
-  Widget _app(AppBranding? branding, ThemeMode mode, GoRouter router, PageStyles styles) {
+  /// for every page, sheet and modal, with every map light or dark as
+  /// [maps] says.
+  Widget _app(AppBranding? branding, ThemeMode mode, GoRouter router, PageStyles styles, MapAppearance maps) {
     return MaterialApp.router(
       title: 'GET.ride',
       scaffoldMessengerKey: _messenger,
@@ -966,35 +972,38 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       // rows of buttons and switches no longer fit a phone's width.
       builder: (_, child) => MediaQuery.withClampedTextScaling(
         maxScaleFactor: maxAppTextScale,
-        child: AndroidNavBarInset(
-          child: SplashGate(
-            cached: widget.branding,
-            live: _branding?.latest,
-            // Ready once the update check has answered (PERF-19), so a build
-            // the admin requires to update goes straight to its notice.
-            ready: _updateChecked,
-            child: UpdateGate(
-              child: PermissionGate(
-                location: () => router.routerDelegate.currentConfiguration.uri.path,
-                listenable: router.routerDelegate,
-                child: WebBuildGate(
+        child: MapAppearanceScope(
+          appearance: maps,
+          child: AndroidNavBarInset(
+            child: SplashGate(
+              cached: widget.branding,
+              live: _branding?.latest,
+              // Ready once the update check has answered (PERF-19), so a build
+              // the admin requires to update goes straight to its notice.
+              ready: _updateChecked,
+              child: UpdateGate(
+                child: PermissionGate(
                   location: () => router.routerDelegate.currentConfiguration.uri.path,
-                  child: VoiceProtectionHost(
-                    child: IncomingTransferListener(
-                      child: IncomingCallListener(
-                        child: RideCallListener(
-                          child: KeyboardDismissOnChange(
-                            listenable: router.routerDelegate,
-                            child: KeyboardDismissOnTap(
-                              child: PageStyleHost(
-                                styles: styles,
-                                location: () => router.routerDelegate.currentConfiguration.fullPath,
-                                listenable: router.routerDelegate,
-                                // The browser tab names the page ("Trips · GET.ride").
-                                child: RouteTitle(
-                                  location: () => router.routerDelegate.currentConfiguration.uri.path,
+                  listenable: router.routerDelegate,
+                  child: WebBuildGate(
+                    location: () => router.routerDelegate.currentConfiguration.uri.path,
+                    child: VoiceProtectionHost(
+                      child: IncomingTransferListener(
+                        child: IncomingCallListener(
+                          child: RideCallListener(
+                            child: KeyboardDismissOnChange(
+                              listenable: router.routerDelegate,
+                              child: KeyboardDismissOnTap(
+                                child: PageStyleHost(
+                                  styles: styles,
+                                  location: () => router.routerDelegate.currentConfiguration.fullPath,
                                   listenable: router.routerDelegate,
-                                  child: child ?? const SizedBox.shrink(),
+                                  // The browser tab names the page ("Trips · GET.ride").
+                                  child: RouteTitle(
+                                    location: () => router.routerDelegate.currentConfiguration.uri.path,
+                                    listenable: router.routerDelegate,
+                                    child: child ?? const SizedBox.shrink(),
+                                  ),
                                 ),
                               ),
                             ),

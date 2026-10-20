@@ -138,7 +138,7 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final dark = t.brightness == Brightness.dark;
+    final dark = mapIsDark(context);
     final fill = dark ? Colors.white : const Color(0xFF111111);
     final ink = dark ? Colors.black : Colors.white;
     final ready = !_moving && !_looking && _place != null;
@@ -289,7 +289,7 @@ class _MyLocationButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dark = mapIsDark(context);
     final ink = dark ? Colors.white : const Color(0xFF111111);
     return Semantics(
       button: true,

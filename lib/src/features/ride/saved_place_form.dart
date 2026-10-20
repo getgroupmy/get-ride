@@ -358,7 +358,7 @@ class _SpotPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dark = mapIsDark(context);
     final fill = dark ? Colors.white : const Color(0xFF111111);
     final ink = dark ? Colors.black : Colors.white;
     return FlutterMap(

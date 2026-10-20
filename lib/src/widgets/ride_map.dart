@@ -91,7 +91,7 @@ class PickupPin extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Light maps get a black head with a white figure; dark maps the reverse.
-    final dark = Theme.of(context).brightness == Brightness.dark;
+    final dark = mapIsDark(context);
     final fill = dark ? Colors.white : Colors.black;
     final ink = dark ? Colors.black : Colors.white;
     return SizedBox(
@@ -553,7 +553,7 @@ class _RideMapState extends State<RideMap> {
   /// inDrive's confirm map: black marks with white glyphs on a light map,
   /// and the reverse on a dark one (as [PickupPin]); the route in the same.
   static ({Color fill, Color ink}) _markerInk(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark
+      mapIsDark(context)
           ? (fill: Colors.white, ink: Colors.black)
           : (fill: const Color(0xFF111111), ink: Colors.white);
 
