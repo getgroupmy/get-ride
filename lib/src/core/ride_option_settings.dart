@@ -101,6 +101,22 @@ class RideOptionsConfig {
 
   String labelOf(RideOptionKind k) => labels[k] ?? k.defaultLabel;
 
+  /// The admin's own names, by option id, for the driver's note.
+  Map<String, String> get renamed => {for (final e in labels.entries) e.key.id: e.value};
+
+  /// The names the options [o] has on were offered under, by option id:
+  /// stamped on the ride (`option_names`), so the driver reads it as booked.
+  Map<String, String> namesFor(RideOptions o) => {
+    for (final k in order)
+      if (switch (k) {
+        RideOptionKind.childSeat => o.childSeat,
+        RideOptionKind.morePassengers => o.morePassengers,
+        RideOptionKind.pet => o.pet,
+        RideOptionKind.assistance => o.assistance != null,
+      })
+        k.id: labelOf(k),
+  };
+
   bool isShown(RideOptionKind k) => !hidden.contains(k);
 
   /// What the sheet shows, in order. "Assistance required" also needs
@@ -110,8 +126,7 @@ class RideOptionsConfig {
       if (isShown(k) && (k != RideOptionKind.assistance || catalogue.visible.isNotEmpty)) k,
   ];
 
-  /// Whether the Options button shows at all: not when every option is
-  /// hidden.
+  /// Whether any option is shown (the Options sheet always has Comments).
   bool anyShown({AssistanceCatalogue catalogue = const AssistanceCatalogue()}) =>
       shown(catalogue: catalogue).isNotEmpty;
 
@@ -140,4 +155,34 @@ class RideOptionsConfig {
     labels: labels ?? this.labels,
     childSeatMax: childSeatMax ?? this.childSeatMax,
   );
+}
+
+/// Admin → Display Settings → Ride Options → Charges: whether commission is
+/// charged on, and promo codes discount, the pet and assistance charges.
+/// Both on unless set off (as before: the charges are part of the fare).
+/// The server reads the same keys (migration 0248).
+class OptionChargeRules {
+  const OptionChargeRules({this.commission = true, this.promo = true});
+
+  static const key = 'rideOptionCharges';
+
+  final bool commission;
+  final bool promo;
+
+  static OptionChargeRules fromSettings(Map<String, dynamic> s) {
+    final raw = s[key];
+    if (raw is! Map) return const OptionChargeRules();
+    return OptionChargeRules(commission: raw['commission'] != false, promo: raw['promo'] != false);
+  }
+
+  Map<String, Object> toSettings() => {
+    key: {'commission': commission, 'promo': promo},
+  };
+}
+
+/// An option's name as the ride was booked with it, when the admin had
+/// renamed it; null for the built-in name or none stamped.
+String? bookedOptionName(Map<String, String> stamped, RideOptionKind k) {
+  final n = stamped[k.id];
+  return n == null || n == k.defaultLabel ? null : n;
 }

@@ -290,9 +290,13 @@ class _RideAssistanceSheetState extends State<RideAssistanceSheet> {
 /// and choice, then the rider's note. [locked]: the request is still open,
 /// when the note waits for the driver who takes it (migration 0248).
 class RideAssistanceView extends StatelessWidget {
-  const RideAssistanceView({super.key, required this.assistance, this.locked = false});
+  const RideAssistanceView({super.key, required this.assistance, this.locked = false, this.title});
   final RideAssistance assistance;
   final bool locked;
+
+  /// The option's name as the ride was booked, when the admin renamed it;
+  /// else "Rider needs assistance".
+  final String? title;
 
   @override
   Widget build(BuildContext context) {
@@ -310,7 +314,7 @@ class RideAssistanceView extends StatelessWidget {
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              'Rider needs assistance',
+              title ?? 'Rider needs assistance',
               key: const ValueKey('assist-flag'),
               style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
             ),

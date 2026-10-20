@@ -12,7 +12,10 @@ import 'package:get_ride/src/admin/admin_providers.dart' show pageAccessProvider
 import 'package:get_ride/src/admin/screens/meterapp/display_logic.dart';
 import 'package:get_ride/src/admin/screens/meterapp/display_screen.dart';
 import 'package:get_ride/src/admin/screens/meterapp/display_store.dart';
+import 'package:get_ride/src/admin/screens/geo/geo_data.dart' show regionsProvider;
+import 'package:get_ride/src/admin/screens/geo/geo_logic.dart' show RegionEntry;
 import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/core/format.dart' show formatMoney;
 import 'package:get_ride/src/core/option_charge.dart';
 import 'package:get_ride/src/core/request_viewers.dart';
 import 'package:get_ride/src/core/ride_assistance.dart';
@@ -104,6 +107,47 @@ void main() {
       expect(c.shown(catalogue: const AssistanceCatalogue(items: [])), [RideOptionKind.pet, RideOptionKind.childSeat]);
       final none = c.copyWith(hidden: {...RideOptionKind.values});
       expect(none.anyShown(), isFalse);
+    });
+
+    test("the admin's names reach the driver's note, and are stamped as booked", () {
+      const c = RideOptionsConfig(
+        labels: {RideOptionKind.pet: 'Bringing a pet', RideOptionKind.childSeat: 'Baby seat', RideOptionKind.assistance: 'Special help'},
+      );
+      final o = RideOptions(
+        childSeat: true,
+        childSeats: 2,
+        morePassengers: true,
+        pet: true,
+        pets: const [RidePet(type: 'Dog', size: 'M')],
+        assistance: RideAssistance(items: [AssistancePick.of(_item('pregnant'))]),
+      );
+      expect(driverNote(options: o, names: c.renamed, note: 'Gate B'),
+          'Baby seat: 2 · More than 4 passengers · Bringing a pet: 1 dog (M) · Special help: Pregnant · Gate B');
+      expect(driverNote(options: o.copyWith(childSeats: 1), names: c.renamed)!.split(' · ').first, 'Baby seat');
+      expect(driverNote(options: o), startsWith('2 child safety seats · More than 4 passengers · Pet with me: 1 dog (M) · '
+          'Assistance: Pregnant'), reason: 'the built-in wording without renames');
+      expect(c.namesFor(o), {
+        'child-seat': 'Baby seat',
+        'more-passengers': 'More than 4 passengers',
+        'pet': 'Bringing a pet',
+        'assistance': 'Special help',
+      });
+      expect(c.namesFor(const RideOptions(pet: true)), {'pet': 'Bringing a pet'});
+      final r = RideRequest(const {'id': 'r', 'option_names': {'pet': 'Bringing a pet', 'assistance': 'Assistance required'}});
+      expect(r.renamedOption(RideOptionKind.pet), 'Bringing a pet');
+      expect(r.renamedOption(RideOptionKind.assistance), isNull, reason: 'the built-in name');
+      expect(RideRequest(const {'id': 'r'}).renamedOption(RideOptionKind.pet), isNull);
+    });
+
+    test('commission and promo codes on the option charges: both by default, each its own switch', () {
+      expect(OptionChargeRules.fromSettings(const {}).commission, isTrue);
+      expect(OptionChargeRules.fromSettings(const {}).promo, isTrue);
+      var s = mergeDisplaySettings(const {});
+      s = setOptionChargeRules(s, commission: false);
+      expect(OptionChargeRules.fromSettings(s).commission, isFalse);
+      expect(OptionChargeRules.fromSettings(s).promo, isTrue);
+      s = setOptionChargeRules(s, promo: false);
+      expect(s[OptionChargeRules.key], {'commission': false, 'promo': false});
     });
 
     test('the catalogue: the starting list, a stored one, groups and a broken entry', () {
@@ -255,6 +299,12 @@ void main() {
             supabaseProvider.overrideWithValue(_db),
             pageAccessProvider.overrideWith((ref, page) => AccessLevel.edit),
             displayStoreProvider.overrideWithValue(store),
+            regionsProvider.overrideWith(
+              (ref) async => [
+                RegionEntry(id: 'my', values: const {'country': 'Malaysia', 'currencyName': 'MYR'}),
+                RegionEntry(id: 'sg', values: const {'country': 'Singapore', 'currencyName': 'SGD'}),
+              ],
+            ),
           ],
           child: MaterialApp(theme: appTheme(b), home: const AdminDisplaySettingsScreen()),
         ));
@@ -295,6 +345,19 @@ void main() {
         await _tap(tester, find.descendant(of: most, matching: find.byTooltip('Increase')));
         await _tap(tester, find.descendant(of: most, matching: find.byTooltip('Increase')));
         expect(rideOptionsOf(store.blob).childSeatMax, 3);
+
+        // Comments always stays: no switch to hide it.
+        final comments = find.byKey(const ValueKey('ride-option-comments'));
+        expect(comments, findsOneWidget);
+        expect(find.descendant(of: comments, matching: find.byType(Switch)), findsNothing);
+        expect(find.text('Always shown: riders can always leave the driver a note'), findsOneWidget);
+
+        // Commission and promo codes on the option charges, each its own switch.
+        await _tapKey(tester, 'option-charges-commission');
+        expect(OptionChargeRules.fromSettings(store.blob).commission, isFalse);
+        expect(OptionChargeRules.fromSettings(store.blob).promo, isTrue);
+        await _tapKey(tester, 'option-charges-promo');
+        expect(OptionChargeRules.fromSettings(store.blob).promo, isFalse);
         expect(
           tester.widget<IconButton>(find.descendant(of: most, matching: find.byType(IconButton)).last).onPressed,
           isNull,
@@ -309,6 +372,7 @@ void main() {
         final store = await pump(tester);
         await _tapKey(tester, 'ride-option-pet-settings');
         expect(find.text('Pet types'), findsOneWidget);
+        expect(find.text('Amounts in MYR (Malaysia)'), findsOneWidget);
 
         await _tapKey(tester, 'pet-type-add');
         await tester.enterText(find.byKey(const ValueKey('pet-type-name')), 'Iguana');
@@ -344,6 +408,11 @@ void main() {
         await _tapKey(tester, 'text-dialog-save');
         expect(petConfigOf(store.blob).sizeExtras, {'L': 2});
         expect(find.text('+RM2'), findsOneWidget);
+        // Viewed for another country: its currency, the same amount.
+        await _tapKey(tester, 'charge-currency-change');
+        await _tap(tester, find.text('Singapore').last);
+        expect(find.text('Amounts in SGD (Singapore)'), findsOneWidget);
+        expect(find.text('+${formatMoney(2, 'SGD', 0)}'), findsOneWidget);
 
         await _tapKey(tester, 'pet-size-offered-XS');
         expect(petConfigOf(store.blob).sizes, ['S', 'M', 'L', 'XL']);
@@ -652,6 +721,17 @@ void main() {
           'Fare includes Pet charge RM10.00 · Assistance charge RM5.00',
         );
         expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      });
+
+      testWidgets("the admin's names, as the ride was booked", (tester) async {
+        await sheet(tester, RideRequest({
+          ...row('open'),
+          'option_names': {'pet': 'Bringing a pet', 'assistance': 'Special help'},
+        }));
+        expect(find.text('Bringing a pet'), findsOneWidget);
+        expect(find.text('Special help'), findsOneWidget);
+        expect(find.text('Rider needs assistance'), findsNothing);
         await tester.pumpWidget(const SizedBox());
       });
 

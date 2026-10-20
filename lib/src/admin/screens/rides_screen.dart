@@ -6,6 +6,7 @@ import '../../core/region_time.dart' show formatInZone;
 import '../../data/models.dart';
 import '../../features/ride/pet_parts.dart' show RidePetsView;
 import '../../features/ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
+import '../../core/ride_option_settings.dart' show RideOptionKind;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../admin_access.dart';
@@ -77,12 +78,20 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
         // "Pet with me" (0247): an open request's photos wait aside.
         if (r.pets.isNotEmpty) ...[
           const SizedBox(height: 12),
-          RidePetsView(key: const ValueKey('admin-ride-pets'), pets: r.pets, title: 'Pets riding along'),
+          RidePetsView(
+            key: const ValueKey('admin-ride-pets'),
+            pets: r.pets,
+            title: r.renamedOption(RideOptionKind.pet) ?? 'Pets riding along',
+          ),
         ],
         // "Assistance required" (0248): an open request's note waits aside.
         if (r.assistance case final help?) ...[
           const SizedBox(height: 12),
-          RideAssistanceView(key: const ValueKey('admin-ride-assistance'), assistance: help),
+          RideAssistanceView(
+            key: const ValueKey('admin-ride-assistance'),
+            assistance: help,
+            title: r.renamedOption(RideOptionKind.assistance),
+          ),
         ],
         if (r.optionCharges.isNotEmpty) ...[
           const SizedBox(height: 8),

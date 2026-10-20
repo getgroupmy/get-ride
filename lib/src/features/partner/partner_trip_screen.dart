@@ -49,6 +49,7 @@ import '../../widgets/page_style_host.dart';
 import '../ride/promo_parts.dart' show DriverPromoLine, PromoAppliedIcon, rideHasPromo;
 import '../ride/pet_parts.dart' show RidePetsView;
 import '../ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
+import '../../core/ride_option_settings.dart' show RideOptionKind;
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
 
@@ -812,7 +813,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             if (r.pets.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                child: RidePetsView(key: const ValueKey('trip-pets'), pets: r.pets, title: 'Pets riding along'),
+                child: RidePetsView(
+                  key: const ValueKey('trip-pets'),
+                  pets: r.pets,
+                  title: r.renamedOption(RideOptionKind.pet) ?? 'Pets riding along',
+                ),
               ),
             if (r.assistance case final help?)
               Padding(
@@ -821,6 +826,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                   key: const ValueKey('trip-assistance'),
                   assistance: help,
                   locked: r.status == RideStatus.open,
+                  title: r.renamedOption(RideOptionKind.assistance),
                 ),
               ),
             if (r.optionCharges.isNotEmpty)

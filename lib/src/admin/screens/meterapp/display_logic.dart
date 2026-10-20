@@ -745,6 +745,15 @@ Map<String, dynamic> moveRideOption(Map<String, dynamic> s, RideOptionKind k, in
   return _withRideOptions(s, c.copyWith(order: order));
 }
 
+/// Whether commission and promo codes apply to the option charges.
+Map<String, dynamic> setOptionChargeRules(Map<String, dynamic> s, {bool? commission, bool? promo}) {
+  final r = OptionChargeRules.fromSettings(s);
+  return {
+    ...s,
+    ...OptionChargeRules(commission: commission ?? r.commission, promo: promo ?? r.promo).toSettings(),
+  };
+}
+
 /// "Most seats a rider can ask for", 1 to 3.
 Map<String, dynamic> setChildSeatMax(Map<String, dynamic> s, num n) =>
     _withRideOptions(s, rideOptionsOf(s).copyWith(childSeatMax: n.round().clamp(1, RideOptionsConfig.childSeatLimit)));

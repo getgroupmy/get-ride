@@ -89,6 +89,7 @@ class RideRepository {
     List<RidePet> pets = const [],
     RideAssistance? assistance,
     List<OptionChargeLine> optionCharges = const [],
+    Map<String, String> optionNames = const {},
     String? riderName,
     String? riderPhone,
     String? deviceOs,
@@ -141,6 +142,8 @@ class RideRepository {
       if (assistance != null && !assistance.isEmpty) 'assistance': assistance.toJson(),
       // What the pets and the assistance add to the fare (included in it).
       if (optionCharges.isNotEmpty) 'option_charges': [for (final c in optionCharges) c.toJson()],
+      // The names the options were offered under (the admin may rename them).
+      if (optionNames.isNotEmpty) 'option_names': optionNames,
       'offer_me': offerMe,
       'otp': otp,
       'device_os': deviceOs,
@@ -189,6 +192,7 @@ class RideRepository {
       // fare still includes the charges.
       'assistance',
       'option_charges',
+      'option_names',
     };
     if (scheduleAt != null) {
       // Favourites and a scanned driver are for a ride now; the server

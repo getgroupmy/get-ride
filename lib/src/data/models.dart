@@ -9,6 +9,7 @@ import '../core/region_pricing.dart';
 import '../core/ride_payment.dart';
 import '../core/ride_assistance.dart';
 import '../core/ride_option_charges.dart';
+import '../core/ride_option_settings.dart' show RideOptionKind, bookedOptionName;
 import '../core/ride_pets.dart';
 import '../core/ride_stops.dart';
 import 'geo_service.dart';
@@ -330,6 +331,17 @@ class RideRequest {
   /// What the rider's pets and assistance added to the fare (0248); the
   /// fare includes them.
   List<OptionChargeLine> get optionCharges => parseOptionCharges(raw['option_charges']);
+
+  /// The names the rider's options were booked under (0248), by option id.
+  Map<String, String> get optionNames => {
+    if (raw['option_names'] is Map)
+      for (final e in (raw['option_names'] as Map).entries)
+        if (e.key is String && e.value is String && (e.value as String).trim().isNotEmpty)
+          e.key as String: (e.value as String).trim(),
+  };
+
+  /// An option's name as booked, when the admin had renamed it.
+  String? renamedOption(RideOptionKind k) => bookedOptionName(optionNames, k);
 
   /// The fare the trip will actually be billed at.
   double? get effectiveFare => _d(raw['ride_fare']) ?? fare;

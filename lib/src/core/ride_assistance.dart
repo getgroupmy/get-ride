@@ -393,8 +393,9 @@ String assistanceSummary(List<AssistancePick> items) {
 /// For the driver's note: "Assistance: Wheelchair user (Foldable, ...),
 /// Pregnant". The rider's own note never goes in it: the note on an open
 /// request is for every nearby driver.
-String assistanceNoteLabel(List<AssistancePick> items) =>
-    'Assistance: ${[for (final i in items) i.label].join(', ')}';
+/// [prefix] is the admin's name for the option, when renamed.
+String assistanceNoteLabel(List<AssistancePick> items, {String prefix = 'Assistance'}) =>
+    '$prefix: ${[for (final i in items) i.label].join(', ')}';
 
 /// Whether [pick] still needs one of its item's choices.
 bool assistanceNeedsChoice(AssistancePick pick, AssistanceCatalogue catalogue) {

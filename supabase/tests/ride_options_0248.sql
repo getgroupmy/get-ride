@@ -3,7 +3,9 @@
 -- charges. The help is saved on the ride; approved drivers see what help an
 -- open request needs, but the rider's note waits aside until a driver takes
 -- the ride, when that driver reads it and other drivers don't. The option
--- charges are saved and fixed. A custom pet type books.
+-- charges and the names the options were booked under are saved and fixed;
+-- commission and promo codes leave the charges out when the admin says so. A
+-- custom pet type books.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/ride_options_0248.sql
 --
@@ -173,9 +175,50 @@ select pg_temp.check(
 select pg_temp.check(
   public.scheduled_request_clean(
     '{"assistance": {"items": [{"name": "Pregnant"}], "note": "x"}, "option_charges": [{"name": "Pet charge", "amount": 2}],
-      "status": "accepted"}'::jsonb)
-    = '{"assistance": {"items": [{"name": "Pregnant"}], "note": "x"}, "option_charges": [{"name": "Pet charge", "amount": 2}]}'::jsonb,
+      "option_names": {"pet": "Pets"}, "status": "accepted"}'::jsonb)
+    = '{"assistance": {"items": [{"name": "Pregnant"}], "note": "x"}, "option_charges": [{"name": "Pet charge", "amount": 2}],
+        "option_names": {"pet": "Pets"}}'::jsonb,
   'a scheduled booking keeps the help and the option charges');
+
+-- 6. Commission and promo codes on the option charges: both by default, either left out ---------
+select pg_temp.check(
+  (select public.commission_base(r) = 40 from public.ride_requests r where r.id = '00000000-0000-0000-0000-0000000248d1'),
+  'by default commission is on the whole fare, option charges included');
+select pg_temp.check(public.ride_option_charges_off('[{"name": "Pet charge", "amount": 10}]', 'promo') = 0,
+  'by default promo codes discount the option charges');
+insert into public.admin_display_settings (id, settings) values ('global', '{}')
+on conflict (id) do nothing;
+update public.admin_display_settings
+   set settings = coalesce(settings, '{}') || '{"rideOptionCharges": {"commission": false, "promo": true}}'
+ where id = 'global';
+select pg_temp.check(
+  (select public.commission_base(r) = 25 from public.ride_requests r where r.id = '00000000-0000-0000-0000-0000000248d1'),
+  'commission switched off for option charges leaves them out of its base');
+select pg_temp.check(public.ride_option_charges_off('[{"name": "Pet charge", "amount": 10}]', 'promo') = 0,
+  'the promo switch is its own');
+update public.admin_display_settings
+   set settings = settings || '{"rideOptionCharges": {"commission": true, "promo": false}}'
+ where id = 'global';
+select pg_temp.check(public.ride_option_charges_off('[{"name": "Pet charge", "amount": 10}, {"name": "Assistance charge", "amount": 5}]', 'promo') = 15,
+  'promo codes switched off for option charges discount the fare less them');
+select pg_temp.check(
+  (select public.commission_base(r) = 40 from public.ride_requests r where r.id = '00000000-0000-0000-0000-0000000248d1'),
+  'commission back on the whole fare');
+
+-- 7. The names the options were booked under are kept and fixed ---------------------------------
+update public.ride_requests set option_names = '{"pet": "Bringing a pet"}'
+ where id = '00000000-0000-0000-0000-0000000248d1';
+select pg_temp.refused(
+  $q$update public.ride_requests set option_names = '{"pet": 5}' where id = '00000000-0000-0000-0000-0000000248d1'$q$,
+  'an option name that is not text');
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000248a1');
+select pg_temp.try($q$update public.ride_requests set option_names = '{"pet": "Other"}'
+                     where id = '00000000-0000-0000-0000-0000000248d1'$q$);
+select pg_temp.check(
+  (select option_names->>'pet' = 'Bringing a pet' from public.ride_requests where id = '00000000-0000-0000-0000-0000000248d1'),
+  'the option names are fixed at booking');
+reset role;
 
 select 'ride_options_0248: all passed';
 rollback;

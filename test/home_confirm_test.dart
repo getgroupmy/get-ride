@@ -133,6 +133,9 @@ class _Promos extends PromoRepository {
   final zoneAsked = <LatLng>[];
   int offersAsked = 0;
 
+  /// The fare each offers call was asked about.
+  final fares = <double?>[];
+
   @override
   Future<List<PromoOffer>> offers({
     required double pickupLat,
@@ -144,6 +147,7 @@ class _Promos extends PromoRepository {
     DateTime? pickupAt,
   }) async {
     offersAsked++;
+    fares.add(fare);
     pickupTimes.add(pickupAt);
     return pickupAt == null ? list : later;
   }
@@ -987,7 +991,7 @@ void main() {
 
   // Admin → Display Settings → Ride Options (0248).
   for (final b in Brightness.values) {
-    testWidgets('every ride option hidden: no Options button (${b.name})', (tester) async {
+    testWidgets('every ride option hidden: Options keeps Comments (${b.name})', (tester) async {
       await _pump(
         tester,
         _Rides(),
@@ -999,7 +1003,13 @@ void main() {
         },
       );
       expect(find.byKey(const ValueKey('book')), findsOneWidget);
-      expect(find.byKey(const ValueKey('confirm-options')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('confirm-options')));
+      await _settle(tester);
+      expect(find.byKey(const ValueKey('ride-options')), findsOneWidget);
+      expect(find.byKey(const ValueKey('option-comments')), findsOneWidget);
+      for (final k in ['option-child-seat', 'option-more-passengers', 'option-pet', 'option-assistance']) {
+        expect(find.byKey(ValueKey(k)), findsNothing);
+      }
     });
 
     testWidgets('pet and assistance charges: in the fare, a line before booking, on the booking (${b.name})',
@@ -1073,6 +1083,45 @@ void main() {
       expect((rides.created![#pets] as List<RidePet>).single.type, 'Iguana');
       expect((rides.created![#assistance] as RideAssistance).items.single.name, 'Sign language');
       expect(rides.created![#note], 'Pet with me: 1 iguana (M) · Assistance: Sign language');
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(minutes: 1));
+    });
+
+    testWidgets('promo codes asked about the fare less the option charges when the admin says so (${b.name})',
+        (tester) async {
+      final promos = _Promos([_ride5]);
+      final rides = _Rides();
+      await _pump(
+        tester,
+        rides,
+        brightness: b,
+        promos: promos,
+        display: const {
+          'petPhotoRequired': false,
+          'petCharges': {
+            'Dog': {'kind': 'fixed', 'value': 10, 'per': 'pet'},
+          },
+          'rideOptionCharges': {'commission': true, 'promo': false},
+        },
+      );
+      await tester.tap(find.byKey(const ValueKey('confirm-options')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('option-pet')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('pets-type-Dog')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('pet-size-Dog-0-M')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('pets-done')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('ride-options-close')));
+      await _settle(tester);
+      await tester.tap(find.byKey(const ValueKey('book')));
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      final fare = rides.created![#fare] as double;
+      expect(promos.fares.last, closeTo(fare - 10, 0.001), reason: 'the code discounts the fare less the pet charge');
       await tester.pumpWidget(const SizedBox());
       await tester.pump(const Duration(minutes: 1));
     });

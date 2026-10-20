@@ -24,6 +24,7 @@ import 'my_ride_badges.dart';
 import '../ride/promo_parts.dart' show PromoAppliedIcon, rideHasPromo;
 import '../ride/pet_parts.dart' show RidePetsView;
 import '../ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
+import '../../core/ride_option_settings.dart' show RideOptionKind;
 
 /// A new ride request on a phone, as inDrive's: a sheet up from the bottom
 /// with the route on a map ("Ride request" over it, the time and distance
@@ -453,14 +454,22 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
             if (r.pets.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: RidePetsView(pets: r.pets, locked: r.status == RideStatus.open),
+                child: RidePetsView(
+                  pets: r.pets,
+                  locked: r.status == RideStatus.open,
+                  title: r.renamedOption(RideOptionKind.pet),
+                ),
               ),
             // "Assistance required": the help before accepting; the rider's
             // note once the ride is taken.
             if (r.assistance case final help?)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: RideAssistanceView(assistance: help, locked: r.status == RideStatus.open),
+                child: RideAssistanceView(
+                  assistance: help,
+                  locked: r.status == RideStatus.open,
+                  title: r.renamedOption(RideOptionKind.assistance),
+                ),
               ),
           ]),
         ),

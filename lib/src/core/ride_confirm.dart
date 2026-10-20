@@ -165,12 +165,24 @@ class RideOptions {
   /// driver app that doesn't read `pets` or `assistance` still knows what
   /// is coming. The rider's own assistance note is never in it: an open
   /// request's note is for every nearby driver.
-  List<String> get labels => [
-    if (childSeat) childSeats > 1 ? '$childSeats child safety seats' : 'Child safety seat',
-    if (morePassengers) 'More than $standardSeats passengers',
-    if (pet) pets.isEmpty ? 'Pet with me' : 'Pet with me: ${petSummary(pets)}',
-    if (assistance != null && !assistance!.isEmpty) assistanceNoteLabel(assistance!.items),
-  ];
+  List<String> get labels => labelsNamed();
+
+  /// [labels] under the admin's own names for the options (Display Settings
+  /// → Ride Options), by option id ('child-seat', 'more-passengers', 'pet',
+  /// 'assistance'); an option not in [names] keeps the built-in wording.
+  List<String> labelsNamed([Map<String, String> names = const {}]) {
+    final seat = names['child-seat'];
+    return [
+      if (childSeat)
+        seat == null
+            ? (childSeats > 1 ? '$childSeats child safety seats' : 'Child safety seat')
+            : (childSeats > 1 ? '$seat: $childSeats' : seat),
+      if (morePassengers) names['more-passengers'] ?? 'More than $standardSeats passengers',
+      if (pet) pets.isEmpty ? names['pet'] ?? 'Pet with me' : '${names['pet'] ?? 'Pet with me'}: ${petSummary(pets)}',
+      if (assistance != null && !assistance!.isEmpty)
+        assistanceNoteLabel(assistance!.items, prefix: names['assistance'] ?? 'Assistance'),
+    ];
+  }
 
   RideOptions copyWith({
     bool? childSeat,
@@ -206,9 +218,15 @@ class RideOptions {
 /// The note the driver gets: the options the rider asked for, the entrance
 /// they set on the pickup (Expo's "Entrance" keypad), then their own words.
 /// Null for none.
-String? driverNote({String entrance = '', String note = '', RideOptions options = const RideOptions()}) {
+/// [names]: the admin's own names for the options, by option id.
+String? driverNote({
+  String entrance = '',
+  String note = '',
+  RideOptions options = const RideOptions(),
+  Map<String, String> names = const {},
+}) {
   final parts = [
-    ...options.labels,
+    ...options.labelsNamed(names),
     if (entrance.trim().isNotEmpty) 'Entrance ${entrance.trim()}',
     if (note.trim().isNotEmpty) note.trim(),
   ];

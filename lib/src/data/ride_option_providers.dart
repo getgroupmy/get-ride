@@ -12,6 +12,11 @@ final rideOptionsConfigProvider = Provider<RideOptionsConfig>(
   (ref) => RideOptionsConfig.fromSettings(ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{}),
 );
 
+/// Whether commission and promo codes apply to the option charges.
+final optionChargeRulesProvider = Provider<OptionChargeRules>(
+  (ref) => OptionChargeRules.fromSettings(ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{}),
+);
+
 final assistanceCatalogueProvider = Provider<AssistanceCatalogue>(
   (ref) => AssistanceCatalogue.fromSettings(ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{}),
 );
