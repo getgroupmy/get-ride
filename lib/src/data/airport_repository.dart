@@ -143,11 +143,15 @@ class AirportRepository {
   }
 
   /// The vehicle services from lowest to highest (`vehicle_service_order`).
+  /// postgrest-dart's `order` sorts descending unless asked otherwise; a bare
+  /// `.order('rank')` listed the services highest first, so the admin's
+  /// screen showed (and then saved) the table reversed.
   Future<List<String>> serviceOrder() async {
     final rows = await _db
         .from('vehicle_service_order')
         .select('service_id, rank')
-        .order('rank');
+        .order('rank', ascending: true)
+        .order('service_id', ascending: true);
     return [for (final r in rows) '${r['service_id']}'];
   }
 

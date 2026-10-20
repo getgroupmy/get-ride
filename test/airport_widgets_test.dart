@@ -444,12 +444,23 @@ void main() {
               ),
             ),
           );
-          expect(find.text('1. Ride'), findsOneWidget);
-          expect(find.text('3. Premium'), findsOneWidget);
+          String rank(String id) => tester
+              .widget<TextField>(
+                find.descendant(
+                  of: find.byKey(ValueKey('service-order-rank-$id')),
+                  matching: find.byType(TextField),
+                ),
+              )
+              .controller!
+              .text;
+          expect(rank('r'), '1');
+          expect(rank('p'), '3');
+          expect(find.text('Lowest (1)'), findsOneWidget);
+          expect(find.text('Highest (3)'), findsOneWidget);
           await tester.tap(find.byTooltip('Move Ride higher'));
           await tester.pump();
           expect(order.ids, ['c', 'r', 'p']);
-          expect(find.text('1. Comfort'), findsOneWidget);
+          expect(rank('c'), '1');
           expect(
             tester
                 .widget<IconButton>(
