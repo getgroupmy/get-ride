@@ -9,6 +9,7 @@ import '../../admin/screens/meterapp/display_logic.dart'
         myRideCodeMenuItemId,
         scheduledRidesMenuItemId,
         standGroupsMenuItemId,
+        telematicsMenuItemId,
         vehicleInfoMenuItemId;
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
@@ -54,7 +55,13 @@ bool partnerMenuRowShows(
 };
 
 /// Driver menu rows that wait for the admin's approval.
-const partnerRowsAfterApproval = {'earnings', 'trip-history', scheduledRidesMenuItemId, myRideCodeMenuItemId};
+const partnerRowsAfterApproval = {
+  'earnings',
+  telematicsMenuItemId,
+  'trip-history',
+  scheduledRidesMenuItemId,
+  myRideCodeMenuItemId,
+};
 
 /// Built-in driver items on this app's screens; false for one with no
 /// screen here ("coming soon"). Expo's Earnings, Trip history, Vehicle and
@@ -65,6 +72,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     'teksi-ev': '/ev',
     'wallet': '/wallet',
     'earnings': '/drive/earnings',
+    telematicsMenuItemId: '/drive/telematics',
     myQrMenuItemId: '/account/my-qr',
     'vehicle': '/drive/vehicles',
     standGroupsMenuItemId: '/drive/groups',

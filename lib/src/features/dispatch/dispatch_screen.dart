@@ -2,6 +2,8 @@
 // sees after signing in to the same app. Staff: the console of their stand.
 // Stand admins: the console, their staff and their stand's charges. Fleet
 // owners: their fleet. Admins have all of it under Admin → Dispatch.
+// Telematics (0255): a fleet owner's fleet vehicles, a stand's orders (stand
+// admins, and staff who may see reports).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -12,6 +14,7 @@ import 'dispatch_console.dart';
 import 'fleet_view.dart';
 import 'stand_charges_view.dart';
 import 'stand_staff_view.dart';
+import 'telematics_tab.dart';
 
 /// The tabs a person's roles give them.
 List<String> dispatchTabsFor(DispatchRoles r) => [
@@ -19,6 +22,7 @@ List<String> dispatchTabsFor(DispatchRoles r) => [
   if (r.standAdmin) 'My staff',
   if (r.standAdmin) 'Charges',
   if (r.fleets.isNotEmpty) 'My fleet',
+  if (telematicsScopesFor(r).isNotEmpty) 'Telematics',
 ];
 
 class DispatchScreen extends ConsumerWidget {
@@ -75,6 +79,7 @@ class DispatchScreen extends ConsumerWidget {
                 'Console' => DispatchConsole(stands: roles.stands, ticking: ticking),
                 'My staff' => StandStaffView(stands: adminStands),
                 'Charges' => StandChargesView(stands: adminStands, admin: false),
+                'Telematics' => DispatchTelematicsTab(scopes: telematicsScopesFor(roles)),
                 _ => FleetView(fleets: roles.fleets),
               },
           ],

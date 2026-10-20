@@ -66,12 +66,15 @@ const standGroupsMenuItemId = 'stand-groups';
 
 /// The driver's permits, any time (0254).
 const myPermitMenuItemId = 'my-permit';
+/// The driver menu's Telematics: their km and trips (0255).
+const telematicsMenuItemId = 'telematics';
 
 const defaultPartnerMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
   ('dashboard', 'Dashboard'),
   (myRideCodeMenuItemId, 'My Ride code'), // this app's own; the Expo menu skips it
   ('earnings', 'Earnings'),
+  (telematicsMenuItemId, 'Telematics'), // this app's own (0255); the Expo menu skips it
   ('wallet', 'Wallet'),
   (myQrMenuItemId, 'My QR'), // GET.Referral / GET.me / GET.now (0161); this app's own
   ('trip-history', 'Trip history'),
