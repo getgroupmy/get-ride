@@ -15,6 +15,8 @@ import '../../../widgets/storage_image.dart';
 
 const _gap = SizedBox(height: 12);
 
+String _cap(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
 /// A row with a title, a line under it and a control on the right.
 class AirportRow extends StatelessWidget {
   const AirportRow({
@@ -302,7 +304,16 @@ class AirportDoorsTab extends StatelessWidget {
     this.onGuide,
     this.openGuideId,
     this.guideEditor,
+    this.showDoorSwitches = true,
+    this.note =
+        "These are the same doors as on the Multi-Gate page. Adding, renaming, removing or changing a door's use "
+        'here changes it there too, and the reverse.',
   });
+
+  /// The two "Rider must pick a … door" switches (a place has one switch
+  /// above the list instead).
+  final bool showDoorSwitches;
+  final String note;
 
   final List<AirportDoor> doors;
   final AirportSettings settings;
@@ -321,10 +332,7 @@ class AirportDoorsTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const AirportNote(
-          "These are the same doors as on the Multi-Gate page. Adding, renaming, removing or changing a door's use "
-          'here changes it there too, and the reverse.',
-        ),
+        AirportNote(note),
         _gap,
         if (doors.isEmpty) Text('No doors yet.', style: t.textTheme.bodySmall),
         ListSearchFilter(
@@ -348,6 +356,7 @@ class AirportDoorsTab extends StatelessWidget {
               label: const Text('Add door'),
             ),
           ),
+        if (showDoorSwitches) ...[
         _gap,
         AirportSwitch(
           title: 'Rider must pick a drop-off door',
@@ -365,6 +374,7 @@ class AirportDoorsTab extends StatelessWidget {
               ? (v) => onSettings!(settings.copyWith(pickDoorRequired: v))
               : null,
         ),
+        ],
         if (guideEditor != null) ...[const Divider(height: 32), guideEditor!],
       ],
     );
@@ -702,30 +712,45 @@ class _StepTextState extends State<_StepText> {
 // ---------------------------------------------------------------------------
 
 class AirportRulesTab extends StatelessWidget {
-  const AirportRulesTab({super.key, required this.settings, this.onChanged});
+  const AirportRulesTab({
+    super.key,
+    required this.settings,
+    this.onChanged,
+    this.noun = 'airport',
+    this.showSwitch = true,
+    this.embedded = false,
+  });
+
+  /// Inside another list (a place's queue tab): a column, not a list.
+  final bool embedded;
   final AirportSettings settings;
   final ValueChanged<AirportSettings>? onChanged;
+
+  /// What the area is called: 'airport', or 'place' on the Places page.
+  final String noun;
+
+  /// The "Restrict pickups" switch (a place has its own queue switch above).
+  final bool showSwitch;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final s = settings;
     final on = onChanged;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        AirportSwitch(
-          title: 'Restrict pickups inside the airport',
-          subtitle: 'Off: any nearby driver gets airport pickups, as today',
-          value: s.restrictPickups,
-          onChanged: on == null
-              ? null
-              : (v) => on(s.copyWith(restrictPickups: v)),
-        ),
+    final children = <Widget>[
+        if (showSwitch)
+          AirportSwitch(
+            title: 'Restrict pickups inside the $noun',
+            subtitle: 'Off: any nearby driver gets $noun pickups, as today',
+            value: s.restrictPickups,
+            onChanged: on == null
+                ? null
+                : (v) => on(s.copyWith(restrictPickups: v)),
+          ),
         if (s.restrictPickups) ...[
           _gap,
           Text(
-            'Who gets a pickup inside the airport (pick one or both)',
+            'Who gets a pickup inside the $noun (pick one or both)',
             style: t.textTheme.labelLarge,
           ),
           const SizedBox(height: 6),
@@ -793,7 +818,7 @@ class AirportRulesTab extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 4),
-          Text(emptyActionSummary(s.emptyAction), style: t.textTheme.bodySmall),
+          Text(emptyActionSummary(s.emptyAction, noun: noun), style: t.textTheme.bodySmall),
           if (s.emptyAction == EmptyAction.nearby)
             AirportRow(
               title: 'Send to nearby drivers after',
@@ -811,19 +836,21 @@ class AirportRulesTab extends StatelessWidget {
               ),
             ),
           _gap,
-          const AirportRow(
-            title: 'Drivers around the airport',
+          AirportRow(
+            title: 'Drivers around the $noun',
             subtitle:
-                "Drivers inside the area but outside a waiting zone don't get airport pickups, and see "
-                '"Go to the waiting zone to receive airport orders"',
+                "Drivers inside the area but outside a waiting zone don't get $noun pickups, and see "
+                '"Go to the waiting zone to receive $noun orders"',
           ),
           _gap,
-          const AirportNote(
-            'Drop-offs at the airport work as usual for every driver.',
+          AirportNote(
+            'Drop-offs at the $noun work as usual for every driver.',
           ),
         ],
-      ],
-    );
+    ];
+    return embedded
+        ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: children)
+        : ListView(padding: const EdgeInsets.all(16), children: children);
   }
 }
 
@@ -844,9 +871,17 @@ class AirportQueueTab extends StatelessWidget {
     this.services = const [],
     this.serviceOrder = const ServiceOrder([]),
     this.onOpenServiceOrder,
+    this.noun = 'airport',
+    this.leading = const [],
   });
   final AirportSettings settings;
   final List<AirportZone> zones;
+
+  /// What the area is called: 'airport', or 'place'.
+  final String noun;
+
+  /// Shown first (a place's pickup rules, above its zones).
+  final List<Widget> leading;
 
   /// Every vehicle service (id, name), and their order lowest first.
   final List<({String id, String name})> services;
@@ -866,6 +901,7 @@ class AirportQueueTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        ...leading,
         ?map,
         if (map != null) _gap,
         Text('Waiting zones (one or more)', style: t.textTheme.labelLarge),
@@ -927,7 +963,7 @@ class AirportQueueTab extends StatelessWidget {
         AirportSwitch(
           title: 'Only drivers who dropped off here can join',
           subtitle:
-              "A driver with no drop-off at this airport can't enter the queue",
+              "A driver with no drop-off at this $noun can't enter the queue",
           value: s.needDropoff,
           onChanged: on == null ? null : (v) => on(s.copyWith(needDropoff: v)),
         ),
@@ -1059,6 +1095,7 @@ class AirportFaresTab extends StatefulWidget {
     this.onRemoveZone,
     this.onZoneAmounts,
     this.currency = 'MYR',
+    this.noun = 'airport',
   });
   final AirportSettings settings;
   final List<String> services;
@@ -1068,6 +1105,9 @@ class AirportFaresTab extends StatefulWidget {
   final void Function(AirportZone z)? onEditZone, onRemoveZone;
   final void Function(AirportZone z, double to, double from)? onZoneAmounts;
   final String currency;
+
+  /// What the area is called: 'airport', or 'place'.
+  final String noun;
 
   @override
   State<AirportFaresTab> createState() => _AirportFaresTabState();
@@ -1079,6 +1119,7 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
   );
 
   AirportFares get _f => widget.settings.fares;
+  String get noun => widget.noun;
 
   void _set(AirportFares f) =>
       widget.onChanged?.call(widget.settings.copyWith(fares: f));
@@ -1094,18 +1135,18 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const AirportNote(
-          'Fares for rides to and from this airport. They replace the normal fare for these rides only. '
-          "Every amount below is on top of the service's airport base.",
+        AirportNote(
+          'Fares for rides to and from this $noun. They replace the normal fare for these rides only. '
+          "Every amount below is on top of the service's $noun base.",
         ),
         _gap,
         _section(
           context,
           key: const ValueKey('airport-fares-base'),
           children: [
-            Text('Airport base by service', style: t.textTheme.titleSmall),
+            Text('${_cap(noun)} base by service', style: t.textTheme.titleSmall),
             Text(
-              'Added to every airport fare of that service, e.g. Premium costs more than Ride for the same trip',
+              'Added to every $noun fare of that service, e.g. Premium costs more than Ride for the same trip',
               style: t.textTheme.bodySmall,
             ),
             const SizedBox(height: 6),
@@ -1145,12 +1186,12 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
           children: [
             Text('Minimum fare', style: t.textTheme.titleSmall),
             Text(
-              'A cheaper fare is raised to this (before the airport charges)',
+              'A cheaper fare is raised to this (before the $noun charges)',
               style: t.textTheme.bodySmall,
             ),
-            for (final (pick, label) in const [
-              (true, 'Pickup from the airport'),
-              (false, 'Drop-off at the airport'),
+            for (final (pick, label) in [
+              (true, 'Pickup from the $noun'),
+              (false, 'Drop-off at the $noun'),
             ])
               AirportRow(
                 title: label,
@@ -1372,7 +1413,7 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
           children: [
             Text('Fixed zone fares', style: t.textTheme.titleSmall),
             Text(
-              'A ride between a zone and the airport costs this fixed fare instead of the band or normal rate.',
+              'A ride between a zone and the $noun costs this fixed fare instead of the band or normal rate.',
               style: t.textTheme.bodySmall,
             ),
             const SizedBox(height: 6),
@@ -1398,7 +1439,7 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
                     ),
                     AmountField(
                       value: z.toAmount,
-                      label: 'To airport',
+                      label: 'To $noun',
                       width: 100,
                       onChanged: widget.onZoneAmounts == null
                           ? null
@@ -1406,7 +1447,7 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
                     ),
                     AmountField(
                       value: z.fromAmount,
-                      label: 'From airport',
+                      label: 'From $noun',
                       width: 100,
                       onChanged: widget.onZoneAmounts == null
                           ? null
@@ -1453,9 +1494,9 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
         AirportNote(
           'How a fare is worked out:\n'
           '1. Fixed zone fare if the other end is in a zone, else the distance band, else the normal rate\n'
-          "2. + the service's airport base\n"
+          "2. + the service's $noun base\n"
           '3. Raised to the minimum fare if lower\n'
-          '4. + the airport charge (Charges tab)'
+          '4. + the $noun charge (Charges tab)'
           '${f.roundUp ? '\n5. Rounded up to the next whole amount' : ''}',
         ),
         _gap,
@@ -1527,13 +1568,13 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
           runSpacing: 6,
           children: [
             ChoiceChip(
-              label: const Text('From the airport'),
+              label: Text('From the $noun'),
               selected: tr.side == AirportSide.pick,
               onSelected: (_) =>
                   setState(() => _trial = tr.copyWith(side: AirportSide.pick)),
             ),
             ChoiceChip(
-              label: const Text('To the airport'),
+              label: Text('To the $noun'),
               selected: tr.side == AirportSide.drop,
               onSelected: (_) =>
                   setState(() => _trial = tr.copyWith(side: AirportSide.drop)),

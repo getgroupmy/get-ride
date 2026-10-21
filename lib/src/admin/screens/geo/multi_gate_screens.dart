@@ -10,6 +10,9 @@ import '../../../widgets/loading_skeleton.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../../core/airport_queue.dart';
+import '../../../data/airport_repository.dart' show airportSettingsProvider;
+import 'airport_editor.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
@@ -72,6 +75,7 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(pageAccessProvider(multiGatePlacesPage)) == AccessLevel.edit;
     final async = ref.watch(multiGatePlacesProvider);
+    final settings = ref.watch(airportSettingsProvider).value ?? const <String, AirportSettings>{};
     return AdminPage(
       title: 'Multi-Gate Places',
       page: multiGatePlacesPage,
@@ -139,12 +143,19 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
                           _pill(placeIsActive(e.values) ? 'Active' : 'Inactive',
                               placeIsActive(e.values) ? Colors.green : Colors.grey),
                           _pill(placeGateRequired(e.values) ? 'Gate required' : 'Gate optional', Colors.orange),
+                          for (final tool in placeToolLabels(e.values, settings[e.id])) _pill(tool, Colors.teal),
                         ]),
                         if ('${e.values['address'] ?? ''}'.isNotEmpty)
                           Text('${e.values['address']}', maxLines: 2, overflow: TextOverflow.ellipsis),
                       ]),
                       isThreeLine: true,
                       trailing: Wrap(children: [
+                        IconButton(
+                          key: ValueKey('place-tools-${e.id}'),
+                          tooltip: 'Boundary, doors, charge, fares, queue',
+                          icon: const Icon(Icons.tune),
+                          onPressed: () => AirportEditor.openPlace(context, entry: e, canEdit: canEdit),
+                        ),
                         IconButton(
                           tooltip: 'Gates',
                           icon: const Icon(Icons.door_front_door_outlined),
@@ -301,7 +312,8 @@ class AdminMultiGateGatesScreen extends ConsumerWidget {
             'gate',
             id: entry?.id,
             // Keys the form doesn't edit (an airport door's guide, 0249) are kept.
-            values: {...?entry?.values, ...form.toValues(placeId: placeId, parentKey: parentKey)},
+            values: {...?entry?.values, 'group': null, ...form.toValues(placeId: placeId, parentKey: parentKey)}
+              ..removeWhere((k, v) => k == 'group' && v == null),
             position: entry?.position ?? 0,
           ),
       success: 'Gate saved',
@@ -479,11 +491,12 @@ class _GateFormBodyState extends State<_GateFormBody> {
   late final _lon = TextEditingController(text: f.lon);
   late final _pick = TextEditingController(text: f.pickupSurcharge);
   late final _drop = TextEditingController(text: f.dropSurcharge);
+  late final _group = TextEditingController(text: f.group);
   String? _error;
 
   @override
   void dispose() {
-    for (final c in [_name, _lat, _lon, _pick, _drop]) {
+    for (final c in [_name, _lat, _lon, _pick, _drop, _group]) {
       c.dispose();
     }
     super.dispose();
@@ -495,7 +508,8 @@ class _GateFormBodyState extends State<_GateFormBody> {
       ..lat = _lat.text
       ..lon = _lon.text
       ..pickupSurcharge = _pick.text
-      ..dropSurcharge = _drop.text;
+      ..dropSurcharge = _drop.text
+      ..group = _group.text;
   }
 
   Future<void> _pickOnMap() async {
@@ -528,6 +542,16 @@ class _GateFormBodyState extends State<_GateFormBody> {
     final maxP = widget.priorityCount < f.displayPriority ? f.displayPriority : widget.priorityCount;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(controller: _name, decoration: const InputDecoration(labelText: 'Gate name *', hintText: 'e.g. Gate A / Departure Hall')),
+      gap,
+      TextField(
+        key: const ValueKey('gate-group'),
+        controller: _group,
+        decoration: const InputDecoration(
+          labelText: 'Group',
+          hintText: 'e.g. KLIA Terminal 1 / klia2',
+          helperText: 'Optional. Riders pick the group first, then its gate.',
+        ),
+      ),
       gap,
       Row(children: [
         Expanded(child: TextField(controller: _lat, keyboardType: coord, decoration: const InputDecoration(labelText: 'Latitude *', hintText: '2.7456'))),
@@ -599,4 +623,22 @@ class _GateFormBodyState extends State<_GateFormBody> {
       ),
     ]);
   }
+}
+
+
+/// The tools a place has on, for its card (0258): "Boundary", "Doors
+/// required", "Guide", "Charge", "Own fares", "Queue". Empty without a
+/// boundary.
+List<String> placeToolLabels(Map<String, dynamic> values, AirportSettings? s) {
+  if (!placeAreaOn(values)) return const [];
+  return [
+    'Boundary',
+    if (s != null) ...[
+      if (s.doorsRequired) 'Doors required',
+      if (s.guideOn) 'Guide',
+      if (s.placeChargeOn) 'Charge',
+      if (s.faresOn) 'Own fares',
+      if (s.restrictPickups) 'Queue',
+    ],
+  ];
 }

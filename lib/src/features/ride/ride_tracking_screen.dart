@@ -63,6 +63,7 @@ import '../wallet/wallet_screen.dart';
 import '../../core/demo_mode.dart';
 import 'auto_accept.dart';
 import '../my_ride/my_ride_parts.dart' show MyRideSearchBanner;
+import 'pickup_guide_card.dart';
 import 'rider_handover_card.dart';
 import '../../widgets/page_style_host.dart';
 import 'promo_parts.dart' show ridePromoLine;
@@ -1088,6 +1089,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (!_isDemo) ...[
             RiderHandoverCard(ride: r),
             RiderHandoverPrompt(ride: r, pushes: PushService.instance?.received),
+            // The chosen pickup door's guide (0249, 0258).
+            PickupGuideCard(ride: r),
           ],
           if (r.hasDriver)
             Card(

@@ -29,7 +29,8 @@ import '../../core/airport_areas.dart' show AirportArea;
 import '../../core/airport_queue.dart';
 import '../../data/airport_repository.dart';
 import '../../data/place_gates_repository.dart' show airportAreasProvider;
-import 'airport_door_sheet.dart';
+import '../../core/gate_snap.dart';
+import 'gate_picker.dart';
 import '../../core/region_pricing.dart';
 import '../../core/service_tree.dart';
 import '../../core/ride_bidding.dart';
@@ -149,6 +150,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The doors chosen for a pickup at, or a drop-off at, an airport.
   AirportDoor? _pickupDoor;
   AirportDoor? _dropDoor;
+
+  /// The airport or place (0258) the pickup is in, when it has pickup gates:
+  /// the pickup snaps to its nearest gate, the map shows its boundary and
+  /// gates, and the gate picker chooses among them.
+  ({AirportArea area, List<AirportDoor> gates, bool required, bool guides})? _gateArea;
 
   /// The server's airport fare for the confirm step, and what it was asked for.
   AirportQuote? _airportQuote;
@@ -703,6 +709,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _here = place;
         if (_pickup == null || (identical(_pickup, set) && _drop == null)) _pickup = set = place;
       });
+      if (identical(_pickup, set)) await _syncPickupGate();
+      if (!mounted) return;
       _updateRoute();
     }
   }
@@ -973,6 +981,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       showInfo(context, 'Tap the map to set the ${toPickup ? 'pickup' : 'destination'}');
       return;
     }
+    // A pickup inside an area that says riders must pick a gate: the gate
+    // first, before the trip goes on to the confirm step (0258).
+    if (!toPickup && !await _gateReady()) return;
+    if (!mounted) return;
     setState(() {
       if (toPickup) {
         _pickup = pick.place;
@@ -982,6 +994,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _drop = pick.place;
       }
     });
+    // A pickup chosen in search at an airport or place with gates: its gate
+    // picker opens at once.
+    if (toPickup) await _syncPickupGate(open: true);
+    if (!mounted) return;
     _updateRoute();
   }
 
@@ -993,6 +1009,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted) return;
     if (target != _PinTarget.pickup) _dropQuery = null;
     setState(() => target == _PinTarget.pickup ? _pickup = place : _drop = place);
+    if (target == _PinTarget.pickup) await _syncPickupGate();
+    if (!mounted) return;
     _updateRoute();
   }
 
@@ -1007,6 +1025,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // A later drag, search or swap has moved the pickup on since.
     if (!mounted || _pickup?.point != p) return;
     setState(() => _pickup = place);
+    await _syncPickupGate();
+    if (!mounted) return;
     _updateRoute();
   }
 
@@ -1211,7 +1231,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // its charges and the total.
       if (airport != null) ...[
         for (final l in airport.lines) '${l.charge ? '+ ' : ''}${l.label}: ${formatMoney(l.amount, _currency)}',
-        'Airport fare: ${formatMoney(airport.total, _currency)}',
+        // A place's (0258) is the fare with its charge: no "Airport" in it.
+        '${(ref.read(airportAreasProvider).value ?? const <AirportArea>[]).any((x) => x.isPlace && x.id == airport.areaId) ? 'Total' : 'Airport fare'}: '
+            '${formatMoney(airport.total, _currency)}',
       ],
       for (final l in lines) '+ ${l.label}: ${formatMoney(l.amount, _currency)}',
     ].join('\n');
@@ -1256,6 +1278,102 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return null;
   }
 
+  /// The pickup at a gate (0258): inside an airport or a place with pickup
+  /// gates, the pickup snaps to the nearest gate (unless it is at one of
+  /// them already), the map flies there and the callout shows it; [open]
+  /// opens the gate picker too (a pickup chosen in search). Outside every
+  /// area the pickup stays where it is.
+  Future<void> _syncPickupGate({bool open = false}) async {
+    final a = _pickup;
+    if (a == null) return;
+    List<AirportArea> areas;
+    List<AirportDoor> doors;
+    Map<String, AirportSettings> settings;
+    try {
+      areas = await ref.read(airportAreasProvider.future);
+      doors = await ref.read(airportDoorsProvider.future);
+      settings = await ref.read(airportSettingsProvider.future);
+    } catch (_) {
+      return;
+    }
+    if (!mounted || !identical(_pickup, a)) return;
+    final snap = snapToGate(areas: areas, doors: doors, p: a.point);
+    if (snap == null) {
+      if (_gateArea != null) {
+        setState(() {
+          _gateArea = null;
+          _pickupDoor = null;
+        });
+      }
+      return;
+    }
+    final s = settings[snap.area.id];
+    final at = snap.gates.where((g) => doorPoint(g) == a.point).firstOrNull;
+    final door = at ?? snap.door;
+    setState(() {
+      _gateArea = (
+        area: snap.area,
+        gates: snap.gates,
+        required: s?.pickDoorRequired ?? !snap.area.isPlace,
+        guides: s?.guideOn ?? !snap.area.isPlace,
+      );
+      _pickupDoor = door;
+      if (at == null) _pickup = _atGate(snap.area, door, a);
+    });
+    if (at == null) _flyToPickup();
+    if (open) await _openGatePicker();
+  }
+
+  /// The pickup at [door] of [area]: "Area - Gate", at the gate.
+  Place _atGate(AirportArea area, AirportDoor door, Place base) =>
+      Place(name: '${area.name} - ${door.name}', address: base.address, point: doorPoint(door) ?? base.point);
+
+  /// The map glides so the pickup sits under the pin, close in.
+  void _flyToPickup() {
+    final at = _pickup?.point;
+    if (at == null || _drop != null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      try {
+        recenterMap(_map, at, zoom: math.max(_map.camera.zoom, homeStreetZoom), offset: _focusOffset);
+      } catch (_) {}
+    });
+  }
+
+  /// The gate picker over the pickup's area; false when it was closed.
+  Future<bool> _openGatePicker() async {
+    final g = _gateArea, a = _pickup;
+    if (g == null || a == null) return true;
+    final serviceIndex = _services.indexWhere((s) => s.name == _service.name);
+    final pick = await showGatePicker(
+      context,
+      placeName: g.area.name,
+      gates: g.gates,
+      rings: g.area.rings,
+      selectedId: _pickupDoor?.id,
+      required: g.required,
+      guides: g.guides,
+      cars: [for (final c in _cars) demoCarMarker(c, serviceIndex)],
+    );
+    if (pick == null || !mounted) return false;
+    setState(() {
+      _pickupDoor = pick.door;
+      if (pick.door case final d? when doorPoint(d) != null) _pickup = _atGate(g.area, d, a);
+    });
+    _flyToPickup();
+    _updateRoute();
+    return true;
+  }
+
+  /// Whether the trip may go on to the confirm step: a gate is chosen where
+  /// the area says riders must pick one (the picker opens to choose it).
+  Future<bool> _gateReady() async {
+    final g = _gateArea;
+    if (g == null || !g.required || _pickupDoor != null) return true;
+    await _openGatePicker();
+    return _pickupDoor != null;
+  }
+
   /// Before booking: the door at each end that is at an airport which asks
   /// for one (0249). False when the rider closed a door sheet.
   Future<bool> _chooseAirportDoors() async {
@@ -1285,14 +1403,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (fromSearch != null) return fromSearch;
       if (s != null && !s.doorRequired(side)) return null;
       if (!mounted) return null;
-      return showAirportDoorSheet(
+      // The same picker as the pickup's gate (0258): map, wheel, Done.
+      final picked = await showGatePicker(
         context,
-        airportName: airport.name,
+        placeName: airport.name,
+        gates: list,
+        rings: airport.rings,
+        selectedId: current?.id,
+        required: s?.doorRequired(side) ?? true,
         side: side,
-        doors: list,
-        charge: s?.chargeFor(side),
-        currency: _currency,
+        guides: side == AirportSide.pick && (s?.guideOn ?? true),
       );
+      return picked?.door;
     }
 
     AirportDoor? pick, drop;
@@ -2215,7 +2337,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               builder: (_, _, _) => _homeMap([
                 _me, _pickup, _pinMoving, confirming, wide, _routeMoved, autoFit, fitTop, fitBottom, _drop?.point,
                 _route, satellite, _cars, serviceIndex, showPill, screenWidth, mapLayout.pillGap, ai, tolls.length,
-                _stops.length, for (final p in _stops) p.point,
+                _stops.length, for (final p in _stops) p.point, _gateArea, _pickupDoor,
               ], () => RideMap(
               controller: _map,
               me: _me,
@@ -2234,11 +2356,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               route: _route?.points ?? const [],
               onTap: _onMapTap,
               satellite: satellite,
+              // The pickup's airport or place (0258): its boundary and gates
+              // stay drawn, before and after the gate is chosen.
+              extraLayers: [
+                if (_gateArea case final g? when _pickup != null && g.area.contains(_pickup!.point, bufferM: 0))
+                  ...gateAreaLayers(
+                    context,
+                    rings: g.area.rings,
+                    gates: g.gates,
+                    selectedId: _pickupDoor?.id,
+                    letters: {for (var i = 0; i < g.gates.length; i++) g.gates[i].id: gateLetter(i)},
+                    onTapGate: _drop == null ? (_) => _openGatePicker() : null,
+                  ),
+              ],
               extraMarkers: [
                 for (final c in _cars) demoCarMarker(c, serviceIndex),
+                // At a gate: "Pickup point / <gate> >" over the pin, which
+                // opens the gate picker again.
+                if (_gateArea != null && _pickup != null && !_pinMoving && !confirming &&
+                    _gateArea!.area.contains(_pickup!.point, bufferM: 0))
+                  labelAbovePin(
+                    _pickup!.point,
+                    GateCallout(name: _pickupDoor?.name ?? 'Any gate', onTap: _openGatePicker),
+                    width: math.min(280, screenWidth - 32),
+                    height: 96,
+                    gap: mapLayout.pillGap,
+                  )
                 // The pickup box stands 5 px above the pickup pin and moves with
                 // it; it hides while the pin is lifted, until it lands.
-                if (showPill && _pickup != null && !_pinMoving && !pillAtTop)
+                else if (showPill && _pickup != null && !_pinMoving && !pillAtTop)
                   labelAbovePin(
                     _pickup!.point,
                     PickupPill(place: _pickup, onTap: () => _choose(_PinTarget.pickup)),

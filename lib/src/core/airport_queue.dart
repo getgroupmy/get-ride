@@ -93,6 +93,7 @@ class AirportDoor {
     this.lat,
     this.lng,
     this.guide = const [],
+    this.group = '',
   });
 
   final String id;
@@ -103,6 +104,11 @@ class AirportDoor {
   final bool active;
   final double? lat, lng;
   final List<GuideStep> guide;
+
+  /// The group the door is in (an airport's terminal, a mall's wing):
+  /// `values.group`, '' for none. The gate picker shows a wheel of groups
+  /// beside the doors when there is more than one.
+  final String group;
 
   /// A `multi_gate` gate row's `values` (the airport's when `parentKey` is
   /// `airport-areas`).
@@ -123,6 +129,7 @@ class AirportDoor {
         if (v['guide'] is List)
           for (final s in v['guide'] as List) ?GuideStep.fromJson(s),
       ],
+      group: '${v['group'] ?? ''}'.trim(),
     );
   }
 }
@@ -411,9 +418,37 @@ class AirportSettings {
     this.dropFee = const AirportCharge(),
     this.pickFee = const AirportCharge(),
     this.fares = const AirportFares(),
+    this.guideOn = true,
+    this.faresOn = true,
   });
 
+  /// A place's settings before the admin changes any (0258): every tool off.
+  const AirportSettings.place(this.airportId)
+    : dropDoorRequired = false,
+      pickDoorRequired = false,
+      restrictPickups = false,
+      pickupFrom = const {PickupSource.queue},
+      emptyAction = EmptyAction.wait,
+      nearbyAfterMin = 5,
+      queueByService = true,
+      needDropoff = true,
+      joinWindowMin = 60,
+      leaveGraceMin = 3,
+      backOnDecline = true,
+      offerSeconds = 30,
+      dropFee = const AirportCharge(name: 'Place fee'),
+      pickFee = const AirportCharge(name: 'Place fee'),
+      fares = const AirportFares(roundUp: false),
+      guideOn = false,
+      faresOn = false;
+
   final String airportId;
+
+  /// Riders see the pickup doors' guides (0258; an airport's is always on).
+  final bool guideOn;
+
+  /// The area's own fares apply; off: the normal tariff (0258).
+  final bool faresOn;
   final bool dropDoorRequired, pickDoorRequired, restrictPickups;
   final Set<PickupSource> pickupFrom;
   final EmptyAction emptyAction;
@@ -470,6 +505,8 @@ class AirportSettings {
         amount: _n(r['pick_fee_amount']) ?? 0,
       ),
       fares: AirportFares.fromJson(r['fares']),
+      guideOn: b('guide_on', true),
+      faresOn: b('fares_on', true),
     );
   }
 
@@ -501,6 +538,8 @@ class AirportSettings {
         : pickFee.name.trim(),
     'pick_fee_amount': _cents(pickFee.amount),
     'fares': fares.toJson(),
+    'guide_on': guideOn,
+    'fares_on': faresOn,
   };
 
   AirportSettings copyWith({
@@ -519,6 +558,8 @@ class AirportSettings {
     AirportCharge? dropFee,
     AirportCharge? pickFee,
     AirportFares? fares,
+    bool? guideOn,
+    bool? faresOn,
   }) => AirportSettings(
     airportId: airportId,
     dropDoorRequired: dropDoorRequired ?? this.dropDoorRequired,
@@ -536,6 +577,31 @@ class AirportSettings {
     dropFee: dropFee ?? this.dropFee,
     pickFee: pickFee ?? this.pickFee,
     fares: fares ?? this.fares,
+    guideOn: guideOn ?? this.guideOn,
+    faresOn: faresOn ?? this.faresOn,
+  );
+
+  /// The place's extra charge (0258): one switch, one label, the pickup and
+  /// drop-off amounts.
+  bool get placeChargeOn => pickFee.on || dropFee.on;
+
+  /// Riders must pick a door at either end (a place's one switch).
+  bool get doorsRequired => pickDoorRequired && dropDoorRequired;
+}
+
+/// [s] with the place's charge switched [on], its [label] and amounts.
+AirportSettings withPlaceCharge(
+  AirportSettings s, {
+  bool? on,
+  String? label,
+  double? pickAmount,
+  double? dropAmount,
+}) {
+  final o = on ?? s.placeChargeOn;
+  final name = label ?? (s.pickFee.name.trim().isNotEmpty ? s.pickFee.name : s.dropFee.name);
+  return s.copyWith(
+    pickFee: AirportCharge(on: o, name: name, amount: pickAmount ?? s.pickFee.amount),
+    dropFee: AirportCharge(on: o, name: name, amount: dropAmount ?? s.dropFee.amount),
   );
 }
 
@@ -560,10 +626,10 @@ String pickupSourceSummary(Set<PickupSource> from) {
       : 'Any driver standing in a waiting zone, nearest first; no queue order.';
 }
 
-String emptyActionSummary(EmptyAction a) => switch (a) {
+String emptyActionSummary(EmptyAction a, {String noun = 'airport'}) => switch (a) {
   EmptyAction.wait => 'The request stays open until a driver joins the queue or the rider cancels.',
-  EmptyAction.decline => 'The rider is told no airport driver is free right now and the request closes.',
-  EmptyAction.nearby => 'After the time below, drivers outside the airport get it as a normal request.',
+  EmptyAction.decline => 'The rider is told no $noun driver is free right now and the request closes.',
+  EmptyAction.nearby => 'After the time below, drivers outside the $noun get it as a normal request.',
 };
 
 // ---------------------------------------------------------------------------
@@ -596,7 +662,11 @@ class AirportQuote {
     required this.total,
     required this.fixed,
     required this.how,
+    this.areaId = '',
   });
+
+  /// The airport or place whose fare it is.
+  final String areaId;
 
   final List<QuoteLine> lines;
 
@@ -631,6 +701,7 @@ class AirportQuote {
       total: total,
       fixed: raw['fixed'] == true,
       how: '${raw['how'] ?? ''}',
+      areaId: '${raw['airport'] ?? ''}',
     );
   }
 }
@@ -1009,7 +1080,12 @@ class DriverAirportState {
     this.outside = false,
     this.graceMin,
     this.reason = '',
+    this.place = false,
   });
+
+  /// The queue is a place's (0258), not an airport's: "place" in the words.
+  final bool place;
+  String get _noun => place ? 'place' : 'airport';
 
   final DriverAirportStage stage;
 
@@ -1056,22 +1132,23 @@ class DriverAirportState {
       outside: raw['outside_since'] != null,
       graceMin: i('grace_min'),
       reason: s('reason'),
+      place: raw['kind'] == 'place',
     );
   }
 
   /// The airport's code, else its name.
   String get where =>
-      code.isNotEmpty ? code : (airport.isNotEmpty ? airport : 'the airport');
+      code.isNotEmpty ? code : (airport.isNotEmpty ? airport : 'the $_noun');
 
-  String get _queueName => service.isEmpty ? 'airport queue' : '$service queue';
+  String get _queueName => service.isEmpty ? '$_noun queue' : '$service queue';
 
   /// The pill on the card.
   String get title => switch (stage) {
-    DriverAirportStage.outside => 'Outside the airport',
+    DriverAirportStage.outside => 'Outside the $_noun',
     DriverAirportStage.around => 'At $where',
     DriverAirportStage.dropped => 'Dropped off at $where',
     DriverAirportStage.queued => 'In the $_queueName',
-    DriverAirportStage.offer => 'Airport order',
+    DriverAirportStage.offer => place ? 'Queue order' : 'Airport order',
     DriverAirportStage.refused => "Can't join the queue",
   };
 
@@ -1079,20 +1156,22 @@ class DriverAirportState {
   String get message => switch (stage) {
     DriverAirportStage.outside => 'Normal orders.',
     DriverAirportStage.around =>
-      'Go to the waiting zone to receive airport orders.',
+      'Go to the waiting zone to receive $_noun orders.',
     DriverAirportStage.dropped =>
       'Go to the waiting zone within ${minutesLeft ?? 0} min to join the $_queueName.',
     DriverAirportStage.queued =>
       outside
           ? 'You left the waiting zone. Go back within ${graceMin ?? 0} min to keep your place.'
           : 'of ${total ?? 0} waiting · stay in the zone to keep your place',
-    DriverAirportStage.offer => door ?? 'Pickup at the airport',
+    DriverAirportStage.offer => door ?? 'Pickup at the $_noun',
     DriverAirportStage.refused =>
       reason == 'no_service'
-          ? "Your vehicle has no approved service type yet, so it can't join an airport queue. "
+          ? "Your vehicle has no approved service type yet, so it can't join $_article $_noun queue. "
                 'Choose one on your vehicle, or ask support to approve it.'
-          : 'Only drivers who dropped off at $where can wait for airport orders.',
+          : 'Only drivers who dropped off at $where can wait for $_noun orders.',
   };
+
+  String get _article => place ? 'a' : 'an';
 
   bool get showCard => stage != DriverAirportStage.outside;
 }

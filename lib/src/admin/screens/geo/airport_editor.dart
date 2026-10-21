@@ -4,6 +4,12 @@
 // so a change here shows there at once and the reverse; settings, waiting
 // zones and fare zones are airport_settings / airport_waiting_zones /
 // airport_fare_zones, followed live.
+//
+// The same editor serves Admin → Multi-Gate Places (migration 0258) with
+// [AirportEditor.place]: six tabs, one per tool, each with its own switch —
+// Boundary, Doors, Pickup guide, Extra charge, Own fares and Waiting queue.
+// A place's tools work once its boundary is on (the server keeps its area
+// row and settings, see 0258); a place with no boundary keeps its gates only.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -26,8 +32,19 @@ import 'airport_tabs.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
+import 'place_area_tabs.dart';
 
 /// The editor's tabs, in order.
+/// A place's tabs (Admin → Multi-Gate Places), in order.
+const placeEditorTabs = [
+  'Boundary',
+  'Doors',
+  'Pickup guide',
+  'Extra charge',
+  'Own fares',
+  'Waiting queue',
+];
+
 const airportEditorTabs = [
   'Area',
   'Gates & doors',
@@ -45,12 +62,16 @@ class AirportEditor extends ConsumerStatefulWidget {
     this.onEditDetails,
     this.onEditBoundary,
     this.showHeader = true,
+    this.place = false,
   });
 
   final GeoEntry entry;
   final bool canEdit;
   final VoidCallback? onEditDetails, onEditBoundary;
   final bool showHeader;
+
+  /// A multi-gate place (Places page) rather than an airport.
+  final bool place;
 
   static Future<void> open(
     BuildContext context, {
@@ -76,6 +97,28 @@ class AirportEditor extends ConsumerStatefulWidget {
     ),
   );
 
+  /// A multi-gate place's tools (Admin → Multi-Gate Places).
+  static Future<void> openPlace(
+    BuildContext context, {
+    required GeoEntry entry,
+    required bool canEdit,
+  }) => Navigator.of(context).push(
+    AppPageRoute(
+      id: 'multi-gate-places.editor',
+      builder: (_) => Scaffold(
+        appBar: AppBar(title: Text('${entry.values['name'] ?? 'Place'}')),
+        body: SafeArea(
+          child: AirportEditor(
+            entry: entry,
+            canEdit: canEdit,
+            showHeader: false,
+            place: true,
+          ),
+        ),
+      ),
+    ),
+  );
+
   @override
   ConsumerState<AirportEditor> createState() => _AirportEditorState();
 }
@@ -95,10 +138,14 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
   /// The airport as stored now (a boundary or details saved since this
   /// editor opened show at once).
   GeoEntry get _entry =>
-      (ref.read(airportsProvider).value ?? const <GeoEntry>[])
+      (ref.read(widget.place ? multiGatePlacesProvider : airportsProvider).value ?? const <GeoEntry>[])
           .where((e) => e.id == _id)
           .firstOrNull ??
       widget.entry;
+
+  bool get _place => widget.place;
+  String get _parentKey => _place ? multiGatePlacesKey : airportAreasKey;
+  String get _noun => _place ? 'place' : 'airport';
   bool get _edit => widget.canEdit;
 
   AirportRepository get _repo => ref.read(airportRepositoryProvider);
@@ -117,7 +164,7 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
     final ok = await runAdminAction(
       context,
       () => _repo.saveSettings(d),
-      success: 'Airport settings saved',
+      success: _place ? 'Place settings saved' : 'Airport settings saved',
     );
     if (!mounted) return;
     setState(() {
@@ -133,7 +180,7 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
     ref.read(multiGateGatesProvider).value ?? const <GeoEntry>[],
     (g) => g.values,
     _id,
-    airportAreasKey,
+    _parentKey,
   );
 
   GeoEntry? _gate(String id) => _gates().where((g) => g.id == id).firstOrNull;
@@ -206,7 +253,7 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
       context,
       () => _geo.saveMultiGate(
         'gate',
-        values: f.toValues(placeId: _id, parentKey: airportAreasKey),
+        values: f.toValues(placeId: _id, parentKey: _parentKey),
       ),
       success: 'Door added',
     );
@@ -311,6 +358,64 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
     }
   }
 
+  // ---- A place's boundary (0258) ----
+
+  Future<void> _savePlace(Map<String, dynamic> values, {String? success}) async {
+    final e = _entry;
+    final ok = await runAdminAction(
+      context,
+      () => _geo.saveMultiGate('place', id: e.id, values: values, position: e.position),
+      success: success,
+    );
+    if (ok) ref.invalidate(multiGatePlacesProvider);
+  }
+
+  Future<void> _drawPlaceBoundary() async {
+    final e = _entry;
+    final stored = parseBoundary(e.values['boundary']);
+    final name = '${e.values['name'] ?? 'Place'}';
+    await BoundaryEditorPage.open(
+      context,
+      BoundaryEditorPage(
+        title: 'Boundary · $name',
+        query: name,
+        canEdit: _edit,
+        initial: stored,
+        near: latLngOf(e.values) ?? placeCenter(e.values),
+        askQuery: true,
+        onPickSaved: () => pickSavedRegionShape(context, ref),
+        onSave: (shape) async {
+          final now = _entry;
+          await _geo.saveMultiGate(
+            'place',
+            id: now.id,
+            values: {...now.values, ...boundaryValues(simplifyShape(shape), DateTime.now()), 'areaOn': true},
+            position: now.position,
+          );
+          ref.invalidate(multiGatePlacesProvider);
+        },
+        onClear: stored == null
+            ? null
+            : () async {
+                final now = _entry;
+                await _geo.saveMultiGate(
+                  'place',
+                  id: now.id,
+                  values: {...withoutBoundary(now.values), 'areaOn': false},
+                  position: now.position,
+                );
+                ref.invalidate(multiGatePlacesProvider);
+              },
+      ),
+    );
+  }
+
+  /// The boundary switch: on with no boundary yet opens the drawing.
+  Future<void> _setPlaceArea(bool on) async {
+    if (on && parseBoundary(_entry.values['boundary']) == null) return _drawPlaceBoundary();
+    await _savePlace({..._entry.values, 'areaOn': on}, success: on ? 'Boundary on' : 'Boundary off');
+  }
+
   // ---- Zones ----
 
   Future<void> _editZone(
@@ -329,7 +434,7 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
       context,
       BoundaryEditorPage(
         title: '$title · ${name ?? ''}',
-        query: '${_entry.values['name'] ?? 'Airport'}',
+        query: '${_entry.values['name'] ?? (_place ? 'Place' : 'Airport')}',
         canEdit: _edit,
         initial: initial,
         near: latLngOf(_entry.values) ?? placeCenter(_entry.values),
@@ -403,19 +508,20 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(airportsProvider);
+    ref.watch(_place ? multiGatePlacesProvider : airportsProvider);
     final entry = _entry;
     final t = Theme.of(context);
-    final saved =
-        ref.watch(airportSettingsProvider).value?[_id] ??
-        AirportSettings(airportId: _id);
+    final settingsById = ref.watch(airportSettingsProvider).value ?? const <String, AirportSettings>{};
+    // A place has settings once its boundary has been on (0258).
+    final ready = !_place || settingsById.containsKey(_id);
+    final saved = settingsById[_id] ?? (_place ? AirportSettings.place(_id) : AirportSettings(airportId: _id));
     final s = _draft ?? saved;
-    final on = _edit ? _change : null;
+    final on = _edit && ready ? _change : null;
     final gates = gatesForPlace(
       ref.watch(multiGateGatesProvider).value ?? const <GeoEntry>[],
       (g) => g.values,
       _id,
-      airportAreasKey,
+      _parentKey,
     );
     final doors = [for (final g in gates) AirportDoor.fromGate(g.id, g.values)];
     final waits = [
@@ -454,11 +560,233 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
       boundary: boundary,
       waitZones: waits,
       doors: doors,
+      areaLabel: _place ? 'Place area' : 'Airport area',
     );
     final code = '${entry.values['code'] ?? ''}';
 
+    final guideEditor = shownGuide == null
+        ? null
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              AirportGuideEditor(
+                door: shownGuide,
+                busyStep: _uploading,
+                onChanged: _edit
+                    ? (steps) => setState(() {
+                        _guideSteps = steps;
+                        _guideDirty = true;
+                      })
+                    : null,
+                onPhoto: _edit ? _photo : null,
+                onPreview: () => showAirportGuidePreview(context, shownGuide),
+                onClose: () => setState(() {
+                  _guideDoor = null;
+                  _guideSteps = null;
+                }),
+              ),
+              if (_edit && _guideDirty)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: BusyButton.filled(
+                    key: const ValueKey('airport-guide-save'),
+                    onPressed: _saveGuide,
+                    icon: const Icon(Icons.save),
+                    child: const Text('Save guide'),
+                  ),
+                ),
+            ],
+          );
+    final serviceOrder = ServiceOrder.arrange(
+      ref.watch(vehicleServiceOrderProvider).value ?? const <String>[],
+      [for (final s in serviceList) s.id],
+    );
+    Widget waitTab({List<Widget> leading = const []}) => AirportQueueTab(
+      settings: s,
+      zones: waits,
+      onChanged: on,
+      map: map,
+      noun: _noun,
+      leading: leading,
+      onAddZone: on != null
+          ? () => _editZone(
+              'airport_waiting_zones',
+              title: 'Waiting zone',
+              defaultName: 'Waiting zone ${waits.length + 1}',
+            )
+          : null,
+      onEditZone: (z) => _editZone(
+        'airport_waiting_zones',
+        zone: z,
+        title: 'Waiting zone',
+        defaultName: z.name,
+      ),
+      onRemoveZone: on != null ? (z) => _removeZone('airport_waiting_zones', z) : null,
+      services: serviceList,
+      serviceOrder: serviceOrder,
+      onOpenServiceOrder: () => context.push(serviceOrderPath),
+    );
+    Widget faresTab() => AirportFaresTab(
+      settings: s,
+      services: services.isEmpty ? const ['Ride'] : services,
+      zones: fareZones,
+      onChanged: on,
+      noun: _noun,
+      onAddZone: on != null
+          ? () => _editZone(
+              'airport_fare_zones',
+              title: 'Fare zone',
+              defaultName: 'Zone ${String.fromCharCode(65 + fareZones.length % 26)}',
+            )
+          : null,
+      onEditZone: (z) => _editZone(
+        'airport_fare_zones',
+        zone: z,
+        title: 'Fare zone',
+        defaultName: z.name,
+      ),
+      onRemoveZone: on != null ? (z) => _removeZone('airport_fare_zones', z) : null,
+      onZoneAmounts: on != null ? _zoneAmounts : null,
+    );
+    final areaOn = placeAreaOn(entry.values);
+    final List<String> tabNames = _place ? placeEditorTabs : airportEditorTabs;
+    final List<Widget> views = _place
+        ? [
+            PlaceFeatureTab(
+              switchKey: const ValueKey('place-switch-boundary'),
+              title: 'Boundary (geofence)',
+              subtitle: "Pickups and drop-offs inside it use this place's tools. Off: gates only, as before.",
+              value: areaOn,
+              dimWhenOff: false,
+              onChanged: _edit ? _setPlaceArea : null,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  map,
+                  const SizedBox(height: 12),
+                  AirportRow(
+                    title: 'Boundary',
+                    subtitle: boundary == null
+                        ? 'Not drawn yet'
+                        : '${boundary.pointCount} corners · ${zoneSourceLabel(boundary.source)}',
+                  ),
+                  const SizedBox(height: 8),
+                  const AirportNote(
+                    'Draw the boundary corner by corner, start from its OpenStreetMap outline or copy a saved '
+                    "region. Where it overlaps an airport, the airport's rules win; where two places overlap, the "
+                    "smaller one's do.",
+                  ),
+                  const SizedBox(height: 12),
+                  if (_edit)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton.tonalIcon(
+                        key: const ValueKey('place-edit-boundary'),
+                        onPressed: _drawPlaceBoundary,
+                        icon: const Icon(Icons.map_outlined),
+                        label: Text(boundary == null ? 'Draw boundary' : 'Edit boundary'),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            PlaceFeatureTab(
+              switchKey: const ValueKey('place-switch-doors'),
+              title: 'Riders must pick a door',
+              subtitle: 'Also for scheduled rides. Off: choosing a door is optional.',
+              value: s.doorsRequired,
+              enabled: ready,
+              dimWhenOff: false,
+              onChanged: on == null ? null : (v) => on(s.copyWith(pickDoorRequired: v, dropDoorRequired: v)),
+              child: AirportDoorsTab(
+                doors: doors,
+                settings: s,
+                onSettings: on,
+                showDoorSwitches: false,
+                note: "These are the place's gates, the same as on its Gates page. A change here shows there too.",
+                onKind: _edit ? _kind : null,
+                onRemove: _edit ? _removeDoor : null,
+                onRename: _edit ? _rename : null,
+                onMove: _edit ? _move : null,
+                onAdd: _edit ? _addDoor : null,
+              ),
+            ),
+            PlaceFeatureTab(
+              switchKey: const ValueKey('place-switch-guide'),
+              title: 'Pickup guide',
+              subtitle: 'Step-by-step photos and text per pickup door',
+              value: s.guideOn,
+              enabled: ready,
+              onChanged: on == null ? null : (v) => on(s.copyWith(guideOn: v)),
+              child: PlaceGuideTab(
+                doors: doors,
+                onGuide: _openGuide,
+                openGuideId: _guideDoor,
+                guideEditor: guideEditor,
+              ),
+            ),
+            PlaceFeatureTab(
+              switchKey: const ValueKey('place-switch-charge'),
+              title: 'Extra charge',
+              subtitle: 'Added to the fare for a pickup or drop-off here',
+              value: s.placeChargeOn,
+              enabled: ready,
+              onChanged: on == null ? null : (v) => on(withPlaceCharge(s, on: v)),
+              child: PlaceChargeTab(settings: s, onChanged: on),
+            ),
+            PlaceFeatureTab(
+              switchKey: const ValueKey('place-switch-fares'),
+              title: 'Own fares',
+              subtitle: 'Base per service, minimums, distance bands, zone fares, round-up. Off: the normal tariff.',
+              value: s.faresOn,
+              enabled: ready,
+              onChanged: on == null ? null : (v) => on(s.copyWith(faresOn: v)),
+              child: faresTab(),
+            ),
+            PlaceFeatureTab(
+              switchKey: const ValueKey('place-switch-queue'),
+              title: 'Driver waiting queue',
+              subtitle: 'Pickups here go to drivers waiting in its zones first, e.g. a taxi rank',
+              value: s.restrictPickups,
+              enabled: ready,
+              onChanged: on == null ? null : (v) => on(s.copyWith(restrictPickups: v)),
+              child: waitTab(
+                leading: [
+                  AirportRulesTab(settings: s, onChanged: on, noun: _noun, showSwitch: false, embedded: true),
+                  const Divider(height: 32),
+                ],
+              ),
+            ),
+          ]
+        : [
+            _AreaTab(
+              entry: entry,
+              map: map,
+              boundary: boundary,
+              onEditDetails: _edit ? widget.onEditDetails : null,
+              onEditBoundary: widget.onEditBoundary,
+            ),
+            AirportDoorsTab(
+              doors: doors,
+              settings: s,
+              onSettings: on,
+              onKind: _edit ? _kind : null,
+              onRemove: _edit ? _removeDoor : null,
+              onRename: _edit ? _rename : null,
+              onMove: _edit ? _move : null,
+              onAdd: _edit ? _addDoor : null,
+              onGuide: _openGuide,
+              openGuideId: _guideDoor,
+              guideEditor: guideEditor,
+            ),
+            AirportRulesTab(settings: s, onChanged: on),
+            waitTab(),
+            faresTab(),
+            AirportChargesTab(settings: s, onChanged: on),
+          ];
+
     return DefaultTabController(
-      length: airportEditorTabs.length,
+      length: tabNames.length,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -496,122 +824,9 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
           TabBar(
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            tabs: [for (final name in airportEditorTabs) Tab(text: name)],
+            tabs: [for (final name in tabNames) Tab(text: name)],
           ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _AreaTab(
-                  entry: entry,
-                  map: map,
-                  boundary: boundary,
-                  onEditDetails: _edit ? widget.onEditDetails : null,
-                  onEditBoundary: widget.onEditBoundary,
-                ),
-                AirportDoorsTab(
-                  doors: doors,
-                  settings: s,
-                  onSettings: on,
-                  onKind: _edit ? _kind : null,
-                  onRemove: _edit ? _removeDoor : null,
-                  onRename: _edit ? _rename : null,
-                  onMove: _edit ? _move : null,
-                  onAdd: _edit ? _addDoor : null,
-                  onGuide: _openGuide,
-                  openGuideId: _guideDoor,
-                  guideEditor: shownGuide == null
-                      ? null
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            AirportGuideEditor(
-                              door: shownGuide,
-                              busyStep: _uploading,
-                              onChanged: _edit
-                                  ? (steps) => setState(() {
-                                      _guideSteps = steps;
-                                      _guideDirty = true;
-                                    })
-                                  : null,
-                              onPhoto: _edit ? _photo : null,
-                              onPreview: () =>
-                                  showAirportGuidePreview(context, shownGuide),
-                              onClose: () => setState(() {
-                                _guideDoor = null;
-                                _guideSteps = null;
-                              }),
-                            ),
-                            if (_edit && _guideDirty)
-                              Align(
-                                alignment: Alignment.centerRight,
-                                child: BusyButton.filled(
-                                  key: const ValueKey('airport-guide-save'),
-                                  onPressed: _saveGuide,
-                                  icon: const Icon(Icons.save),
-                                  child: const Text('Save guide'),
-                                ),
-                              ),
-                          ],
-                        ),
-                ),
-                AirportRulesTab(settings: s, onChanged: on),
-                AirportQueueTab(
-                  settings: s,
-                  zones: waits,
-                  onChanged: on,
-                  map: map,
-                  onAddZone: _edit
-                      ? () => _editZone(
-                          'airport_waiting_zones',
-                          title: 'Waiting zone',
-                          defaultName: 'Waiting zone ${waits.length + 1}',
-                        )
-                      : null,
-                  onEditZone: (z) => _editZone(
-                    'airport_waiting_zones',
-                    zone: z,
-                    title: 'Waiting zone',
-                    defaultName: z.name,
-                  ),
-                  onRemoveZone: _edit
-                      ? (z) => _removeZone('airport_waiting_zones', z)
-                      : null,
-                  services: serviceList,
-                  serviceOrder: ServiceOrder.arrange(
-                    ref.watch(vehicleServiceOrderProvider).value ??
-                        const <String>[],
-                    [for (final s in serviceList) s.id],
-                  ),
-                  onOpenServiceOrder: () => context.push(serviceOrderPath),
-                ),
-                AirportFaresTab(
-                  settings: s,
-                  services: services.isEmpty ? const ['Ride'] : services,
-                  zones: fareZones,
-                  onChanged: on,
-                  onAddZone: _edit
-                      ? () => _editZone(
-                          'airport_fare_zones',
-                          title: 'Fare zone',
-                          defaultName:
-                              'Zone ${String.fromCharCode(65 + fareZones.length % 26)}',
-                        )
-                      : null,
-                  onEditZone: (z) => _editZone(
-                    'airport_fare_zones',
-                    zone: z,
-                    title: 'Fare zone',
-                    defaultName: z.name,
-                  ),
-                  onRemoveZone: _edit
-                      ? (z) => _removeZone('airport_fare_zones', z)
-                      : null,
-                  onZoneAmounts: _edit ? _zoneAmounts : null,
-                ),
-                AirportChargesTab(settings: s, onChanged: on),
-              ],
-            ),
-          ),
+          Expanded(child: TabBarView(children: views)),
           if (_draft != null && _edit)
             Material(
               elevation: 3,
@@ -784,7 +999,9 @@ class AirportMapPreview extends StatelessWidget {
     required this.boundary,
     this.waitZones = const [],
     this.doors = const [],
+    this.areaLabel = 'Airport area',
   });
+  final String areaLabel;
   final BoundaryShape? boundary;
   final List<AirportZone> waitZones;
   final List<AirportDoor> doors;
@@ -906,7 +1123,7 @@ class AirportMapPreview extends StatelessWidget {
           spacing: 12,
           runSpacing: 4,
           children: [
-            legend(scheme.primary, 'Airport area'),
+            legend(scheme.primary, areaLabel),
             legend(scheme.secondary, 'Drop-off door'),
             legend(scheme.tertiary, 'Pickup door / waiting zone'),
           ],

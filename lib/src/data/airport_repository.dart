@@ -258,12 +258,16 @@ final airportFareZonesProvider = FutureProvider<List<AirportZone>>((ref) async {
   }
 });
 
-/// Every airport door (multi_gate gates under `airport-areas`).
+/// Every area's doors: an airport's (multi_gate gates under
+/// `airport-areas`) and a multi-gate place's (its gates, 0258). A door's
+/// airportId is its airport or place, which is its area's id.
 final airportDoorsProvider = FutureProvider<List<AirportDoor>>((ref) async {
   final catalogue = await ref.watch(placeGatesProvider.future);
   return [
     for (final g in catalogue.gates)
-      if ('${g.values['parentKey'] ?? ''}' == 'airport-areas')
+      if (const {'airport-areas', 'multi-gate-places'}.contains(
+        '${g.values['parentKey'] ?? ''}'.isEmpty ? 'multi-gate-places' : '${g.values['parentKey']}',
+      ))
         AirportDoor.fromGate(g.id, g.values),
   ];
 });

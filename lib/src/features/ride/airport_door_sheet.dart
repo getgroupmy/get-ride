@@ -264,10 +264,15 @@ class AirportGuideViewer extends StatefulWidget {
     required this.door,
     required this.onBack,
     required this.onPickHere,
+    this.doneLabel = 'Pick up here',
+    this.backLabel = 'Pickup doors',
   });
   final AirportDoor door;
   final VoidCallback onBack;
   final VoidCallback onPickHere;
+
+  /// The last step's button, and the way back (after booking: "Done", "Close").
+  final String doneLabel, backLabel;
 
   @override
   State<AirportGuideViewer> createState() => _AirportGuideViewerState();
@@ -306,7 +311,7 @@ class _AirportGuideViewerState extends State<AirportGuideViewer> {
             ),
             onPressed: widget.onBack,
             icon: const Icon(Icons.chevron_left),
-            label: const Text('Pickup doors'),
+            label: Text(widget.backLabel),
           ),
         ),
         Text(widget.door.name, style: t.textTheme.titleMedium),
@@ -377,7 +382,7 @@ class _AirportGuideViewerState extends State<AirportGuideViewer> {
                   ? FilledButton(
                       key: const ValueKey('airport-guide-done'),
                       onPressed: widget.onPickHere,
-                      child: const Text('Pick up here'),
+                      child: Text(widget.doneLabel),
                     )
                   : FilledButton(
                       key: const ValueKey('airport-guide-next'),
