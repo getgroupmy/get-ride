@@ -57,6 +57,7 @@ Future<GatePick?> showGatePicker(
   bool guides = false,
   List<Marker> cars = const [],
   Widget? typeIcon,
+  bool linkedPlaces = false,
 }) => showAppSheet<GatePick>(
   id: 'ride.gate_picker',
   context: context,
@@ -76,6 +77,7 @@ Future<GatePick?> showGatePicker(
       guides: guides,
       cars: cars,
       typeIcon: typeIcon,
+      linkedPlaces: linkedPlaces,
       onDone: (p) => Navigator.of(c).pop(p),
       onClose: () => Navigator.of(c).pop(),
     ),
@@ -97,7 +99,13 @@ class GatePickerSheet extends StatefulWidget {
     this.cars = const [],
     this.tiles = true,
     this.typeIcon,
+    this.linkedPlaces = false,
   });
+
+  /// The groups are places linked into one ("Part of" KLIA: Terminal 1,
+  /// Terminal 2): the title follows the group wheel, so it names the place
+  /// whose doors are on the gate wheel.
+  final bool linkedPlaces;
 
   /// The place type's icon (0264), before the place's name.
   final Widget? typeIcon;
@@ -431,7 +439,9 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
                               if (widget.typeIcon case final icon?) ...[icon, const SizedBox(width: 8)],
                               Flexible(
                                 child: Text(
-                                  widget.placeName,
+                                  widget.linkedPlaces && _groups.length > 1
+                                      ? _groups[_group.clamp(0, _groups.length - 1)].name
+                                      : widget.placeName,
                                   key: const ValueKey('gate-picker-title'),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,

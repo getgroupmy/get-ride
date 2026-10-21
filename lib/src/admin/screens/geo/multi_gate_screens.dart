@@ -19,6 +19,7 @@ import 'airport_editor.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
+import 'part_of_fields.dart';
 import 'place_search_field.dart';
 import '../../../widgets/search_select.dart';
 
@@ -53,6 +54,7 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
       builder: (_) => _PlaceFormBody(
         initial: initial ?? (entry == null ? PlaceForm() : PlaceForm.fromValues(entry.values)),
         editing: entry != null,
+        id: entry?.id,
       ),
     );
     if (form == null || !context.mounted) return;
@@ -106,39 +108,7 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
                 '${e.values['lat']},${e.values['lon']}',
           };
           final t = Theme.of(context);
-          return ResponsiveCenter(
-            maxWidth: 900,
-            child: ListView(padding: EdgeInsets.only(top: 12, bottom: addActionListBottomPadding(context)), children: [
-              if (canEdit) ...[
-                PlaceSearchField(
-                  hint: 'Search airports, malls, stations...',
-                  dedupeDigits: 3,
-                  maxResults: 12,
-                  inline: false,
-                  isAdded: (r) => added.contains('${r.lat},${r.lon}'),
-                  onPicked: (r) => _edit(context, ref, initial: PlaceForm.fromResult(r)),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text('Type at least 3 letters to search global places, then tap to add.',
-                      style: t.textTheme.bodySmall),
-                ),
-              ],
-              Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 4),
-                child: Text('ADDED (${entries.length})', style: t.textTheme.labelLarge),
-              ),
-              if (entries.isEmpty)
-                const EmptyState(
-                  icon: Icons.inbox_outlined,
-                  title: 'No places yet',
-                  message: 'Search above or add one manually to get started.',
-                )
-              else
-                ListSearchFilter(count: entries.length, hint: 'Search places', builder: (context, q) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-  for (final e in entries)
-    if (q.isEmpty || searchSelectMatches('${e.values['name'] ?? ''} ${e.values['address'] ?? ''}', q) || false)
-      Card(
+          Widget card(GeoEntry e) => Card(
                     child: ListTile(
                       // The place's type (0264): Other until it has one.
                       leading: PlaceTypeIcon(
@@ -181,6 +151,7 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
                         ),
                         if (canEdit)
                           BusyIconButton(
+                            key: ValueKey('place-edit-${e.id}'),
                             tooltip: 'Edit',
                             icon: const Icon(Icons.edit_outlined),
                             onPressed: () => _edit(context, ref, entry: e),
@@ -193,8 +164,77 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
                           ),
                       ]),
                     ),
-                  ),
-])),
+                  );
+          return ResponsiveCenter(
+            maxWidth: 900,
+            child: ListView(padding: EdgeInsets.only(top: 12, bottom: addActionListBottomPadding(context)), children: [
+              if (canEdit) ...[
+                PlaceSearchField(
+                  hint: 'Search airports, malls, stations...',
+                  dedupeDigits: 3,
+                  maxResults: 12,
+                  inline: false,
+                  isAdded: (r) => added.contains('${r.lat},${r.lon}'),
+                  onPicked: (r) => _edit(context, ref, initial: PlaceForm.fromResult(r)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text('Type at least 3 letters to search global places, then tap to add.',
+                      style: t.textTheme.bodySmall),
+                ),
+              ],
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: Text('ADDED (${entries.length})', style: t.textTheme.labelLarge),
+              ),
+              if (entries.isEmpty)
+                const EmptyState(
+                  icon: Icons.inbox_outlined,
+                  title: 'No places yet',
+                  message: 'Search above or add one manually to get started.',
+                )
+              else
+                ListSearchFilter(count: entries.length, hint: 'Search places', builder: (context, q) {
+                  // Places that are part of one (KLIA Terminal 1 and 2, part of
+                  // KLIA) under its name, then the rest on their own.
+                  final groups = [
+                    for (final g in partOfGroups(entries, (e) => e.values))
+                      (
+                        name: g.name,
+                        count: g.items.length,
+                        items: [
+                          for (final e in g.items)
+                            if (q.isEmpty ||
+                                searchSelectMatches(
+                                    '${e.values['name'] ?? ''} ${e.values['address'] ?? ''} ${e.values['partOf'] ?? ''}', q))
+                              e,
+                        ],
+                      ),
+                  ];
+                  final grouped = groups.any((g) => g.name.isNotEmpty);
+                  return Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+                    for (final g in groups)
+                      if (g.items.isNotEmpty) ...[
+                        if (grouped)
+                          Padding(
+                            key: ValueKey('place-group-${g.name}'),
+                            padding: const EdgeInsets.fromLTRB(4, 12, 4, 4),
+                            child: Row(children: [
+                              Icon(g.name.isEmpty ? Icons.place_outlined : Icons.link,
+                                  size: 18, color: t.colorScheme.primary),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  g.name.isEmpty ? 'On their own' : '${g.name} · ${g.count} ${g.count == 1 ? 'place' : 'places'}',
+                                  style: t.textTheme.titleSmall,
+                                ),
+                              ),
+                            ]),
+                          ),
+                        for (final e in g.items) card(e),
+                      ],
+                  ]);
+                }),
             ]),
           );
         },
@@ -204,9 +244,12 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
 }
 
 class _PlaceFormBody extends ConsumerStatefulWidget {
-  const _PlaceFormBody({required this.initial, required this.editing});
+  const _PlaceFormBody({required this.initial, required this.editing, this.id});
   final PlaceForm initial;
   final bool editing;
+
+  /// The place being edited (null when adding one).
+  final String? id;
 
   @override
   ConsumerState<_PlaceFormBody> createState() => _PlaceFormBodyState();
@@ -225,11 +268,13 @@ class _PlaceFormBodyState extends ConsumerState<_PlaceFormBody> {
   late final _address = TextEditingController(text: f.address);
   late final _lat = TextEditingController(text: f.lat);
   late final _lon = TextEditingController(text: f.lon);
+  late final _partOf = TextEditingController(text: f.partOf);
+  late final _partOrder = TextEditingController(text: f.partOrder);
   String? _error;
 
   @override
   void dispose() {
-    for (final c in [_name, _gates, _address, _lat, _lon]) {
+    for (final c in [_name, _gates, _address, _lat, _lon, _partOf, _partOrder]) {
       c.dispose();
     }
     super.dispose();
@@ -242,7 +287,9 @@ class _PlaceFormBodyState extends ConsumerState<_PlaceFormBody> {
       ..gates = _gates.text
       ..address = _address.text
       ..lat = _lat.text
-      ..lon = _lon.text;
+      ..lon = _lon.text
+      ..partOf = _partOf.text
+      ..partOrder = _partOrder.text;
     final err = f.validate();
     if (err != null) {
       setState(() => _error = err);
@@ -345,6 +392,8 @@ class _PlaceFormBodyState extends ConsumerState<_PlaceFormBody> {
           child: TextField(controller: _lon, keyboardType: coord, decoration: const InputDecoration(labelText: 'Longitude', hintText: 'e.g. 101.7099')),
         ),
       ]),
+      gap,
+      PartOfFields(partOf: _partOf, order: _partOrder, selfId: widget.id),
       gap,
       SwitchListTile(
         contentPadding: EdgeInsets.zero,

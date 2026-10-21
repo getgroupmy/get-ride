@@ -12,6 +12,7 @@ import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/place_gates.dart' show partOfKey, partOrderOf;
 import '../../../core/region_rules.dart';
 import '../../../core/ride_bidding.dart' show RegionBlock, regionBlockOf;
 import '../../../core/service_tree.dart' show regionSubServiceSwitches;
@@ -960,6 +961,8 @@ class AirportForm {
     this.lat = '',
     this.lon = '',
     this.placeName = '',
+    this.partOf = '',
+    this.partOrder = '1',
   });
 
   factory AirportForm.fromValues(Map<String, dynamic> v) {
@@ -974,10 +977,15 @@ class AirportForm {
       lat: s('lat'),
       lon: s('lon'),
       placeName: s('placeName'),
+      partOf: s('partOf').trim(),
+      partOrder: partOrderText(v),
     );
   }
 
   String name, code, country, state, city, address, lat, lon, placeName;
+
+  /// The place the airport is part of, and its order there (as a place's).
+  String partOf, partOrder;
 
   /// Expo `onSave` checks.
   String? validate() {
@@ -998,6 +1006,7 @@ class AirportForm {
         'lat': lat.trim(),
         'lon': lon.trim(),
         'placeName': placeName.trim(),
+        ...partOfValues(partOf, partOrder),
       };
 
   /// Applies a picked search result; region fields are only filled when empty
@@ -1014,15 +1023,110 @@ class AirportForm {
 }
 
 /// Values saved on edit: the form's fields over the stored values, so the
-/// stored geofence survives an edit of the airport details.
-Map<String, dynamic> airportSaveValues(Map<String, dynamic>? existing, AirportForm f) {
-  final kept = <String, dynamic>{};
-  if (existing != null) {
-    for (final k in const ['boundary', 'boundarySource', 'boundaryUpdatedAt']) {
-      if (existing.containsKey(k)) kept[k] = existing[k];
+/// stored geofence (and every key the form doesn't edit) survives an edit
+/// of the airport details.
+Map<String, dynamic> airportSaveValues(Map<String, dynamic>? existing, AirportForm f) => {...?existing, ...f.toValues()};
+
+/// `values.partOf` and `values.partOrder` as saved: the name trimmed ('' for
+/// none) and the order a whole number, 1 when blank.
+Map<String, dynamic> partOfValues(String partOf, String partOrder) => {
+      'partOf': partOf.trim().replaceAll(RegExp(r'\s+'), ' '),
+      'partOrder': _parseIntPrefix(partOrder) ?? 1,
+    };
+
+/// A stored order as the form's text ('1' when unset).
+String partOrderText(Map<String, dynamic> v) {
+  final n = partOrderOf(v);
+  return n == n.roundToDouble() ? '${n.round()}' : '$n';
+}
+
+/// A place or an airport that can be part of another: its id, name and
+/// "Part of" name as stored.
+typedef PartOfMember = ({String id, String name, String partOf, num order});
+
+/// The places and airports as [PartOfMember]s.
+List<PartOfMember> partOfMembers(Iterable<({String id, Map<String, dynamic> values})> rows) => [
+      for (final r in rows)
+        (
+          id: r.id,
+          name: '${r.values['name'] ?? ''}'.trim(),
+          partOf: '${r.values['partOf'] ?? ''}'.trim(),
+          order: partOrderOf(r.values),
+        ),
+    ];
+
+/// The "Part of" names already used, each once (as the first in order
+/// writes it, as in the list's group headers), A to Z.
+List<String> partOfNames(List<PartOfMember> members) {
+  final first = <String, PartOfMember>{};
+  for (final m in members) {
+    final k = partOfKey(m.partOf);
+    if (k.isEmpty) continue;
+    final had = first[k];
+    if (had == null ||
+        m.order < had.order ||
+        (m.order == had.order && m.name.toLowerCase().compareTo(had.name.toLowerCase()) < 0)) {
+      first[k] = m;
     }
   }
-  return {...kept, ...f.toValues()};
+  return [for (final m in first.values) m.partOf.replaceAll(RegExp(r'\s+'), ' ')]
+    ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+}
+
+/// The others (not [selfId]) with the "Part of" name [partOf], in their
+/// order and then by name.
+List<PartOfMember> partOfOthers(String partOf, List<PartOfMember> members, {String? selfId}) {
+  final k = partOfKey(partOf);
+  if (k.isEmpty) return const [];
+  return [
+    for (final m in members)
+      if (m.id != selfId && partOfKey(m.partOf) == k) m,
+  ]..sort((a, b) {
+      final c = a.order.compareTo(b.order);
+      return c != 0 ? c : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+}
+
+/// The line under the "Part of" field: what the rider's door sheet will do.
+String partOfHint(String partOf, List<PartOfMember> members, {String? selfId}) {
+  final name = partOf.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (name.isEmpty) return 'Opens on its own, one wheel.';
+  final others = partOfOthers(name, members, selfId: selfId);
+  if (others.isEmpty) return 'New: "$name". Set the same Part of on the other places to join them.';
+  final names = [for (final m in others) m.name.isEmpty ? 'Place' : m.name];
+  final list = names.length == 1
+      ? names.single
+      : '${names.sublist(0, names.length - 1).join(', ')} and ${names.last}';
+  return 'Opens with $list.';
+}
+
+/// Places grouped by their "Part of" name for the admin list: each name
+/// (A to Z) with its places in their order, then the places on their own
+/// (name '').
+List<({String name, List<T> items})> partOfGroups<T>(List<T> items, Map<String, dynamic> Function(T) values) {
+  final groups = <String, List<T>>{};
+  final alone = <T>[];
+  for (final it in items) {
+    final v = values(it);
+    final k = partOfKey(v['partOf']);
+    if (k.isEmpty) {
+      alone.add(it);
+    } else {
+      groups.putIfAbsent(k, () => <T>[]).add(it);
+    }
+  }
+  String name(T it) => '${values(it)['name'] ?? ''}'.trim().toLowerCase();
+  final named = <({String name, List<T> items})>[];
+  for (final g in groups.values) {
+    g.sort((a, b) {
+      final c = partOrderOf(values(a)).compareTo(partOrderOf(values(b)));
+      return c != 0 ? c : name(a).compareTo(name(b));
+    });
+    // Named as the first of its places writes it.
+    named.add((name: '${values(g.first)['partOf']}'.trim().replaceAll(RegExp(r'\s+'), ' '), items: g));
+  }
+  named.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+  return [...named, if (alone.isNotEmpty) (name: '', items: alone)];
 }
 
 /// Filter-chip options for the airport list (distinct, sorted).
@@ -1165,6 +1269,8 @@ class PlaceForm {
     this.osmType,
     this.primaryType,
     this.iconBackgroundColor,
+    this.partOf = '',
+    this.partOrder = '1',
   });
 
   factory PlaceForm.fromValues(Map<String, dynamic> v) => PlaceForm(
@@ -1181,6 +1287,8 @@ class PlaceForm {
         primaryType: '${v['primaryType'] ?? ''}'.trim().isEmpty ? null : '${v['primaryType']}'.trim(),
         iconBackgroundColor:
             '${v['iconBackgroundColor'] ?? ''}'.trim().isEmpty ? null : '${v['iconBackgroundColor']}'.trim(),
+        partOf: '${v['partOf'] ?? ''}'.trim(),
+        partOrder: partOrderText(v),
       );
 
   /// Pre-filled from a search hit (2 gates by default, like Expo), with
@@ -1215,6 +1323,11 @@ class PlaceForm {
   String? primaryType;
   String? iconBackgroundColor;
 
+  /// The place this one is part of ("KLIA" for KLIA Terminal 1; '' for
+  /// none) and its order there: places with the same one open together in
+  /// the rider's door sheet.
+  String partOf, partOrder;
+
   String? validate() {
     if (name.trim().isEmpty) return 'Please enter a place name.';
     final n = _parseIntPrefix(gates);
@@ -1234,6 +1347,7 @@ class PlaceForm {
         if (osmType != null) 'osmType': osmType,
         if (primaryType != null) 'primaryType': primaryType,
         if (iconBackgroundColor != null) 'iconBackgroundColor': iconBackgroundColor,
+        ...partOfValues(partOf, partOrder),
       };
 }
 

@@ -12,6 +12,7 @@ import 'airport_editor.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
+import 'part_of_fields.dart';
 import 'place_search_field.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
@@ -40,7 +41,10 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
     final form = await showAdminSheet<AirportForm>(
       context,
       title: entry == null ? 'Add Airport' : 'Edit Airport',
-      builder: (_) => _AirportFormBody(initial: entry == null ? AirportForm() : AirportForm.fromValues(entry.values)),
+      builder: (_) => _AirportFormBody(
+        initial: entry == null ? AirportForm() : AirportForm.fromValues(entry.values),
+        id: entry?.id,
+      ),
     );
     if (form == null || !mounted) return;
     final ok = await runAdminAction(
@@ -299,7 +303,10 @@ class _AirportTile extends StatelessWidget {
           child: Icon(Icons.flight, color: scheme.primary, size: 20),
         ),
         title: Text('${v['name'] ?? 'Airport'}', overflow: TextOverflow.ellipsis),
-        subtitle: Text(hasBoundary ? summary : '$summary · no boundary yet'),
+        subtitle: Text([
+          hasBoundary ? summary : '$summary · no boundary yet',
+          if ('${v['partOf'] ?? ''}'.trim() case final part when part.isNotEmpty) 'Part of: $part',
+        ].join('\n')),
         trailing: canEdit
             ? Wrap(children: [
                 BusyIconButton(tooltip: 'Edit details', icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
@@ -312,8 +319,11 @@ class _AirportTile extends StatelessWidget {
 }
 
 class _AirportFormBody extends StatefulWidget {
-  const _AirportFormBody({required this.initial});
+  const _AirportFormBody({required this.initial, this.id});
   final AirportForm initial;
+
+  /// The airport being edited (null when adding one).
+  final String? id;
 
   @override
   State<_AirportFormBody> createState() => _AirportFormBodyState();
@@ -326,11 +336,13 @@ class _AirportFormBodyState extends State<_AirportFormBody> {
   late final _country = TextEditingController(text: f.country);
   late final _state = TextEditingController(text: f.state);
   late final _city = TextEditingController(text: f.city);
+  late final _partOf = TextEditingController(text: f.partOf);
+  late final _partOrder = TextEditingController(text: f.partOrder);
   String? _error;
 
   @override
   void dispose() {
-    for (final c in [_name, _code, _country, _state, _city]) {
+    for (final c in [_name, _code, _country, _state, _city, _partOf, _partOrder]) {
       c.dispose();
     }
     super.dispose();
@@ -342,7 +354,9 @@ class _AirportFormBodyState extends State<_AirportFormBody> {
       ..code = _code.text
       ..country = _country.text
       ..state = _state.text
-      ..city = _city.text;
+      ..city = _city.text
+      ..partOf = _partOf.text
+      ..partOrder = _partOrder.text;
   }
 
   void _picked(PlaceResult r) {
@@ -406,6 +420,8 @@ class _AirportFormBodyState extends State<_AirportFormBody> {
       TextField(controller: _state, decoration: const InputDecoration(labelText: 'State / Region', hintText: 'e.g. Selangor')),
       gap,
       TextField(controller: _city, decoration: const InputDecoration(labelText: 'City', hintText: 'e.g. Sepang')),
+      gap,
+      PartOfFields(partOf: _partOf, order: _partOrder, selfId: widget.id),
       if (_error != null) ...[gap, Text(_error!, style: TextStyle(color: t.colorScheme.error))],
       const SizedBox(height: 20),
       FilledButton.icon(onPressed: _submit, icon: const Icon(Icons.save), label: const Text('Save')),

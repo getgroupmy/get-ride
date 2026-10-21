@@ -1352,30 +1352,75 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
-  /// The gate picker over the pickup's area; false when it was closed.
+  /// The gate picker over the pickup's area; false when it was closed. An
+  /// area that is part of another place (the admin's "Part of") opens with
+  /// the linked places that have an area too: a wheel of the places beside
+  /// the doors, and a door of another of them moves the pickup there.
   Future<bool> _openGatePicker() async {
     final g = _gateArea, a = _pickup;
     if (g == null || a == null) return true;
+    final linked = _linkedGateAreas(g.area);
     final serviceIndex = _services.indexWhere((s) => s.name == _service.name);
     final pick = await showGatePicker(
       context,
       placeName: g.area.name,
-      gates: g.gates,
-      rings: g.area.rings,
+      gates: linked?.doors ?? g.gates,
+      rings: linked == null ? g.area.rings : [for (final l in linked.areas.values) ...l.area.rings],
       selectedId: _pickupDoor?.id,
       required: g.required,
       guides: g.guides,
       cars: [for (final c in _cars) demoCarMarker(c, serviceIndex)],
       typeIcon: PlaceTypeIcon(type: _areaType(g.area), size: 32),
+      linkedPlaces: linked != null,
     );
     if (pick == null || !mounted) return false;
+    final to = (pick.door == null ? null : linked?.areas[pick.door!.airportId]) ?? g;
+    final door = pick.door == null ? null : to.gates.where((d) => d.id == pick.door!.id).firstOrNull ?? pick.door;
     setState(() {
-      _pickupDoor = pick.door;
-      if (pick.door case final d? when doorPoint(d) != null) _pickup = _atGate(g.area, d, a);
+      _gateArea = to;
+      _pickupDoor = door;
+      if (door case final d? when doorPoint(d) != null) _pickup = _atGate(to.area, d, a);
     });
     _flyToPickup();
     _updateRoute();
     return true;
+  }
+
+  /// The places linked to [area] by the admin's "Part of" that have an area
+  /// with pickup gates, in the admin's order: the doors for the gate
+  /// picker (grouped by place) and each area by id. Null when [area] is
+  /// part of nothing, or nothing else linked to it has an area.
+  ({
+    List<AirportDoor> doors,
+    Map<String, ({AirportArea area, List<AirportDoor> gates, bool required, bool guides})> areas,
+  })? _linkedGateAreas(AirportArea area) {
+    final catalogue = ref.read(placeGatesProvider).value;
+    final all = ref.read(airportAreasProvider).value ?? const <AirportArea>[];
+    final doors = ref.read(airportDoorsProvider).value ?? const <AirportDoor>[];
+    final settings = ref.read(airportSettingsProvider).value ?? const <String, AirportSettings>{};
+    if (catalogue == null) return null;
+    final linked = [
+      for (final l in linkedGatedPlaces(
+        places: catalogue.places,
+        gates: catalogue.gates,
+        placeId: area.id,
+        usage: GateUsage.pickup,
+      ))
+        if (all.where((x) => x.id == l.id).firstOrNull case final at? when l.gates.isNotEmpty) (place: l, area: at),
+    ];
+    if (linked.length < 2 || !linked.any((l) => l.place.id == area.id)) return null;
+    return (
+      doors: linkedPlaceDoors([for (final l in linked) l.place], {for (final g in catalogue.gates) g.id: g.values}),
+      areas: {
+        for (final l in linked)
+          l.area.id: (
+            area: l.area,
+            gates: doorsFor(doors, l.area.id, AirportSide.pick),
+            required: settings[l.area.id]?.pickDoorRequired ?? !l.area.isPlace,
+            guides: settings[l.area.id]?.guideOn ?? !l.area.isPlace,
+          ),
+      },
+    );
   }
 
   /// Whether the trip may go on to the confirm step: a gate is chosen where

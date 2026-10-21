@@ -1,6 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
 import '../data/geo_service.dart';
+import 'airport_queue.dart';
 
 /// Multi-gate places (Expo `components/PlaceGates.tsx`): venues the admin has
 /// mapped with several gates — a mall, a stadium, an airport — so a rider
@@ -35,6 +36,8 @@ class GatedPlace {
     this.typeKey,
     this.address = '',
     this.iconColor,
+    this.point,
+    this.partOf = '',
   });
   final String id;
   final String name;
@@ -50,6 +53,13 @@ class GatedPlace {
   /// The chip colour Google gave the place (`values.iconBackgroundColor`,
   /// `#RRGGBB`), when it came from Places search; null for the type's own.
   final String? iconColor;
+
+  /// The place's own point (`values.lat` / `lon`); null when it has none.
+  final LatLng? point;
+
+  /// The admin's "Part of" name (`values.partOf`, '' for none): places with
+  /// the same one open together in the door sheet ([linkedGatedPlaces]).
+  final String partOf;
 
   /// Whether the rider must pick a gate (the place itself can't be tapped).
   /// Defaults to true, as in Expo.
@@ -124,7 +134,12 @@ GatedPlace? matchGatedPlace({
     }
   }
   if (place == null || !_flag(place.values['active'])) return null;
+  return gatedPlaceOf(place, gates, usage: usage);
+}
 
+/// [place] with its active gates for [usage] (every gate when null), in
+/// display-priority order.
+GatedPlace gatedPlaceOf(GateRow place, List<GateRow> gates, {GateUsage? usage}) {
   final mine = [
     for (final g in gates)
       if ('${g.values['placeId'] ?? ''}' == place.id && _flag(g.values['active']))
@@ -141,6 +156,8 @@ GatedPlace? matchGatedPlace({
     iconColor: RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch('${place.values['iconBackgroundColor'] ?? ''}')
         ? '${place.values['iconBackgroundColor']}'
         : null,
+    point: _point(place.values),
+    partOf: '${place.values['partOf'] ?? ''}'.trim(),
     gates: [
       for (final g in mine)
         GateOption(
@@ -150,6 +167,60 @@ GatedPlace? matchGatedPlace({
         ),
     ],
   );
+}
+
+/// A "Part of" name as compared: trimmed, one space between words, any
+/// case ('' for none).
+String partOfKey(Object? partOf) => '${partOf ?? ''}'.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+
+/// A place's order among the places it is part of (`values.partOrder`, 1
+/// when unset).
+num partOrderOf(Map<String, dynamic> values) => _num(values['partOrder']) ?? 1;
+
+/// The place [placeId] and the other active places that share its "Part
+/// of" name (KLIA Terminal 1 and 2, both part of KLIA), in their order and
+/// then by name, each with its gates for [usage]. Just the place when it is
+/// part of nothing; empty when it isn't listed.
+List<GatedPlace> linkedGatedPlaces({
+  required List<GateRow> places,
+  required List<GateRow> gates,
+  required String placeId,
+  GateUsage? usage,
+}) {
+  final place = places.where((p) => p.id == placeId).firstOrNull;
+  if (place == null) return const [];
+  final key = partOfKey(place.values['partOf']);
+  if (key.isEmpty) return [gatedPlaceOf(place, gates, usage: usage)];
+  final linked = [
+    for (final p in places)
+      if (partOfKey(p.values['partOf']) == key && (p.id == placeId || _flag(p.values['active']))) p,
+  ];
+  String name(GateRow p) => '${p.values['name'] ?? ''}'.trim().toLowerCase();
+  linked.sort((a, b) {
+    final c = partOrderOf(a.values).compareTo(partOrderOf(b.values));
+    return c != 0 ? c : name(a).compareTo(name(b));
+  });
+  return [for (final p in linked) gatedPlaceOf(p, gates, usage: usage)];
+}
+
+/// The doors of [linked] for the door sheet, from the gate rows' values
+/// ([rows], by id): each door in a group named after its place, so the
+/// sheet's left wheel lists the places in their order. A name two places
+/// share gets a number, so their doors stay apart.
+List<AirportDoor> linkedPlaceDoors(List<GatedPlace> linked, Map<String, Map<String, dynamic>> rows) {
+  final used = <String>{};
+  final doors = <AirportDoor>[];
+  for (final place in linked) {
+    final base = place.name.isEmpty ? 'Place' : place.name;
+    var group = base;
+    for (var n = 2; !used.add(group.toLowerCase()); n++) {
+      group = '$base ($n)';
+    }
+    for (final g in place.gates) {
+      if (rows[g.id] case final v?) doors.add(AirportDoor.fromGate(g.id, v).withGroup(group));
+    }
+  }
+  return doors;
 }
 
 /// The place a rider picked at [gate]: "Place - Gate", at the gate's own
