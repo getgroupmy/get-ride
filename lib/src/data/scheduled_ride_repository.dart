@@ -69,7 +69,8 @@ class ScheduledRideRepository {
     return ScheduledRide.fromRow(Map<String, dynamic>.from(row as Map));
   });
 
-  /// Late-cancel fees the rider still owes; they go on the next ride.
+  /// Fees the rider still owes (late scheduled cancels, freight cancels and
+  /// city fees a short wallet left due, my_owed_fees); they go on the next ride.
   Future<double> owedFees() async {
     final v = await _db.rpc('my_owed_fees');
     return v is num ? v.toDouble() : 0;
@@ -178,7 +179,7 @@ final upcomingScheduledRidesProvider = Provider<List<ScheduledRide>>(
   ],
 );
 
-/// Late-cancel fees owed from earlier bookings (0 when none, or unreadable).
+/// Fees owed from earlier rides (0 when none, or unreadable).
 final owedFeesProvider = FutureProvider<double>((ref) async {
   ref.watchLive('scheduled_rides');
   if (ref.watch(currentUserIdProvider) == null) return 0;

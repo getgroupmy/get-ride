@@ -128,6 +128,32 @@ String cancelTermsLine(CancelRules rules, RideRequest r, DateTime now, {String F
       : 'Cancelling now costs $m. Safety reasons are always free.';
 }
 
+/// What cancelling [r] at [at] costs under [terms]. A freight trip (0271)
+/// pays no city fee, only its own once the driver arrived (0267's
+/// freight-cancel-arrived, billed on the sender's next request); a city ride
+/// [cityCancelFee].
+double cancelFeeFor(CancelTerms terms, RideRequest r, DateTime at) {
+  if (!terms.freight) {
+    return cityCancelFee(terms.rules, acceptedAt: r.acceptedAt, arrivedAt: r.arrivedAt, at: at);
+  }
+  final arrived = r.arrivedAt;
+  return arrived != null && !at.isBefore(arrived) ? terms.freightArrivedFee : 0;
+}
+
+/// [cancelTermsLine] under [terms]: a freight trip has no free-cancel
+/// countdown, only its fee once the driver is there.
+String cancelTermsLineFor(CancelTerms terms, RideRequest r, DateTime now, {String Function(double)? money}) {
+  if (!terms.freight) return cancelTermsLine(terms.rules, r, now, money: money);
+  final fee = cancelFeeFor(terms, r, now);
+  if (fee <= 0) return 'Free to cancel';
+  return 'Your driver is here: cancelling now costs ${money?.call(fee) ?? formatMoney(fee, r.currency)}';
+}
+
+/// The confirm sheet's line for the fees still owed from earlier rides
+/// (my_owed_fees), or null for none.
+String? owedFeesNote(double owed, String currency) =>
+    owed > 0 ? '+ ${formatMoney(owed, currency)} owed from an earlier ride' : null;
+
 /// The Cancel button: "Cancel ride" or "Cancel ride (RM3.00)".
 String cancelButtonLabel(double fee, {String Function(double)? money}) =>
     fee <= 0 ? 'Cancel ride' : 'Cancel ride (${money?.call(fee) ?? formatMoney(fee)})';
@@ -265,18 +291,32 @@ class CancelPlace {
   };
 }
 
-/// What the app reads for one ride (ride_cancel_terms, 0269).
+/// What the app reads for one ride (ride_cancel_terms, 0269). A freight
+/// trip (0271) has no city fee: its rules' fees are 0, and
+/// [freightArrivedFee] is what cancelling after the driver arrived costs.
 class CancelTerms {
-  const CancelTerms({this.rules = CancelRules.standard, this.currency, this.scheduled = false});
+  const CancelTerms({
+    this.rules = CancelRules.standard,
+    this.currency,
+    this.scheduled = false,
+    this.freight = false,
+    this.freightArrivedFee = 0,
+  });
   final CancelRules rules;
   final String? currency;
   final bool scheduled;
+  final bool freight;
+  final double freightArrivedFee;
 
-  factory CancelTerms.fromJson(Object? json) => json is Map
-      ? CancelTerms(
-          rules: CancelRules.fromJson(json),
-          currency: json['currency'] as String?,
-          scheduled: json['scheduled'] == true,
-        )
-      : const CancelTerms();
+  factory CancelTerms.fromJson(Object? json) {
+    if (json is! Map) return const CancelTerms();
+    final f = json['freightArrivedFee'];
+    return CancelTerms(
+      rules: CancelRules.fromJson(json),
+      currency: json['currency'] as String?,
+      scheduled: json['scheduled'] == true,
+      freight: json['freight'] == true,
+      freightArrivedFee: f is num && f > 0 ? f.toDouble() : 0,
+    );
+  }
 }

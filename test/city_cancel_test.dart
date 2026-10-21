@@ -181,4 +181,70 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('You can end it as a no-show'), findsOneWidget);
   });
+
+  group('a freight trip (0271): only the freight fee', () {
+    // As ride_cancel_terms gives it: the city fees 0, the freight one 15.
+    final terms = CancelTerms.fromJson({
+      'freeMinutes': 0, 'lateFee': 0, 'arrivedFee': 0, 'noShowMinutes': 5, 'noShowFee': 0,
+      'currency': 'MYR', 'scheduled': false, 'freight': true, 'freightArrivedFee': 15,
+    });
+    final arrived = _accepted.add(const Duration(minutes: 4));
+    final here = _ride(status: 'arrived', arrived: arrived);
+
+    test('reads the terms', () {
+      expect(terms.freight, isTrue);
+      expect(terms.freightArrivedFee, 15);
+      expect(terms.rules.arrivedFee, 0);
+      expect(CancelTerms.fromJson({'arrivedFee': 5}).freight, isFalse);
+      expect(CancelTerms.fromJson({'freight': true, 'freightArrivedFee': -1}).freightArrivedFee, 0);
+    });
+    test('free until the driver arrives, then the freight fee and never the city one', () {
+      expect(cancelFeeFor(terms, _ride(), _accepted.add(const Duration(minutes: 3))), 0);
+      expect(cancelFeeFor(terms, here, arrived.add(const Duration(minutes: 1))), 15);
+      expect(cancelTermsLineFor(terms, _ride(), _accepted.add(const Duration(seconds: 18))), 'Free to cancel');
+      expect(cancelTermsLineFor(terms, here, arrived.add(const Duration(minutes: 1))),
+          'Your driver is here: cancelling now costs RM15.00');
+      expect(cancelFeeNote(terms, here, arrived.add(const Duration(minutes: 1))),
+          'Your driver is at the pickup: cancelling now costs RM15.00, added to your next request.');
+      expect(cancelFeeNote(terms, _ride(), _accepted.add(const Duration(minutes: 3))), isNull);
+    });
+    test('without a freight fee at the pickup it is free', () {
+      final none = CancelTerms.fromJson({'arrivedFee': 0, 'lateFee': 0, 'freight': true});
+      expect(cancelFeeFor(none, here, arrived.add(const Duration(minutes: 1))), 0);
+      expect(cancelTermsLineFor(none, here, arrived.add(const Duration(minutes: 1))), 'Free to cancel');
+    });
+    test('a city ride is unchanged', () {
+      const city = CancelTerms(currency: 'MYR');
+      expect(cancelFeeFor(city, here, arrived.add(const Duration(minutes: 1))), 5);
+      expect(cancelTermsLineFor(city, _ride(), _accepted.add(const Duration(seconds: 18))), 'Free to cancel for 1:42');
+    });
+
+    testWidgets('the rider\'s Cancel ride shows the freight fee', (tester) async {
+      var now = _accepted.add(const Duration(minutes: 3));
+      var ride = _ride();
+      Widget app() => ProviderScope(
+        overrides: [
+          cancelTermsProvider('r1').overrideWith((ref) async => terms),
+          cityCancelClockProvider.overrideWithValue(() => now),
+        ],
+        child: MaterialApp(home: Scaffold(body: CityCancelButton(ride: ride, onPressed: () {}))),
+      );
+      await tester.pumpWidget(app());
+      await tester.pump();
+      expect(find.text('Free to cancel'), findsOneWidget);
+      expect(find.text('Cancel ride'), findsOneWidget);
+      now = arrived.add(const Duration(minutes: 1));
+      ride = here;
+      await tester.pumpWidget(app());
+      await tester.pump();
+      expect(find.text('Your driver is here: cancelling now costs RM15.00'), findsOneWidget);
+      expect(find.text('Cancel ride (RM15.00)'), findsOneWidget);
+      expect(find.textContaining('RM5.00'), findsNothing);
+    });
+  });
+
+  test('the owed line counts every fee from earlier rides', () {
+    expect(owedFeesNote(20, 'MYR'), '+ RM20.00 owed from an earlier ride');
+    expect(owedFeesNote(0, 'MYR'), isNull);
+  });
 }
