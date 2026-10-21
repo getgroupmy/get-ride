@@ -369,6 +369,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:driver-services.change-car', SurfaceKind.sheet, 'Driver services · Change car', 'lib/src/features/partner/driver_services_screen.dart'),
   SurfaceEntry('sheet:driver.counter-offer', SurfaceKind.sheet, 'Driver · Counter offer', 'lib/src/features/partner/fare_offer.dart'),
   SurfaceEntry('sheet:driver.menu', SurfaceKind.sheet, 'Driver · Menu', 'lib/src/features/partner/partner_menu.dart'),
+  SurfaceEntry('sheet:driver.rate-rider', SurfaceKind.sheet, 'Driver · Rate rider', 'lib/src/features/partner/rate_rider.dart'),
   SurfaceEntry('sheet:edit-profile.choose-country', SurfaceKind.sheet, 'Edit profile · Choose country', 'lib/src/features/profile/edit_profile_screen.dart'),
   SurfaceEntry('sheet:fare-info', SurfaceKind.sheet, 'Fare info', 'lib/src/features/ride/confirm_parts.dart'),
   SurfaceEntry('sheet:fare-offer-controls.edit-fare-offer', SurfaceKind.sheet, 'Fare offer controls · Edit fare offer', 'lib/src/features/ride/fare_offer_controls.dart'),

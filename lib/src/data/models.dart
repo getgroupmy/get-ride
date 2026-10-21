@@ -438,6 +438,9 @@ class Profile {
   /// The account's rating as a rider, where the server keeps one; null until
   /// then (the menu says "New" rather than inventing stars).
   double? get riderRating => _d(raw['rider_rating']);
+
+  /// How many of the rider's latest ratings [riderRating] averages (0269).
+  int get riderRatingsCount => _i(raw['rider_ratings_count']) ?? 0;
   String? get status => raw['status'] as String?;
   String? get nationality => raw['nationality'] as String?;
   String? get idNumber => raw['ic'] as String?;

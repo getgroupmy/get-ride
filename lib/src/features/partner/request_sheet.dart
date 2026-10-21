@@ -14,6 +14,9 @@ import '../../core/ride_bidding.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../core/rider_rating.dart';
+import '../../data/city_ride_repository.dart';
+import '../../widgets/rider_badge.dart';
 import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show mutedTextColor;
@@ -381,11 +384,16 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
             ),
           ],
         ),
-        if (r.riderRating != null)
+        if (showRiderStars(r, ref.watch(cityRideConfigProvider).value?.riderRating ?? RiderRatingSettings.standard))
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             const Icon(Icons.star, size: 12, color: Color(0xFFF5A623)),
-            Flexible(child: Text(r.riderRating!.toStringAsFixed(2), maxLines: 1, style: t.textTheme.labelSmall)),
+            Flexible(child: Text(r.riderRating!.toStringAsFixed(1), maxLines: 1, style: t.textTheme.labelSmall)),
           ]),
+        // "New" or "Low", and the rider's trips (0269).
+        RiderBadgeChip(ride: r, compact: true),
+        if (r.riderTrips case final n?)
+          Text('$n\u00A0${n == 1 ? 'trip' : 'trips'}',
+              key: const ValueKey('request-rider-trips'), maxLines: 1, style: t.textTheme.labelSmall?.copyWith(color: muted)),
         Text(_age(), key: const ValueKey('request-age'), style: t.textTheme.labelSmall?.copyWith(color: muted)),
       ]),
     );

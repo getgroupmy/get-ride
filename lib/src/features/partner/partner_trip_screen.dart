@@ -33,6 +33,7 @@ import '../../data/reliability_repository.dart';
 import '../../data/ride_chat_repository.dart';
 import '../../data/trip_handover_repository.dart';
 import '../../providers.dart';
+import 'rate_rider.dart';
 import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
@@ -975,6 +976,9 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             child: const Text('Cancel ride'),
           )),
         if (r.status == RideStatus.completed) _CollectCard(ride: r),
+        // The driver rates the rider (0269): optional, Skip leaves it for
+        // trip history (24 hours).
+        if (r.status == RideStatus.completed) RateRiderCard(ride: r, now: _now),
         if (r.status == RideStatus.completed)
           OutlinedButton.icon(
             key: const ValueKey('trip-receipt'),

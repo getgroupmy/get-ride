@@ -33,6 +33,8 @@ import '../../core/partner_type_rules.dart' show PartnerTypeCheck, hailNotOffere
 import '../../providers.dart';
 import '../../core/ride_offers.dart';
 import '../../data/city_ride_repository.dart';
+import '../../core/rider_rating.dart';
+import '../../widgets/rider_badge.dart';
 import '../../widgets/offer_motion.dart';
 import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
@@ -1748,6 +1750,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 Row(
                   children: [
                     Flexible(child: Text(r.firstNameForDrivers, style: t.textTheme.titleSmall)),
+                    // "New rider" or "Low" (0269).
+                    Padding(padding: const EdgeInsets.only(left: 6), child: RiderBadgeChip(ride: r)),
                     if (r.isForOthers)
                       Padding(
                         padding: const EdgeInsets.only(left: 4),
@@ -1764,7 +1768,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     final away = _distanceTo(r);
                     return Text(
                       [
-                        if (r.riderRating != null) '★ ${r.riderRating!.toStringAsFixed(1)}',
+                        if (showRiderStars(r, ref.read(cityRideConfigProvider).value?.riderRating ??
+                            RiderRatingSettings.standard))
+                          '★ ${r.riderRating!.toStringAsFixed(1)}',
+                        // The rider's trips (0269).
+                        if (r.riderTrips case final n?) '$n ${n == 1 ? 'trip' : 'trips'}',
                         if (away != null) '${formatDistance(away)} away',
                         if (away != null) '~${pickupMinutes(away)} min',
                       ].join(' · '),

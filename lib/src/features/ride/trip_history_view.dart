@@ -1,6 +1,8 @@
 // The request history list, for one side of the person (core/trip_history.dart):
 // Trips on the user side, Drive → Trip history on the partner side. Chips
 // filter by status; older requests load a page at a time.
+import '../../core/rider_rating.dart' show canRateRider;
+import '../partner/rate_rider.dart' show showRateRiderSheet;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -73,6 +75,30 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
     unawaited(_reload());
   }
 
+  /// A driver's completed trip in its first 24 hours: "Rate rider" under it
+  /// (after a Skip on the trip-finished screen, 0269).
+  Widget _withRateRider(RideRequest r, bool partner, Widget tile) {
+    if (!partner || r.riderId == null ||
+        !canRateRider(completed: r.status == RideStatus.completed, completedAt: r.completedAt, now: DateTime.now())) {
+      return tile;
+    }
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      tile,
+      Align(
+        alignment: Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+          child: TextButton.icon(
+            key: ValueKey('trip-rate-rider-${r.id}'),
+            icon: const Icon(Icons.star_outline_rounded),
+            label: const Text('Rate rider'),
+            onPressed: () => showRateRiderSheet(context, r),
+          ),
+        ),
+      ),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context) {
     final partner = widget.role == TripHistoryRole.partner;
@@ -142,7 +168,7 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
             maxWidth: 760,
             child: Card(
               key: ValueKey('trip-${r.id}'),
-              child: ListTile(
+              child: _withRateRider(r, partner, ListTile(
                 leading: Icon(partner ? Icons.drive_eta : Icons.local_taxi),
                 // Pickup and drop-off on lines of their own, so a phone shows
                 // where the trip went, not just where it began.
@@ -186,7 +212,7 @@ class _TripHistoryViewState extends ConsumerState<TripHistoryView> {
                             : null,
                       ),
                 onTap: () => context.push(tripHistoryRoute(widget.role, r)),
-              ),
+              )),
             ),
           );
         },
