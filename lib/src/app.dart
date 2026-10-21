@@ -39,7 +39,8 @@ import 'data/app_display_repository.dart';
 import 'data/branding_cache.dart';
 import 'data/live_tables.dart';
 import 'data/messaging_repository.dart';
-import 'data/geo_service.dart' show AreaInfo, knownPosition;
+import 'data/background_location.dart';
+import 'data/geo_service.dart' show AreaInfo, checkinPosition;
 import 'data/notifications_repository.dart';
 import 'data/permission_probe.dart';
 import 'data/push_service.dart';
@@ -826,33 +827,91 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     }
   }
 
-  /// Where this phone is, for Admin -> Push Notification's area broadcasts
-  /// (migration 0168): reported on start, on resume and every half hour
-  /// while open, only when it has moved or the last report is old
-  /// (shouldReportPushLocation), and never by asking for permission.
+  /// Where this phone is, for Admin -> God View and Push Notification's
+  /// area broadcasts, never by asking for permission:
+  ///   * while the app is on screen and someone is signed in, a light
+  ///     check-in every 2 minutes, moved or not (push_checkin, migration
+  ///     0272; pushCheckinDue), also on start and on resume;
+  ///   * the area (the regions and the reverse geocode, push_set_location,
+  ///     0168) only after a move of ~200 m or every half hour
+  ///     (shouldReportPushLocation);
+  ///   * location already set to "Allow all the time" / "Always": the
+  ///     native reporter keeps going while the app is in the background or
+  ///     closed (BackgroundLocation), and stops at sign-out or once the
+  ///     permission is no longer always.
   void _startPushLocation() {
     if (PushService.instance == null) return;
     Future<void>.delayed(const Duration(seconds: 8), _reportPushLocation);
-    _pushLocationTimer = Timer.periodic(pushLocationEvery, (_) => unawaited(_reportPushLocation()));
+    _pushLocationTimer = Timer.periodic(pushCheckinEvery, (_) => unawaited(_reportPushLocation()));
+    ref.listenManual<String?>(currentUserIdProvider, (previous, id) {
+      if (id == previous) return;
+      _checkedInAt = null;
+      _backgroundArmed = null;
+      if (previous != null) unawaited(_background.disarm(forgetKey: true));
+    });
   }
+
+  final _background = BackgroundLocation();
+  DateTime? _checkedInAt;
+  bool? _backgroundArmed;
+  bool _reporting = false;
 
   Future<void> _reportPushLocation() async {
     final push = PushService.instance;
-    if (push == null || !mounted || ref.read(currentUserIdProvider) == null) return;
-    final point = await knownPosition();
-    if (point == null || !mounted || !push.wantsLocation(point, DateTime.now())) return;
-    List<BiddingRegion> regions;
-    try {
-      regions = await ref.read(rideRepositoryProvider).biddingRegions(at: point);
-    } catch (_) {
-      regions = const [];
+    if (push == null || !mounted || _reporting) return;
+    final life = WidgetsBinding.instance.lifecycleState;
+    if (!pushCheckinDue(
+      signedIn: ref.read(currentUserIdProvider) != null,
+      foreground: life == null || life == AppLifecycleState.resumed,
+      now: DateTime.now(),
+      lastAt: _checkedInAt,
+    )) {
+      return;
     }
-    if (!mounted) return;
-    AreaInfo? area;
+    _reporting = true;
     try {
-      area = await ref.read(geoServiceProvider).reverseArea(point);
-    } catch (_) {}
-    await push.reportLocation(point, pushPlaceAt(regions, point, area));
+      final fix = await checkinPosition();
+      if (fix == null || !mounted) return;
+      final point = fix.point;
+      final key = fix.always && _background.supported ? await _background.key() : null;
+      if (await push.checkIn(point, always: fix.always, bgKey: key)) {
+        _checkedInAt = DateTime.now();
+        await _syncBackground(push, always: fix.always, key: key);
+      }
+      if (!mounted || !push.wantsLocation(point, DateTime.now())) return;
+      List<BiddingRegion> regions;
+      try {
+        regions = await ref.read(rideRepositoryProvider).biddingRegions(at: point);
+      } catch (_) {
+        regions = const [];
+      }
+      if (!mounted) return;
+      AreaInfo? area;
+      try {
+        area = await ref.read(geoServiceProvider).reverseArea(point);
+      } catch (_) {}
+      await push.reportLocation(point, pushPlaceAt(regions, point, area));
+    } finally {
+      _reporting = false;
+    }
+  }
+
+  /// The closed app's reporter on while location is set to always (and the
+  /// server holds this install's key), off otherwise.
+  Future<void> _syncBackground(PushService push, {required bool always, String? key}) async {
+    final want = key != null &&
+        backgroundReportingWanted(
+          signedIn: ref.read(currentUserIdProvider) != null,
+          locationAlways: always,
+          hasTokens: push.hasTokens,
+        );
+    if (want == _backgroundArmed) return;
+    if (want) {
+      _backgroundArmed = await _background.arm(url: AppConfig.supabaseUrl, anonKey: AppConfig.supabaseAnonKey, key: key);
+    } else {
+      await _background.disarm();
+      _backgroundArmed = false;
+    }
   }
 
   /// An admin's install is listed under Admin → SMS / WhatsApp so it can be

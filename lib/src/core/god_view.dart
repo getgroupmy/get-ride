@@ -1,50 +1,66 @@
-// Admin → God View (migration 0270): who is where, in what state. The rows
-// come from god_view_snapshot; everything here is pure, so the page only
-// draws and the rules are tested on their own (test/god_view_test.dart).
+// Admin → God View (migrations 0270, 0272): who is where, in what state.
+// The rows come from god_view_snapshot; everything here is pure, so the
+// page only draws and the rules are tested on their own
+// (test/god_view_test.dart).
 library;
 
 /// A partner (circle on the map) or a user (rounded square).
 enum GodViewKind { partner, user }
 
 /// What a person is doing. The server's words: free, pickup, trip,
-/// searching, ride, app_open, sos, offline.
+/// not_responding, searching, ride, app_open, always_on, sos, last_known.
 enum GodViewStatus {
   free('free', 'Online, free'),
   pickup('pickup', 'Going to pickup'),
   trip('trip', 'On trip'),
+  /// A partner the server still has as online, silent for over 3 minutes
+  /// (shown up to 24 hours): usually the app closed while "online".
+  notResponding('not_responding', 'Online, not responding'),
   searching('searching', 'Searching'),
   ride('ride', 'In a ride'),
   appOpen('app_open', 'App open'),
+  /// The freshest report came from the background (the app closed or not
+  /// on screen) in the last 30 minutes, location set to "Allow all the time".
+  alwaysOn('always_on', 'Always on'),
   sos('sos', 'SOS'),
-  offline('offline', 'Offline');
+  /// No recent position: where they last were, up to 7 days ago (0272;
+  /// was "offline").
+  lastKnown('last_known', 'Last known');
 
   const GodViewStatus(this.db, this.label);
   final String db;
   final String label;
 
+  /// An unknown word (or 0270's "offline") reads as last known.
   static GodViewStatus parse(Object? s) =>
-      GodViewStatus.values.firstWhere((v) => v.db == s, orElse: () => GodViewStatus.offline);
+      GodViewStatus.values.firstWhere((v) => v.db == s, orElse: () => GodViewStatus.lastKnown);
 
   /// Drawn with a pulse: someone waiting, or someone in danger.
   bool get pulses => this == searching || this == sos;
 
-  /// The order the list and the server's row cap keep (SOS first).
+  /// Not a live position: drawn smaller and greyed, listed last.
+  bool get isLastKnown => this == lastKnown;
+
+  /// The order the list and the server's row cap keep (SOS first, the last
+  /// known positions last).
   int get priority => switch (this) {
     sos => 0,
     pickup || trip => 1,
     searching || ride => 2,
     free => 3,
-    appOpen => 4,
-    offline => 5,
+    notResponding || appOpen => 4,
+    alwaysOn => 5,
+    lastKnown => 6,
   };
 }
 
-/// The legend, in the sample's order. Offline only while offline people are shown.
-List<GodViewStatus> godViewLegend({required bool showOffline, bool partners = true, bool users = true}) => [
-  if (partners) ...[GodViewStatus.free, GodViewStatus.pickup, GodViewStatus.trip],
-  if (users) ...[GodViewStatus.searching, GodViewStatus.ride, GodViewStatus.appOpen],
+/// The legend, in the sample's order. Last known only while those are shown.
+List<GodViewStatus> godViewLegend({required bool lastKnown, bool partners = true, bool users = true}) => [
+  if (partners) ...[GodViewStatus.free, GodViewStatus.pickup, GodViewStatus.trip, GodViewStatus.notResponding],
+  if (users) ...[GodViewStatus.searching, GodViewStatus.ride],
+  if (partners || users) ...[GodViewStatus.appOpen, GodViewStatus.alwaysOn],
   GodViewStatus.sos,
-  if (showOffline) GodViewStatus.offline,
+  if (lastKnown) GodViewStatus.lastKnown,
 ];
 
 /// Which icon a partner's circle carries.
@@ -160,9 +176,14 @@ class GodViewCounts {
     this.partnersOnline = 0,
     this.partnersFree = 0,
     this.partnersOnJob = 0,
+    this.partnersNotResponding = 0,
+    this.partnersAlwaysOn = 0,
+    this.partnersLastKnown = 0,
     this.usersSearching = 0,
     this.usersInRide = 0,
     this.usersAppOpen = 0,
+    this.usersAlwaysOn = 0,
+    this.usersLastKnown = 0,
     this.sos = 0,
   });
 
@@ -172,28 +193,53 @@ class GodViewCounts {
       partnersOnline: n('partners_online'),
       partnersFree: n('partners_free'),
       partnersOnJob: n('partners_on_job'),
+      partnersNotResponding: n('partners_not_responding'),
+      partnersAlwaysOn: n('partners_always_on'),
+      partnersLastKnown: n('partners_offline'),
       usersSearching: n('users_searching'),
       usersInRide: n('users_in_ride'),
       usersAppOpen: n('users_app_open'),
+      usersAlwaysOn: n('users_always_on'),
+      usersLastKnown: n('users_offline'),
       sos: n('sos'),
     );
   }
 
-  final int partnersOnline, partnersFree, partnersOnJob, usersSearching, usersInRide, usersAppOpen, sos;
+  final int partnersOnline, partnersFree, partnersOnJob, partnersNotResponding, partnersAlwaysOn, partnersLastKnown;
+  final int usersSearching, usersInRide, usersAppOpen, usersAlwaysOn, usersLastKnown, sos;
 }
 
-/// The stats chips over the map, in the sample's order.
-List<({String label, int value, bool alarm})> godViewStats(GodViewCounts c, {bool partners = true, bool users = true}) => [
+/// The stats chips over the map, in the sample's order: by kind as the
+/// Partners / Users chips show them; Last known only while it is on.
+List<({String label, int value, bool alarm})> godViewStats(
+  GodViewCounts c, {
+  bool partners = true,
+  bool users = true,
+  bool lastKnown = false,
+}) => [
   if (partners) ...[
     (label: 'Online partners', value: c.partnersOnline, alarm: false),
     (label: 'Free', value: c.partnersFree, alarm: false),
     (label: 'On a job', value: c.partnersOnJob, alarm: false),
+    (label: 'Not responding', value: c.partnersNotResponding, alarm: false),
   ],
   if (users) ...[
     (label: 'Users searching', value: c.usersSearching, alarm: false),
     (label: 'Users with app open', value: c.usersAppOpen, alarm: false),
   ],
+  if (partners || users)
+    (
+      label: 'Always on',
+      value: (partners ? c.partnersAlwaysOn : 0) + (users ? c.usersAlwaysOn : 0),
+      alarm: false,
+    ),
   (label: 'SOS', value: c.sos, alarm: c.sos > 0),
+  if (lastKnown && (partners || users))
+    (
+      label: 'Last known',
+      value: (partners ? c.partnersLastKnown : 0) + (users ? c.usersLastKnown : 0),
+      alarm: false,
+    ),
 ];
 
 class GodViewSnapshot {
@@ -203,6 +249,7 @@ class GodViewSnapshot {
     this.counts = const GodViewCounts(),
     this.total = 0,
     this.omitted = 0,
+    this.omittedLastKnown = 0,
     this.scoped = false,
     this.scopeMissing = false,
     this.query = '',
@@ -217,6 +264,7 @@ class GodViewSnapshot {
     counts: j['counts'] is Map ? GodViewCounts.fromJson(Map<String, dynamic>.from(j['counts'] as Map)) : const GodViewCounts(),
     total: (j['total'] as num?)?.toInt() ?? 0,
     omitted: (j['omitted'] as num?)?.toInt() ?? 0,
+    omittedLastKnown: (j['omitted_last_known'] as num?)?.toInt() ?? 0,
     scoped: j['scoped'] == true,
     scopeMissing: j['scope_missing'] == true,
     query: query,
@@ -227,6 +275,9 @@ class GodViewSnapshot {
   final GodViewCounts counts;
   final int total;
   final int omitted;
+
+  /// Of [omitted], the last known positions (the cap leaves those out first).
+  final int omittedLastKnown;
   final bool scoped;
   final bool scopeMissing;
 
@@ -239,7 +290,8 @@ enum GodViewUserFilter {
   all('All'),
   searching('Searching'),
   ride('In a ride'),
-  appOpen('App open');
+  appOpen('App open'),
+  alwaysOn('Always on');
 
   const GodViewUserFilter(this.label);
   final String label;
@@ -249,27 +301,31 @@ class GodViewFilters {
   const GodViewFilters({
     this.partners = true,
     this.users = true,
-    this.showOffline = false,
+    this.lastKnown = true,
     this.userFilter = GodViewUserFilter.all,
     this.query = '',
   });
 
   final bool partners;
   final bool users;
-  final bool showOffline;
+
+  /// The top bar's "Last known" (0272: it replaced "Show offline"): also
+  /// everyone without a live position, where they last were, up to 7 days
+  /// ago. On by default, so the page is never empty.
+  final bool lastKnown;
   final GodViewUserFilter userFilter;
   final String query;
 
   GodViewFilters copyWith({
     bool? partners,
     bool? users,
-    bool? showOffline,
+    bool? lastKnown,
     GodViewUserFilter? userFilter,
     String? query,
   }) => GodViewFilters(
     partners: partners ?? this.partners,
     users: users ?? this.users,
-    showOffline: showOffline ?? this.showOffline,
+    lastKnown: lastKnown ?? this.lastKnown,
     userFilter: userFilter ?? this.userFilter,
     query: query ?? this.query,
   );
@@ -294,6 +350,7 @@ bool godViewUserFilterPasses(GodViewPerson p, GodViewUserFilter f) {
     GodViewUserFilter.searching => p.status == GodViewStatus.searching,
     GodViewUserFilter.ride => p.status == GodViewStatus.ride,
     GodViewUserFilter.appOpen => p.status == GodViewStatus.appOpen,
+    GodViewUserFilter.alwaysOn => p.status == GodViewStatus.alwaysOn,
   };
 }
 
@@ -306,7 +363,7 @@ List<GodViewPerson> godViewShown(List<GodViewPerson> people, GodViewFilters f, {
   return [
     for (final p in people)
       if ((p.isPartner ? f.partners : f.users) &&
-          (f.showOffline || p.status != GodViewStatus.offline) &&
+          (f.lastKnown || !p.status.isLastKnown) &&
           godViewUserFilterPasses(p, f.userFilter) &&
           (!searchHere || godViewMatches(p, f.query)))
         p,
@@ -326,7 +383,8 @@ List<GodViewPerson> godViewMarkers(List<GodViewPerson> shown) {
   ];
 }
 
-/// The People tab: SOS first, then by what they are doing, then the newest.
+/// The People tab: SOS first, then by what they are doing (the last known
+/// positions after every live one), then the newest.
 List<GodViewPerson> godViewListOrder(List<GodViewPerson> shown) {
   final out = [...shown];
   out.sort((a, b) {
@@ -339,13 +397,26 @@ List<GodViewPerson> godViewListOrder(List<GodViewPerson> shown) {
   return out;
 }
 
-/// "3 s ago", "4 min ago", "2 h ago".
+/// "3 s ago", "4 min ago", "2 h ago", "2 h 48 min ago", "1 day ago",
+/// "3 days ago".
 String godViewAge(DateTime? at, DateTime now) {
   if (at == null) return '';
   final s = now.difference(at).inSeconds;
   if (s < 60) return '${s < 1 ? 1 : s} s ago';
-  if (s < 3600) return '${(s / 60).round()} min ago';
-  return '${(s / 3600).round()} h ago';
+  if (s < 3600) return '${s ~/ 60} min ago';
+  if (s < 86400) {
+    final h = s ~/ 3600, m = (s % 3600) ~/ 60;
+    return m == 0 ? '$h h ago' : '$h h $m min ago';
+  }
+  final d = s ~/ 86400;
+  return d == 1 ? '1 day ago' : '$d days ago';
+}
+
+/// The line under the map's stats when the row cap left people out.
+String godViewOmittedNote(GodViewSnapshot s) {
+  final shown = s.total - s.omitted;
+  final lastKnown = s.omittedLastKnown > 0 ? ' (${s.omittedLastKnown} last known left out)' : '';
+  return 'Showing $shown of ${s.total}$lastKnown. Zoom in to see the rest.';
 }
 
 /// "Live · updated 2 s ago" above the map.

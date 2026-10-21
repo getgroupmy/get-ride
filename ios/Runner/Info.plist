@@ -13,7 +13,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>GET.ride uses the microphone for voice calls, for voice notes you send in chats and, with VoiceProtection on, to record trip audio during your rides. Trip recordings stay on your phone for 24 hours and are only sent to support if a ride is reported.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>GET.ride keeps sharing your location while a trip is in progress, while you are online as a driver, and while Meter Digital is running, even when the app is in the background.</string>
+	<string>GET.ride keeps sharing your location while a trip is in progress, while you are online as a driver, and while Meter Digital is running, even when the app is in the background. With Always, GET.ride also shares your approximate location about every 15 minutes, or when you move about 500 m, even when the app is closed, so our safety and support team can see where you last were.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>GET.ride uses your location to set your pickup point and to share your position with your driver or passenger during a trip.</string>
 	<key>NSLocalNetworkUsageDescription</key>

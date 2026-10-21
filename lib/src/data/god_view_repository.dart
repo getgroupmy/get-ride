@@ -1,4 +1,4 @@
-// Admin → God View (migration 0270): the snapshot the page polls, a phone
+// Admin → God View (migrations 0270, 0272): the snapshot the page polls, a phone
 // shown on request (logged by the server), suspend and a push to one
 // person. Who may do what is the server's; this only asks.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,7 +13,9 @@ class GodViewRepository {
   final SupabaseClient? _db;
 
   /// Everyone inside [box] (the map's visible area; null for everywhere),
-  /// or everyone matching [query] wherever they are.
+  /// or everyone matching [query] wherever they are. [showOffline]: the
+  /// page's "Last known" toggle, also everyone else at their last known
+  /// position, up to 7 days old (migration 0272).
   Future<GodViewSnapshot> snapshot({
     ({double minLat, double minLng, double maxLat, double maxLng})? box,
     bool showOffline = false,

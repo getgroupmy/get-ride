@@ -657,6 +657,34 @@ Future<LatLng?> knownPosition() async {
   }
 }
 
+/// Where the phone is for the open app's check-in (push_checkin, migration
+/// 0272), without ever asking for permission, and whether location is set
+/// to "Allow all the time" / "Always": a fix from the last 2 minutes when
+/// the phone has one (no GPS wake-up), else a quick low-accuracy fix, else
+/// the last known one. Null when location is off or not granted.
+Future<({LatLng point, bool always})?> checkinPosition() async {
+  try {
+    if (!await Geolocator.isLocationServiceEnabled()) return null;
+    final perm = await Geolocator.checkPermission();
+    if (perm != LocationPermission.always && perm != LocationPermission.whileInUse) return null;
+    final always = perm == LocationPermission.always;
+    final last = kIsWeb ? null : await Geolocator.getLastKnownPosition();
+    if (last != null && DateTime.now().difference(last.timestamp) < const Duration(minutes: 2)) {
+      return (point: LatLng(last.latitude, last.longitude), always: always);
+    }
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.low),
+      ).timeout(const Duration(seconds: 8));
+      return (point: LatLng(pos.latitude, pos.longitude), always: always);
+    } catch (_) {
+      return last == null ? null : (point: LatLng(last.latitude, last.longitude), always: always);
+    }
+  } catch (_) {
+    return null;
+  }
+}
+
 /// Kuala Lumpur, where nothing else says where to open.
 const klCenter = LatLng(3.1390, 101.6869);
 

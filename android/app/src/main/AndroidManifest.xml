@@ -17,6 +17,12 @@
          adds it to its own request only when location is already "While
          using the app", which the app never asks again. -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <!-- "Always on" (BackgroundLocation.kt, migration 0272): with location
+         already allowed all the time (never asked for by it), the phone
+         reports where it is about every 15 minutes or after ~500 m while
+         the app is closed. Android forgets that request on a reboot or an
+         update; this normal (install-time) permission lets it be renewed. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- flutter_callkit_incoming also asks for a camera foreground service, for
          video calls. Every GET.ride call is voice only (CallKitParams type 0,
          and the plugin adds the camera type only to a video call), so it is
@@ -342,6 +348,17 @@
             android:name="com.hiennv.flutter_callkit_incoming.CallkitNotificationService"
             android:foregroundServiceType="phoneCall|microphone"
             tools:replace="android:foregroundServiceType"/>
+        <!-- "Always on": the background fixes LocationManager delivers, and
+             the reboot / app update after which it is asked again. Not
+             exported: only the system and this app send to it. -->
+        <receiver
+            android:name=".BackgroundLocationReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
         <!-- Google's own map: the key the release build carries (build.gradle.kts). -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"

@@ -29,6 +29,9 @@ class MainActivity : FlutterActivity() {
         appIcon = AppIconChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         // The connection and SIM for Admin → Session History (lib/src/data/device_details.dart).
         networkInfo = NetworkInfoChannel(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        // "Always on" (lib/src/data/background_location.dart): reports from
+        // the background with location already allowed all the time.
+        BackgroundLocation.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         // Settings → Permissions (lib/src/data/permission_probe.dart): where
         // the camera, microphone and Bluetooth stand, without asking.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "get_ride/permissions").setMethodCallHandler { call, result ->

@@ -1,7 +1,9 @@
-// Admin → God View (migration 0270): everyone's live position and status on
-// one map, with a People list and a Details card. Polls god_view_snapshot
-// every 5 s while the page is on screen, for the map's visible box only.
-// A sub-admin sees the people in their own region (the server's rule).
+// Admin → God View (migrations 0270, 0272): everyone's live position and
+// status on one map, with a People list and a Details card. Polls
+// god_view_snapshot every 5 s while the page is on screen, for the map's
+// visible box only. With "Last known" (on by default) everyone else is
+// there too, smaller and greyed, where they last were. A sub-admin sees the
+// people in their own region (the server's rule).
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -37,10 +39,18 @@ Color godViewStatusColor(GodViewStatus s, Brightness b) {
     GodViewStatus.searching => dark ? 0xFFB88CFF : 0xFF8A4FD8,
     GodViewStatus.ride => dark ? 0xFF4CBCFF : 0xFF0B7FB8,
     GodViewStatus.appOpen => dark ? 0xFF86AEBB : 0xFF5E8C9A,
+    GodViewStatus.alwaysOn => dark ? 0xFFB9D84A : 0xFF6A8500,
     GodViewStatus.sos => dark ? 0xFFFF6B76 : 0xFFD32F3B,
-    GodViewStatus.offline => dark ? 0xFF6B7585 : 0xFF8B95A4,
+    GodViewStatus.notResponding => dark ? 0xFF6B7585 : 0xFF8B95A4,
+    GodViewStatus.lastKnown => dark ? 0xFF555E6C : 0xFFA9B1BD,
   });
 }
+
+/// The outline a status is drawn with instead of the plain ring: "Online,
+/// not responding" is grey with a dark (light, in dark mode) outline.
+Color? godViewStatusOutline(GodViewStatus s, Brightness b) => s == GodViewStatus.notResponding
+    ? (b == Brightness.dark ? const Color(0xFFD5DAE1) : const Color(0xFF39404B))
+    : null;
 
 /// Text or an icon drawn on [c]: white on a dark colour, near-black on a light one.
 Color _on(Color c) => ThemeData.estimateBrightnessForColor(c) == Brightness.dark ? Colors.white : const Color(0xFF05121C);
@@ -147,7 +157,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     try {
       final s = await ref.read(godViewRepositoryProvider).snapshot(
         box: _box,
-        showOffline: _filters.showOffline,
+        showOffline: _filters.lastKnown,
         query: _filters.query,
       );
       if (!mounted) return;
@@ -176,7 +186,9 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
       _map.move(LatLng(_selectedLast!.lat, _selectedLast!.lng), _map.camera.zoom);
     } else if (!_fitted && _box == null && s.people.isNotEmpty) {
       _fitted = true;
-      _fitAll(s.people);
+      // The live people when there are any; else everyone's last position.
+      final live = s.people.where((p) => !p.status.isLastKnown).toList();
+      _fitAll(live.isEmpty ? s.people : live);
     }
   }
 
@@ -432,13 +444,15 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
         top: 10,
         right: 60,
         child: Wrap(spacing: 6, runSpacing: 6, children: [
-          for (final s in godViewStats(snap?.counts ?? const GodViewCounts(), partners: _filters.partners, users: _filters.users))
+          for (final s in godViewStats(
+            snap?.counts ?? const GodViewCounts(),
+            partners: _filters.partners,
+            users: _filters.users,
+            lastKnown: _filters.lastKnown,
+          ))
             _StatChip(label: s.label, value: s.value, alarm: s.alarm),
           if ((snap?.omitted ?? 0) > 0)
-            _Note(
-              key: const ValueKey('god-view-omitted'),
-              text: 'Showing ${snap!.total - snap.omitted} of ${snap.total}. Zoom in to see the rest.',
-            ),
+            _Note(key: const ValueKey('god-view-omitted'), text: godViewOmittedNote(snap!)),
           if (snap?.scopeMissing == true)
             const _Note(
               key: ValueKey('god-view-scope-missing'),
@@ -461,7 +475,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
         left: 10,
         bottom: 24,
         child: _Legend(
-          statuses: godViewLegend(showOffline: _filters.showOffline, partners: _filters.partners, users: _filters.users),
+          statuses: godViewLegend(lastKnown: _filters.lastKnown, partners: _filters.partners, users: _filters.users),
         ),
       ),
     ]);
@@ -523,6 +537,23 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
               p.rideCode == null ? 'SOS raised. Open the incident to act.' : 'SOS raised on ride ${p.rideCode}. Open the incident to act.',
               style: TextStyle(color: color, fontWeight: FontWeight.w600),
             ),
+          ),
+        ],
+        if (p.status == GodViewStatus.notResponding) ...[
+          const SizedBox(height: 8),
+          Text(
+            'The app says online, but nothing has come from it for ${godViewAge(p.updatedAt, now).replaceAll(' ago', '')}. '
+            'The app may be closed.',
+            key: const ValueKey('god-view-not-responding-note'),
+            style: TextStyle(color: t.colorScheme.onSurfaceVariant),
+          ),
+        ],
+        if (p.status == GodViewStatus.lastKnown) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Last known position, ${godViewAge(p.updatedAt, now)}.',
+            key: const ValueKey('god-view-last-known-note'),
+            style: TextStyle(color: t.colorScheme.onSurfaceVariant),
           ),
         ],
         if (!onMap) ...[
@@ -650,11 +681,18 @@ class _TopBar extends StatelessWidget {
             showCheckmark: false,
             onSelected: (v) => onFilters(filters.copyWith(users: v)),
           ),
-          FilterChip(
-            key: const ValueKey('god-view-offline'),
-            label: const Text('Show offline'),
-            selected: filters.showOffline,
-            onSelected: (v) => onFilters(filters.copyWith(showOffline: v), reload: true),
+          // "Show offline" and "Last known" in one: everyone without a live
+          // position, where they last were (up to 7 days).
+          Tooltip(
+            message: 'Show offline / last known: everyone without a live position, where they last were (up to 7 days)',
+            child: FilterChip(
+              key: const ValueKey('god-view-last-known'),
+              avatar: const Icon(Icons.history, size: 16),
+              label: const Text('Last known'),
+              selected: filters.lastKnown,
+              showCheckmark: false,
+              onSelected: (v) => onFilters(filters.copyWith(lastKnown: v), reload: true),
+            ),
           ),
           if (filters.users)
             SegmentedButton<GodViewUserFilter>(
@@ -752,18 +790,18 @@ class _GodViewMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = selected ? size * 1.25 : size;
+    // A last known position: smaller and greyed.
+    final old = person.status.isLastKnown;
+    final s = (selected ? size * 1.25 : size) * (old ? 0.72 : 1);
     final fg = _on(color);
+    final outline = godViewStatusOutline(person.status, Theme.of(context).brightness);
+    final border = Border.all(color: outline ?? ring, width: old ? 2 : (outline != null ? 2.5 : 3));
+    final shadow = old ? const <BoxShadow>[] : const [BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 1))];
     final shape = person.isPartner
         ? Container(
             width: s,
             height: s,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              border: Border.all(color: ring, width: 3),
-              boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 1))],
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle, border: border, boxShadow: shadow),
             child: Icon(_serviceIcon(person.serviceIcon), size: s * 0.52, color: fg),
           )
         : Container(
@@ -772,8 +810,8 @@ class _GodViewMarker extends StatelessWidget {
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(s * 0.22),
-              border: Border.all(color: ring, width: 3),
-              boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 1))],
+              border: border,
+              boxShadow: shadow,
             ),
             child: Icon(Icons.person, size: s * 0.46, color: fg),
           );
@@ -783,7 +821,7 @@ class _GodViewMarker extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Opacity(
-          opacity: dim ? 0.45 : 1,
+          opacity: (dim ? 0.45 : 1) * (old ? 0.8 : 1),
           child: Stack(alignment: Alignment.center, children: [
             if (person.status.pulses)
               AnimatedBuilder(
@@ -900,7 +938,14 @@ class _Legend extends StatelessWidget {
               Container(
                 width: 9,
                 height: 9,
-                decoration: BoxDecoration(color: godViewStatusColor(s, t.brightness), shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                  color: godViewStatusColor(s, t.brightness),
+                  shape: BoxShape.circle,
+                  border: switch (godViewStatusOutline(s, t.brightness)) {
+                    final c? => Border.all(color: c, width: 1.5),
+                    null => null,
+                  },
+                ),
               ),
               const SizedBox(width: 6),
               Text(s.label, style: const TextStyle(fontSize: 12)),
@@ -981,29 +1026,33 @@ class _PersonRow extends StatelessWidget {
       child: InkWell(
         key: ValueKey('god-view-row-${p.id}'),
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(children: [
-            _Avatar(person: p, color: godViewStatusColor(p.status, t.brightness), size: 34),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(p.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                Text(
-                  [p.vehicleLine, ?p.area].join(' · '),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: t.colorScheme.onSurfaceVariant),
-                ),
+        // A last known position reads greyed, after the live ones.
+        child: Opacity(
+          opacity: p.status.isLastKnown ? 0.72 : 1,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(children: [
+              _Avatar(person: p, color: godViewStatusColor(p.status, t.brightness), size: 34),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(p.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(
+                    [p.vehicleLine, ?p.area].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, color: t.colorScheme.onSurfaceVariant),
+                  ),
+                ]),
+              ),
+              const SizedBox(width: 8),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                _StatusPill(status: p.status),
+                const SizedBox(height: 2),
+                Text(godViewAge(p.updatedAt, now), style: TextStyle(fontSize: 11, color: t.colorScheme.onSurfaceVariant)),
               ]),
-            ),
-            const SizedBox(width: 8),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              _StatusPill(status: p.status),
-              const SizedBox(height: 2),
-              Text(godViewAge(p.updatedAt, now), style: TextStyle(fontSize: 11, color: t.colorScheme.onSurfaceVariant)),
             ]),
-          ]),
+          ),
         ),
       ),
     );
