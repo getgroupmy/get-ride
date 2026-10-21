@@ -67,3 +67,10 @@ Courier, partner counter-offers and any new one) uses the shared motion in
 Do not change the direction, tilt or timing unless the owner asks for it.
 `test/offer_motion_test.dart` fails when the constants change or an offer card
 animates on its own.
+
+## Parked work is listed in docs/KIV.md
+
+`docs/KIV.md` is the owner's keep-in-view list: features they have parked.
+Don't build an item from it until the owner asks. When a PR ships an item,
+remove that item from `docs/KIV.md` in the same PR. Add a new item only when
+the owner parks one.
