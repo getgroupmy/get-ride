@@ -953,7 +953,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                 ...() {
                   final shown = collapseAirports<Place>(
                     _results,
-                    ref.watch(airportAreasProvider).value ?? const [],
+                    airportsOnly(ref.watch(airportAreasProvider).value ?? const []),
                     point: (p) => p.point,
                     text: (p) => '${p.name} ${p.address}',
                     airport: (a) => Place(

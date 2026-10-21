@@ -1199,6 +1199,10 @@ int? _parseIntPrefix(String s) {
 bool placeIsActive(Map<String, dynamic> v) => _flag(v['active']);
 bool placeGateRequired(Map<String, dynamic> v) => _flag(v['gateRequired']);
 
+/// Whether a place's boundary is switched on (0258): `values.areaOn` with a
+/// boundary drawn. Off, the place keeps its gates only.
+bool placeAreaOn(Map<String, dynamic> v) => _flag(v['areaOn'], fallback: false) && parseBoundary(v['boundary']) != null;
+
 enum GateMode { both, pickup, drop }
 
 GateMode parseGateMode(Object? raw) => switch ('${raw ?? 'both'}') {
@@ -1244,6 +1248,7 @@ class GateForm {
     this.mode = GateMode.both,
     this.pickupSurcharge = '',
     this.dropSurcharge = '',
+    this.group = '',
   });
 
   factory GateForm.fromValues(Map<String, dynamic> v) {
@@ -1257,6 +1262,7 @@ class GateForm {
       mode: parseGateMode(v['mode']),
       pickupSurcharge: sur('pickupSurcharge'),
       dropSurcharge: sur('dropSurcharge'),
+      group: '${v['group'] ?? ''}',
     );
   }
 
@@ -1279,6 +1285,10 @@ class GateForm {
   GateMode mode;
   String pickupSurcharge, dropSurcharge;
 
+  /// The gate's group (a terminal): the rider's picker shows a wheel of
+  /// groups when a place has more than one.
+  String group;
+
   String? validate() {
     if (name.trim().isEmpty) return 'Please enter a gate name.';
     final la = double.tryParse(lat.trim()), lo = double.tryParse(lon.trim());
@@ -1299,6 +1309,7 @@ class GateForm {
         'mode': mode.name,
         'pickupSurcharge': mode == GateMode.drop ? '' : parseSurcharge(pickupSurcharge),
         'dropSurcharge': mode == GateMode.pickup ? '' : parseSurcharge(dropSurcharge),
+        if (group.trim().isNotEmpty) 'group': group.trim(),
       };
 }
 

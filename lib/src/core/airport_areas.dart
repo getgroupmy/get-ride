@@ -13,6 +13,10 @@ import 'package:latlong2/latlong.dart';
 const airportBufferM = 300.0;
 const _mPerDeg = 111320.0;
 
+/// What an area is (migration 0258): an Airport Areas airport, or a
+/// multi-gate place with its boundary switched on.
+enum AreaKind { airport, place }
+
 class AirportArea {
   const AirportArea({
     required this.id,
@@ -24,9 +28,17 @@ class AirportArea {
     required this.east,
     required this.west,
     this.placeName,
+    this.kind = AreaKind.airport,
+    this.sizeM2,
   });
 
   final String id;
+  final AreaKind kind;
+
+  /// A place's boundary size (the server's `size_m2`): the smallest place
+  /// holding a point is the one it is at.
+  final double? sizeM2;
+  bool get isPlace => kind == AreaKind.place;
   final String name;
   final String code;
   final String? placeName;
@@ -37,7 +49,12 @@ class AirportArea {
 
   /// An `airport-areas` entry, or null without a usable boundary (the admin
   /// stores it as a JSON string: `{coords, polygons?, bbox}`).
-  static AirportArea? fromEntry(String id, Map<String, dynamic> v) {
+  static AirportArea? fromEntry(
+    String id,
+    Map<String, dynamic> v, {
+    AreaKind kind = AreaKind.airport,
+    double? sizeM2,
+  }) {
     final raw = v['boundary'];
     Map<String, dynamic>? b;
     try {
@@ -70,10 +87,12 @@ class AirportArea {
     String s(Object? x) => '${x ?? ''}'.trim();
     return AirportArea(
       id: id,
-      name: s(v['name']).isEmpty ? 'Airport' : s(v['name']),
+      name: s(v['name']).isEmpty ? (kind == AreaKind.place ? 'Place' : 'Airport') : s(v['name']),
       code: s(v['code']),
       placeName: s(v['placeName']).isEmpty ? null : s(v['placeName']),
       rings: rings,
+      kind: kind,
+      sizeM2: sizeM2,
       north: north,
       south: south,
       east: east,
@@ -161,4 +180,18 @@ List<T> collapseAirports<T>(
     }
   }
   return out;
+}
+
+/// [areas] in the order a point is matched (as the server's `area_at`,
+/// 0258): every airport first, in the order given, then the places from
+/// the smallest boundary up.
+List<AirportArea> areasByPrecedence(List<AirportArea> areas) {
+  final airports = [for (final a in areas) if (!a.isPlace) a];
+  final places = [for (final a in areas) if (a.isPlace) a];
+  final order = {for (var i = 0; i < places.length; i++) places[i].id: i};
+  places.sort((a, b) {
+    final c = (a.sizeM2 ?? double.infinity).compareTo(b.sizeM2 ?? double.infinity);
+    return c != 0 ? c : order[a.id]!.compareTo(order[b.id]!);
+  });
+  return [...airports, ...places];
 }

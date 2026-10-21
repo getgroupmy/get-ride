@@ -328,6 +328,10 @@ class RideRequest {
   /// The doors the rider chose at an airport (migration 0249; named by the
   /// server).
   String? get pickupDoor => _nonEmpty(raw['pickup_door_name']);
+
+  /// The pickup door's id, and the airport or place (0258) the pickup is in.
+  String? get pickupDoorId => _nonEmpty(raw['pickup_door_id']?.toString());
+  String? get pickupAreaId => _nonEmpty(raw['airport_pickup_id']?.toString());
   String? get dropDoor => _nonEmpty(raw['drop_door_name']);
 
   /// A pickup the airport keeps for its waiting drivers (0249).

@@ -214,8 +214,18 @@ class GeoAdminRepository {
 
   // Airport areas ------------------------------------------------------------
 
-  Future<List<GeoEntry>> airports() async =>
-      (await _db.from('airport_areas').select('id, values, position').order('position', ascending: true).order('created_at', ascending: true)).map(GeoEntry.fromRow).toList();
+  /// Airport Areas' airports: a multi-gate place's own area row (kind
+  /// 'place', 0258) belongs to the Places page.
+  Future<List<GeoEntry>> airports() async {
+    try {
+      return (await _db.from('airport_areas').select('id, values, position').eq('kind', 'airport').order('position', ascending: true).order('created_at', ascending: true))
+          .map(GeoEntry.fromRow)
+          .toList();
+    } on PostgrestException {
+      // Before 0258: every row is an airport.
+      return (await _db.from('airport_areas').select('id, values, position').order('position', ascending: true).order('created_at', ascending: true)).map(GeoEntry.fromRow).toList();
+    }
+  }
 
   Future<void> saveAirport({String? id, required Map<String, dynamic> values, int position = 0}) => _db
       .from('airport_areas')
