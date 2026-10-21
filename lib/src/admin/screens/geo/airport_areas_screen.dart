@@ -12,6 +12,7 @@ import 'airport_editor.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
+import 'group_results_fields.dart';
 import 'part_of_fields.dart';
 import 'place_search_field.dart';
 import '../../../widgets/page_style_host.dart';
@@ -422,6 +423,14 @@ class _AirportFormBodyState extends State<_AirportFormBody> {
       TextField(controller: _city, decoration: const InputDecoration(labelText: 'City', hintText: 'e.g. Sepang')),
       gap,
       PartOfFields(partOf: _partOf, order: _partOrder, selfId: widget.id),
+      gap,
+      GroupResultsFields(
+        value: f.groupResults,
+        words: f.groupWords,
+        onChanged: (on, words) => setState(() => f
+          ..groupResults = on
+          ..groupWords = words),
+      ),
       if (_error != null) ...[gap, Text(_error!, style: TextStyle(color: t.colorScheme.error))],
       const SizedBox(height: 20),
       FilledButton.icon(onPressed: _submit, icon: const Icon(Icons.save), label: const Text('Save')),

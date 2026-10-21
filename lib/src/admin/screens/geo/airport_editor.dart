@@ -984,8 +984,8 @@ class _AreaTab extends StatelessWidget {
         const SizedBox(height: 8),
         const AirportNote(
           'Draw the boundary on the map: draw it corner by corner, start from its OpenStreetMap outline or copy a '
-          'saved region, then move its corners. Riders searching inside it see one entry for the airport; places '
-          'within 300 m of it count as the airport.',
+          'saved region, then move its corners. Riders searching inside it see one entry for the airport (unless '
+          'Group search results is off in Edit details); places within 300 m of it count as the airport.',
         ),
         const SizedBox(height: 12),
         Wrap(

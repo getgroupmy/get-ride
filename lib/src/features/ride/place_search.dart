@@ -12,7 +12,7 @@ import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/place_types.dart';
 import '../../core/smart_address.dart';
-import '../../data/airport_repository.dart' show airportAt, airportSettingsProvider;
+import '../../data/airport_repository.dart' show airportSettingsProvider;
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/place_gates_repository.dart';
@@ -262,6 +262,10 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
 
   /// A picked suggestion being looked up, or a picked address checked.
   bool _picking = false;
+
+  /// The shown results that stand for an area's grouped results: the area
+  /// and how many were folded into it.
+  final _grouped = Map<Place, ({String id, String name, int count})>.identity();
 
   static String _at(LatLng p) => '${p.latitude},${p.longitude}';
 
@@ -547,16 +551,36 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   Future<void> _add(SavedPlaceKind kind) => addSavedPlace(context, kind, near: widget.near);
 
   /// The admin place [p] is at, with its gates for this end: the place of
-  /// that name, else the airport whose boundary holds [p] (an address at
-  /// KLIA opens KLIA's doors, not a station's nearer by), else the nearest.
+  /// that name, else the airport (or the place grouping its search results)
+  /// whose boundary holds [p] (an address at KLIA opens KLIA's doors, not a
+  /// station's nearer by), else the nearest.
   GatedPlace? _gatedAt(Place p, GateCatalogue catalogue) => matchGatedPlace(
     places: catalogue.places,
     gates: catalogue.gates,
     point: p.point,
     name: p.name,
     usage: _usage,
-    airportId: airportAt(airportsOnly(ref.read(airportAreasProvider).value ?? const []), p.point)?.id,
+    airportId: gateAreaAt([
+      for (final a in ref.read(airportAreasProvider).value ?? const <AirportArea>[])
+        if (!a.isPlace || a.groupResults) a,
+    ], p.point)?.id,
   );
+
+  /// The result standing for [a] and the results grouped into it: the
+  /// airport, or the place by its name, address and position.
+  Place _areaPlace(AirportArea a) => a.isPlace
+      ? Place(
+          name: a.name,
+          address: a.address ?? 'Place',
+          point: a.point ?? a.centroid,
+          types: [?a.placeType],
+        )
+      : Place(
+          name: a.name,
+          address: a.code.isEmpty ? 'Airport' : '${a.code} · Airport',
+          point: a.centroid,
+          types: const ['airport'],
+        );
 
   /// A search result, with the admin's gates under it when it is a
   /// multi-gate place (Expo `PlaceGatesList`). Where the place requires a
@@ -642,6 +666,16 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                       type != null ? 'Choose a gate' : gates.length == 1 ? '1 gate · Choose a gate' : '${gates.length} gates · Choose a gate',
                       key: ValueKey('result-gates-${_id(p)}'),
                       style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.primary),
+                    ),
+                  ],
+                  if (_grouped[p] case final g? when g.count > 0) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      '+ ${g.count} more ${g.count == 1 ? 'result' : 'results'} inside ${g.name}',
+                      key: ValueKey('result-grouped-${g.id}'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.bodySmall?.copyWith(color: muted),
                     ),
                   ],
                 ],
@@ -1047,17 +1081,20 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
               ],
               if (typing && (!_route || _tab == _Tab.results))
                 ...() {
-                  final shown = collapseAirports<Place>(
+                  // Results inside an airport, or a place that groups them,
+                  // show as that one result; a suggestion has no position
+                  // yet, so only its words fold it.
+                  _grouped.clear();
+                  final shown = collapseIntoAreas<Place>(
                     _results,
-                    airportsOnly(ref.watch(airportAreasProvider).value ?? const []),
-                    point: (p) => p.point,
+                    ref.watch(airportAreasProvider).value ?? const [],
+                    point: (p) => p.pending ? null : p.point,
                     text: (p) => '${p.name} ${p.address}',
-                    airport: (a) => Place(
-                      name: a.name,
-                      address: a.code.isEmpty ? 'Airport' : '${a.code} · Airport',
-                      point: a.centroid,
-                      types: const ['airport'],
-                    ),
+                    area: (a, n) {
+                      final p = _areaPlace(a);
+                      _grouped[p] = (id: a.id, name: a.name, count: n);
+                      return p;
+                    },
                   );
                   return smart.placesFirst
                       ? _placesFirst(t, shown, catalogue, smart)

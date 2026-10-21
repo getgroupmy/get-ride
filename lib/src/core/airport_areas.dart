@@ -1,8 +1,10 @@
 /// Admin → Airport Areas in place search (Expo `utils/airportAreas.ts`): a
 /// result inside an airport's drawn boundary, or within [airportBufferM] of
 /// it, or named after the airport, becomes one entry for the airport itself,
-/// so a rider picks "KLIA" rather than one of a dozen points inside it.
-/// Pure.
+/// so a rider picks "KLIA" rather than one of a dozen points inside it. A
+/// multi-gate place with a boundary does the same when the admin switches
+/// "Group search results inside the boundary" on (`values.groupResults`,
+/// with extra words to group by in `values.groupWords`). Pure.
 library;
 
 import 'dart:convert';
@@ -30,6 +32,11 @@ class AirportArea {
     this.placeName,
     this.kind = AreaKind.airport,
     this.sizeM2,
+    this._groupResults,
+    this.groupWords = const [],
+    this.address,
+    this.point,
+    this.placeType,
   });
 
   final String id;
@@ -46,6 +53,22 @@ class AirportArea {
   final double north, south, east, west;
 
   LatLng get centroid => LatLng((north + south) / 2, (east + west) / 2);
+
+  /// Search shows the results inside as this one ("Group search results
+  /// inside the boundary"): on for an airport unless the admin turned it
+  /// off, off for a place unless turned on.
+  bool get groupResults => _groupResults ?? !isPlace;
+  final bool? _groupResults;
+
+  /// More words that fold a result in ("klia2"): lower case, for results
+  /// Google gives without a position.
+  final List<String> groupWords;
+
+  /// The admin's address and position for the area, where set (a place's
+  /// grouped result shows them), and a place's type key (0264).
+  final String? address;
+  final LatLng? point;
+  final String? placeType;
 
   /// An `airport-areas` entry, or null without a usable boundary (the admin
   /// stores it as a JSON string: `{coords, polygons?, bbox}`).
@@ -85,6 +108,7 @@ class AirportArea {
             [LatLng(north, west), LatLng(north, east), LatLng(south, east), LatLng(south, west)],
           ];
     String s(Object? x) => '${x ?? ''}'.trim();
+    final lat = n(v['lat']), lon = n(v['lon']);
     return AirportArea(
       id: id,
       name: s(v['name']).isEmpty ? (kind == AreaKind.place ? 'Place' : 'Airport') : s(v['name']),
@@ -93,6 +117,11 @@ class AirportArea {
       rings: rings,
       kind: kind,
       sizeM2: sizeM2,
+      groupResults: parseGroupResults(v['groupResults']),
+      groupWords: parseGroupWords(v['groupWords']),
+      address: s(v['address']).isEmpty ? null : s(v['address']),
+      point: lat == null || lon == null ? null : LatLng(lat, lon),
+      placeType: s(v['placeType']).isEmpty ? null : s(v['placeType']),
       north: north,
       south: south,
       east: east,
@@ -124,6 +153,47 @@ class AirportArea {
     }
     return false;
   }
+
+  /// Whether [text] folds into this area by name: [matchesName], or one of
+  /// the admin's [groupWords] in it as whole words.
+  bool matchesGroupText(String text) {
+    if (matchesName(text)) return true;
+    final r = _norm(text);
+    if (r.isEmpty) return false;
+    for (final w in groupWords.map(_norm)) {
+      if (w.isNotEmpty && _hasWords(r, w)) return true;
+    }
+    return false;
+  }
+}
+
+/// `values.groupResults` as stored: null when the admin never set it (the
+/// area's default then applies).
+bool? parseGroupResults(Object? raw) => switch (raw) {
+  null => null,
+  bool b => b,
+  num n => n != 0,
+  _ => switch ('$raw'.trim().toLowerCase()) {
+    'true' || '1' || 'yes' || 'on' => true,
+    'false' || '0' || 'no' || 'off' => false,
+    _ => null,
+  },
+};
+
+/// A word to group by as stored: trimmed, lower case, one space between
+/// words.
+String groupWord(String s) => s.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+/// `values.groupWords` as stored: each a [groupWord], no blanks or repeats.
+List<String> parseGroupWords(Object? raw) {
+  final out = <String>[];
+  if (raw is List) {
+    for (final w in raw) {
+      final g = groupWord('${w ?? ''}');
+      if (g.isNotEmpty && !out.contains(g)) out.add(g);
+    }
+  }
+  return out;
 }
 
 /// Whether [p] is inside [ring].
@@ -179,29 +249,45 @@ double _distToRing(LatLng p, List<LatLng> ring) {
   return best;
 }
 
-/// [results] with every one that falls in (or is named after) an airport
-/// replaced by that airport, once, where its first match was.
-List<T> collapseAirports<T>(
+/// [results] with every one that falls in (or is named after) an area that
+/// groups its results ([AirportArea.groupResults]) replaced by that area,
+/// once, where its first match was. A result folds into the first such area
+/// in [areasByPrecedence] whose boundary holds its position (null for a
+/// suggestion with none yet; a place's boundary has no margin) or whose
+/// name, code, place name or words its text has. [area] makes the area's
+/// entry, told how many results were folded into it.
+List<T> collapseIntoAreas<T>(
   List<T> results,
   List<AirportArea> areas, {
-  required LatLng Function(T) point,
+  required LatLng? Function(T) point,
   required String Function(T) text,
-  required T Function(AirportArea) airport,
+  required T Function(AirportArea area, int folded) area,
 }) {
-  if (areas.isEmpty) return results;
+  final grouping = [for (final a in areasByPrecedence(areas)) if (a.groupResults) a];
+  if (grouping.isEmpty) return results;
+  AirportArea? into(T r) {
+    final at = point(r);
+    final words = text(r);
+    for (final a in grouping) {
+      if (at != null && a.contains(at, bufferM: a.isPlace ? 0 : airportBufferM)) return a;
+      if (a.matchesGroupText(words)) return a;
+    }
+    return null;
+  }
+
+  final hits = [for (final r in results) into(r)];
+  final counts = <String, int>{};
+  for (final a in hits) {
+    if (a != null) counts[a.id] = (counts[a.id] ?? 0) + 1;
+  }
   final out = <T>[];
   final seen = <String>{};
-  for (final r in results) {
-    final hits = [
-      for (final a in areas)
-        if (a.contains(point(r)) || a.matchesName(text(r))) a,
-    ];
-    if (hits.isEmpty) {
-      out.add(r);
-      continue;
-    }
-    for (final a in hits) {
-      if (seen.add(a.id)) out.add(airport(a));
+  for (var i = 0; i < results.length; i++) {
+    final a = hits[i];
+    if (a == null) {
+      out.add(results[i]);
+    } else if (seen.add(a.id)) {
+      out.add(area(a, counts[a.id]!));
     }
   }
   return out;
