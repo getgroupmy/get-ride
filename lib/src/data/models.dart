@@ -377,6 +377,30 @@ class RideRequest {
   List<RideExtra> get extras =>
       rideExtrasOf(pets: pets, assistance: assistance, names: optionNames, passengers: passengers);
 
+  /// Freight (migration 0267): what the rider sends, and a photo of it in
+  /// the private `ride-cargo` bucket (the rider, the driver who takes it and
+  /// admins open it). Null on a ride.
+  String? get cargoDescription => _nonEmpty(raw['cargo_description']);
+  String? get cargoPhotoPath => _nonEmpty(raw['cargo_photo_path']);
+  bool get isFreight => cargoDescription != null;
+
+  /// Proof of delivery (0267): the driver's photos at pickup and at
+  /// drop-off, and the sender's signature, in the private `ride-cargo` bucket.
+  String? get pickupProofPath => _nonEmpty(raw['pickup_proof_path']);
+  String? get dropoffProofPath => _nonEmpty(raw['dropoff_proof_path']);
+  String? get signaturePath => _nonEmpty(raw['delivery_signature_path']);
+
+  /// What waiting at pickup added to the fare once the trip started, and
+  /// the fee owed for cancelling after the driver arrived.
+  int? get waitingMinutes => _i(raw['freight_waiting_minutes']);
+  double? get waitingFee => _d(raw['freight_waiting_fee']);
+  double? get cancelFee => _d(raw['freight_cancel_fee']);
+
+  /// The value the sender declared, and whom the tracking link goes to.
+  double? get declaredValue => _d(raw['declared_value']);
+  String? get recipientName => _nonEmpty(raw['recipient_name']);
+  String? get recipientPhone => _nonEmpty(raw['recipient_phone']);
+
   /// The fare the trip will actually be billed at.
   double? get effectiveFare => _d(raw['ride_fare']) ?? fare;
 }

@@ -176,6 +176,24 @@ const vehicleServiceNumberFields = [
   NumField('maxVehicleAge', 'Max Vehicle Age', suffix: 'yrs'),
 ];
 
+/// A freight size's load and its size (migration 0267), shown on the rider's
+/// Vehicle size list and the driver's request. Optional: a blank field is
+/// not kept.
+const vehicleServiceFreightFields = [
+  NumField('maxLoadKg', 'Max load', suffix: 'kg'),
+  NumField('loadLengthM', 'Load length', suffix: 'm'),
+  NumField('loadWidthM', 'Load width', suffix: 'm'),
+  NumField('loadHeightM', 'Load height', suffix: 'm'),
+];
+
+/// A covered van or lorry: what the rider's "Closed body" option books.
+const closedBodyKey = 'closedBody';
+
+/// The goods-vehicle permit a freight size asks for: a Permits type key
+/// (migration 0267). Without it approved on the vehicle, its driver gets no
+/// requests of this size.
+const goodsPermitKey = 'goodsPermitKey';
+
 const fuelTypes = ['Petrol', 'Diesel', 'Electric'];
 
 const mapIconPalette = [
@@ -205,6 +223,9 @@ ValuesResult buildVehicleServiceValues({
   required List<String> fuel,
   required bool status,
   Map<String, String> dispatch = const {},
+  Map<String, String> freight = const {},
+  bool? closedBody,
+  String? goodsPermit,
   Map<String, dynamic>? existing,
 }) {
   final name = (text['name'] ?? '').trim();
@@ -216,6 +237,13 @@ ValuesResult buildVehicleServiceValues({
   }
   final invalid = validateVehicleServiceDispatch(dispatch);
   if (invalid != null) return (values: const {}, error: invalid.message);
+  for (final f in vehicleServiceFreightFields) {
+    final t = (freight[f.key] ?? '').trim();
+    final n = num.tryParse(t);
+    if (t.isNotEmpty && (n == null || !n.isFinite || n < 0)) {
+      return (values: const {}, error: '${sentenceCaseLabel(f.label)} must be a number of 0 or more.');
+    }
+  }
   final values = <String, dynamic>{
     ...?existing,
     'iconUri': text['iconUri'] ?? '',
@@ -234,6 +262,29 @@ ValuesResult buildVehicleServiceValues({
   for (final f in vehicleServiceNumberFields) {
     final n = num.tryParse((numbers[f.key] ?? '').trim());
     values[f.key] = (n != null && n.isFinite) ? n : 0;
+  }
+  for (final f in vehicleServiceFreightFields) {
+    if (!freight.containsKey(f.key)) continue;
+    final n = num.tryParse(freight[f.key]!.trim());
+    if (n == null || n == 0) {
+      values.remove(f.key);
+    } else {
+      values[f.key] = n;
+    }
+  }
+  if (goodsPermit != null) {
+    if (goodsPermit.trim().isEmpty) {
+      values.remove(goodsPermitKey);
+    } else {
+      values[goodsPermitKey] = goodsPermit.trim();
+    }
+  }
+  if (closedBody != null) {
+    if (closedBody) {
+      values[closedBodyKey] = true;
+    } else {
+      values.remove(closedBodyKey);
+    }
   }
   for (final f in vehicleServiceDispatchFields) {
     if (!dispatch.containsKey(f.key)) continue;
@@ -415,6 +466,8 @@ String vehicleServiceMeta(Map<String, dynamic> v) {
     if (has('costPerKm')) 'Km ${v['costPerKm']}',
     if (has('costPerMin')) 'Min ${v['costPerMin']}',
     if (has('minFareAmount')) 'Min Fare ${v['minFareAmount']}',
+    if (has('maxLoadKg')) 'Load ${v['maxLoadKg']} kg',
+    if (v[closedBodyKey] == true) 'Closed body',
   ].join(' • ');
 }
 

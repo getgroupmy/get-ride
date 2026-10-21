@@ -63,7 +63,9 @@ begin
     -- Place types (migration 0264).
     'place_types',
     -- Places inside an airport (migration 0266).
-    'area_precedence_settings'
+    'area_precedence_settings',
+    -- Freight: the recipients' tracking link notices (migration 0267).
+    'freight_recipient_notices'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

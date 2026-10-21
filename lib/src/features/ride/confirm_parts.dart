@@ -1662,6 +1662,9 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
           value: help != null,
           onChanged: (v) => _assistance(on: v),
         );
+      // The Freight page's; never on a ride's sheet (RideOptionsConfig.shown).
+      case RideOptionKind.helperOne || RideOptionKind.helperTwo || RideOptionKind.closedBody || RideOptionKind.rideAlong:
+        return const SizedBox.shrink();
     }
   }
 

@@ -748,11 +748,16 @@ Map<String, dynamic> renameRideOption(Map<String, dynamic> s, RideOptionKind k, 
   return _withRideOptions(s, c.copyWith(labels: labels));
 }
 
-/// Moves an option up (-1) or down (1).
+/// Moves an option up (-1) or down (1), past the next one of its own list
+/// (a ride's options or the Freight page's).
 Map<String, dynamic> moveRideOption(Map<String, dynamic> s, RideOptionKind k, int dir) {
   final c = rideOptionsOf(s);
   final order = [...c.order];
-  final i = order.indexOf(k), j = i + dir;
+  final i = order.indexOf(k);
+  var j = i + dir;
+  while (j >= 0 && j < order.length && order[j].freight != k.freight) {
+    j += dir;
+  }
   if (i < 0 || j < 0 || j >= order.length) return s;
   order[i] = order[j];
   order[j] = k;

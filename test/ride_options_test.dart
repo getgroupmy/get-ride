@@ -90,8 +90,16 @@ void main() {
           'childSeatMax': 9,
         },
       });
-      expect(c.order, [RideOptionKind.assistance, RideOptionKind.pet, RideOptionKind.childSeat, RideOptionKind.morePassengers]);
+      expect(c.order, [
+        RideOptionKind.assistance,
+        RideOptionKind.pet,
+        RideOptionKind.childSeat,
+        RideOptionKind.morePassengers,
+        // The Freight page's (0267) follow, never on a ride's sheet.
+        ...RideOptionKind.freightKinds,
+      ]);
       expect(c.shown(), [RideOptionKind.assistance, RideOptionKind.pet, RideOptionKind.childSeat]);
+      expect(c.freightShown, RideOptionKind.freightKinds);
       expect(c.labelOf(RideOptionKind.pet), 'Bringing a pet');
       expect(c.labelOf(RideOptionKind.childSeat), 'Child safety seat');
       expect(c.labels.keys, [RideOptionKind.pet], reason: 'the built-in name and blanks are not kept');

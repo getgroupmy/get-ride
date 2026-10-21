@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/format.dart';
 import '../../core/region_time.dart' show formatInZone;
 import '../../data/models.dart';
+import '../../features/ride/freight_parts.dart' show FreightCargoView, FreightNoticesView, FreightProofView;
 import '../../features/ride/pet_parts.dart' show RidePetsView;
 import '../../features/ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
 import '../../core/ride_option_settings.dart' show RideOptionKind;
@@ -70,11 +71,25 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
           'Completed': dateText(r.raw['completed_at']),
           'Cancelled': dateText(r.raw['cancelled_at']),
           'Cancel reason': r.raw['cancel_reason'],
+          // Freight (0267).
+          'Declared value': r.declaredValue == null ? null : formatMoney(r.declaredValue, r.currency),
+          'Recipient': [?r.recipientName, ?r.recipientPhone].join(' · '),
+          'Waiting fee': (r.waitingFee ?? 0) > 0 ? '${formatMoney(r.waitingFee, r.currency)} (${r.waitingMinutes} min)' : null,
+          'Cancel fee': r.cancelFee == null ? null : '${formatMoney(r.cancelFee, r.currency)} (${r.raw['freight_cancel_fee_status']})',
           'Commission': r.raw['commission_amount'] == null
               ? null
               : '${formatMoney(r.raw['commission_amount'] as num, r.currency)} '
                   '(${((r.raw['commission_rate'] as num? ?? 0) * 100).toStringAsFixed(1)}%)',
         }),
+        // Freight (0267): the cargo and its photo.
+        if (r.isFreight) ...[
+          const SizedBox(height: 12),
+          FreightCargoView(key: const ValueKey('admin-ride-freight'), request: r, title: 'Cargo'),
+          const SizedBox(height: 12),
+          FreightProofView(request: r),
+          const SizedBox(height: 8),
+          FreightNoticesView(rideId: r.id),
+        ],
         // "Pet with me" (0247): an open request's photos wait aside.
         if (r.pets.isNotEmpty) ...[
           const SizedBox(height: 12),

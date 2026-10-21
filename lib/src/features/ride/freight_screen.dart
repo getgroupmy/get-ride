@@ -1,0 +1,1614 @@
+// The Freight page (home service box "Freight", migration 0267): the cargo's
+// pickup and destination, when, what it is, the vehicle size, the options
+// (helpers, closed body, riding along: fixed charges by place), the payment,
+// a photo and the rider's offer, then Create request. The request is a ride
+// request of that size's service, bid on as any ride: drivers' offers come
+// to My freight requests, and an accepted one opens the normal trip screens.
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:latlong2/latlong.dart';
+
+import '../../config.dart';
+import '../../core/book_for.dart';
+import '../../core/commission.dart' show Geo;
+import '../../core/early_end.dart' show serviceTypeIds;
+import '../../core/fare_tariff.dart';
+import '../../core/format.dart';
+import '../../core/freight.dart';
+import '../../core/option_charge.dart';
+import '../../core/partner_type_rules.dart' show RegionScope;
+import '../../core/payment_types.dart';
+import '../../core/region_pricing.dart';
+import '../../core/ride_bidding.dart' show standingOffer;
+import '../../core/ride_chat.dart' show ridePhotoProblem;
+import '../../core/ride_option_charges.dart';
+import '../../core/ride_option_places.dart';
+import '../../core/ride_option_settings.dart';
+import '../../core/ride_request_metadata.dart';
+import '../../core/scheduled_rides.dart';
+import '../../data/app_display_repository.dart';
+import '../../data/device_access.dart';
+import '../../data/fare_tariff_repository.dart';
+import '../../data/freight_repository.dart';
+import '../../data/geo_service.dart';
+import '../../data/models.dart';
+import '../../data/photo_picker.dart';
+import '../../data/ride_option_places_repository.dart';
+import '../../data/ride_option_providers.dart';
+import '../../data/scheduled_ride_repository.dart';
+import '../../providers.dart';
+import '../../widgets/chat_photo.dart' show choosePhotoSource;
+import '../../widgets/common.dart' show showError, showInfo, showNotice;
+import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart' show ListSearchFilter, searchSelectMatches;
+import 'confirm_parts.dart' show paymentLook;
+import 'freight_parts.dart';
+import 'map_place_picker.dart';
+import 'pickup_time_sheet.dart';
+import 'place_search.dart';
+import 'scheduled_rides_screen.dart' show pickupLabel;
+import 'searching_parts.dart' show OfferStack, SearchOfferView;
+
+/// Opens the Freight page.
+Future<void> openFreightPage(BuildContext context) =>
+    Navigator.of(context).push<void>(AppPageRoute(id: 'ride.freight', builder: (_) => const FreightScreen()));
+
+/// A loading or drop-off point: the city or town, then the house number and
+/// street (the place booked).
+typedef FreightAddress = ({String city, Place place});
+
+/// "12, Jalan Ampang, Kuala Lumpur": the street, then the city when it
+/// doesn't already say it.
+String freightAddressLabel(FreightAddress a) {
+  final name = a.place.name.trim();
+  final city = a.city.trim();
+  if (city.isEmpty || name.toLowerCase().contains(city.toLowerCase())) return name;
+  return '$name, $city';
+}
+
+/// Looks a place up for the Freight page: the app's place search (saved
+/// places, gates, "Pin on the map"), or the map at once with [onMap].
+/// Overridden in tests.
+typedef FreightPlaceSearch = Future<Place?> Function(
+  BuildContext context, {
+  required String title,
+  LatLng? near,
+  bool onMap,
+});
+
+final freightPlaceSearchProvider = Provider<FreightPlaceSearch>((ref) => (context, {required title, near, onMap = false}) async {
+  if (onMap) return pickPlaceOnMap(context, start: near);
+  final pick = await showPlaceSearch(context, title: title, near: near, mode: PlaceSearchMode.address, fieldLabel: title);
+  if (pick == null || !context.mounted) return null;
+  return pick.pickOnMap ? pickPlaceOnMap(context, start: near) : pick.place;
+});
+
+/// What the server reads a pickup at: its geography, the place its Ride
+/// Options are read at, how its fares are priced and its time zone.
+typedef FreightPickupContext = ({AreaInfo? area, RegionScope place, RegionPricing pricing, String? timezone});
+
+final freightPickupContextProvider = Provider<Future<FreightPickupContext> Function(LatLng)>((ref) => (p) async {
+  AreaInfo? area;
+  try {
+    area = await ref.read(geoServiceProvider).reverseArea(p).timeout(const Duration(seconds: 6));
+  } catch (_) {}
+  var place = optionPlaceFromArea(area);
+  try {
+    place = await ref.read(rideOptionPlacesRepositoryProvider).placeAt(p, area) ?? place;
+  } catch (_) {}
+  final rides = ref.read(rideRepositoryProvider);
+  var pricing = RegionPricing.none;
+  try {
+    pricing = await rides.pricingFor(p, () async => area);
+  } catch (_) {}
+  String? timezone;
+  try {
+    timezone = (await rides.ruleContextFor(p, () async => area)).timezone;
+  } catch (_) {}
+  return (area: area, place: place, pricing: pricing, timezone: timezone);
+});
+
+/// The road distance and time between two points; null when it can't be
+/// worked out. Overridden in tests.
+final freightRouteProvider = Provider<Future<({double km, double min})?> Function(LatLng, LatLng)>(
+  (ref) => (a, b) async {
+    try {
+      final r = await ref.read(geoServiceProvider).route(a, b);
+      return (km: r.distanceKm, min: r.durationMin);
+    } catch (_) {
+      return null;
+    }
+  },
+);
+
+class FreightScreen extends ConsumerStatefulWidget {
+  const FreightScreen({super.key, this.initialTab = 0});
+
+  /// 0: Create request, 1: My requests.
+  final int initialTab;
+
+  @override
+  ConsumerState<FreightScreen> createState() => _FreightScreenState();
+}
+
+class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTickerProviderStateMixin {
+  late final _tabs = TabController(length: 2, vsync: this, initialIndex: widget.initialTab);
+  FreightAddress? _pickup, _drop;
+  FreightPickupTime _time = FreightPickupTime.soon;
+  DateTime? _scheduleAt;
+  String _description = '';
+  String? _vehicleId;
+  Set<RideOptionKind> _options = const {};
+  String _payment = 'Cash';
+  Uint8List? _photo;
+  String? _photoPath;
+  bool _uploading = false;
+  double? _offer;
+  double? _declared;
+  bool _ack = false;
+  FreightRecipient? _recipient;
+  FreightPickupContext? _context;
+  LatLng? _contextAt;
+  ({double km, double min})? _route;
+  bool _booking = false;
+  int _seq = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  List<FreightVehicle> get _vehicles => ref.read(freightVehiclesProvider).value ?? const [];
+
+  /// The size chosen, else the first one (as the sample shows "Van (S)").
+  FreightVehicle? get _vehicle {
+    final all = _vehicles;
+    if (all.isEmpty) return null;
+    return all.firstWhere((v) => v.id == _vehicleId, orElse: () => all.first);
+  }
+
+  RideOptionsConfig get _config => ref.read(rideOptionsConfigProvider);
+
+  RideOptionsHere get _here {
+    final places = ref.read(rideOptionPlacesProvider).value ??
+        OptionPlaces.fromBlob(ref.read(displaySettingsBlobProvider).value ?? const <String, dynamic>{});
+    return places.here(_context?.place ?? RegionScope.all);
+  }
+
+  /// The options the rider can pick for the size chosen, at the pickup.
+  List<RideOptionKind> get _offered => freightOptionsHere(_config, _here, vehicleId: _vehicle?.id);
+
+  /// The options picked that are still offered.
+  Set<RideOptionKind> get _picked => _options.intersection(_offered.toSet());
+
+  List<OptionChargeLine> get _charges => freightOptionCharges(_picked, _here, _config, offer: _offer ?? 0);
+
+  FareTariff? get _tariff {
+    final v = _vehicle;
+    if (v == null) return null;
+    final a = _context?.area;
+    return resolveFareTariff(
+      ref.read(fareTariffsProvider).value ?? const [],
+      Geo(country: a?.country, state: a?.state, city: a?.city, suburb: a?.suburb),
+      vehicleService: v.id,
+      serviceTypes: serviceTypeIds(v.service, ref.read(serviceBoxNamesProvider).value ?? const {}),
+    );
+  }
+
+  /// The pickup country's currency (its tariff card's).
+  String get _currency => _tariff?.currency ?? AppConfig.currency;
+
+  RegionPricing get _pricing => _context?.pricing ?? RegionPricing.none;
+
+  /// The pickup's waiting rules, cancel fee and declared value cap.
+  FreightPlaceValues get _placeValues => freightPlaceValues(
+    ref.read(rideOptionPlacesProvider).value ?? OptionPlaces.none,
+    _context?.place ?? RegionScope.all,
+  );
+
+  String _money(double v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : _pricing.fareDecimals);
+
+  /// The fare estimate for this trip and size; null until both ends are set.
+  double? get _recommended {
+    final r = _route, v = _vehicle;
+    if (r == null || v == null) return null;
+    return _pricing.roundFare(quoteFare(_tariff, r.km, r.min, multiplier: v.multiplier, fallbackCurrency: AppConfig.currency).fare);
+  }
+
+  /// The pickup's context (read again only for a new pickup) and the
+  /// route, once both ends are set.
+  Future<void> _ends() async {
+    final a = _pickup, b = _drop;
+    final seq = ++_seq;
+    if (a != null && _contextAt != a.place.point) {
+      final c = await ref.read(freightPickupContextProvider)(a.place.point);
+      if (!mounted || seq != _seq) return;
+      setState(() {
+        _context = c;
+        _contextAt = a.place.point;
+      });
+    }
+    if (a == null || b == null) {
+      setState(() => _route = null);
+      return;
+    }
+    final r = await ref.read(freightRouteProvider)(a.place.point, b.place.point);
+    if (!mounted || seq != _seq) return;
+    setState(() => _route = r);
+  }
+
+  Future<void> _address({required bool pickup}) async {
+    final picked = await showAppSheet<FreightAddress>(id: 'ride.freight-address',
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _AddressSheet(pickup: pickup, initial: pickup ? _pickup : _drop),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => pickup ? _pickup = picked : _drop = picked);
+    unawaited(_ends());
+  }
+
+  Future<void> _schedule() async {
+    ScheduledRidesConfig c;
+    try {
+      c = await ref.read(scheduledRidesConfigProvider.future);
+    } catch (_) {
+      c = const ScheduledRidesConfig();
+    }
+    if (!mounted) return;
+    if (!c.enabled) return showInfo(context, 'Scheduled rides are not available.');
+    final fare = freightFare(_offer ?? 0, _charges);
+    final fee = schedulingFee(fare, c);
+    final at = await showPickupTimeSheet(
+      context,
+      c,
+      initial: _scheduleAt,
+      note: fee > 0 ? '+ ${_money(fee)} scheduling fee' : null,
+    );
+    if (at == null || !mounted) return;
+    setState(() {
+      _scheduleAt = at;
+      _time = FreightPickupTime.scheduled;
+    });
+  }
+
+  Future<void> _describe() async {
+    final text = await showAppSheet<String>(id: 'ride.freight-cargo',
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _DescriptionSheet(initial: _description),
+    );
+    if (text != null && mounted) setState(() => _description = text.trim());
+  }
+
+  Future<void> _chooseVehicle() async {
+    final vehicles = _vehicles;
+    final closedOnly = _picked.contains(RideOptionKind.closedBody);
+    final id = await showAppSheet<String>(id: 'ride.freight-vehicle',
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _VehicleSheet(vehicles: vehicles, selected: _vehicle?.id, closedOnly: closedOnly),
+    );
+    if (id != null && mounted) setState(() => _vehicleId = id);
+  }
+
+  void _toggle(RideOptionKind k) {
+    final next = toggleFreightOption(_picked, k);
+    final v = _vehicle;
+    // A closed body books the covered sizes only: move to the first one.
+    if (k == RideOptionKind.closedBody && next.contains(k) && v != null && !v.closedBody) {
+      final covered = _vehicles.where((x) => x.closedBody).firstOrNull;
+      if (covered == null) return showInfo(context, 'No closed body vehicle is offered yet.');
+      setState(() {
+        _vehicleId = covered.id;
+        _options = next;
+      });
+      showInfo(context, 'Changed to ${covered.name}, a closed body vehicle.');
+      return;
+    }
+    setState(() => _options = next);
+  }
+
+  Future<void> _explainOptions() => showAppSheet<void>(id: 'ride.freight-options-info',
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) => _OptionsInfoSheet(
+      options: _offered,
+      config: _config,
+      charge: (k) => freightChargeText(_here.freight(k), _money),
+    ),
+  );
+
+  Future<void> _photoPick() async {
+    if (_uploading) return;
+    final source = await choosePhotoSource(context, camera: ref.read(photoCameraAvailableProvider));
+    if (source == null || !mounted) return;
+    final PickedPhoto? photo;
+    try {
+      photo = await ref.read(photoPickerProvider)(source);
+    } catch (_) {
+      if (mounted) {
+        showInfo(
+          context,
+          source == PhotoSource.camera
+              ? "Couldn't open the camera. Check that GET.ride may use it in Settings."
+              : "Couldn't open your photos. Check that GET.ride may use them in Settings.",
+        );
+      }
+      return;
+    }
+    if (photo == null || !mounted) return;
+    final problem = ridePhotoProblem(photo.bytes.length);
+    if (problem != null) return showInfo(context, problem);
+    setState(() {
+      _uploading = true;
+      _photo = photo!.bytes;
+      _photoPath = null;
+    });
+    try {
+      final path = await ref.read(freightCargoPhotoUploadProvider)(photo.bytes, photo.name);
+      if (mounted && identical(_photo, photo.bytes)) setState(() => _photoPath = path);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _photo = null);
+        showError(context, e);
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _offerFare() async {
+    final style = currencyStyles[_currency.trim().toUpperCase()];
+    final v = await showAppSheet<double>(id: 'ride.freight-offer',
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _OfferSheet(
+        initial: _offer ?? _recommended?.roundToDouble(),
+        recommended: _recommended,
+        currencyLabel: (style?.symbol ?? _currency).trim(),
+        money: _money,
+      ),
+    );
+    if (v != null && mounted) setState(() => _offer = v);
+  }
+
+  Future<void> _declare() async {
+    final style = currencyStyles[_currency.trim().toUpperCase()];
+    final cap = _placeValues.declaredCap;
+    final v = await showAppSheet<double>(id: 'ride.freight-declared',
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _AmountSheet(
+        title: 'Value of your items',
+        initial: _declared,
+        currencyLabel: (style?.symbol ?? _currency).trim(),
+        hint: 'Up to ${_money(cap)}. Items worth more need another way to send.',
+        problem: (v) => declaredValueProblem(v, cap, _money),
+      ),
+    );
+    if (v != null && mounted) setState(() => _declared = v);
+  }
+
+  Future<void> _showProhibited() => showAppSheet<void>(id: 'ride.freight-prohibited',
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    builder: (_) => _ProhibitedSheet(items: (ref.read(freightConfigProvider).value ?? const FreightConfig()).prohibitedItems),
+  );
+
+  Future<void> _chooseRecipient() async {
+    final r = await showAppSheet<FreightRecipient>(id: 'ride.freight-recipient',
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _RecipientSheet(initial: _recipient),
+    );
+    if (r != null && mounted) setState(() => _recipient = r.phone.trim().isEmpty ? null : r);
+  }
+
+  Future<void> _create() async {
+    final a = _pickup, b = _drop, v = _vehicle;
+    final problem = freightDraftProblem(FreightDraft(
+      pickup: a != null,
+      drop: b != null,
+      description: _description,
+      vehicle: v,
+      offer: _offer,
+      photoUploading: _uploading,
+      declaredValue: _declared,
+      declaredCap: _placeValues.declaredCap,
+      prohibitedAck: _ack,
+    ));
+    if (problem != null) return showInfo(context, problem);
+    setState(() => _booking = true);
+    try {
+      try {
+        if (await ref.read(deviceBlockedProvider.future).timeout(const Duration(seconds: 5))) {
+          if (mounted) showInfo(context, 'This device is not permitted to place a request.');
+          return;
+        }
+      } catch (_) {}
+      final scheduleAt = _time == FreightPickupTime.scheduled ? _scheduleAt : null;
+      if (_time == FreightPickupTime.scheduled) {
+        final c = await ref.read(scheduledRidesConfigProvider.future);
+        final why = scheduleAt == null
+            ? 'Choose the pickup time.'
+            : (!c.enabled ? 'Scheduled rides are not available.' : pickupTimeProblem(scheduleAt, DateTime.now(), c));
+        if (why != null) {
+          if (mounted) showInfo(context, why);
+          return;
+        }
+      }
+      // The pickup's place and pricing, if they haven't come yet.
+      final ctx = _context ?? await ref.read(freightPickupContextProvider)(a!.place.point);
+      if (!mounted) return;
+      if (_context == null) setState(() => _context = ctx);
+      Profile? profile;
+      try {
+        profile = await ref.read(profileProvider.future);
+      } catch (_) {}
+      final picked = _picked;
+      final charges = _charges;
+      final names = _config.freightNamesFor(picked);
+      final route = _route;
+      final booked = await ref.read(rideRepositoryProvider).createRequest(
+        scheduleAt: scheduleAt,
+        service: v!.name,
+        pickupName: freightAddressLabel(a!),
+        pickupAddress: a.place.address,
+        pickupLat: a.place.point.latitude,
+        pickupLng: a.place.point.longitude,
+        dropName: freightAddressLabel(b!),
+        dropAddress: b.place.address,
+        dropLat: b.place.point.latitude,
+        dropLng: b.place.point.longitude,
+        distanceKm: route?.km ?? const Distance().as(LengthUnit.Meter, a.place.point, b.place.point) / 1000,
+        durationMin: (route?.min ?? 0).round(),
+        fare: freightFare(_offer!, charges),
+        paymentMode: resolvePayment(_payment, ref.read(paymentChoicesProvider).value ?? builtInPayments),
+        note: freightNote(description: _description, options: [for (final k in picked) _config.labelOf(k)], time: _time),
+        optionCharges: charges,
+        optionNames: names,
+        riderName: profile?.name,
+        riderPhone: profile?.phone,
+        deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
+        // Freight is bid on: the rider offers, drivers counter.
+        offerMe: true,
+        metadata: rideRequestMetadata(area: ctx.area, gender: profile?.raw['gender'] as String?, riderPhoto: profile?.avatarUrl),
+        currency: _currency,
+        pricing: ctx.pricing,
+        timezone: ctx.timezone,
+        cargoDescription: _description,
+        cargoPhotoPath: _photoPath,
+        declaredValue: _declared,
+        prohibitedAck: _ack,
+        recipient: _recipient,
+      );
+      if (!mounted) return;
+      setState(() {
+        _description = '';
+        _photo = null;
+        _photoPath = null;
+        _offer = null;
+        _options = const {};
+        _declared = null;
+        _ack = false;
+        _recipient = null;
+      });
+      final later = booked.later;
+      if (later != null) {
+        ref.invalidate(myScheduledRidesProvider);
+        setState(() {
+          _scheduleAt = null;
+          _time = FreightPickupTime.soon;
+        });
+        await showNotice(
+          context,
+          title: 'Freight scheduled',
+          message: 'Pickup ${pickupLabel(confirmedPickupAt(later, scheduleAt))}. '
+              "We'll find your driver before then and let you know.",
+        );
+        if (mounted) GoRouter.maybeOf(context)?.push('/trips/scheduled');
+        return;
+      }
+      _tabs.animateTo(1);
+      showInfo(context, 'Request sent. Drivers will send you their offers.');
+    } on DuplicateRideRequest catch (e) {
+      if (mounted) showInfo(context, e.toString());
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _booking = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Rebuilt as the sizes, the options' charges and the tariffs arrive.
+    ref.watch(freightVehiclesProvider);
+    ref.watch(rideOptionsConfigProvider);
+    ref.watch(rideOptionPlacesProvider);
+    ref.watch(fareTariffsProvider);
+    ref.watch(paymentChoicesProvider);
+    ref.watch(freightConfigProvider);
+    final mine = _tabs.index == 1;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(mine ? 'My freight requests' : 'Freight'),
+        bottom: TabBar(
+          controller: _tabs,
+          tabs: const [
+            Tab(key: ValueKey('freight-tab-create'), text: 'Create request'),
+            Tab(key: ValueKey('freight-tab-mine'), text: 'My requests'),
+          ],
+        ),
+      ),
+      body: TabBarView(controller: _tabs, children: [_form(context), const FreightRequestsList()]),
+    );
+  }
+
+  Widget _form(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = t.colorScheme.onSurfaceVariant;
+    final v = _vehicle;
+    final offered = _offered;
+    final picked = _picked;
+    final charges = _charges;
+    final payments = ref.read(paymentChoicesProvider).value ?? builtInPayments;
+    final payment = resolvePayment(_payment, payments);
+    final added = optionChargesTotal(charges);
+    Widget label(String text, {Widget? trailing}) => Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 6),
+      child: Row(children: [
+        Text(text, style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+        ?trailing,
+      ]),
+    );
+    return Column(children: [
+      Expanded(
+        child: ListView(
+          key: const ValueKey('freight-form'),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+          children: [
+            _FreightField(
+              key: const ValueKey('freight-pickup'),
+              label: 'Pickup location',
+              value: _pickup == null ? null : freightAddressLabel(_pickup!),
+              onTap: () => _address(pickup: true),
+            ),
+            const SizedBox(height: 8),
+            _FreightField(
+              key: const ValueKey('freight-drop'),
+              label: 'Destination',
+              value: _drop == null ? null : freightAddressLabel(_drop!),
+              onTap: () => _address(pickup: false),
+            ),
+            label('Pickup time'),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final k in [FreightPickupTime.soon, FreightPickupTime.withinHour])
+                ChoiceChip(
+                  key: ValueKey('freight-time-${k.name}'),
+                  label: Text(k.label),
+                  selected: _time == k,
+                  onSelected: (_) => setState(() => _time = k),
+                ),
+              ChoiceChip(
+                key: const ValueKey('freight-time-scheduled'),
+                label: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_time == FreightPickupTime.scheduled && _scheduleAt != null
+                      ? pickupLabel(_scheduleAt!)
+                      : FreightPickupTime.scheduled.label),
+                  const Icon(Icons.expand_more, size: 18),
+                ]),
+                selected: _time == FreightPickupTime.scheduled,
+                onSelected: (_) => _schedule(),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            _FreightField(
+              key: const ValueKey('freight-description'),
+              label: 'Description of the cargo',
+              value: _description.isEmpty ? null : _description,
+              onTap: _describe,
+            ),
+            const SizedBox(height: 8),
+            _FreightField(
+              key: const ValueKey('freight-vehicle'),
+              label: 'Vehicle size',
+              value: v?.name,
+              placeholder: 'No vehicle sizes yet',
+              leading: v == null ? null : FreightVehicleImage(vehicle: v, size: 32),
+              onTap: _vehicles.isEmpty ? null : _chooseVehicle,
+            ),
+            if (offered.isNotEmpty) ...[
+              label(
+                'Options',
+                trailing: IconButton(
+                  key: const ValueKey('freight-options-info'),
+                  tooltip: 'What the options mean',
+                  visualDensity: VisualDensity.compact,
+                  icon: Icon(Icons.info_outline, size: 20, color: t.colorScheme.primary),
+                  onPressed: _explainOptions,
+                ),
+              ),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final k in offered)
+                  FilterChip(
+                    key: ValueKey('freight-option-${k.id}'),
+                    avatar: Icon(freightOptionIcon(k), size: 18),
+                    label: Text(_config.labelOf(k)),
+                    selected: picked.contains(k),
+                    onSelected: (_) => _toggle(k),
+                  ),
+              ]),
+            ],
+            const SizedBox(height: 12),
+            _FreightField(
+              key: const ValueKey('freight-declared'),
+              label: 'Value of your items',
+              value: _declared == null ? null : _money(_declared!),
+              onTap: _declare,
+            ),
+            CheckboxListTile(
+              key: const ValueKey('freight-prohibited-ack'),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              value: _ack,
+              onChanged: (v) => setState(() => _ack = v ?? false),
+              title: const Text('My cargo has none of the prohibited items'),
+              subtitle: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  key: const ValueKey('freight-prohibited-list'),
+                  style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                  onPressed: _showProhibited,
+                  child: const Text('See the prohibited items'),
+                ),
+              ),
+            ),
+            _FreightField(
+              key: const ValueKey('freight-recipient'),
+              label: 'Recipient (optional)',
+              value: _recipient == null
+                  ? null
+                  : [if (_recipient!.name.trim().isNotEmpty) _recipient!.name.trim(), _recipient!.phone.trim()].join(' · '),
+              onTap: _chooseRecipient,
+            ),
+            label('Payment'),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final p in payments)
+                ChoiceChip(
+                  key: ValueKey('freight-payment-${p.value}'),
+                  avatar: Icon(paymentLook(p.kind).$1, size: 18),
+                  label: Text(p.label),
+                  selected: payment == p.value,
+                  onSelected: (_) => setState(() => _payment = p.value),
+                ),
+            ]),
+            label('Picture of your cargo'),
+            Row(children: [
+              Material(
+                color: t.colorScheme.surfaceContainerHighest,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  key: const ValueKey('freight-photo'),
+                  onTap: _photoPick,
+                  child: SizedBox.square(
+                    dimension: 72,
+                    child: _photo == null
+                        ? Icon(Icons.add_a_photo_outlined, color: muted, size: 28)
+                        : Stack(fit: StackFit.expand, children: [
+                            Image.memory(_photo!, fit: BoxFit.cover),
+                            if (_uploading) const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                          ]),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _photo == null ? 'Optional. Drivers see it once they accept.' : (_uploading ? 'Uploading...' : 'Added'),
+                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ),
+              if (_photo != null && !_uploading)
+                IconButton(
+                  key: const ValueKey('freight-photo-remove'),
+                  tooltip: 'Remove the photo',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => setState(() {
+                    _photo = null;
+                    _photoPath = null;
+                  }),
+                ),
+            ]),
+            const SizedBox(height: 12),
+            _FreightField(
+              key: const ValueKey('freight-offer'),
+              label: 'Your offer',
+              value: _offer == null ? null : _money(_offer!),
+              placeholder: 'Offer your fare',
+              onTap: _offerFare,
+            ),
+            if (_offer != null && added > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, left: 4),
+                child: Text(
+                  '${[for (final c in charges) '${c.name} ${_money(c.amount)}'].join(' · ')}. '
+                  'Total ${_money(freightFare(_offer!, charges))}',
+                  key: const ValueKey('freight-total'),
+                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ),
+          ],
+        ),
+      ),
+      SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton(
+              key: const ValueKey('freight-create'),
+              onPressed: _booking ? null : _create,
+              child: _booking
+                  ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Create request'),
+            ),
+          ),
+        ),
+      ),
+    ]);
+  }
+}
+
+/// One row of the form: its label over the value (or the label alone as a
+/// placeholder), and a chevron.
+class _FreightField extends StatelessWidget {
+  const _FreightField({super.key, required this.label, this.value, this.placeholder, this.leading, this.onTap});
+  final String label;
+  final String? value;
+  final String? placeholder;
+  final Widget? leading;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = t.colorScheme.onSurfaceVariant;
+    return Material(
+      color: t.colorScheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(children: [
+            if (leading != null) ...[leading!, const SizedBox(width: 10)],
+            Expanded(
+              child: value == null
+                  ? Text(placeholder ?? label, style: t.textTheme.bodyLarge?.copyWith(color: muted))
+                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(label, style: t.textTheme.bodySmall?.copyWith(color: muted)),
+                      Text(value!, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.textTheme.bodyLarge),
+                    ]),
+            ),
+            Icon(Icons.chevron_right, color: muted),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// A sheet's title row: the title and a close button.
+class _SheetHead extends StatelessWidget {
+  const _SheetHead(this.title);
+  final String title;
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    const SizedBox(width: 48),
+    Expanded(
+      child: Text(
+        title,
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+      ),
+    ),
+    IconButton(tooltip: 'Close', icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+  ]);
+}
+
+/// Cargo loading point / Cargo drop-off point: the city or town, then the
+/// house number and street, searched near it or pinned on the map.
+class _AddressSheet extends ConsumerStatefulWidget {
+  const _AddressSheet({required this.pickup, this.initial});
+  final bool pickup;
+  final FreightAddress? initial;
+
+  @override
+  ConsumerState<_AddressSheet> createState() => _AddressSheetState();
+}
+
+class _AddressSheetState extends ConsumerState<_AddressSheet> {
+  late Place? _city = widget.initial == null
+      ? null
+      : Place(name: widget.initial!.city, address: widget.initial!.city, point: widget.initial!.place.point);
+  late Place? _street = widget.initial?.place;
+
+  Future<void> _pickCity() async {
+    final p = await ref.read(freightPlaceSearchProvider)(
+      context,
+      title: widget.pickup ? 'From which city or town?' : 'To which city or town?',
+    );
+    if (p != null && mounted) setState(() => _city = p);
+  }
+
+  Future<void> _pickStreet({bool onMap = false}) async {
+    final p = await ref.read(freightPlaceSearchProvider)(
+      context,
+      title: 'House number and street',
+      near: _street?.point ?? _city?.point,
+      onMap: onMap,
+    );
+    if (p != null && mounted) setState(() => _street = p);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final street = _street;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+      child: Column(
+        key: const ValueKey('freight-address-sheet'),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SheetHead(widget.pickup ? 'Cargo loading point' : 'Cargo drop-off point'),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: _FreightField(
+              key: const ValueKey('freight-address-city'),
+              label: widget.pickup ? 'From which city or town?' : 'To which city or town?',
+              value: _city?.name,
+              onTap: _pickCity,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(
+              child: _FreightField(
+                key: const ValueKey('freight-address-street'),
+                label: 'House number and street',
+                value: street?.name,
+                onTap: _pickStreet,
+              ),
+            ),
+            IconButton(
+              key: const ValueKey('freight-address-map'),
+              tooltip: 'Pin on the map',
+              icon: const Icon(Icons.map_outlined),
+              onPressed: () => _pickStreet(onMap: true),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton(
+              key: const ValueKey('freight-address-next'),
+              onPressed: street == null
+                  ? null
+                  : () => Navigator.pop(context, (city: _city?.name.trim() ?? '', place: street)),
+              child: const Text('Next'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DescriptionSheet extends StatefulWidget {
+  const _DescriptionSheet({required this.initial});
+  final String initial;
+
+  @override
+  State<_DescriptionSheet> createState() => _DescriptionSheetState();
+}
+
+class _DescriptionSheetState extends State<_DescriptionSheet> {
+  late final _text = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.fromLTRB(16, 8, 8, 16 + MediaQuery.viewInsetsOf(context).bottom),
+    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const _SheetHead('Description of the cargo'),
+      const SizedBox(height: 8),
+      Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: TextField(
+          key: const ValueKey('freight-description-field'),
+          controller: _text,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 6,
+          maxLength: cargoDescriptionMax,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(
+            hintText: 'Single-door fridge and 6 boxes, 2nd floor, no lift',
+            border: OutlineInputBorder(),
+          ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: FilledButton(
+          key: const ValueKey('freight-description-done'),
+          onPressed: () => Navigator.pop(context, _text.text),
+          child: const Text('Done'),
+        ),
+      ),
+    ]),
+  );
+}
+
+/// Which vehicle suits your cargo? Each size with its picture, load and
+/// load size; with [closedOnly] the open ones can't be chosen.
+class _VehicleSheet extends StatelessWidget {
+  const _VehicleSheet({required this.vehicles, this.selected, this.closedOnly = false});
+  final List<FreightVehicle> vehicles;
+  final String? selected;
+  final bool closedOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = t.colorScheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const _SheetHead('Which vehicle suits your cargo?'),
+        Flexible(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(right: 8),
+            child: ListSearchFilter(
+              count: vehicles.length,
+              hint: 'Search vehicles',
+              builder: (context, q) => Column(mainAxisSize: MainAxisSize.min, children: [
+                for (final v in vehicles)
+                  if (q.isEmpty || searchSelectMatches(v.name, q))
+                    () {
+                      final off = closedOnly && !v.closedBody;
+                      return Material(
+                        color: v.id == selected ? t.colorScheme.primaryContainer : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          key: ValueKey('freight-vehicle-${v.id}'),
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: off ? null : () => Navigator.pop(context, v.id),
+                          child: Opacity(
+                            opacity: off ? 0.5 : 1,
+                            child: Padding(
+                              padding: const EdgeInsets.all(10),
+                              child: Row(children: [
+                                FreightVehicleImage(vehicle: v),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text(v.name, style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                                    if (v.subtitle.isNotEmpty)
+                                      Text(v.subtitle, style: t.textTheme.bodySmall?.copyWith(color: muted)),
+                                    Wrap(spacing: 6, runSpacing: 4, children: [
+                                      if (v.sizeText case final size?) _Tag(size),
+                                      if (v.closedBody) const _Tag('Closed body'),
+                                      if (off) const _Tag('Not a closed body'),
+                                    ]),
+                                  ]),
+                                ),
+                              ]),
+                            ),
+                          ),
+                        ),
+                      );
+                    }(),
+              ]),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _Tag extends StatelessWidget {
+  const _Tag(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: t.colorScheme.surfaceContainerHighest, borderRadius: BorderRadius.circular(6)),
+      child: Text(text, style: t.textTheme.labelSmall),
+    );
+  }
+}
+
+/// What the options mean: each one offered, what it is and its charge here.
+class _OptionsInfoSheet extends StatelessWidget {
+  const _OptionsInfoSheet({required this.options, required this.config, required this.charge});
+  final List<RideOptionKind> options;
+  final RideOptionsConfig config;
+  final String Function(RideOptionKind) charge;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = t.colorScheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+      child: Column(
+        key: const ValueKey('freight-options-sheet'),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _SheetHead('What the options mean'),
+          for (final k in options)
+            ListTile(
+              key: ValueKey('freight-option-info-${k.id}'),
+              contentPadding: const EdgeInsets.only(right: 8),
+              leading: Icon(freightOptionIcon(k)),
+              title: Text(config.labelOf(k)),
+              subtitle: Text(freightOptionExplanation(k)),
+              trailing: Text(charge(k), style: t.textTheme.bodyMedium?.copyWith(color: muted)),
+            ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(0, 4, 8, 12),
+            child: Text(
+              'Helpers and options are added to your offer.',
+              textAlign: TextAlign.center,
+              style: t.textTheme.bodySmall?.copyWith(color: muted),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Offer your fare: the amount typed in, the suggested range for the trip
+/// and size, and that the options come on top.
+class _OfferSheet extends StatefulWidget {
+  const _OfferSheet({this.initial, this.recommended, required this.currencyLabel, required this.money});
+  final double? initial;
+  final double? recommended;
+  final String currencyLabel;
+  final String Function(double) money;
+
+  @override
+  State<_OfferSheet> createState() => _OfferSheetState();
+}
+
+class _OfferSheetState extends State<_OfferSheet> {
+  late final _text = TextEditingController(
+    text: widget.initial == null || widget.initial! <= 0 ? '' : trimNumber(widget.initial!),
+  );
+  String? _problem;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _done() {
+    final v = double.tryParse(_text.text.trim());
+    final problem = freightOfferProblem(v, widget.recommended, widget.money);
+    if (problem != null) return setState(() => _problem = problem);
+    Navigator.pop(context, v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = t.colorScheme.onSurfaceVariant;
+    final rec = widget.recommended;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 8, 8, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const _SheetHead('Offer your fare'),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: TextField(
+            key: const ValueKey('freight-offer-field'),
+            controller: _text,
+            autofocus: true,
+            textAlign: TextAlign.center,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+            style: t.textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800),
+            onChanged: (_) => setState(() => _problem = null),
+            onSubmitted: (_) => _done(),
+            decoration: InputDecoration(prefixText: '${widget.currencyLabel} ', errorText: _problem),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (rec != null && rec > 0)
+          Text(
+            freightSuggestionText(rec, widget.money),
+            key: const ValueKey('freight-offer-hint'),
+            textAlign: TextAlign.center,
+            style: t.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(top: 2, right: 8),
+          child: Text(
+            'Helpers and options are added to your offer.',
+            textAlign: TextAlign.center,
+            style: t.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: FilledButton(key: const ValueKey('freight-offer-done'), onPressed: _done, child: const Text('Done')),
+        ),
+      ]),
+    );
+  }
+}
+
+/// An amount typed in, checked by [problem] (the declared value).
+class _AmountSheet extends StatefulWidget {
+  const _AmountSheet({
+    required this.title,
+    this.initial,
+    required this.currencyLabel,
+    required this.hint,
+    required this.problem,
+  });
+  final String title;
+  final double? initial;
+  final String currencyLabel;
+  final String hint;
+  final String? Function(double?) problem;
+
+  @override
+  State<_AmountSheet> createState() => _AmountSheetState();
+}
+
+class _AmountSheetState extends State<_AmountSheet> {
+  late final _text = TextEditingController(text: widget.initial == null ? '' : trimNumber(widget.initial!));
+  String? _problem;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _done() {
+    final v = double.tryParse(_text.text.trim());
+    final problem = widget.problem(v);
+    if (problem != null) return setState(() => _problem = problem);
+    Navigator.pop(context, v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 8, 8, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _SheetHead(widget.title),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: TextField(
+            key: const ValueKey('freight-amount-field'),
+            controller: _text,
+            autofocus: true,
+            textAlign: TextAlign.center,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}'))],
+            style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
+            onChanged: (_) => setState(() => _problem = null),
+            onSubmitted: (_) => _done(),
+            decoration: InputDecoration(prefixText: '${widget.currencyLabel} ', errorText: _problem, errorMaxLines: 3),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 8, 8, 12),
+          child: Text(
+            widget.hint,
+            key: const ValueKey('freight-amount-hint'),
+            textAlign: TextAlign.center,
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: FilledButton(key: const ValueKey('freight-amount-done'), onPressed: _done, child: const Text('Done')),
+        ),
+      ]),
+    );
+  }
+}
+
+/// What may not be sent (Admin > Freight settings), searchable when long.
+class _ProhibitedSheet extends StatelessWidget {
+  const _ProhibitedSheet({required this.items});
+  final List<String> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+      child: Column(
+        key: const ValueKey('freight-prohibited-sheet'),
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _SheetHead('Prohibited items'),
+          Flexible(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.only(right: 8),
+              child: ListSearchFilter(
+                count: items.length,
+                hint: 'Search items',
+                builder: (context, q) => Column(mainAxisSize: MainAxisSize.min, children: [
+                  for (final i in items)
+                    if (q.isEmpty || searchSelectMatches(i, q))
+                      ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.block, color: t.colorScheme.error),
+                        title: Text(i),
+                      ),
+                ]),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(0, 8, 8, 0),
+            child: FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Who receives the cargo: their name and phone, sent the tracking link
+/// when the trip starts.
+class _RecipientSheet extends StatefulWidget {
+  const _RecipientSheet({this.initial});
+  final FreightRecipient? initial;
+
+  @override
+  State<_RecipientSheet> createState() => _RecipientSheetState();
+}
+
+class _RecipientSheetState extends State<_RecipientSheet> {
+  late final _name = TextEditingController(text: widget.initial?.name ?? '');
+  late final _phone = TextEditingController(text: widget.initial?.phone ?? '');
+  String? _problem;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    super.dispose();
+  }
+
+  void _done() {
+    final phone = _phone.text.trim();
+    if (phone.isNotEmpty && !recipientPhoneOk(phone)) {
+      return setState(() => _problem = 'Enter a phone number, such as +60 12 345 6789.');
+    }
+    Navigator.pop(context, (name: _name.text.trim(), phone: phone));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 8, 8, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const _SheetHead('Who receives it?'),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: TextField(
+            key: const ValueKey('freight-recipient-name'),
+            controller: _name,
+            maxLength: 80,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(labelText: "Recipient's name"),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: TextField(
+            key: const ValueKey('freight-recipient-phone'),
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            onChanged: (_) => setState(() => _problem = null),
+            decoration: InputDecoration(labelText: "Recipient's phone", hintText: '+60 12 345 6789', errorText: _problem),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 8, 8, 12),
+          child: Text(
+            "We'll send them the tracking link when the trip starts.",
+            textAlign: TextAlign.center,
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: FilledButton(key: const ValueKey('freight-recipient-done'), onPressed: _done, child: const Text('Done')),
+        ),
+      ]),
+    );
+  }
+}
+
+// ---- My freight requests ------------------------------------------------------------------------
+
+/// The rider's freight requests: each with its status, the driver's offer
+/// standing on it (accept or decline, as a ride's) and Cancel while it is
+/// open; tapping one opens its trip screen.
+class FreightRequestsList extends ConsumerWidget {
+  const FreightRequestsList({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final list = ref.watch(myFreightRequestsProvider);
+    return list.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, _) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Text("Couldn't load your freight requests."),
+            TextButton(onPressed: () => ref.invalidate(myFreightRequestsProvider), child: const Text('Try again')),
+          ]),
+        ),
+      ),
+      data: (rows) => rows.isEmpty
+          ? Center(
+              key: const ValueKey('freight-requests-empty'),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'No freight requests yet. Create one and drivers will send you their offers.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                ),
+              ),
+            )
+          : ListView.separated(
+              key: const ValueKey('freight-requests'),
+              padding: const EdgeInsets.all(16),
+              itemCount: rows.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 10),
+              itemBuilder: (_, i) => FreightRequestCard(request: rows[i]),
+            ),
+    );
+  }
+}
+
+class FreightRequestCard extends ConsumerStatefulWidget {
+  const FreightRequestCard({super.key, required this.request});
+  final RideRequest request;
+
+  @override
+  ConsumerState<FreightRequestCard> createState() => _FreightRequestCardState();
+}
+
+class _FreightRequestCardState extends ConsumerState<FreightRequestCard> {
+  bool _busy = false;
+
+  Future<void> _run(Future<void> Function() f) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await f();
+      ref.invalidate(myFreightRequestsProvider);
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _open() => GoRouter.maybeOf(context)?.push('/ride/${widget.request.id}');
+
+  Future<void> _cancel() async {
+    final ok = await showAppDialog<bool>(id: 'ride.freight-cancel',
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Cancel this request?'),
+        content: const Text('Drivers will no longer see it or send offers.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep it')),
+          FilledButton(
+            key: const ValueKey('freight-cancel-confirm'),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Cancel request'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await _run(() => ref.read(rideRepositoryProvider).cancel(widget.request, reason: 'Cancelled by rider', by: 'rider'));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.request;
+    final t = Theme.of(context);
+    final muted = t.colorScheme.onSurfaceVariant;
+    final status = '${r.raw['status'] ?? 'open'}';
+    final open = r.status == RideStatus.open;
+    final offer = standingOffer(r);
+    final charges = r.optionCharges;
+    final fare = r.effectiveFare ?? 0;
+    final vehicle = freightVehicleNamed(ref.watch(freightVehiclesProvider).value ?? const [], r.service);
+    return Card(
+      key: ValueKey('freight-request-${r.id}'),
+      margin: EdgeInsets.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: _open,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: t.colorScheme.primaryContainer, borderRadius: BorderRadius.circular(6)),
+                child: Text(
+                  freightStatusLabel(status),
+                  key: ValueKey('freight-request-status-${r.id}'),
+                  style: t.textTheme.labelSmall?.copyWith(
+                    color: t.colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  r.createdAt == null ? '' : formatDateTime(r.createdAt),
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.textTheme.labelSmall?.copyWith(color: muted),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            Row(children: [
+              FreightVehicleImage(vehicle: vehicle, size: 28),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  open
+                      ? '${r.service ?? 'Freight'} · your offer ${r.fareText(freightOfferOf(fare, charges))}'
+                      : '${r.service ?? 'Freight'} · ${r.fareText(fare)}',
+                  style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ]),
+            if (charges.isNotEmpty)
+              Text(
+                '+ ${[for (final c in charges) '${c.name} ${r.fareText(c.amount)}'].join(' · ')}',
+                style: t.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+            const SizedBox(height: 4),
+            Text(r.pickupLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.bodySmall),
+            Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.bodySmall),
+            if (r.cargoDescription case final d?)
+              Text(d, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.textTheme.bodySmall?.copyWith(color: muted)),
+            if (open) ...[
+              const Divider(height: 16),
+              if (offer == null)
+                Text(
+                  'Waiting for driver offers',
+                  key: ValueKey('freight-request-waiting-${r.id}'),
+                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              // The ride offer cards, as the trip screen deals them (in from
+              // the right, out to the left): one bid stands on a request.
+              OfferStack(
+                key: ValueKey('freight-request-offers-${r.id}'),
+                offers: [
+                  if (offer != null)
+                    SearchOfferView(
+                      key: offer.key,
+                      cardKey: ValueKey('freight-request-offer-${r.id}'),
+                      acceptKey: ValueKey('freight-request-accept-${r.id}'),
+                      declineKey: ValueKey('freight-request-decline-${r.id}'),
+                      amount: offer.amount,
+                      price: r.fareText(offer.amount),
+                      yourFare: (offer.amount - fare).abs() < 0.005,
+                      progress: 1,
+                      name: offer.name,
+                      rating: offer.rating,
+                      trips: offer.trips,
+                      vehicle: offer.vehicle,
+                      plate: offer.plate,
+                      plateColours: offer.plateColours,
+                      photo: offer.photo,
+                      onDecline: _busy
+                          ? null
+                          : () => _run(() => ref.read(rideRepositoryProvider).declineOffer(r.id, partnerId: offer.partnerId)),
+                      onAccept: _busy
+                          ? null
+                          : () => _run(() async {
+                              final taken = await ref
+                                  .read(rideRepositoryProvider)
+                                  .acceptOffer(r.id, partnerId: offer.partnerId, amount: offer.amount);
+                              if (taken == null) throw StateError('That offer is no longer there.');
+                              if (mounted) _open();
+                            }),
+                    ),
+                ],
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  key: ValueKey('freight-request-cancel-${r.id}'),
+                  onPressed: _busy ? null : _cancel,
+                  child: const Text('Cancel request'),
+                ),
+              ),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+}

@@ -11,6 +11,7 @@ import '../../../config.dart' show AppConfig;
 import '../../../core/format.dart' show formatMoney;
 import '../../../core/option_charge.dart';
 import '../../../core/partner_type_rules.dart' show RegionScope;
+import '../../../core/freight.dart' show FreightPlaceKey, isFreightValues;
 import '../../../core/ride_option_places.dart';
 import '../../../core/ride_option_settings.dart';
 import '../../../core/trip_charges.dart' show parseChargeAmount;
@@ -42,6 +43,13 @@ List<({String id, String name})> vehicleServicesOf(List<Map<String, dynamic>> ro
     if (r['id'] is String)
       (id: r['id'] as String, name: '${(r['values'] as Map?)?['name'] ?? 'Unnamed'}'.trim()),
 ];
+
+/// The freight sizes among [rows] (Vehicle Services under Freight, 0267):
+/// what a freight option can be blocked on.
+List<({String id, String name})> freightServicesOf(List<Map<String, dynamic>> rows) => vehicleServicesOf([
+  for (final r in rows)
+    if (r['values'] is Map && isFreightValues(Map<String, dynamic>.from(r['values'] as Map))) r,
+]);
 
 /// The places to pick from: Default, every region the admin has, and any
 /// place with settings whose region has since gone.
@@ -102,8 +110,9 @@ class _RideOptionPlacesScreenState extends ConsumerState<RideOptionPlacesScreen>
     final help = assistanceOf(settings);
     final rules = OptionChargeRules.fromSettings(settings);
     final regions = ref.watch(regionsProvider).value ?? const <RegionEntry>[];
-    final services =
-        vehicleServicesOf(ref.watch(settingsEntriesProvider('vehicle-services')).value ?? const <Map<String, dynamic>>[]);
+    final serviceRows = ref.watch(settingsEntriesProvider('vehicle-services')).value ?? const <Map<String, dynamic>>[];
+    final services = vehicleServicesOf(serviceRows);
+    final freightServices = freightServicesOf(serviceRows);
     final place = _place;
     final parent = place.parent;
     final currency = place.isDefault ? AppConfig.currency : (regionCurrency(regions, place.country) ?? AppConfig.currency);
@@ -152,6 +161,8 @@ class _RideOptionPlacesScreenState extends ConsumerState<RideOptionPlacesScreen>
       final ownBlocked = row.blocked.containsKey(k);
       final on = offered.value;
       final mySlots = [for (final s in slots) if (s.option == k) s];
+      // A freight option is booked on the freight sizes only.
+      final blockable = k.freight ? freightServices : services;
       return Card(
         key: ValueKey('place-option-${k.id}'),
         child: Padding(
@@ -186,7 +197,13 @@ class _RideOptionPlacesScreenState extends ConsumerState<RideOptionPlacesScreen>
             else ...[
               Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 6, runSpacing: 6, children: [
                 Text('Services:', style: t.textTheme.bodySmall?.copyWith(color: muted)),
-                for (final s in services)
+                if (blockable.isEmpty)
+                  Text(
+                    'No Freight vehicle services yet',
+                    key: ValueKey('place-services-none-${k.id}'),
+                    style: t.textTheme.bodySmall?.copyWith(color: muted),
+                  ),
+                for (final s in blockable)
                   _ServiceChip(
                     key: ValueKey('place-service-${k.id}-${s.id}'),
                     name: s.name,
@@ -302,7 +319,24 @@ class _RideOptionPlacesScreenState extends ConsumerState<RideOptionPlacesScreen>
               ),
             ]),
           ),
-          for (final k in config.order) optionCard(k),
+          for (final k in config.order)
+            if (!k.freight) optionCard(k),
+          // The Freight page's options (0267): a fixed charge each.
+          Padding(
+            key: const ValueKey('place-freight-heading'),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Freight', style: t.textTheme.titleMedium),
+              Text(
+                'Helpers, closed body and riding along on the Freight page. Each charge is added to the rider\'s '
+                'offer.',
+                style: t.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+            ]),
+          ),
+          for (final k in config.order)
+            if (k.freight) optionCard(k),
+          _freightValues(context, places, money, canEdit, fromBadge, useParent),
           _SummaryCard(
             places: places,
             place: place,
@@ -315,6 +349,81 @@ class _RideOptionPlacesScreenState extends ConsumerState<RideOptionPlacesScreen>
         ]),
       ),
     ]);
+  }
+
+  /// Waiting time, the cancel fee and the declared value cap here (0267).
+  Widget _freightValues(
+    BuildContext context,
+    OptionPlaces places,
+    String Function(double) money,
+    bool canEdit,
+    Widget Function(RegionScope?, {required bool own}) fromBadge,
+    Widget Function(String, VoidCallback) useParent,
+  ) {
+    final t = Theme.of(context);
+    final place = _place;
+    final row = places.at(place);
+    const labels = {
+      FreightPlaceKey.waitFreeMin: 'Free waiting time',
+      FreightPlaceKey.waitPerMin: 'Waiting fee a minute after it',
+      FreightPlaceKey.cancelArrived: 'Fee when the sender cancels after the driver arrived',
+      FreightPlaceKey.declaredCap: 'Most value a sender may declare',
+    };
+    String shown(String key, double v) => key == FreightPlaceKey.waitFreeMin ? '${trimNumber(v)} min' : money(v);
+    return Card(
+      key: const ValueKey('place-freight-values'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Freight waiting, cancelling and value', style: t.textTheme.titleMedium),
+          Text(
+            'The waiting fee is added to the fare when the trip starts; the cancel fee goes on the sender\'s next '
+            'request and to the driver who waited.',
+            style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t, background: cardSurfaceColor(t))),
+          ),
+          for (final key in FreightPlaceKey.all)
+            () {
+              final c = places.chargeAt(place, key);
+              final own = row.charges.containsKey(key);
+              final v = c.from == null ? FreightPlaceKey.fallback(key) : c.value.charge.value;
+              Future<void> set() async {
+                final n = await showAppDialog<double>(id: 'display.freight-place-value',
+                  context: context,
+                  builder: (_) => _FreightValueDialog(
+                    title: '${labels[key]} · ${place.placeName}',
+                    initial: v,
+                    max: FreightPlaceKey.max(key),
+                    suffix: key == FreightPlaceKey.waitFreeMin ? 'min' : null,
+                  ),
+                );
+                if (n != null && mounted) {
+                  await _edit((x) => x.withCharge(key, PlaceCharge(OptionCharge(value: n))));
+                }
+              }
+
+              return Container(
+                key: ValueKey('place-freight-$key'),
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                decoration: BoxDecoration(border: Border(top: BorderSide(color: t.dividerColor))),
+                child: Wrap(crossAxisAlignment: WrapCrossAlignment.center, spacing: 8, runSpacing: 4, children: [
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: 140),
+                    child: Text(labels[key]!, style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+                  ),
+                  fromBadge(c.from, own: own),
+                  TextButton(
+                    key: ValueKey('place-freight-edit-$key'),
+                    onPressed: canEdit ? set : null,
+                    child: Text(shown(key, v), key: ValueKey('place-freight-value-$key')),
+                  ),
+                  if (own && place.parent != null)
+                    useParent('place-freight-reset-$key', () => _edit((x) => x.withCharge(key, null))),
+                ]),
+              );
+            }(),
+        ]),
+      ),
+    );
   }
 
   Widget _chargeLine(
@@ -635,4 +744,52 @@ class _PlaceChargeDialogState extends State<PlaceChargeDialog> {
           FilledButton(key: const ValueKey('place-charge-save'), onPressed: _save, child: const Text('Save')),
         ],
       );
+}
+
+/// One Freight value of a place: a number from 0 to [max].
+class _FreightValueDialog extends StatefulWidget {
+  const _FreightValueDialog({required this.title, required this.initial, required this.max, this.suffix});
+  final String title;
+  final double initial;
+  final double max;
+  final String? suffix;
+
+  @override
+  State<_FreightValueDialog> createState() => _FreightValueDialogState();
+}
+
+class _FreightValueDialogState extends State<_FreightValueDialog> {
+  late final _text = TextEditingController(text: trimNumber(widget.initial));
+  String? _problem;
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final n = double.tryParse(_text.text.trim());
+    if (n == null || n < 0 || n > widget.max) {
+      return setState(() => _problem = 'Enter a number from 0 to ${trimNumber(widget.max)}.');
+    }
+    Navigator.pop(context, n);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(widget.title),
+    content: TextField(
+      key: const ValueKey('freight-place-value-field'),
+      controller: _text,
+      autofocus: true,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(suffixText: widget.suffix, errorText: _problem),
+      onSubmitted: (_) => _save(),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+      TextButton(key: const ValueKey('freight-place-value-save'), onPressed: _save, child: const Text('Save')),
+    ],
+  );
 }

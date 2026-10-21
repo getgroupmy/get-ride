@@ -25,6 +25,7 @@ import 'display_logic.dart';
 import '../../../core/demo_mode.dart' show demoDriverIdsKey, demoRiderIdsKey;
 import 'display_store.dart';
 import 'ride_option_places_screen.dart' show RideOptionPlacesScreen;
+import 'freight_settings_screen.dart' show FreightSettingsScreen;
 import '../../../core/ride_option_places.dart' show OptionChargeKey;
 import '../../../data/ride_option_places_repository.dart' show rideOptionPlacesRepositoryProvider;
 import 'pick_image.dart';
@@ -1211,6 +1212,54 @@ class RideOptionsCard extends ConsumerWidget {
           onTap: onTap,
         );
 
+    // A ride's options, then the Freight page's (0267), each reordered within
+    // its own list.
+    final rideKinds = [for (final k in c.order) if (!k.freight) k];
+    final freightKinds = [for (final k in c.order) if (k.freight) k];
+
+    Widget optionTile(List<RideOptionKind> kinds, int i) {
+      final k = kinds[i];
+      final renamed = c.labels.containsKey(k);
+      return ListTile(
+        key: ValueKey('ride-option-${k.id}'),
+        leading: _moveArrows(
+          key: 'ride-option-${k.id}',
+          up: !canEdit || i == 0 ? null : () => edit((x) => moveRideOption(x, k, -1)),
+          down: !canEdit || i == kinds.length - 1 ? null : () => edit((x) => moveRideOption(x, k, 1)),
+        ),
+        title: Text(c.labelOf(k), key: ValueKey('ride-option-label-${k.id}')),
+        subtitle: renamed ? Text('Built-in name: ${k.defaultLabel}') : null,
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (canEdit)
+            BusyIconButton(
+              key: ValueKey('ride-option-rename-${k.id}'),
+              tooltip: 'Rename',
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: () async {
+                final name = await showAppDialog<String>(id: 'display.rename-ride-option',
+                  context: context,
+                  builder: (_) => _TextDialog(
+                    title: 'Rename option',
+                    label: 'Name riders see',
+                    initial: c.labelOf(k),
+                    helper: 'Leave it empty for "${k.defaultLabel}".',
+                    problem: (v) => v.trim().length > RideOptionsConfig.labelMax
+                        ? 'Keep it under ${RideOptionsConfig.labelMax} characters.'
+                        : null,
+                  ),
+                );
+                if (name != null && context.mounted) await edit((x) => renameRideOption(x, k, name));
+              },
+            ),
+          BusySwitch(
+            key: ValueKey('ride-option-shown-${k.id}'),
+            value: c.isShown(k),
+            onChanged: canEdit ? (v) => edit((x) => setRideOptionShown(x, k, v)) : null,
+          ),
+        ]),
+      );
+    }
+
     return Card(
       key: const ValueKey('ride-options-card'),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -1223,51 +1272,10 @@ class RideOptionsCard extends ConsumerWidget {
             style: t.textTheme.bodySmall?.copyWith(color: muted),
           ),
         ),
-        for (var i = 0; i < c.order.length; i++) ...[
+        for (var i = 0; i < rideKinds.length; i++) ...[
           if (i > 0) const Divider(height: 1),
-          () {
-            final k = c.order[i];
-            final renamed = c.labels.containsKey(k);
-            return ListTile(
-              key: ValueKey('ride-option-${k.id}'),
-              leading: _moveArrows(
-                key: 'ride-option-${k.id}',
-                up: !canEdit || i == 0 ? null : () => edit((x) => moveRideOption(x, k, -1)),
-                down: !canEdit || i == c.order.length - 1 ? null : () => edit((x) => moveRideOption(x, k, 1)),
-              ),
-              title: Text(c.labelOf(k), key: ValueKey('ride-option-label-${k.id}')),
-              subtitle: renamed ? Text('Built-in name: ${k.defaultLabel}') : null,
-              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                if (canEdit)
-                  BusyIconButton(
-                    key: ValueKey('ride-option-rename-${k.id}'),
-                    tooltip: 'Rename',
-                    icon: const Icon(Icons.edit_outlined),
-                    onPressed: () async {
-                      final name = await showAppDialog<String>(id: 'display.rename-ride-option',
-                        context: context,
-                        builder: (_) => _TextDialog(
-                          title: 'Rename option',
-                          label: 'Name riders see',
-                          initial: c.labelOf(k),
-                          helper: 'Leave it empty for "${k.defaultLabel}".',
-                          problem: (v) => v.trim().length > RideOptionsConfig.labelMax
-                              ? 'Keep it under ${RideOptionsConfig.labelMax} characters.'
-                              : null,
-                        ),
-                      );
-                      if (name != null && context.mounted) await edit((x) => renameRideOption(x, k, name));
-                    },
-                  ),
-                BusySwitch(
-                  key: ValueKey('ride-option-shown-${k.id}'),
-                  value: c.isShown(k),
-                  onChanged: canEdit ? (v) => edit((x) => setRideOptionShown(x, k, v)) : null,
-                ),
-              ]),
-            );
-          }(),
-          if (c.order[i] == RideOptionKind.childSeat)
+          optionTile(rideKinds, i),
+          if (rideKinds[i] == RideOptionKind.childSeat)
             Padding(
               padding: const EdgeInsets.only(left: 40),
               child: KeyedSubtree(
@@ -1284,7 +1292,7 @@ class RideOptionsCard extends ConsumerWidget {
                 ),
               ),
             ),
-          if (c.order[i] == RideOptionKind.pet)
+          if (rideKinds[i] == RideOptionKind.pet)
             settingsRow(
               'ride-option-pet-settings',
               'Pet types and sizes',
@@ -1294,7 +1302,7 @@ class RideOptionsCard extends ConsumerWidget {
                 builder: (_) => const PetOptionsScreen(),
               )),
             ),
-          if (c.order[i] == RideOptionKind.assistance)
+          if (rideKinds[i] == RideOptionKind.assistance)
             settingsRow(
               'ride-option-assistance-settings',
               'Help offered',
@@ -1312,6 +1320,33 @@ class RideOptionsCard extends ConsumerWidget {
           title: Text('Comments'),
           subtitle: Text('Always shown: riders can always leave the driver a note'),
           trailing: Icon(Icons.lock_outline),
+        ),
+        const Divider(height: 1),
+        // The Freight page's options (0267): a fixed charge each, by place.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Text('Freight', key: const ValueKey('ride-options-freight'), style: t.textTheme.titleSmall),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+          child: Text(
+            'The options riders pick on the Freight page. Each has a fixed charge, added to the rider\'s offer, set '
+            'under Charges and where offered.',
+            style: t.textTheme.bodySmall?.copyWith(color: muted),
+          ),
+        ),
+        for (var i = 0; i < freightKinds.length; i++) ...[
+          if (i > 0) const Divider(height: 1),
+          optionTile(freightKinds, i),
+        ],
+        const Divider(height: 1),
+        settingsRow(
+          'ride-option-freight-settings',
+          'Freight settings',
+          'Cancel after pickup, the recipient\'s tracking link, prohibited items',
+          () => Navigator.of(context).push(AppPageRoute(id: 'display.freight-settings',
+            builder: (_) => const FreightSettingsScreen(),
+          )),
         ),
         const Divider(height: 1),
         Padding(
