@@ -565,12 +565,16 @@ class _DashboardBody extends ConsumerWidget {
             )
           : ListSearchFilter(
               count: summary.airports.length,
+              // Always searchable: the quiet ones are only found this way.
+              from: 0,
               hint: 'Search airports and places',
               fieldKey: const ValueKey('dashboard-airports-search'),
               builder: (context, q) => Column(
                 children: [
+                  // Unsearched, only the ones with something going on; a
+                  // search finds any of them.
                   for (final x in summary.airports)
-                    if (q.isEmpty || x.name.toLowerCase().contains(q.toLowerCase()))
+                    if (q.isEmpty ? (x.waiting > 0 || x.pickups > 0) : x.name.toLowerCase().contains(q.toLowerCase()))
                       InkWell(
                         onTap: () => context.go('/admin/m/airport-areas'),
                         child: CcMeterRow(

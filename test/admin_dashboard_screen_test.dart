@@ -119,6 +119,7 @@ DashboardSummary _summary(DashboardRange r) {
     airports: const [
       DashboardAirport(id: 'a1', kind: 'airport', name: 'KLIA T1', waiting: 8, pickups: 30, prevPickups: 25),
       DashboardAirport(id: 'a2', kind: 'place', name: 'Suria KLCC', waiting: 0, pickups: 24, prevPickups: 20),
+      DashboardAirport(id: 'a3', kind: 'place', name: 'Mid Valley Megamall', waiting: 0, pickups: 0, prevPickups: 0),
     ],
     attention: const DashboardAttention(
       partnersPending: 4,
@@ -238,6 +239,19 @@ void main() {
       }
     }
   }
+
+  testWidgets('airports and places: only busy ones listed; a search finds the quiet ones', (tester) async {
+    await _at(tester, const Size(1440, 1000));
+    await tester.pumpWidget(_app(b: Brightness.light, repo: _FakeRepo()));
+    await tester.pumpAndSettle();
+    final panel = find.byKey(const ValueKey('dashboard-panel-airports'));
+    expect(find.descendant(of: panel, matching: find.text('Suria KLCC')), findsOneWidget);
+    expect(find.descendant(of: panel, matching: find.text('Mid Valley Megamall')), findsNothing);
+    await tester.enterText(find.byKey(const ValueKey('dashboard-airports-search')), 'mid');
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: panel, matching: find.text('Mid Valley Megamall')), findsOneWidget);
+    expect(find.descendant(of: panel, matching: find.text('Suria KLCC')), findsNothing);
+  });
 
   testWidgets('an open SOS is red; the live panel shows its counts', (tester) async {
     await _at(tester, const Size(1440, 1000));
