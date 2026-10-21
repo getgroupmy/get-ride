@@ -237,7 +237,7 @@ void main() {
       expect(tester.getBottomLeft(sheet).dy, 2000, reason: 'standing on the bottom of the screen');
       expect(find.text('Ride request'), findsOneWidget);
       expect(find.text('Siti'), findsOneWidget);
-      expect(find.text('4.80'), findsOneWidget);
+      expect(find.text('4.8'), findsOneWidget, reason: 'one decimal, as the other cards (0269)');
       expect(tester.widget<Text>(find.byKey(const ValueKey('request-fare'))).data, 'RM12.00');
       expect(find.text('KLCC (Jalan Ampang)'), findsOneWidget);
       expect(find.text('KL Sentral'), findsOneWidget);
