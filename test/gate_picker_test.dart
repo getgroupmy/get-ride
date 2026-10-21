@@ -108,7 +108,7 @@ void main() {
 
         // Scrolling the wheel down a row picks the next gate (the long one,
         // wrapped and shown whole, not cut).
-        await tester.drag(find.byKey(const ValueKey('gate-picker-gates-0')), const Offset(0, -58));
+        await tester.drag(find.byKey(const ValueKey('gate-picker-gates-0')), const Offset(0, -46));
         await tester.pumpAndSettle();
         expect(dot('c').selected, isTrue);
         final chipText = tester.widget<Text>(
