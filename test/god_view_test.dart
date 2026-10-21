@@ -1,7 +1,8 @@
 // Admin → God View (lib/src/core/god_view.dart, lib/src/admin/screens/
 // god_view_screen.dart): the status words and order, the filters and the
 // search, a user in a ride drawn as their partner only, the stats and the
-// legend, which actions an admin's grants show; and the page with a fake
+// legend, the 0272 statuses (always on, not responding, last known) and
+// their ages, which actions an admin's grants show; and the page with a fake
 // repository in light and dark, wide and on a phone, the phone hidden until
 // Show, Suspend asking for a reason (and warning about a trip), Send push
 // sending to one person.
@@ -61,13 +62,16 @@ final _people = [
   _p('d1', GodViewStatus.free, name: 'Hafiz R.', plate: 'VJK 4821', vehicle: 'Perodua Bezza', area: 'Bukit Bintang'),
   _p('d2', GodViewStatus.pickup, name: 'Mei Ling T.', ride: '7q2k', plate: 'WXY 9033', nextLat: 3.2),
   _p('d3', GodViewStatus.trip, name: 'Kumar S.', ride: '5m8t', service: 'Motorcycle', nextLat: 3.0),
-  _p('d6', GodViewStatus.offline, name: 'Jason W.', ageSeconds: 2700),
+  _p('d6', GodViewStatus.lastKnown, name: 'Jason W.', ageSeconds: 2700),
+  _p('d8', GodViewStatus.notResponding, name: 'Amir N.', ageSeconds: 10080),
+  _p('d9', GodViewStatus.alwaysOn, name: 'Chong W.', ageSeconds: 600),
   _p('d7', GodViewStatus.sos, name: 'Rahim A.', ride: '9f1d', incident: 'inc-1'),
   _p('u1', GodViewStatus.searching, kind: GodViewKind.user, name: 'Aisyah F.', ride: '8k4a'),
   _p('u2', GodViewStatus.ride, kind: GodViewKind.user, name: 'Daniel L.', ride: '5m8t'),
   _p('u3', GodViewStatus.appOpen, kind: GodViewKind.user, name: 'Priya K.'),
   _p('u4', GodViewStatus.ride, kind: GodViewKind.user, name: 'Farah Z.', ride: '9f1d'),
-  _p('u5', GodViewStatus.offline, kind: GodViewKind.user, name: 'Tan B. H.', ageSeconds: 4000),
+  _p('u5', GodViewStatus.lastKnown, kind: GodViewKind.user, name: 'Tan B. H.', ageSeconds: 3 * 86400 + 60),
+  _p('u6', GodViewStatus.alwaysOn, kind: GodViewKind.user, name: 'Siti A.', ageSeconds: 300),
 ];
 
 class _FakeRepo extends GodViewRepository {
@@ -89,7 +93,19 @@ class _FakeRepo extends GodViewRepository {
     return GodViewSnapshot(
       at: _now,
       people: _people,
-      counts: const GodViewCounts(partnersOnline: 4, partnersFree: 1, partnersOnJob: 3, usersSearching: 1, usersAppOpen: 1, sos: 1),
+      counts: const GodViewCounts(
+        partnersOnline: 4,
+        partnersFree: 1,
+        partnersOnJob: 3,
+        partnersNotResponding: 1,
+        partnersAlwaysOn: 1,
+        partnersLastKnown: 1,
+        usersSearching: 1,
+        usersAppOpen: 1,
+        usersAlwaysOn: 1,
+        usersLastKnown: 1,
+        sos: 1,
+      ),
       total: _people.length,
       query: query,
     );
@@ -150,12 +166,23 @@ void main() {
     test('status words, the pulse and the order', () {
       expect(GodViewStatus.parse('app_open'), GodViewStatus.appOpen);
       expect(GodViewStatus.parse('pickup').label, 'Going to pickup');
-      expect(GodViewStatus.parse('whatever'), GodViewStatus.offline);
+      expect(GodViewStatus.parse('always_on'), GodViewStatus.alwaysOn);
+      expect(GodViewStatus.parse('not_responding'), GodViewStatus.notResponding);
+      expect(GodViewStatus.parse('not_responding').label, 'Online, not responding');
+      expect(GodViewStatus.parse('last_known'), GodViewStatus.lastKnown);
+      expect(GodViewStatus.parse('offline'), GodViewStatus.lastKnown, reason: "0270's word");
+      expect(GodViewStatus.parse('whatever'), GodViewStatus.lastKnown);
       expect(GodViewStatus.values.where((s) => s.pulses), [GodViewStatus.searching, GodViewStatus.sos]);
+      expect(GodViewStatus.values.where((s) => s.isLastKnown), [GodViewStatus.lastKnown]);
       final order = godViewListOrder(_people).map((p) => p.id).toList();
       expect(order.first, 'd7', reason: 'SOS first');
       expect(order.indexOf('d2'), lessThan(order.indexOf('u1')));
-      expect(order.indexOf('u3'), lessThan(order.indexOf('d6')), reason: 'offline last');
+      expect(order.indexOf('d1'), lessThan(order.indexOf('d8')), reason: 'free before not responding');
+      expect(order.indexOf('u3'), lessThan(order.indexOf('u6')), reason: 'app open before always on');
+      for (final live in ['d8', 'd9', 'u3', 'u6']) {
+        expect(order.indexOf(live), lessThan(order.indexOf('d6')), reason: '$live before the last known');
+      }
+      expect(order.sublist(order.length - 2), ['d6', 'u5'], reason: 'last known last, the newest first');
     });
 
     test('rows from the server', () {
@@ -164,7 +191,11 @@ void main() {
         'total': 3,
         'omitted': 1,
         'scoped': true,
-        'counts': {'partners_online': 2, 'users_app_open': 5, 'sos': 1},
+        'omitted_last_known': 1,
+        'counts': {
+          'partners_online': 2, 'users_app_open': 5, 'sos': 1, 'partners_not_responding': 3,
+          'partners_always_on': 4, 'users_always_on': 6, 'partners_offline': 7, 'users_offline': 8,
+        },
         'people': [
           {
             'kind': 'partner', 'id': 'a', 'partner_row_id': 'r', 'name': 'Ali', 'service': 'Motorcycle',
@@ -180,7 +211,12 @@ void main() {
       expect(s.people.last.status, GodViewStatus.appOpen);
       expect(s.people.last.displayName, 'User');
       expect(s.counts.usersAppOpen, 5);
-      expect((s.omitted, s.scoped, s.query), (1, true, 'ali'));
+      expect(
+        (s.counts.partnersNotResponding, s.counts.partnersAlwaysOn, s.counts.usersAlwaysOn),
+        (3, 4, 6),
+      );
+      expect((s.counts.partnersLastKnown, s.counts.usersLastKnown), (7, 8));
+      expect((s.omitted, s.omittedLastKnown, s.scoped, s.query), (1, 1, true, 'ali'));
     });
 
     test('a partner''s icon by service', () {
@@ -192,15 +228,19 @@ void main() {
       expect(godViewServiceOf('Van'), GodViewService.freight);
     });
 
-    test('filters: partners, users, offline and the users sub-filter', () {
+    test('filters: partners, users, last known and the users sub-filter', () {
       Set<String> ids(GodViewFilters f) => godViewShown(_people, f).map((p) => p.id).toSet();
-      expect(ids(const GodViewFilters()), {'d1', 'd2', 'd3', 'd7', 'u1', 'u2', 'u3', 'u4'});
-      expect(ids(const GodViewFilters(showOffline: true)), containsAll(['d6', 'u5']));
-      expect(ids(const GodViewFilters(users: false)), {'d1', 'd2', 'd3', 'd7'});
-      expect(ids(const GodViewFilters(partners: false)), {'u1', 'u2', 'u3', 'u4'});
-      expect(ids(const GodViewFilters(partners: false, userFilter: GodViewUserFilter.searching)), {'u1'});
-      expect(ids(const GodViewFilters(partners: false, userFilter: GodViewUserFilter.ride)), {'u2', 'u4'});
-      expect(ids(const GodViewFilters(partners: false, userFilter: GodViewUserFilter.appOpen)), {'u3'});
+      const live = GodViewFilters(lastKnown: false);
+      expect(ids(live), {'d1', 'd2', 'd3', 'd7', 'd8', 'd9', 'u1', 'u2', 'u3', 'u4', 'u6'});
+      expect(const GodViewFilters().lastKnown, isTrue, reason: 'on by default, so the page is never empty');
+      expect(ids(const GodViewFilters()), containsAll(['d6', 'u5']));
+      expect(ids(live.copyWith(users: false)), {'d1', 'd2', 'd3', 'd7', 'd8', 'd9'});
+      expect(ids(live.copyWith(partners: false)), {'u1', 'u2', 'u3', 'u4', 'u6'});
+      expect(ids(live.copyWith(partners: false, userFilter: GodViewUserFilter.searching)), {'u1'});
+      expect(ids(live.copyWith(partners: false, userFilter: GodViewUserFilter.ride)), {'u2', 'u4'});
+      expect(ids(live.copyWith(partners: false, userFilter: GodViewUserFilter.appOpen)), {'u3'});
+      expect(ids(live.copyWith(partners: false, userFilter: GodViewUserFilter.alwaysOn)), {'u6'});
+      expect(GodViewUserFilter.alwaysOn.label, 'Always on');
       final sosUser = _p('u9', GodViewStatus.sos, kind: GodViewKind.user);
       expect(godViewShown([sosUser], const GodViewFilters(userFilter: GodViewUserFilter.appOpen)), [sosUser],
           reason: 'an SOS passes every users filter');
@@ -214,32 +254,68 @@ void main() {
       expect(ids('r-5m8t'), {'d3', 'u2'});
       expect(ids('bintang'), {'d1'});
       expect(ids('0123456'), isEmpty, reason: 'phone numbers are matched by the server only');
-      expect(ids('0123456', server: '0123456'), hasLength(8), reason: 'rows the server matched stay');
+      expect(ids('0123456', server: '0123456'), hasLength(_people.length), reason: 'rows the server matched stay');
     });
 
     test('a user in a ride with a shown partner is drawn as the partner only', () {
-      final shown = godViewShown(_people, const GodViewFilters());
+      final shown = godViewShown(_people, const GodViewFilters(lastKnown: false));
       final markers = godViewMarkers(shown).map((p) => p.id).toSet();
       expect(markers.contains('u2'), isFalse, reason: 'with Kumar on 5m8t');
       expect(markers.contains('u4'), isFalse, reason: 'with Rahim on 9f1d (SOS)');
       expect(markers.containsAll(['u1', 'u3', 'd3', 'd7']), isTrue);
-      final usersOnly = godViewShown(_people, const GodViewFilters(partners: false));
+      final usersOnly = godViewShown(_people, const GodViewFilters(partners: false, lastKnown: false));
       expect(godViewMarkers(usersOnly).map((p) => p.id), containsAll(['u2', 'u4']),
           reason: 'with partners hidden the riders show');
     });
 
     test('stats, legend, ages and the live line', () {
-      const c = GodViewCounts(partnersOnline: 4, partnersFree: 1, partnersOnJob: 3, usersSearching: 2, usersAppOpen: 9, sos: 1);
+      const c = GodViewCounts(
+        partnersOnline: 4,
+        partnersFree: 1,
+        partnersOnJob: 3,
+        partnersNotResponding: 2,
+        partnersAlwaysOn: 5,
+        partnersLastKnown: 7,
+        usersSearching: 2,
+        usersAppOpen: 9,
+        usersAlwaysOn: 6,
+        usersLastKnown: 11,
+        sos: 1,
+      );
       final stats = godViewStats(c);
-      expect(stats.map((s) => s.label), ['Online partners', 'Free', 'On a job', 'Users searching', 'Users with app open', 'SOS']);
+      expect(stats.map((s) => s.label), [
+        'Online partners', 'Free', 'On a job', 'Not responding', 'Users searching', 'Users with app open', 'Always on', 'SOS',
+      ]);
       expect(stats.last.alarm, isTrue);
-      expect(godViewStats(c, users: false).map((s) => s.label), isNot(contains('Users searching')));
-      expect(godViewLegend(showOffline: false), isNot(contains(GodViewStatus.offline)));
-      expect(godViewLegend(showOffline: true), contains(GodViewStatus.offline));
-      expect(godViewLegend(showOffline: false), contains(GodViewStatus.appOpen));
+      expect(stats.firstWhere((s) => s.label == 'Always on').value, 11);
+      expect(stats.firstWhere((s) => s.label == 'Not responding').value, 2);
+      final withLastKnown = godViewStats(c, lastKnown: true);
+      expect(withLastKnown.last, (label: 'Last known', value: 18, alarm: false));
+      expect(godViewStats(c, users: false, lastKnown: true).map((s) => s.label), isNot(contains('Users searching')));
+      expect(godViewStats(c, users: false).firstWhere((s) => s.label == 'Always on').value, 5);
+      expect(godViewStats(c, partners: false).map((s) => s.label), isNot(contains('Not responding')));
+      expect(godViewStats(c, partners: false, lastKnown: true).last.value, 11);
+      expect(godViewLegend(lastKnown: false), isNot(contains(GodViewStatus.lastKnown)));
+      expect(godViewLegend(lastKnown: true), contains(GodViewStatus.lastKnown));
+      expect(godViewLegend(lastKnown: false), containsAll([GodViewStatus.appOpen, GodViewStatus.alwaysOn, GodViewStatus.notResponding]));
+      expect(godViewLegend(lastKnown: false, partners: false), isNot(contains(GodViewStatus.notResponding)));
       expect(godViewAge(_now.subtract(const Duration(seconds: 4)), _now), '4 s ago');
       expect(godViewAge(_now.subtract(const Duration(minutes: 45)), _now), '45 min ago');
+      expect(godViewAge(_now.subtract(const Duration(minutes: 59, seconds: 50)), _now), '59 min ago');
       expect(godViewAge(_now.subtract(const Duration(hours: 2)), _now), '2 h ago');
+      expect(godViewAge(_now.subtract(const Duration(hours: 2, minutes: 48)), _now), '2 h 48 min ago');
+      expect(godViewAge(_now.subtract(const Duration(hours: 23, minutes: 59)), _now), '23 h 59 min ago');
+      expect(godViewAge(_now.subtract(const Duration(hours: 30)), _now), '1 day ago');
+      expect(godViewAge(_now.subtract(const Duration(days: 3, hours: 5)), _now), '3 days ago');
+      expect(godViewAge(null, _now), '');
+      expect(
+        godViewOmittedNote(GodViewSnapshot(at: _now, total: 2300, omitted: 800, omittedLastKnown: 800)),
+        'Showing 1500 of 2300 (800 last known left out). Zoom in to see the rest.',
+      );
+      expect(
+        godViewOmittedNote(GodViewSnapshot(at: _now, total: 1600, omitted: 100)),
+        'Showing 1500 of 1600. Zoom in to see the rest.',
+      );
       expect(godViewLiveLine(_now.subtract(const Duration(seconds: 2)), _now), 'Live · updated 2 s ago');
     });
 
@@ -272,6 +348,16 @@ void main() {
           expect(find.text('God View'), findsWidgets);
           expect(find.byKey(const ValueKey('god-view-legend')), findsOneWidget);
           expect(find.text('Users with app open'), findsOneWidget);
+          // 0272: the new statuses in the legend and the stats.
+          final legendBox = find.byKey(const ValueKey('god-view-legend'));
+          for (final l in ['Always on', 'Online, not responding', 'Last known']) {
+            expect(find.descendant(of: legendBox, matching: find.text(l)), findsOneWidget, reason: l);
+          }
+          for (final l in ['Always on', 'Not responding', 'Last known']) {
+            expect(find.text(l), findsWidgets, reason: l);
+          }
+          expect(find.byKey(const ValueKey('god-view-last-known')), findsOneWidget);
+          expect(find.byKey(const ValueKey('god-view-marker-d6')), findsOneWidget, reason: 'last known on by default');
           expect(find.text('Live · updated 0 s ago'), findsOneWidget);
           expect(find.byKey(const ValueKey('god-view-marker-u2')), findsNothing, reason: 'drawn as Kumar');
           expect(find.byKey(const ValueKey('god-view-marker-d3')), findsOneWidget);
@@ -289,18 +375,37 @@ void main() {
       }
     }
 
-    testWidgets('SOS first in the list; Show offline asks the server again', (tester) async {
-      final repo = await _pump(tester);
-      final first = tester.getTopLeft(find.byKey(const ValueKey('god-view-row-d7')));
-      final other = tester.getTopLeft(find.byKey(const ValueKey('god-view-row-d1')));
-      expect(first.dy, lessThan(other.dy));
+    testWidgets('SOS first in the list, last known after the live ones; Last known asks the server again',
+        (tester) async {
+      final repo = await _pump(tester, size: const Size(1400, 2400));
+      expect(repo.asked.first.offline, isTrue, reason: 'last known on by default');
+      double y(String id) => tester.getTopLeft(find.byKey(ValueKey('god-view-row-$id'))).dy;
+      expect(y('d7'), lessThan(y('d1')));
+      expect(y('u6'), lessThan(y('d6')), reason: 'always on before the last known');
+      expect(y('d8'), lessThan(y('u5')));
+      expect(find.text('3 days ago'), findsOneWidget);
+      expect(find.text('2 h 48 min ago'), findsOneWidget, reason: 'not responding for 2 h 48 min');
+      await tester.tap(find.byKey(const ValueKey('god-view-last-known')));
+      await tester.pump();
+      await tester.pump();
+      expect(repo.asked.last.offline, isFalse);
       expect(find.byKey(const ValueKey('god-view-row-d6')), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('god-view-offline')));
-      await tester.pump();
-      await tester.pump();
-      expect(repo.asked.last.offline, isTrue);
-      expect(find.byKey(const ValueKey('god-view-row-d6')), findsOneWidget);
+      expect(find.byKey(const ValueKey('god-view-row-d8')), findsOneWidget, reason: 'not responding stays');
     });
+
+    for (final b in Brightness.values) {
+      testWidgets('not responding and last known details in ${b.name}', (tester) async {
+        await _pump(tester, b: b, size: const Size(1400, 2400));
+        await _openDetails(tester, 'd8');
+        expect(find.byKey(const ValueKey('god-view-not-responding-note')), findsOneWidget);
+        expect(find.textContaining('nothing has come from it for 2 h 48 min'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('god-view-tab-people')));
+        await tester.pump(const Duration(milliseconds: 400));
+        await _openDetails(tester, 'u5');
+        expect(find.text('Last known position, 3 days ago.'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('the phone stays hidden until Show, which the server logs', (tester) async {
       final repo = await _pump(tester);

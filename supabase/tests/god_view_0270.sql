@@ -1,9 +1,10 @@
 -- ============================================================================
 -- Regression test for migration 0270: God View. Only a full admin or an
 -- admin given the God View page reads it; a sub-admin sees only the people
--- inside their region; partners online, on a job and (asked for) offline
--- within 2 hours; users searching, in a ride or with the app open (a
--- position in the last 30 minutes), never one whose last position is older;
+-- inside their region; partners online, on a job and (asked for) at their
+-- last known position (0272: up to 7 days); users searching, in a ride or
+-- with the app open (a position in the last 30 minutes), older ones only
+-- at their last known position (more in god_view_presence_0272.sql);
 -- no phone number in the snapshot; a phone shown is logged; suspend needs
 -- the Partners / Users edit grant, leaves a ride in progress alone and is
 -- logged; the map's box and the row cap; a rider reads nobody's presence or
@@ -187,17 +188,19 @@ select pg_temp.check((select m->'00000000-0000-0000-0000-0000000270f2'->>'status
 select pg_temp.check((select m->'00000000-0000-0000-0000-0000000270f3'->>'status' = 'app_open'
                          and (m->'00000000-0000-0000-0000-0000000270f3'->>'lat')::float8 = 3.4 from s0270),
   'an idle user with a recent position is app open');
-select pg_temp.check((select not (m ? '00000000-0000-0000-0000-0000000270f4') and not (off ? '00000000-0000-0000-0000-0000000270f4')
-                        from s0270), 'an idle user last located 3 h ago is never shown');
+-- 0272: Show offline is the last known positions, up to 7 days old.
+select pg_temp.check((select not (m ? '00000000-0000-0000-0000-0000000270f4')
+                         and off->'00000000-0000-0000-0000-0000000270f4'->>'status' = 'last_known' from s0270),
+  'an idle user last located 3 h ago only at their last known position');
 select pg_temp.check((select not (m ? '00000000-0000-0000-0000-0000000270f5')
-                         and off->'00000000-0000-0000-0000-0000000270f5'->>'status' = 'offline' from s0270),
+                         and off->'00000000-0000-0000-0000-0000000270f5'->>'status' = 'last_known' from s0270),
   'a user located 1 h ago only with Show offline, greyed');
 select pg_temp.check((select not (m ? '00000000-0000-0000-0000-0000000270f6') and not (off ? '00000000-0000-0000-0000-0000000270f6')
                         from s0270), 'a user with no position is not shown');
 select pg_temp.check((select not (m ? '00000000-0000-0000-0000-0000000270d4')
-                         and off->'00000000-0000-0000-0000-0000000270d4'->>'status' = 'offline'
-                         and not (off ? '00000000-0000-0000-0000-0000000270d5') from s0270),
-  'Show offline adds partners seen in the past 2 hours, no older');
+                         and off->'00000000-0000-0000-0000-0000000270d4'->>'status' = 'last_known'
+                         and off->'00000000-0000-0000-0000-0000000270d5'->>'status' = 'last_known' from s0270),
+  'Show offline adds partners at their last known position (0272: up to 7 days)');
 select pg_temp.check((select (raw->'counts'->>'sos')::int >= 2 and (raw->>'scoped')::boolean = false from s0270), 'the counts');
 -- No phone number anywhere in it.
 select pg_temp.check((select raw::text !~ '6012700' and off::text !~ '6012700' and not (raw::text like '%"phone"%') from s0270),

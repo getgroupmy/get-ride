@@ -33,6 +33,9 @@ import flutter_callkit_incoming
     registry.desiredPushTypes = [.voIP]
     voipRegistry = registry
     provideGoogleMapsKey()
+    // "Always on": a relaunch for a significant location change needs the
+    // monitoring started again to be handed the fix.
+    BackgroundLocationReporter.shared.resumeIfArmed()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
@@ -65,6 +68,9 @@ import flutter_callkit_incoming
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NetworkInfoPlugin") {
       NetworkInfoPlugin.register(with: registrar)
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BackgroundLocationPlugin") {
+      BackgroundLocationPlugin.register(with: registrar)
     }
   }
 
@@ -256,6 +262,157 @@ final class AppIconPlugin: NSObject, FlutterPlugin {
           }
         }
       }
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+}
+
+/// "Always on" (migration 0272, lib/src/data/background_location.dart): a
+/// phone whose location is already "Always" keeps telling the server where
+/// it is while the app is in the background or closed. Never asks for the
+/// permission; without it, it does nothing. Significant location changes
+/// (about 500 m; iOS relaunches the app in the background for them, and
+/// needs no extra background mode) are sent when due, about every 15
+/// minutes or after a move of 500 m (backgroundReportDue in
+/// lib/src/core/push_logic.dart), to push_background_location with the
+/// install's random key: no session and no Flutter engine. Kept in this
+/// file so it needs no change to the Xcode project.
+final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
+  static let shared = BackgroundLocationReporter()
+
+  private let manager = CLLocationManager()
+  private let defaults = UserDefaults.standard
+
+  // As backgroundReportDue (lib/src/core/push_logic.dart).
+  private static let every: TimeInterval = 15 * 60
+  private static let moveMetres: CLLocationDistance = 500
+
+  private static func k(_ name: String) -> String { "get_ride.background_location.\(name)" }
+
+  override init() {
+    super.init()
+    manager.delegate = self
+  }
+
+  private var allowedAlways: Bool { manager.authorizationStatus == .authorizedAlways }
+
+  func arm(url: String, anonKey: String, key: String) -> Bool {
+    guard !url.isEmpty, !anonKey.isEmpty, key.count >= 32 else { return false }
+    defaults.set(url, forKey: Self.k("url"))
+    defaults.set(anonKey, forKey: Self.k("anonKey"))
+    defaults.set(key, forKey: Self.k("key"))
+    defaults.set(true, forKey: Self.k("armed"))
+    return start()
+  }
+
+  func disarm() {
+    manager.stopMonitoringSignificantLocationChanges()
+    for name in ["url", "anonKey", "key", "armed", "lastAt", "lastLat", "lastLng"] {
+      defaults.removeObject(forKey: Self.k(name))
+    }
+  }
+
+  func resumeIfArmed() {
+    if defaults.bool(forKey: Self.k("armed")) { _ = start() }
+  }
+
+  private func start() -> Bool {
+    guard allowedAlways, CLLocationManager.significantLocationChangeMonitoringAvailable() else { return false }
+    manager.startMonitoringSignificantLocationChanges()
+    return true
+  }
+
+  func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+    guard let fix = locations.last, defaults.bool(forKey: Self.k("armed")) else { return }
+    guard allowedAlways else {
+      // No longer Always: stop until the app sees it again.
+      disarm()
+      return
+    }
+    // On screen, the app checks in itself.
+    if UIApplication.shared.applicationState == .active { return }
+    let now = Date().timeIntervalSince1970
+    let lastAt = defaults.double(forKey: Self.k("lastAt"))
+    var moved: CLLocationDistance = 0
+    if defaults.object(forKey: Self.k("lastLat")) != nil {
+      let last = CLLocation(
+        latitude: defaults.double(forKey: Self.k("lastLat")), longitude: defaults.double(forKey: Self.k("lastLng")))
+      moved = fix.distance(from: last)
+    }
+    let due = lastAt == 0 || now - lastAt >= Self.every || moved >= Self.moveMetres
+    guard due,
+      let url = defaults.string(forKey: Self.k("url")),
+      let anonKey = defaults.string(forKey: Self.k("anonKey")),
+      let key = defaults.string(forKey: Self.k("key"))
+    else { return }
+    var task = UIBackgroundTaskIdentifier.invalid
+    task = UIApplication.shared.beginBackgroundTask(withName: "background-location") {
+      UIApplication.shared.endBackgroundTask(task)
+      task = .invalid
+    }
+    let lat = fix.coordinate.latitude, lng = fix.coordinate.longitude
+    post(url: url, anonKey: anonKey, key: key, lat: lat, lng: lng) { ok in
+      DispatchQueue.main.async {
+        if ok {
+          self.defaults.set(now, forKey: Self.k("lastAt"))
+          self.defaults.set(lat, forKey: Self.k("lastLat"))
+          self.defaults.set(lng, forKey: Self.k("lastLng"))
+        }
+        if task != .invalid {
+          UIApplication.shared.endBackgroundTask(task)
+          task = .invalid
+        }
+      }
+    }
+  }
+
+  func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
+
+  private func post(
+    url: String, anonKey: String, key: String, lat: Double, lng: Double, done: @escaping (Bool) -> Void
+  ) {
+    let base = url.hasSuffix("/") ? String(url.dropLast()) : url
+    guard let endpoint = URL(string: base + "/rest/v1/rpc/push_background_location"),
+      let body = try? JSONSerialization.data(withJSONObject: ["p_key": key, "p_lat": lat, "p_lng": lng])
+    else {
+      done(false)
+      return
+    }
+    var request = URLRequest(url: endpoint, timeoutInterval: 20)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue(anonKey, forHTTPHeaderField: "apikey")
+    // A legacy anon key is a JWT and goes as the bearer too; a publishable
+    // key goes as apikey only.
+    if anonKey.hasPrefix("eyJ") { request.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization") }
+    request.httpBody = body
+    URLSession.shared.dataTask(with: request) { _, response, error in
+      let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+      done(error == nil && (200..<300).contains(code))
+    }.resume()
+  }
+}
+
+/// The app's side of [BackgroundLocationReporter]: `arm` with the project
+/// and the key, `disarm` at sign-out or once location is no longer Always.
+final class BackgroundLocationPlugin: NSObject, FlutterPlugin {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "get_ride/background_location", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(BackgroundLocationPlugin(), channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "arm":
+      let args = call.arguments as? [String: Any] ?? [:]
+      result(
+        BackgroundLocationReporter.shared.arm(
+          url: args["url"] as? String ?? "", anonKey: args["anonKey"] as? String ?? "",
+          key: args["key"] as? String ?? ""))
+    case "disarm":
+      BackgroundLocationReporter.shared.disarm()
+      result(nil)
     default:
       result(FlutterMethodNotImplemented)
     }

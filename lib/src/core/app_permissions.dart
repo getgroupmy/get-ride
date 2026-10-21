@@ -171,7 +171,8 @@ enum PermissionBlock {
     'Allow location all the time',
     'GET.ride collects your location in the background, even when the app is closed or not in use, while you are '
         'online and during trips. Riders see you on the way to them and during the trip, and it is kept for safety. '
-        'It is not collected while you are offline.',
+        'While you are offline, your approximate location is collected about every 15 minutes, or when you move '
+        'about 500 m, so our safety and support team can see where you last were.',
   ),
   notificationsNotAsked(
     'Allow notifications',

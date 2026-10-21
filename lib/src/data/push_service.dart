@@ -209,6 +209,35 @@ class PushService {
   LatLng? _locatedAt;
   DateTime? _locatedWhen;
 
+  /// Whether this phone has a token stored for the signed-in profile, so a
+  /// check-in (or the closed app's report) has something to move.
+  bool get hasTokens => _db.auth.currentUser != null && [?_registeredToken, ?_registeredVoip].isNotEmpty;
+
+  /// The open app's light check-in (`push_checkin`, migration 0272): where
+  /// the phone is now, moved or not, from the foreground; whether location
+  /// is set to always; and, when it is, the install's background key
+  /// ([bgKey], only its hash is stored) that the closed app reports with.
+  /// The area is left as it was. True when the server took it; quiet on
+  /// failure (a database without it: the area report still runs).
+  Future<bool> checkIn(LatLng point, {required bool always, String? bgKey}) async {
+    final tokens = [?_registeredToken, ?_registeredVoip];
+    if (tokens.isEmpty || _db.auth.currentUser == null) return false;
+    try {
+      await _db.rpc('push_checkin', params: {
+        'p_tokens': tokens,
+        'p_lat': point.latitude,
+        'p_lng': point.longitude,
+        'p_background': false,
+        'p_always': always,
+        'p_bg_key': always ? bgKey : null,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('[push] check-in not stored: $e');
+      return false;
+    }
+  }
+
   /// Whether [point] is worth reporting now (shouldReportPushLocation).
   bool wantsLocation(LatLng point, DateTime now) =>
       shouldReportPushLocation(point: point, now: now, lastPoint: _locatedAt, lastAt: _locatedWhen);

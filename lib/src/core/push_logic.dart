@@ -257,15 +257,17 @@ String? pushModeAt(String location, String? previous) {
   return previous;
 }
 
-/// How often a phone re-reports where it is for area broadcasts, at most.
+/// How often a phone re-reports its area (the region and reverse-geocode
+/// work, push_set_location) for area broadcasts, at most.
 const pushLocationEvery = Duration(minutes: 30);
 
-/// How far a phone moves before it re-reports sooner than that.
-const pushLocationMoveMeters = 1000.0;
+/// How far a phone moves before it re-reports its area sooner than that
+/// (0272: 200 m, was 1 km).
+const pushLocationMoveMeters = 200.0;
 
-/// Whether to tell the server where the phone is now: never told yet, last
-/// told [pushLocationEvery] ago, or moved [pushLocationMoveMeters] since.
-/// Pure.
+/// Whether to work out and tell the server the phone's area now: never told
+/// yet, last told [pushLocationEvery] ago, or moved [pushLocationMoveMeters]
+/// since. Pure.
 bool shouldReportPushLocation({
   required LatLng point,
   required DateTime now,
@@ -276,6 +278,48 @@ bool shouldReportPushLocation({
   if (now.difference(lastAt) >= pushLocationEvery) return true;
   return const Distance().as(LengthUnit.Meter, lastPoint, point) >= pushLocationMoveMeters;
 }
+
+/// How often the open app checks in (`push_checkin`, migration 0272): a
+/// light report of where the phone is, moved or not, so Admin -> God View
+/// sees everyone with the app open and not only those who moved.
+const pushCheckinEvery = Duration(minutes: 2);
+
+/// Whether the open app's check-in is due: someone signed in, the app on
+/// screen, and nothing sent yet or [pushCheckinEvery] since the last one
+/// (less a few seconds, so a timer firing early still counts). Pure.
+bool pushCheckinDue({
+  required bool signedIn,
+  required bool foreground,
+  required DateTime now,
+  DateTime? lastAt,
+}) {
+  if (!signedIn || !foreground) return false;
+  if (lastAt == null) return true;
+  return now.difference(lastAt) >= pushCheckinEvery - const Duration(seconds: 5);
+}
+
+/// The closed app's report (`push_background_location`, migration 0272):
+/// about every [backgroundReportEvery], or sooner after a move of
+/// [backgroundReportMoveMeters]. The native reporters apply this same rule
+/// (android BackgroundLocationReceiver.kt, ios AppDelegate.swift
+/// BackgroundLocationPlugin); it is kept and tested here.
+const backgroundReportEvery = Duration(minutes: 15);
+const backgroundReportMoveMeters = 500.0;
+
+/// Whether a background fix is worth sending: nothing sent yet, the last
+/// one [backgroundReportEvery] ago, or a move of [backgroundReportMoveMeters]
+/// since. Pure.
+bool backgroundReportDue({Duration? sinceLast, double? movedMetres}) {
+  if (sinceLast == null) return true;
+  if (sinceLast >= backgroundReportEvery) return true;
+  return (movedMetres ?? 0) >= backgroundReportMoveMeters;
+}
+
+/// Whether this phone keeps reporting from the background: someone signed
+/// in, push tokens to report against, and location already set to "Allow
+/// all the time" / "Always" (never asked for here). Pure.
+bool backgroundReportingWanted({required bool signedIn, required bool locationAlways, required bool hasTokens}) =>
+    signedIn && locationAlways && hasTokens;
 
 /// How long to wait before each further try at the iPhone's PushKit (VoIP)
 /// token, which iOS can hand over a while after launch.
