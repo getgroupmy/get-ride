@@ -355,11 +355,33 @@ reset role;
 set local role authenticated;
 insert into rides values ('trip', pg_temp.book('00000000-0000-0000-0000-0000000267c2', 'Van 267',
   '{"cargo": "Washing machine", "declared": 900, "recipient": "Mei", "recipient_phone": "+60123456789"}'));
+-- Open: a driver bidding reads the request, not the recipient or the value.
 select pg_temp.as_user('00000000-0000-0000-0000-0000000267d1');
+select pg_temp.check((select recipient_phone is null and recipient_name is null and declared_value is null
+                             and cargo_description = 'Washing machine'
+                        from public.ride_requests where id = (select id from rides where k = 'trip')),
+  'a bidding driver can''t read the recipient''s phone or the declared value');
+select pg_temp.check(not exists (select 1 from public.ride_request_private
+                                  where request_id = (select id from rides where k = 'trip')),
+  'nor what is kept aside');
 update public.ride_requests set offered_fare = 150, partner_id = '00000000-0000-0000-0000-0000000267d1'
  where id = (select id from rides where k = 'trip');
+select pg_temp.check((select recipient_phone is null from public.ride_requests where id = (select id from rides where k = 'trip')),
+  'not even once their offer stands on it');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000267c2');
+select pg_temp.check((select recipient_phone = '+60123456789' and recipient_name = 'Mei' and declared_value = 900
+                        from public.ride_request_private where request_id = (select id from rides where k = 'trip')),
+  'the sender reads them aside');
 update public.ride_requests set status = 'accepted' where id = (select id from rides where k = 'trip');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000267d1');
+select pg_temp.check((select recipient_phone = '+60123456789' and recipient_name = 'Mei' and declared_value = 900
+                        from public.ride_requests where id = (select id from rides where k = 'trip')),
+  'the assigned driver reads the recipient and the value');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000267d3');
+select pg_temp.check(pg_temp.sees((select id from rides where k = 'trip')) = 0, 'another driver no longer sees the request');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000267a1');
+select pg_temp.check((select recipient_phone = '+60123456789' from public.ride_requests
+                       where id = (select id from rides where k = 'trip')), 'admins read it');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000267d1');
 update public.ride_requests set status = 'arrived' where id = (select id from rides where k = 'trip');
 reset role;
@@ -393,10 +415,12 @@ select pg_temp.check((select freight_waiting_minutes = 30 and freight_waiting_fe
 select pg_temp.check((select count(*) = 2 and bool_and(to_phone = '+60123456789' and status = 'queued')
                         from public.freight_recipient_notices where ride_id = (select id from rides where k = 'trip')),
   'the recipient''s link waits for SMS and WhatsApp');
-select pg_temp.check((select share_token is not null from public.ride_requests where id = (select id from rides where k = 'trip')),
-  'with the ride''s share link');
-select pg_temp.check((select count(*) = 2 from public.freight_notices_claim((select id from rides where k = 'trip'))),
-  'the Edge Function claims them');
+select pg_temp.check((select share_token is not null from public.ride_request_private
+                       where request_id = (select id from rides where k = 'trip')),
+  'with the ride''s share link, kept aside');
+select pg_temp.check((select count(*) = 2 and bool_and(share_token is not null)
+                        from public.freight_notices_claim((select id from rides where k = 'trip'))),
+  'the Edge Function claims them, with the link');
 select pg_temp.check(not exists (select 1 from public.freight_notices_claim((select id from rides where k = 'trip'))),
   'once');
 select pg_temp.check(not has_function_privilege('authenticated', 'public.freight_notices_kick()', 'execute')

@@ -70,7 +70,9 @@
 --      admin's list) and the declared value: a freight booking needs
 --      prohibited_ack and a declared_value no more than the place's cap
 --      ('freight-declared-cap', default 500).
---   5. The recipient (recipient_name, recipient_phone) is sent the
+--   5. The recipient (recipient_name, recipient_phone; like the declared
+--      value, kept aside in ride_request_private while the request is open,
+--      so a bidding driver never reads them) is sent the
 --      tracking link (0108's share link) when the trip starts, by SMS and/or
 --      WhatsApp as the admin chooses: freight_recipient_notices, sent by the
 --      freight-notify Edge Function. No new secret goes into a pg_net call.
@@ -1199,7 +1201,10 @@ begin
      or new.status <> 'on_trip' or old.status = 'on_trip' then
     return new;
   end if;
-  new.share_token := coalesce(new.share_token, gen_random_uuid());
+  -- The share link is kept aside (0195), as ride_share_link keeps it.
+  insert into public.ride_request_private as p (request_id, share_token)
+  values (new.id, gen_random_uuid())
+  on conflict (request_id) do update set share_token = coalesce(p.share_token, excluded.share_token), updated_at = now();
   v_body := left(format('GET.ride: %s, your delivery from %s is on its way. Track it here: ',
                         coalesce(nullif(btrim(new.recipient_name), ''), 'Hello'),
                         coalesce(nullif(btrim(new.rider_name), ''), 'the sender')), 400);
@@ -1213,7 +1218,7 @@ end;
 $$;
 revoke execute on function public.ride_requests_freight_recipient() from public, anon, authenticated;
 
--- Last of the before triggers: a guard may keep a client's share_token as it was.
+-- Last of the before triggers: it reads the recipient once it is back on the row.
 drop trigger if exists trg_ride_requests_freight_recipient on public.ride_requests;
 drop trigger if exists trg_ride_requests_zzzz_freight_recipient on public.ride_requests;
 create trigger trg_ride_requests_zzzz_freight_recipient
@@ -1230,10 +1235,10 @@ set search_path = public
 as $$
   update public.freight_recipient_notices n
      set status = 'sending', attempts = n.attempts + 1
-    from public.ride_requests r
-   where r.id = n.ride_id and (p_ride is null or n.ride_id = p_ride)
+   where (p_ride is null or n.ride_id = p_ride)
      and (n.status = 'queued' or (n.status = 'failed' and n.attempts < 3))
-  returning n.id, n.channel, n.to_phone, n.body, r.share_token;
+  returning n.id, n.channel, n.to_phone, n.body,
+            (select v.share_token from public.ride_request_private v where v.request_id = n.ride_id);
 $$;
 
 create or replace function public.freight_notice_report(p_id uuid, p_ok boolean, p_error text default null)
@@ -1309,6 +1314,72 @@ begin
     perform cron.schedule('freight-recipient-notices', '* * * * *', $job$select public.freight_notices_kick()$job$);
   end if;
 end $$;
+
+-- ---- 11b. The recipient and the declared value wait aside --------------------------------------------
+-- Ride privacy (0182, 0195) for the sender's freight details: while a
+-- request is open, approved drivers read its row to bid, so the recipient's
+-- name and phone and the declared value wait in ride_request_private (the
+-- rider and admins). When a driver takes it they come back to the row,
+-- which only the rider, that driver and admins read; reopened, they move
+-- out again. Before 0248's / 0247's / 0195's own (zz_assistance <
+-- zz_freight_private < zz_pets < zz_privacy); the booking checks above
+-- (c_services_freight) see them first.
+alter table public.ride_request_private add column if not exists recipient_name text;
+alter table public.ride_request_private add column if not exists recipient_phone text;
+alter table public.ride_request_private add column if not exists declared_value numeric;
+
+create or replace function public.ride_requests_freight_private()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  ins boolean := tg_op = 'INSERT';
+  pv public.ride_request_private;
+begin
+  if new.status = 'open' then
+    if new.recipient_name is not null or new.recipient_phone is not null or new.declared_value is not null then
+      insert into public.ride_request_private as p (request_id, recipient_name, recipient_phone, declared_value)
+      values (new.id, new.recipient_name, new.recipient_phone, new.declared_value)
+      on conflict (request_id) do update set
+        recipient_name  = coalesce(excluded.recipient_name, p.recipient_name),
+        recipient_phone = coalesce(excluded.recipient_phone, p.recipient_phone),
+        declared_value  = coalesce(excluded.declared_value, p.declared_value),
+        updated_at      = now();
+    end if;
+    new.recipient_name := null;
+    new.recipient_phone := null;
+    new.declared_value := null;
+  elsif not ins and old.status = 'open' then
+    -- Taken (or ended): they come back to the row.
+    select * into pv from public.ride_request_private where request_id = new.id;
+    if found then
+      new.recipient_name  := coalesce(new.recipient_name, pv.recipient_name);
+      new.recipient_phone := coalesce(new.recipient_phone, pv.recipient_phone);
+      new.declared_value  := coalesce(new.declared_value, pv.declared_value);
+    end if;
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.ride_requests_freight_private() from public, anon, authenticated;
+
+drop trigger if exists trg_ride_requests_zz_freight_private on public.ride_requests;
+create trigger trg_ride_requests_zz_freight_private
+  before insert or update on public.ride_requests
+  for each row execute function public.ride_requests_freight_private();
+
+-- Requests already open when this runs: their details move aside too.
+insert into public.ride_request_private as p (request_id, recipient_name, recipient_phone, declared_value)
+select r.id, r.recipient_name, r.recipient_phone, r.declared_value from public.ride_requests r
+ where r.status = 'open' and (r.recipient_phone is not null or r.recipient_name is not null or r.declared_value is not null)
+on conflict (request_id) do update set
+  recipient_name  = coalesce(p.recipient_name, excluded.recipient_name),
+  recipient_phone = coalesce(p.recipient_phone, excluded.recipient_phone),
+  declared_value  = coalesce(p.declared_value, excluded.declared_value);
+update public.ride_requests set recipient_name = null, recipient_phone = null, declared_value = null
+ where status = 'open' and (recipient_phone is not null or recipient_name is not null or declared_value is not null);
 
 -- ---- 12. Live ------------------------------------------------------------------------------------
 do $$
