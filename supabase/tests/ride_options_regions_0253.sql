@@ -197,7 +197,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000253d2');
 insert into public.driver_ride_extras (driver_id, off) values
   ('00000000-0000-0000-0000-0000000253d2', array['Pet:Dog ', 'assist:guide-dog', 'pet:dog']);
 select pg_temp.check((select off from public.driver_ride_extras where driver_id = '00000000-0000-0000-0000-0000000253d2')
-                     = array['assist:guide-dog', 'pet:dog'], 'kept in lower case, once; the guide dog can be turned off');
+                     = array['pet:dog'], 'kept in lower case, once; the guide dog is always taken (0263)');
 select pg_temp.refused($q$insert into public.driver_ride_extras (driver_id, off) values ('00000000-0000-0000-0000-0000000253d1', array['pet:cat'])$q$,
   'a driver writing another''s');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000253d1');

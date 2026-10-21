@@ -57,7 +57,9 @@ begin
     -- Ride Options by place, and the extras each driver takes (migration 0253).
     'ride_option_places', 'driver_ride_extras',
     -- Partner type services (migration 0259).
-    'partner_type_services'
+    'partner_type_services',
+    -- Driver services: switches per car, locks and their log (migration 0263).
+    'driver_service_prefs', 'driver_service_locks', 'driver_service_lock_events'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables
