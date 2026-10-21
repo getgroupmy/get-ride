@@ -11,6 +11,7 @@ import '../admin_categories.g.dart';
 import '../admin_providers.dart';
 import '../profile_search.dart';
 import '../sub_admin_grants.dart';
+import 'catalogue/partner_type_services_screen.dart' show partnerTypeServicesPage;
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/search_select.dart';
@@ -32,6 +33,7 @@ final grantablePages = <String, String>{
   for (final m in adminModules.values)
     for (final p in m.pages) p: '${m.label} · $p',
   for (final c in crudCategories) c.page: 'Settings · ${c.title}',
+  partnerTypeServicesPage: 'Settings · Partner type services',
 };
 
 String _personLabel(Map<String, dynamic>? p, String id) => '${p?['name'] ?? p?['phone'] ?? p?['email'] ?? id}'.trim();

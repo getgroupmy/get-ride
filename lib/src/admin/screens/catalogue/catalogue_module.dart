@@ -8,6 +8,7 @@ import 'catalogue_logic.dart';
 import 'document_screens.dart';
 import 'make_model_screen.dart';
 import 'partner_type_screen.dart';
+import 'partner_type_services_screen.dart';
 import 'service_order_screen.dart';
 import 'services_screens.dart';
 
@@ -28,6 +29,7 @@ final catalogueRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/vehicle-services', builder: (_, _) => const VehicleServicesScreen()),
   GoRoute(path: serviceOrderPath, builder: (_, _) => const ServiceOrderScreen()),
   GoRoute(path: '/admin/m/partner-type', builder: (_, _) => const PartnerTypeScreen()),
+  GoRoute(path: '/admin/m/partner-type-services', builder: (_, _) => const PartnerTypeServicesScreen()),
   GoRoute(path: '/admin/m/document-type', builder: (_, _) => const DocumentTypeScreen()),
   GoRoute(path: '/admin/m/required-documents', builder: (_, _) => const RequiredDocumentsScreen()),
   GoRoute(path: '/admin/m/vehicle-make-model', builder: (_, _) => const VehicleMakeModelScreen()),
@@ -70,6 +72,14 @@ const catalogueEntries = <AdminScreenEntry>[
     path: '/admin/m/partner-type',
     pages: ['admin-settings-partner-type'],
     icon: Icons.groups_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'Services & catalogue',
+    title: 'Partner type services',
+    subtitle: 'Which ride services each partner type sees in open requests',
+    path: partnerTypeServicesPath,
+    pages: [partnerTypeServicesPage, 'admin-settings-partner-type'],
+    icon: Icons.rule_outlined,
   ),
   AdminScreenEntry(
     section: 'Services & catalogue',
