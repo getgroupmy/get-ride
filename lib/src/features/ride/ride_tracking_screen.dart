@@ -57,6 +57,7 @@ import 'ride_payment_overlay.dart';
 import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
 import 'city_cancel_parts.dart';
+import 'route_check.dart';
 import 'home_screen.dart' show nearbyDriversProvider, roundedPoint;
 import 'shared_ride_screen.dart' show shareRide;
 import '../../widgets/offline_ride_banner.dart';
@@ -1286,6 +1287,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           const SizedBox(height: 12),
           // Trip safety (Phase D4): "Are you in the car?" / "still on your trip?".
           if (r.status == RideStatus.onTrip && !_isDemo) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
+          // The route check (0269): asks when the car leaves the planned route.
+          if (r.status == RideStatus.onTrip && !_isDemo) RouteCheckWatcher(ride: r, onSos: () => _sos(r)),
           if (r.status == RideStatus.completed && !_isDemo) RideRatingCard(ride: r),
           if (r.status == RideStatus.completed && !_isDemo) LostItemCard(ride: r),
           // On the trip itself the X only asks: the driver approves it.

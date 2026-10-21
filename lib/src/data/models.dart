@@ -176,6 +176,7 @@ class RideRequest {
   double? get partnerLiveLat => _d(raw['partner_live_lat']);
   double? get partnerLiveLng => _d(raw['partner_live_lng']);
   double? get partnerLiveHeading => _d(raw['partner_live_heading']);
+  DateTime? get partnerLiveAt => _t(raw['partner_live_at']);
 
   /// The passenger's own live position, as their phone last shared it.
   double? get userLiveLat => _d(raw['user_live_lat']);

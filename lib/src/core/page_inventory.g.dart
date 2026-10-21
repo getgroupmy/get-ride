@@ -417,6 +417,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:ride.pets', SurfaceKind.sheet, 'Ride · Pets', 'lib/src/features/ride/pet_parts.dart'),
   SurfaceEntry('sheet:ride.pickup-guide', SurfaceKind.sheet, 'Ride · Pickup guide', 'lib/src/features/ride/pickup_guide_card.dart'),
   SurfaceEntry('sheet:ride.pickup-time', SurfaceKind.sheet, 'Ride · Pickup time', 'lib/src/features/ride/pickup_time_sheet.dart'),
+  SurfaceEntry('sheet:ride.route-check', SurfaceKind.sheet, 'Ride · Route check', 'lib/src/features/ride/route_check.dart'),
   SurfaceEntry('sheet:ride.vehicle-permits', SurfaceKind.sheet, 'Ride · Vehicle permits', 'lib/src/features/ride/ride_permit_button.dart'),
   SurfaceEntry('sheet:saved-place-form.show-saved-place-form', SurfaceKind.sheet, 'Saved place form · Saved place form', 'lib/src/features/ride/saved_place_form.dart'),
   SurfaceEntry('sheet:searching.show-search-cancel-sheet', SurfaceKind.sheet, 'Searching · Search cancel sheet', 'lib/src/features/ride/searching_parts.dart'),
