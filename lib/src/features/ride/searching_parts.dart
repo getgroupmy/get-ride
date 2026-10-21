@@ -13,6 +13,7 @@ import 'confirm_parts.dart';
 import '../../widgets/net_image.dart';
 import '../../widgets/plate_chip.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/offer_motion.dart';
 
 // The rider's search for a driver, drawn as inDrive draws it: the sheet
 // (stage headline and countdown, fare stepper, auto-accept, payment, route,
@@ -794,9 +795,10 @@ class _DemoTag extends StatelessWidget {
   );
 }
 
-/// Offer cards as inDrive deals them: each flies in from the right, tilted,
-/// and straightens as it lands; an answered, replaced or lapsed one tilts
-/// and flies off to the left. The rider can also throw a card away by
+/// Offer cards as inDrive deals them, with the app's one offer motion
+/// (`widgets/offer_motion.dart`): each slides in from the right with a small
+/// overshoot; an answered, replaced, taken or lapsed one slides off to the
+/// left with a slight tilt and fades. The rider can also throw a card away by
 /// swiping it left, which declines it.
 class OfferStack extends StatefulWidget {
   const OfferStack({super.key, required this.offers, this.gap = 12});
@@ -821,14 +823,6 @@ class _OfferEntry {
   double leaveFrom = 0;
 }
 
-/// How long a card takes to come in, and to go.
-const offerInDuration = Duration(milliseconds: 460);
-const offerOutDuration = Duration(milliseconds: 340);
-
-/// The tilt a card comes in and goes out with: 15°, as Expo's
-/// (`ride-confirm.tsx`), in radians.
-const offerTilt = 0.2618;
-
 /// A left swipe past this share of the card's width (or a quick flick)
 /// declines it; anything less springs back.
 const offerSwipeDecline = 0.32;
@@ -846,7 +840,7 @@ class _OfferStackState extends State<OfferStack> with TickerProviderStateMixin {
   }
 
   _OfferEntry _enter(SearchOfferView o) {
-    final c = AnimationController(vsync: this, duration: offerInDuration, reverseDuration: offerOutDuration);
+    final c = AnimationController(vsync: this, duration: offerMotionInDuration, reverseDuration: offerMotionOutDuration);
     final e = _OfferEntry(o, c);
     c.forward();
     return e;
@@ -948,38 +942,15 @@ class _OfferStackState extends State<OfferStack> with TickerProviderStateMixin {
               animation: e.controller,
               builder: (context, child) {
                 final v = e.controller.value;
-                final double dx; // share of the card's width
-                final double angle;
-                final double opacity;
-                if (e.leaving) {
-                  // 1 → 0 as it goes: tilt and fly off to the left.
-                  final p = Curves.easeInCubic.transform(1 - v);
-                  dx = e.leaveFrom + p * (-1.5 - e.leaveFrom);
-                  // The swipe's tilt carries on to the full 15° as it goes.
-                  final from = math.max(-offerTilt, e.leaveFrom * offerTilt);
-                  angle = from + p * (-offerTilt - from);
-                  opacity = (1 - p * 0.9).clamp(0.0, 1.0);
-                } else {
-                  // 0 → 1 as it comes: in from the right, tilted, then level.
-                  final p = Curves.easeOutCubic.transform(v);
-                  final drag = w > 0 ? e.drag / w : 0.0;
-                  dx = (1 - p) * 1.2 + drag;
-                  // Dragging tilts it with the finger, up to 15° at a full
-                  // width (Expo's).
-                  angle = (1 - p) * offerTilt + math.max(-offerTilt, drag * offerTilt);
-                  opacity = Curves.easeOut.transform(v).clamp(0.0, 1.0);
-                }
+                final reduce = offerReduceMotion(context);
+                // The leaving controller runs 1 → 0.
+                final frame = e.leaving
+                    ? offerMotionOut(1 - v, reduceMotion: reduce, from: e.leaveFrom)
+                    : offerMotionIn(v, reduceMotion: reduce, drag: w > 0 ? e.drag / w : 0.0);
                 // The slot opens before the card lands, and closes once it
                 // has gone.
                 final height = Curves.easeInOut.transform((v / 0.5).clamp(0.0, 1.0));
-                final card = FractionalTranslation(
-                  translation: Offset(dx, 0),
-                  child: Transform.rotate(
-                    angle: angle,
-                    alignment: Alignment.bottomCenter,
-                    child: Opacity(opacity: opacity, child: child),
-                  ),
-                );
+                final card = OfferMotionTransform(frame: frame, child: child!);
                 final slot = Align(alignment: Alignment.topCenter, heightFactor: height, child: card);
                 return height >= 0.999 ? slot : ClipRect(clipper: const _SideOpenClip(), child: slot);
               },

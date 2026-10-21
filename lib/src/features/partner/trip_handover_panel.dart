@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/trip_handover.dart';
 import '../../data/models.dart';
 import '../../data/trip_handover_repository.dart';
+import '../../widgets/offer_motion.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../ride/driver_code_sheet.dart';
@@ -321,13 +322,13 @@ class HandoverOffersCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final offers = ref.watch(handoverOffersProvider).value ?? const <HandoverOffer>[];
-    if (offers.isEmpty) return const SizedBox.shrink();
-    return Column(children: [for (final o in offers) _OfferCard(offer: o)]);
+    // Kept mounted while empty, so the last offer still slides out.
+    return OfferMotionList(children: [for (final o in offers) _OfferCard(key: ValueKey('handover-offer-motion-${o.id}'), offer: o)]);
   }
 }
 
 class _OfferCard extends ConsumerWidget {
-  const _OfferCard({required this.offer});
+  const _OfferCard({super.key, required this.offer});
   final HandoverOffer offer;
 
   @override

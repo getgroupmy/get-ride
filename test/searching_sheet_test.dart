@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/widgets/offer_motion.dart';
 import 'package:get_ride/src/core/ride_cancel.dart';
 import 'package:get_ride/src/core/search_stage.dart';
 import 'package:get_ride/src/features/ride/searching_parts.dart';
@@ -59,11 +60,12 @@ void main() {
     ),
   );
 
-  testWidgets('offers fly in from the right, tilted, and tilt off to the left', (tester) async {
+  // The shared offer motion (widgets/offer_motion.dart, test/offer_motion_test.dart).
+  testWidgets('offers slide in from the right, level, and tilt off to the left', (tester) async {
     await tester.pumpWidget(host([_offer('1')]));
     await tester.pump(const Duration(milliseconds: 80));
     final coming = tester.getTopLeft(find.byKey(const ValueKey('card-1')));
-    expect(angleOf(tester, '1'), greaterThan(0.05), reason: 'tilted as it comes in');
+    expect(angleOf(tester, '1'), closeTo(0, 0.001), reason: 'level as it comes in');
     await tester.pump(const Duration(milliseconds: 500));
     final settled = tester.getTopLeft(find.byKey(const ValueKey('card-1')));
     expect(coming.dx, greaterThan(settled.dx), reason: 'came in from the right');
@@ -76,7 +78,8 @@ void main() {
     await tester.pumpWidget(host([_offer('2')]));
     await tester.pump(const Duration(milliseconds: 250));
     expect(tester.getTopLeft(find.byKey(const ValueKey('card-1'))).dx, lessThan(settled.dx), reason: 'going left');
-    expect(angleOf(tester, '1'), lessThan(-0.05), reason: 'tilting as it goes');
+    expect(angleOf(tester, '1'), lessThan(-0.02), reason: 'tilting as it goes');
+    expect(angleOf(tester, '1'), greaterThanOrEqualTo(offerMotionTilt - 0.001), reason: 'about -6 degrees at most');
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const ValueKey('card-1')), findsNothing);
     expect(find.byKey(const ValueKey('card-2')), findsOneWidget);

@@ -31,6 +31,7 @@ import '../../data/partner_doc_check.dart';
 import '../../data/partner_type_check.dart';
 import '../../core/partner_type_rules.dart' show PartnerTypeCheck, hailNotOfferedMessage;
 import '../../providers.dart';
+import '../../widgets/offer_motion.dart';
 import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -1355,19 +1356,13 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
   }
 
-  /// The new request over the map (desktop): it flies in from the right and
-  /// back out when it is accepted, declined, taken or times out.
+  /// The new request over the map (desktop), with the app's one offer
+  /// motion: it slides in from the right and out to the left, tilting, when
+  /// it is accepted, declined, taken or times out.
   Widget _alertOverlay(Partner partner) {
     final list = ref.watch(openRequestsProvider).value ?? const <RideRequest>[];
     final alert = list.where((r) => r.id == _alertId).firstOrNull;
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 350),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) => SlideTransition(
-        position: Tween(begin: const Offset(1.25, 0), end: Offset.zero).animate(animation),
-        child: FadeTransition(opacity: animation, child: child),
-      ),
+    return OfferMotionSwitcher(
       child: alert == null
           ? const SizedBox.shrink(key: ValueKey('no-alert'))
           : Material(
