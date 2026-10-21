@@ -549,6 +549,16 @@ select public.airport_tick();
 select pg_temp.check(not exists (select 1 from public.airport_queue where driver_id = '00000000-0000-0000-0000-0000000249d5'),
   'away longer than the grace: the place is lost');
 
+-- 15b. Going offline starts the grace timer as well, without an error (0256).
+insert into public.airport_dropoffs (airport_id, driver_id, service, dropped_at) values
+  ('00000000-0000-0000-0000-0000000249e0', '00000000-0000-0000-0000-0000000249d5', 'Comfort', now() - interval '1 minute');
+update public.driver_presence set lat = 15.02, lng = 105.02, updated_at = now() where profile_id = '00000000-0000-0000-0000-0000000249d5';
+select pg_temp.check(exists (select 1 from public.airport_queue where driver_id = '00000000-0000-0000-0000-0000000249d5'), 'joined again');
+select public.airport_on_presence('00000000-0000-0000-0000-0000000249d5', false, null, null);
+select pg_temp.check((select outside_since is not null from public.airport_queue where driver_id = '00000000-0000-0000-0000-0000000249d5'),
+  'went offline: the place is kept for the grace minutes');
+delete from public.airport_queue where driver_id = '00000000-0000-0000-0000-0000000249d5';
+
 -- ---- 16. The app's quote is the server's --------------------------------------------------------
 select pg_temp.check((public.airport_fare_quote(14.95, 104.95, 13, 103, 'Comfort', 5, 30)->>'total')::numeric = 59,
   'airport_fare_quote matches what booking stamps');
