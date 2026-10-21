@@ -828,35 +828,55 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
           ),
           Expanded(child: TabBarView(children: views)),
           if (_draft != null && _edit)
-            Material(
-              elevation: 3,
-              color: t.colorScheme.surfaceContainer,
-              child: SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: Row(
-                    children: [
-                      const Expanded(child: Text('Unsaved changes')),
-                      TextButton(
-                        onPressed: _saving
-                            ? null
-                            : () => setState(() => _draft = null),
-                        child: const Text('Discard'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        key: const ValueKey('airport-settings-save'),
-                        onPressed: _saving ? null : _save,
-                        icon: const Icon(Icons.save),
-                        label: const Text('Save'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            UnsavedChangesBar(
+              saving: _saving,
+              onDiscard: () => setState(() => _draft = null),
+              onSave: _save,
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// "Unsaved changes" with Discard and Save, along the bottom of the editor.
+class UnsavedChangesBar extends StatelessWidget {
+  const UnsavedChangesBar({super.key, required this.saving, required this.onDiscard, required this.onSave});
+
+  final bool saving;
+  final VoidCallback onDiscard;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Material(
+      elevation: 3,
+      color: t.colorScheme.surfaceContainer,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Row(
+            children: [
+              const Expanded(child: Text('Unsaved changes')),
+              TextButton(
+                onPressed: saving ? null : onDiscard,
+                child: const Text('Discard'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.icon(
+                key: const ValueKey('airport-settings-save'),
+                // The app's filled buttons are full width; in this row that
+                // squeezed the label to one letter a line and hid Save.
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                onPressed: saving ? null : onSave,
+                icon: const Icon(Icons.save),
+                label: const Text('Save'),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
