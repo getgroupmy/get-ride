@@ -130,6 +130,9 @@ const homeSurface = 'route:/';
 /// Fare details sheet (a vehicle's (i)) surface id.
 const fareInfoSurface = 'sheet:fare-info';
 
+/// Admin → God View surface id.
+const godViewSurface = 'route:/admin/god-view';
+
 /// Items inside particular surfaces, beyond what every surface of their kind
 /// has. Each is read where the item is drawn.
 const elementTokens = <String, List<StyleToken>>{
@@ -152,6 +155,10 @@ const elementTokens = <String, List<StyleToken>>{
     StyleToken.number('imageHeight', 'Picture height', 80, min: 40, max: 180, group: 'Vehicle picture'),
     StyleToken.number('titleSize', 'Name size', 24, min: 16, max: 36, group: _text),
     StyleToken.number('bodySize', 'Details size', 16, min: 12, max: 24, group: _text),
+  ],
+  godViewSurface: [
+    StyleToken.number('markerSize', 'Marker size', 30, min: 20, max: 48, group: 'Map'),
+    StyleToken.number('panelWidth', 'People panel width', 340, min: 280, max: 480, group: 'Panel'),
   ],
 };
 

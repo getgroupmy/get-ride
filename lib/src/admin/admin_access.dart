@@ -11,7 +11,7 @@ library;
 enum AccessLevel { none, read, edit }
 
 class AdminGrant {
-  const AdminGrant({required this.page, required this.edit, this.id, this.profileId, this.notes});
+  const AdminGrant({required this.page, required this.edit, this.id, this.profileId, this.notes, this.region});
 
   factory AdminGrant.fromRow(Map<String, dynamic> r) => AdminGrant(
         id: r['id'] as String?,
@@ -19,6 +19,7 @@ class AdminGrant {
         page: (r['page'] as String?) ?? '',
         edit: r['access_level'] == 'edit',
         notes: r['notes'] as String?,
+        region: r['region'] is Map ? Map<String, dynamic>.from(r['region'] as Map) : null,
       );
 
   final String? id;
@@ -26,7 +27,14 @@ class AdminGrant {
   final String page;
   final bool edit;
   final String? notes;
+
+  /// The region the grant is limited to ({country, state, city, suburb};
+  /// migration 0270). God View reads it.
+  final Map<String, dynamic>? region;
 }
+
+/// God View's page key (migration 0270).
+const godViewPage = 'admin-god-view';
 
 class AdminAccess {
   const AdminAccess(this.grants);
@@ -70,6 +78,8 @@ const _partnerLists = [
 
 final adminModules = <String, AdminModule>{
   'dashboard': const AdminModule('dashboard', 'Dashboard', ['admin-dashboard']),
+  // God View (0270): everyone's live position; a sub-admin sees their region.
+  'god-view': const AdminModule('god-view', 'God View', [godViewPage]),
   'users': AdminModule('users', 'Users', [
     'admin-users', 'admin-user-edit', 'admin-user-add',
     for (final s in _userLists) 'admin-users-$s',

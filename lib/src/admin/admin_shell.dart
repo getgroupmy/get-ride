@@ -22,6 +22,7 @@ class _NavItem {
 
 const _nav = [
   _NavItem('dashboard', Icons.space_dashboard_outlined),
+  _NavItem('god-view', Icons.public),
   _NavItem('users', Icons.people_outline),
   _NavItem('partners', Icons.badge_outlined),
   _NavItem('vehicles', Icons.directions_car_outlined),

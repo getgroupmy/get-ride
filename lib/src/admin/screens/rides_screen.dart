@@ -31,8 +31,11 @@ final adminRidesProvider = FutureProvider.autoDispose.family<List<RideRequest>, 
 });
 
 class AdminRidesScreen extends ConsumerStatefulWidget {
-  const AdminRidesScreen({super.key, this.initialFilter});
+  const AdminRidesScreen({super.key, this.initialFilter, this.openRideId});
   final String? initialFilter;
+
+  /// A ride to open as the page opens (God View's Open ride).
+  final String? openRideId;
 
   @override
   ConsumerState<AdminRidesScreen> createState() => _AdminRidesScreenState();
@@ -41,6 +44,27 @@ class AdminRidesScreen extends ConsumerStatefulWidget {
 class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
   late String _group = rideStatusGroups.containsKey(widget.initialFilter) ? widget.initialFilter! : 'active';
   String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    final id = widget.openRideId;
+    if (id != null && id.isNotEmpty) WidgetsBinding.instance.addPostFrameCallback((_) => _openById(id));
+  }
+
+  Future<void> _openById(String id) async {
+    try {
+      final row = await ref.read(adminRepositoryProvider).ride(id);
+      if (!mounted) return;
+      if (row == null) {
+        showInfo(context, 'That ride is no longer there.');
+        return;
+      }
+      _open(RideRequest(row));
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
 
   void _open(RideRequest r) {
     final canEdit = ref.read(moduleAccessProvider('rides')) == AccessLevel.edit;

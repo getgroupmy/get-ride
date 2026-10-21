@@ -77,6 +77,7 @@ class _Admin extends AdminRepository {
     String audience, {
     Map<String, dynamic>? area,
     bool dryRun = false,
+    String? profileId,
   }) async {
     if (dryRun) return {'dryRun': true, 'recipients': 3, 'accounts': 2, 'unlocated': 0};
     sent.add([title, body, audience]);

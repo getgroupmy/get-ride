@@ -15,6 +15,8 @@ import 'catalogue/driver_service_locks_screen.dart' show driverServiceLocksPage;
 import 'catalogue/partner_type_services_screen.dart' show partnerTypeServicesPage;
 import 'geo/place_types_screen.dart' show placeTypesPage;
 import '../widgets/admin_widgets.dart';
+import '../widgets/region_scope_picker.dart' show pickRegionScope;
+import '../../core/partner_type_rules.dart' show RegionScope;
 import '../../data/live_tables.dart';
 import '../../widgets/search_select.dart';
 
@@ -322,8 +324,15 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
     _load();
   }
 
+  /// The region God View is limited to for this person (0270).
+  RegionScope _godRegion = RegionScope.all;
+
+  RegionScope get _savedGodRegion =>
+      RegionScope.fromJson(_existing.where((g) => g.page == godViewPage).firstOrNull?.region);
+
   void _load() {
     final existing = _existing;
+    _godRegion = _savedGodRegion;
     _levels = initialGrantLevels(grantablePages.keys, existing);
     _notes.text = existing.map((g) => g.notes).whereType<String>().firstOrNull ?? '';
   }
@@ -366,7 +375,9 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
     if (person == null) return;
     final id = '${person['id']}';
     final plan = planGrantChanges(_existing, _levels, notes: _notes.text);
-    if (plan.upserts.isEmpty && plan.deletes.isEmpty) {
+    final godView = (_levels[godViewPage] ?? GrantLevel.none) != GrantLevel.none;
+    final regionChanged = godView && _godRegion != _savedGodRegion;
+    if (plan.upserts.isEmpty && plan.deletes.isEmpty && !regionChanged) {
       _close(false);
       return;
     }
@@ -386,7 +397,13 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
       context,
       () => ref
           .read(adminRepositoryProvider)
-          .setGrants(profileId: id, upserts: plan.upserts, deletes: plan.deletes, notes: notes.isEmpty ? null : notes),
+          .setGrants(
+            profileId: id,
+            upserts: plan.upserts,
+            deletes: plan.deletes,
+            notes: notes.isEmpty ? null : notes,
+            regions: {if (godView) godViewPage: _godRegion.isAll ? null : _godRegion.toJson()},
+          ),
       success: 'Access saved for ${_personLabel(person, id)}',
     );
     if (saved && mounted) {
@@ -555,6 +572,26 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
                       onSelectionChanged: (s) => setState(() => _levels = {..._levels, e.key: s.first}),
                     ),
                   ],
+                ),
+              ),
+            // God View shows a sub-admin the people in this region only.
+            if (pages.any((e) => e.key == godViewPage) &&
+                (_levels[godViewPage] ?? GrantLevel.none) != GrantLevel.none &&
+                (_levels['*'] ?? GrantLevel.none) == GrantLevel.none)
+              ListTile(
+                key: const ValueKey('grant-god-view-region'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.public),
+                title: const Text('God View region'),
+                subtitle: Text(
+                  _godRegion.isAll ? 'Not set: they see nobody on God View until you pick one' : _godRegion.label,
+                ),
+                trailing: TextButton(
+                  onPressed: () async {
+                    final picked = await pickRegionScope(context, title: 'God View region', initial: _godRegion);
+                    if (picked != null && mounted) setState(() => _godRegion = picked);
+                  },
+                  child: Text(_godRegion.isAll ? 'Pick' : 'Change'),
                 ),
               ),
           ],

@@ -69,12 +69,24 @@ class AdminRepository {
     required List<({String page, bool edit})> upserts,
     required List<String> deletes,
     String? notes,
+    Map<String, Map<String, dynamic>?> regions = const {},
   }) async {
     if (upserts.isNotEmpty) {
       await _db.from('admin_access').upsert([
         for (final u in upserts)
-          {'profile_id': profileId, 'page': u.page, 'access_level': u.edit ? 'edit' : 'read', 'notes': notes},
+          {
+            'profile_id': profileId,
+            'page': u.page,
+            'access_level': u.edit ? 'edit' : 'read',
+            'notes': notes,
+            if (regions.containsKey(u.page)) 'region': regions[u.page],
+          },
       ], onConflict: 'profile_id,page');
+    }
+    // A region changed on a page whose level did not (migration 0270).
+    for (final e in regions.entries) {
+      if (upserts.any((u) => u.page == e.key)) continue;
+      await _db.from('admin_access').update({'region': e.value}).eq('profile_id', profileId).eq('page', e.key);
     }
     if (deletes.isNotEmpty) await _db.from('admin_access').delete().inFilter('id', deletes);
   }
@@ -178,7 +190,16 @@ class AdminRepository {
   Future<List<Map<String, dynamic>>> rides({List<String>? statuses, int limit = 200}) async {
     var q = _db.from('ride_requests').select();
     if (statuses != null && statuses.isNotEmpty) q = q.inFilter('status', statuses);
-    final rows = List<Map<String, dynamic>>.from(await q.order('created_at', ascending: false).limit(limit));
+    return _withPrivate(List<Map<String, dynamic>>.from(await q.order('created_at', ascending: false).limit(limit)));
+  }
+
+  /// One ride by id (God View's Open ride), null when it is gone.
+  Future<Map<String, dynamic>?> ride(String id) async {
+    final rows = await _withPrivate(List<Map<String, dynamic>>.from(await _db.from('ride_requests').select().eq('id', id).limit(1)));
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  Future<List<Map<String, dynamic>>> _withPrivate(List<Map<String, dynamic>> rows) async {
     // While a request is open its passenger details wait aside (0195).
     final open = [
       for (final r in rows)
@@ -266,19 +287,23 @@ class AdminRepository {
   // ---- Push ----------------------------------------------------------------
 
   /// Sends a broadcast, or with [dryRun] only counts who it would reach.
-  /// [area] (PushArea.toJson) narrows it to the phones last seen there.
+  /// [area] (PushArea.toJson) narrows it to the phones last seen there;
+  /// [profileId] sends to that one person's phones instead.
   Future<Map<String, dynamic>> sendPush(
     String title,
     String body,
     String audience, {
     Map<String, dynamic>? area,
     bool dryRun = false,
+    String? profileId,
   }) async {
     final res = await _db.functions.invoke('send-push', body: {
       'title': title,
       'body': body,
       'audience': audience,
       'area': ?area,
+      // One person only (God View's Send push); the audience is then ignored.
+      'profileId': ?profileId,
       if (dryRun) 'dryRun': true,
     });
     final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : <String, dynamic>{};

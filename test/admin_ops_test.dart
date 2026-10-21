@@ -48,8 +48,13 @@ class _Admin extends AdminRepository {
     required List<({String page, bool edit})> upserts,
     required List<String> deletes,
     String? notes,
-  }) async =>
-      setCalls.add((profileId: profileId, upserts: upserts, deletes: deletes, notes: notes));
+    Map<String, Map<String, dynamic>?> regions = const {},
+  }) async {
+    setCalls.add((profileId: profileId, upserts: upserts, deletes: deletes, notes: notes));
+    regionCalls.add(regions);
+  }
+
+  final regionCalls = <Map<String, Map<String, dynamic>?>>[];
 
   @override
   Future<List<Map<String, dynamic>>> documents(String table) async => docs;
@@ -259,6 +264,30 @@ void main() {
     await tester.pumpAndSettle();
     expect(admin.setCalls.single.upserts, [(page: '*', edit: true)]);
     expect(admin.setCalls.single.deletes, isEmpty);
+  });
+
+  testWidgets('a God View grant keeps its region, saved with the grant', (tester) async {
+    final admin = _Admin(grants: [
+      {
+        'id': 'g1',
+        'profile_id': 'p-aina',
+        'page': godViewPage,
+        'access_level': 'read',
+        'region': {'country': 'Malaysia', 'state': 'Selangor'},
+      },
+    ]);
+    await _pump(tester, admin, const AdminSubAdminsScreen());
+    await tester.tap(find.byKey(const ValueKey('sub-admin-edit-p-aina')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.ancestor(of: find.text('Filter pages'), matching: find.byType(TextField)), 'god');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('grant-god-view-region')), findsOneWidget);
+    expect(find.text('Selangor, Malaysia'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('grant-notes')), 'Selangor ops');
+    await tester.tap(find.byKey(const ValueKey('grant-save')));
+    await tester.pumpAndSettle();
+    expect(admin.regionCalls.single[godViewPage]?['state'], 'Selangor');
+    expect(admin.regionCalls.single[godViewPage]?['country'], 'Malaysia');
   });
 
   testWidgets('Edit access has an address of its own: a reload opens the same person', (tester) async {
