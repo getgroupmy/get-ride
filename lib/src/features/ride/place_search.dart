@@ -12,7 +12,7 @@ import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/place_types.dart';
 import '../../core/smart_address.dart';
-import '../../data/airport_repository.dart' show airportSettingsProvider;
+import '../../data/airport_repository.dart' show airportAt, airportSettingsProvider;
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/place_gates_repository.dart';
@@ -546,19 +546,23 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
 
   Future<void> _add(SavedPlaceKind kind) => addSavedPlace(context, kind, near: widget.near);
 
+  /// The admin place [p] is at, with its gates for this end: the place of
+  /// that name, else the airport whose boundary holds [p] (an address at
+  /// KLIA opens KLIA's doors, not a station's nearer by), else the nearest.
+  GatedPlace? _gatedAt(Place p, GateCatalogue catalogue) => matchGatedPlace(
+    places: catalogue.places,
+    gates: catalogue.gates,
+    point: p.point,
+    name: p.name,
+    usage: _usage,
+    airportId: airportAt(airportsOnly(ref.read(airportAreasProvider).value ?? const []), p.point)?.id,
+  );
+
   /// A search result, with the admin's gates under it when it is a
   /// multi-gate place (Expo `PlaceGatesList`). Where the place requires a
   /// gate, the place itself can't be picked — only one of its gates.
   Widget _result(Place p, GateCatalogue? catalogue, SmartAddress smart) {
-    final gated = catalogue == null || p.pending
-        ? null
-        : matchGatedPlace(
-            places: catalogue.places,
-            gates: catalogue.gates,
-            point: p.point,
-            name: p.name,
-            usage: _usage,
-          );
+    final gated = catalogue == null || p.pending ? null : _gatedAt(p, catalogue);
     final gates = gated?.gates ?? const <GateOption>[];
     final km = p.pending ? _km[p.placeId] ?? p.km : _km[_at(p.point)];
     final t = Theme.of(context);
@@ -845,13 +849,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
         return;
       }
       if (p.pending && catalogue != null) {
-        final gated = matchGatedPlace(
-          places: catalogue.places,
-          gates: catalogue.gates,
-          point: place.point,
-          name: place.name,
-          usage: _usage,
-        );
+        final gated = _gatedAt(place, catalogue);
         if (gated != null && gated.gates.isNotEmpty) {
           // Choose its gate in the gate sheet, as for any gated place.
           final looked = place;

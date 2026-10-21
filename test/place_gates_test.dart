@@ -124,6 +124,19 @@ void main() {
     expect(m?.gates.map((g) => g.name), ['T1 Drop-off']);
     // Without the name, the nearest place still wins.
     expect(matchGatedPlace(places: [erl, kul], gates: gates, point: const LatLng(2.7449, 101.7075))?.id, 'erl');
+    // An address inside the airport's boundary ("KLIA2 Arrival Lane") is the
+    // airport, not the station nearer to it.
+    expect(
+      matchGatedPlace(
+        places: [erl, kul],
+        gates: gates,
+        point: const LatLng(2.7449, 101.7075),
+        name: 'KLIA2 Arrival Lane',
+        usage: GateUsage.drop,
+        airportId: 'kul',
+      )?.id,
+      'kul',
+    );
   });
 
   test('gatePlace names the gate and uses its own point when mapped', () {
