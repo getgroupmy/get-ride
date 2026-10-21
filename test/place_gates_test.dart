@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/place_gates.dart';
+import 'package:get_ride/src/data/airport_repository.dart' show airportSettingsProvider;
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/place_gates_repository.dart';
@@ -128,6 +129,8 @@ void main() {
           recentPlacesProvider.overrideWith((ref) async => const []),
           geoServiceProvider.overrideWithValue(_Geo(const [mall])),
           placeGatesProvider.overrideWith((ref) async => (places: [_mall], gates: _gates)),
+          airportAreasProvider.overrideWith((ref) async => const []),
+          airportSettingsProvider.overrideWith((ref) async => const {}),
         ],
         child: MaterialApp(
           home: Builder(
@@ -147,15 +150,23 @@ void main() {
     await tester.enterText(find.byType(TextField), 'mid valley');
     await tester.pumpAndSettle(const Duration(milliseconds: 500));
 
+    // No gate chips in the list: the result says it has gates.
     expect(find.text('Choose a gate'), findsOneWidget);
-    expect(find.byKey(const ValueKey('gate-south')), findsOneWidget);
-    expect(find.byKey(const ValueKey('gate-east')), findsNothing, reason: 'drop-off only');
+    expect(find.textContaining('2 gates'), findsOneWidget, reason: 'East Wing is drop-off only');
+    expect(find.byKey(const ValueKey('gate-south')), findsNothing);
 
+    // Tapping it opens the gate sheet, the map on top.
     await tester.tap(find.text('Mid Valley'));
     await tester.pumpAndSettle();
-    expect(picked, isNull, reason: 'the place itself is blocked');
+    expect(picked, isNull);
+    expect(find.byKey(const ValueKey('gate-picker-title')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gate-dot-north')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gate-dot-east')), findsNothing, reason: 'drop-off only');
+    expect(find.byKey(const ValueKey('gate-picker-any')), findsNothing, reason: 'the place requires a gate');
 
-    await tester.tap(find.byKey(const ValueKey('gate-north')));
+    await tester.tap(find.byKey(const ValueKey('gate-dot-north')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('gate-picker-done')));
     await tester.pumpAndSettle();
     expect(picked?.place?.name, 'Mid Valley Megamall - North Court');
     expect(picked?.place?.point, const LatLng(3.119, 101.678));

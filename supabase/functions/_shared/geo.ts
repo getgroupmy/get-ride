@@ -478,6 +478,13 @@ export interface Place {
   lng: number;
   /** Google's place types ("airport", "street_address" …), where it says. */
   types?: string[];
+  /**
+   * Google's main type ("shopping_mall") and its category colour
+   * ("#4B96F3"), where it says (Places API (New)); the app's place types
+   * (migration 0264) guess from the one and colour the icon with the other.
+   */
+  primaryType?: string;
+  iconBackgroundColor?: string;
 }
 
 /**
@@ -542,7 +549,11 @@ export function searchRequest(provider: string, p: SearchParams, key: string): H
         headers: {
           "Content-Type": "application/json",
           "X-Goog-Api-Key": key,
-          "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location,places.types",
+          // primaryType and iconBackgroundColor are in the same (Pro) tier
+          // as displayName: no extra cost.
+          "X-Goog-FieldMask":
+            "places.displayName,places.formattedAddress,places.location,places.types,places.primaryType," +
+            "places.iconBackgroundColor",
         },
         body: JSON.stringify({
           textQuery: p.q,
@@ -635,14 +646,31 @@ export function googleLegacyRefusal(body: unknown): string | null {
   return typeof status === "string" && status !== "OK" && status !== "ZERO_RESULTS" ? status : null;
 }
 
-function place(name: string, address: string, lat: unknown, lng: unknown, types?: unknown): Place | null {
+function place(
+  name: string,
+  address: string,
+  lat: unknown,
+  lng: unknown,
+  types?: unknown,
+  google?: { primaryType?: unknown; iconBackgroundColor?: unknown },
+): Place | null {
   const la = num(lat), ln = num(lng);
   if (la == null || ln == null) return null;
   const addr = address || name;
   const n = name || addr.split(",")[0]?.trim() || "";
   if (!n) return null;
   const t = Array.isArray(types) ? types.filter((x): x is string => typeof x === "string") : [];
-  return { name: n, address: addr, lat: la, lng: ln, ...(t.length ? { types: t } : {}) };
+  const primary = str(google?.primaryType);
+  const colour = str(google?.iconBackgroundColor);
+  return {
+    name: n,
+    address: addr,
+    lat: la,
+    lng: ln,
+    ...(t.length ? { types: t } : {}),
+    ...(/^[a-z][a-z0-9_]{0,59}$/.test(primary) ? { primaryType: primary } : {}),
+    ...(/^#[0-9A-Fa-f]{6}$/.test(colour) ? { iconBackgroundColor: colour } : {}),
+  };
 }
 
 // deno-lint-ignore no-explicit-any
@@ -659,7 +687,7 @@ export function parseSearch(provider: string, body: J): Place[] {
       }
       for (const p of body?.places ?? []) {
         const at = p?.location;
-        out.push(place(str(p?.displayName?.text), str(p?.formattedAddress), at?.latitude, at?.longitude, p?.types));
+        out.push(place(str(p?.displayName?.text), str(p?.formattedAddress), at?.latitude, at?.longitude, p?.types, p));
       }
       break;
     case "mapbox":
@@ -917,7 +945,10 @@ export function googleDetailsRequest(id: string, lang: string, key: string, sess
   return {
     url: `https://places.googleapis.com/v1/places/${enc(id)}?languageCode=${enc(lang)}` +
       (session ? `&sessionToken=${enc(session)}` : ""),
-    headers: { "X-Goog-Api-Key": key, "X-Goog-FieldMask": "id,displayName,formattedAddress,location,types" },
+    headers: {
+      "X-Goog-Api-Key": key,
+      "X-Goog-FieldMask": "id,displayName,formattedAddress,location,types,primaryType,iconBackgroundColor",
+    },
   };
 }
 
@@ -936,7 +967,7 @@ export function parseDetails(body: J): Place | null {
     return place(str(r.name), str(r.formatted_address), at?.lat, at?.lng, r.types);
   }
   const at = body?.location;
-  return place(str(body?.displayName?.text), str(body?.formattedAddress), at?.latitude, at?.longitude, body?.types);
+  return place(str(body?.displayName?.text), str(body?.formattedAddress), at?.latitude, at?.longitude, body?.types, body);
 }
 
 /** Google's Address Validation for a picked street address ([region]: "MY"). */

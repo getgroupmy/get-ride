@@ -234,14 +234,14 @@ void _expectPanel(WidgetTester tester, Size size, {required bool required, bool 
     'gate-picker-title',
     'gate-picker-close',
     'gate-picker-done',
-    if (!required) 'gate-picker-any',
   ]) {
     expect(find.byKey(ValueKey(key)), findsOneWidget, reason: key);
     final r = _rect(tester, key);
     expect(view.contains(r.topLeft) && view.contains(r.bottomRight - const Offset(0.01, 0.01)), isTrue, reason: '$key at $r');
     expect(r.top, greaterThanOrEqualTo(map.bottom - 0.5), reason: '$key under the map');
   }
-  if (!required) expect(find.byKey(const ValueKey('gate-picker-any')), findsOneWidget);
+  // Any gate is the wheel's first row (it may be scrolled past), never a
+  // separate button; a required place has none.
   if (required) expect(find.byKey(const ValueKey('gate-picker-any')), findsNothing);
   if (wheel) {
     final w = tester.getRect(find.byType(ListWheelScrollView).last);
@@ -301,7 +301,7 @@ void main() {
           expect(_errors(tester), isEmpty);
           _expectNativeMapSafe(tester);
           _expectPanel(tester, size, required: true);
-          expect(find.text('Which gate are you going to?'), findsOneWidget);
+          expect(find.text('Which gate are you going to?'), findsNothing, reason: 'inDrive: name, wheel, Done only');
           expect(find.byKey(const ValueKey('gate-picker-guide')), findsNothing);
           // The chosen gate is gone: it opens on the first, and Done works.
           expect(tester.widget<FilledButton>(find.byKey(const ValueKey('gate-picker-done'))).onPressed, isNotNull);
@@ -371,7 +371,7 @@ void main() {
         expect(outlines(tester), hasLength(1));
         expect(outlines(tester).single.points, _t1);
         // Turning the wheel to Terminal 2 outlines Terminal 2 instead.
-        await tester.drag(find.byKey(const ValueKey('gate-picker-groups')), const Offset(0, -58));
+        await tester.drag(find.byKey(const ValueKey('gate-picker-groups')), const Offset(0, -46));
         await tester.pumpAndSettle();
         expect(outlines(tester).single.points, _t2);
         expect(_errors(tester), isEmpty);
@@ -385,7 +385,7 @@ void main() {
       MapController.of(tester.element(find.byType(GateDot).first)).move(camera(tester).center, 13);
       await tester.pump();
       expect(camera(tester).zoom, 13);
-      await tester.drag(find.byKey(const ValueKey('gate-picker-gates-0')), const Offset(0, -58));
+      await tester.drag(find.byKey(const ValueKey('gate-picker-gates-0')), const Offset(0, -46));
       await tester.pumpAndSettle();
       expect(camera(tester).zoom, gatePickerZoom);
       expect(camera(tester).center.latitude, closeTo(2.7560 + 4 * 0.00015, 1e-9));

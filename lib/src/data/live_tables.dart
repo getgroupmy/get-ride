@@ -28,6 +28,8 @@ const liveSettingTables = <String>[
   'commission_rates',
   'airport_areas',
   'multi_gate',
+  // Place types: each Multi-Gate place's icon and colour (0264).
+  'place_types',
   // Airports' settings, waiting zones and fare zones (0249).
   'airport_settings',
   'airport_waiting_zones',

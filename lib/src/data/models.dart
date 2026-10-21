@@ -334,6 +334,11 @@ class RideRequest {
   String? get pickupAreaId => _nonEmpty(raw['airport_pickup_id']?.toString());
   String? get dropDoor => _nonEmpty(raw['drop_door_name']);
 
+  /// The type of the Multi-Gate place or airport each end is at (0264,
+  /// stamped by the server: a `place_types` key); null for none.
+  String? get pickupPlaceType => _nonEmpty(raw['pickup_place_type']);
+  String? get dropPlaceType => _nonEmpty(raw['drop_place_type']);
+
   /// A pickup the airport keeps for its waiting drivers (0249).
   bool get airportHold => raw['airport_hold'] == true;
 

@@ -110,6 +110,20 @@ class AirportDoor {
   /// beside the doors when there is more than one.
   final String group;
 
+  /// The same door in [group] (a linked place's name in the door sheet).
+  AirportDoor withGroup(String group) => AirportDoor(
+        id: id,
+        airportId: airportId,
+        name: name,
+        kind: kind,
+        sortOrder: sortOrder,
+        active: active,
+        lat: lat,
+        lng: lng,
+        guide: guide,
+        group: group,
+      );
+
   /// A `multi_gate` gate row's `values` (the airport's when `parentKey` is
   /// `airport-areas`).
   static AirportDoor fromGate(String id, Map<String, dynamic> v) {

@@ -33,6 +33,7 @@ import '../../data/reliability_repository.dart';
 import '../../data/ride_chat_repository.dart';
 import '../../data/trip_handover_repository.dart';
 import '../../providers.dart';
+import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
 import '../../widgets/common.dart';
@@ -821,22 +822,39 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             ListTile(
               leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
               title: Text(r.pickupLabel),
-              subtitle: r.pickupAddress == null && r.pickupDoor == null
+              subtitle: r.pickupAddress == null && r.pickupDoor == null && r.pickupPlaceType == null
                   ? null
-                  : Text(
-                      [if (r.pickupDoor case final d?) 'Pickup door: $d', ?r.pickupAddress].join('\n'),
-                      key: const ValueKey('trip-pickup-door'),
-                      maxLines: 3,
-                    ),
+                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      // The pickup's place type at a Multi-Gate place or airport (0264).
+                      RidePlaceTypeTag(
+                        key: const ValueKey('trip-pickup-type'),
+                        typeKey: r.pickupPlaceType,
+                        padding: const EdgeInsets.only(top: 2, bottom: 2),
+                      ),
+                      if (r.pickupAddress != null || r.pickupDoor != null)
+                        Text(
+                          [if (r.pickupDoor case final d?) 'Pickup door: $d', ?r.pickupAddress].join('\n'),
+                          key: const ValueKey('trip-pickup-door'),
+                          maxLines: 3,
+                        ),
+                    ]),
             ),
             RideStopTiles(stops: r.stops, onNavigate: r.status.isOngoing ? (s) => _navigate(s.point) : null),
             ListTile(
               key: const ValueKey('trip-drop'),
               leading: Icon(Icons.location_on, color: Colors.red.shade700),
               title: Text(r.dropLabel),
-              subtitle: r.dropAddress == null && r.dropDoor == null
+              subtitle: r.dropAddress == null && r.dropDoor == null && r.dropPlaceType == null
                   ? null
-                  : Text([if (r.dropDoor case final d?) 'Drop-off door: $d', ?r.dropAddress].join('\n'), maxLines: 3),
+                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      RidePlaceTypeTag(
+                        key: const ValueKey('trip-drop-type'),
+                        typeKey: r.dropPlaceType,
+                        padding: const EdgeInsets.only(top: 2, bottom: 2),
+                      ),
+                      if (r.dropAddress != null || r.dropDoor != null)
+                        Text([if (r.dropDoor case final d?) 'Drop-off door: $d', ?r.dropAddress].join('\n'), maxLines: 3),
+                    ]),
             ),
             if (r.note != null) ListTile(leading: const Icon(Icons.notes), title: Text(r.note!)),
             // The vehicle's permits, to show an officer (0254).

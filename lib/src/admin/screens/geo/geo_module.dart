@@ -6,12 +6,14 @@ import '../../admin_registry.dart';
 import 'airport_areas_screen.dart';
 import 'geo_logic.dart';
 import 'multi_gate_screens.dart';
+import 'place_types_screen.dart';
 import 'regions_screen.dart';
 
 final geoRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/country-states-cities', builder: (_, _) => const AdminRegionsScreen()),
   GoRoute(path: '/admin/m/airport-areas', builder: (_, _) => const AdminAirportAreasScreen()),
   GoRoute(path: '/admin/m/multi-gate-places', builder: (_, _) => const AdminMultiGatePlacesScreen()),
+  GoRoute(path: '/admin/m/place-types', builder: (_, _) => const PlaceTypesScreen()),
   GoRoute(
     path: '/admin/m/multi-gate-place-gates',
     builder: (_, s) => AdminMultiGateGatesScreen(
@@ -47,6 +49,14 @@ const geoEntries = <AdminScreenEntry>[
     path: '/admin/m/multi-gate-places',
     pages: [multiGatePlacesPage],
     icon: Icons.door_front_door_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'Geography',
+    title: 'Place types',
+    subtitle: 'Mall, airport, station... with the icon and colour riders see',
+    path: placeTypesPath,
+    pages: [placeTypesPage, multiGatePlacesPage],
+    icon: Icons.category_outlined,
   ),
   AdminScreenEntry(
     section: 'Geography',

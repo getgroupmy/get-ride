@@ -56,6 +56,8 @@ Future<GatePick?> showGatePicker(
   AirportSide side = AirportSide.pick,
   bool guides = false,
   List<Marker> cars = const [],
+  Widget? typeIcon,
+  bool linkedPlaces = false,
 }) => showAppSheet<GatePick>(
   id: 'ride.gate_picker',
   context: context,
@@ -74,6 +76,8 @@ Future<GatePick?> showGatePicker(
       side: side,
       guides: guides,
       cars: cars,
+      typeIcon: typeIcon,
+      linkedPlaces: linkedPlaces,
       onDone: (p) => Navigator.of(c).pop(p),
       onClose: () => Navigator.of(c).pop(),
     ),
@@ -94,7 +98,17 @@ class GatePickerSheet extends StatefulWidget {
     this.guides = false,
     this.cars = const [],
     this.tiles = true,
+    this.typeIcon,
+    this.linkedPlaces = false,
   });
+
+  /// The groups are places linked into one ("Part of" KLIA: Terminal 1,
+  /// Terminal 2): the title follows the group wheel, so it names the place
+  /// whose doors are on the gate wheel.
+  final bool linkedPlaces;
+
+  /// The place type's icon (0264), before the place's name.
+  final Widget? typeIcon;
 
   final String placeName;
   final List<AirportDoor> gates;
@@ -121,12 +135,16 @@ class GatePickerSheet extends StatefulWidget {
 }
 
 class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProviderStateMixin {
-  static const _extent = 58.0;
+  /// One wheel row (inDrive's height).
+  static const _extent = 46.0;
 
   late final List<GateGroup> _groups = gateGroups(widget.gates);
+  /// 1 where the place lets the rider skip the gate: "Any gate" is then the
+  /// first row of the gate wheel.
+  late final int _any = !widget.required && widget.gates.isNotEmpty ? 1 : 0;
   late final (int, int) _start = gateIndex(_groups, _startId());
   late int _group = _start.$1;
-  late int _index = _start.$2;
+  late int _index = _start.$2 + _any;
   late final FixedExtentScrollController _groupWheel = FixedExtentScrollController(initialItem: _group);
   late FixedExtentScrollController _gateWheel = FixedExtentScrollController(initialItem: _index);
   final _map = MapController();
@@ -150,9 +168,11 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
   List<AirportDoor> get _gatesHere =>
       _groups.isEmpty ? const <AirportDoor>[] : _groups[_group.clamp(0, _groups.length - 1)].gates;
 
+  /// The gate on the wheel; null on the "Any gate" row.
   AirportDoor? get _selected {
     final gates = _gatesHere;
-    return gates.isEmpty ? null : gates[_index.clamp(0, gates.length - 1)];
+    final i = _index - _any;
+    return gates.isEmpty || i < 0 ? null : gates[i.clamp(0, gates.length - 1)];
   }
 
   @override
@@ -199,9 +219,9 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
     HapticFeedback.selectionClick();
     setState(() {
       _group = g;
-      _index = 0;
+      _index = _any;
       _gateWheel.dispose();
-      _gateWheel = FixedExtentScrollController();
+      _gateWheel = FixedExtentScrollController(initialItem: _any);
     });
     _flyTo(_selected);
   }
@@ -215,7 +235,8 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
 
   /// A dot tapped on the map: the wheels turn to it.
   void _tapGate(AirportDoor door) {
-    final (g, i) = gateIndex(_groups, door.id);
+    final (g, gate) = gateIndex(_groups, door.id);
+    final i = gate + _any;
     HapticFeedback.selectionClick();
     if (g != _group) {
       setState(() {
@@ -353,7 +374,13 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
             onSelectedItemChanged: onChanged,
             childDelegate: ListWheelChildBuilderDelegate(
               childCount: labels.length,
-              builder: (_, i) => SizedBox(
+              // A row tapped turns the wheel to it, as in inDrive.
+              builder: (_, i) => GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => c.hasClients
+                    ? c.animateToItem(i, duration: const Duration(milliseconds: 250), curve: Curves.easeOut)
+                    : null,
+                child: SizedBox(
                 height: _extent,
                 child: Center(
                   // A long name wraps, and shrinks rather than being cut.
@@ -363,13 +390,16 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
                       constraints: BoxConstraints(maxWidth: (box.maxWidth - 32).clamp(80, 600)),
                       child: Text(
                         labels[i],
-                        key: ValueKey('${(key as ValueKey).value}-$i'),
+                        key: _any == 1 && i == 0 && (key as ValueKey).value != 'gate-picker-groups'
+                            ? const ValueKey('gate-picker-any')
+                            : ValueKey('${(key as ValueKey).value}-$i'),
                         textAlign: TextAlign.center,
                         style: t.textTheme.titleMedium,
                       ),
                     ),
                   ),
                 ),
+              ),
               ),
             ),
           ),
@@ -397,33 +427,41 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // inDrive's door sheet: the name and a plain close, the
+                    // wheel, Done. Nothing else.
                     Row(
                       children: [
-                        const SizedBox(width: 48),
+                        const SizedBox(width: 40),
                         Expanded(
-                          child: Text(
-                            widget.placeName,
-                            key: const ValueKey('gate-picker-title'),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (widget.typeIcon case final icon?) ...[icon, const SizedBox(width: 8)],
+                              Flexible(
+                                child: Text(
+                                  widget.linkedPlaces && _groups.length > 1
+                                      ? _groups[_group.clamp(0, _groups.length - 1)].name
+                                      : widget.placeName,
+                                  key: const ValueKey('gate-picker-title'),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        IconButton.filledTonal(
+                        IconButton(
                           key: const ValueKey('gate-picker-close'),
                           tooltip: 'Close',
+                          visualDensity: VisualDensity.compact,
                           onPressed: widget.onClose,
-                          icon: const Icon(Icons.close),
+                          icon: const Icon(Icons.close, size: 22),
                         ),
                       ],
                     ),
-                    Text(
-                      pickup ? 'Where should the driver pick you up?' : 'Which gate are you going to?',
-                      textAlign: TextAlign.center,
-                      style: t.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
-                    ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     // The wheel scrolls under the title and over Done when
                     // the text is large, so those always show.
                     Flexible(
@@ -460,7 +498,7 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
                                       child: wheel(
                                         ValueKey('gate-picker-gates-$_group'),
                                         _gateWheel,
-                                        [for (final g in gatesHere) g.name],
+                                        [if (_any == 1) 'Any gate', for (final g in gatesHere) g.name],
                                         _onGate,
                                       ),
                                     ),
@@ -480,12 +518,12 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
                     const SizedBox(height: 8),
                     FilledButton(
                       key: const ValueKey('gate-picker-done'),
-                      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-                      onPressed: selected == null ? null : () => widget.onDone(GatePick(selected)),
+                      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                      onPressed: selected == null && _any == 0 ? null : () => widget.onDone(GatePick(selected)),
                       child: const Text('Done'),
                     ),
                     // With no gates listed there is nothing else to choose.
-                    if (!widget.required || widget.gates.isEmpty)
+                    if (widget.gates.isEmpty)
                       TextButton(
                         key: const ValueKey('gate-picker-any'),
                         onPressed: () => widget.onDone(const GatePick(null)),
@@ -614,10 +652,13 @@ class GateDot extends StatelessWidget {
 /// Over the pickup pin once a gate is chosen: "Pickup point" over the
 /// gate's name, with a chevron; tapping it opens the picker again.
 class GateCallout extends StatelessWidget {
-  const GateCallout({super.key, required this.name, required this.onTap, this.label = 'Pickup point'});
+  const GateCallout({super.key, required this.name, required this.onTap, this.label = 'Pickup point', this.leading});
   final String name;
   final String label;
   final VoidCallback onTap;
+
+  /// The place type's icon (0264), before the words.
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
@@ -639,6 +680,7 @@ class GateCallout extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (leading case final l?) ...[l, const SizedBox(width: 10)],
                 Flexible(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

@@ -411,6 +411,8 @@ void main() {
         'lon': '101.71',
         'gateRequired': false,
         'active': true,
+        'partOf': '',
+        'partOrder': 1,
       });
       final fromRow = PlaceForm.fromValues({'name': 'KLCC', 'gates': 4});
       expect(fromRow.gateRequired, isTrue);
