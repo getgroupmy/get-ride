@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
@@ -10,6 +11,7 @@ import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
 import 'partner_type_rules_editor.dart';
+import 'partner_type_services_screen.dart' show partnerTypeServicesPath;
 import '../../../core/partner_type_rules.dart';
 import '../../../widgets/page_style_host.dart';
 
@@ -114,6 +116,14 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
     return AdminPage(
       title: 'Partner Type',
       page: _page,
+      actions: [
+        IconButton(
+          key: const ValueKey('partner-type-services-link'),
+          tooltip: 'Services each type sees',
+          icon: const Icon(Icons.rule_outlined),
+          onPressed: () => context.push(partnerTypeServicesPath),
+        ),
+      ],
       addAction: PageAddAction(
         onPressed: () => _edit(entries.value ?? []),
         icon: const Icon(Icons.add),

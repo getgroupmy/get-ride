@@ -256,6 +256,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('route:/admin/m/partner-edit', SurfaceKind.page, 'Partner edit', 'lib/src/admin/screens/people/people_module.dart', path: '/admin/m/partner-edit'),
   SurfaceEntry('route:/admin/m/partner-statements', SurfaceKind.page, 'Admin partner statements', 'lib/src/admin/screens/commerce/commerce_module.dart', path: '/admin/m/partner-statements'),
   SurfaceEntry('route:/admin/m/partner-type', SurfaceKind.page, 'Partner type', 'lib/src/admin/screens/catalogue/catalogue_module.dart', path: '/admin/m/partner-type'),
+  SurfaceEntry('route:/admin/m/partner-type-services', SurfaceKind.page, 'Partner type services', 'lib/src/admin/screens/catalogue/catalogue_module.dart', path: '/admin/m/partner-type-services'),
   SurfaceEntry('route:/admin/m/payment-gateway', SurfaceKind.page, 'Payment gateway', 'lib/src/admin/screens/commerce/commerce_module.dart', path: '/admin/m/payment-gateway'),
   SurfaceEntry('route:/admin/m/payment-type', SurfaceKind.page, 'Payment type', 'lib/src/admin/screens/commerce/commerce_module.dart', path: '/admin/m/payment-type'),
   SurfaceEntry('route:/admin/m/required-documents', SurfaceKind.page, 'Required documents', 'lib/src/admin/screens/catalogue/catalogue_module.dart', path: '/admin/m/required-documents'),

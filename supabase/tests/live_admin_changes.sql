@@ -55,7 +55,9 @@ begin
     -- The service order for every booking (migration 0250).
     'service_order_settings',
     -- Ride Options by place, and the extras each driver takes (migration 0253).
-    'ride_option_places', 'driver_ride_extras'
+    'ride_option_places', 'driver_ride_extras',
+    -- Partner type services (migration 0259).
+    'partner_type_services'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

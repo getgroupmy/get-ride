@@ -265,6 +265,8 @@ const liveAdminTables = <String>[
   'claude_access_rules',
   // The ride extras each driver turned off (0253): their admin page.
   'driver_ride_extras',
+  // Which services each partner type sees (0259): its admin page.
+  'partner_type_services',
 ];
 
 /// Rides and sessions change every few seconds while trips run; an admin
