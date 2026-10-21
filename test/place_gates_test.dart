@@ -106,6 +106,26 @@ void main() {
     });
   });
 
+  test('an exact name wins over a nearer place (an airport result at its boundary centre)', () {
+    const erl = (id: 'erl', values: <String, dynamic>{'name': 'KLIA T2 (ERL)', 'lat': 2.7449, 'lon': 101.7075});
+    const kul = (
+      id: 'kul',
+      values: <String, dynamic>{'name': 'Kuala Lumpur International Airport', 'lat': 2.7560, 'lon': 101.7090},
+    );
+    final gates = [_gate('t1drop', 'kul', 'T1 Drop-off', mode: 'drop'), _gate('erlpick', 'erl', 'ERL Door', mode: 'pickup')];
+    final m = matchGatedPlace(
+      places: [erl, kul],
+      gates: gates,
+      point: const LatLng(2.7449, 101.7075),
+      name: 'Kuala Lumpur International Airport',
+      usage: GateUsage.drop,
+    );
+    expect(m?.id, 'kul');
+    expect(m?.gates.map((g) => g.name), ['T1 Drop-off']);
+    // Without the name, the nearest place still wins.
+    expect(matchGatedPlace(places: [erl, kul], gates: gates, point: const LatLng(2.7449, 101.7075))?.id, 'erl');
+  });
+
   test('gatePlace names the gate and uses its own point when mapped', () {
     const base = Place(name: 'Mid Valley', address: 'Lingkaran Syed Putra', point: LatLng(3.1178, 101.6772));
     final m = matchGatedPlace(places: [_mall], gates: _gates, point: base.point)!;

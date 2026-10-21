@@ -97,10 +97,12 @@ String _mode(Object? raw) => switch ('${raw ?? 'both'}') {
   _ => 'both',
 };
 
-/// The admin place a search result is at (nearest within
-/// [gateMatchRadiusKm], else by name), with its active gates for [usage] in
-/// display-priority order. Null when it isn't an admin place, or the place
-/// is switched off.
+/// The admin place a search result is at (the one of exactly that name,
+/// else the nearest within [gateMatchRadiusKm], else by name), with its
+/// active gates for [usage] in display-priority order. Null when it isn't an
+/// admin place, or the place is switched off. The exact name comes first so
+/// an airport result (shown at its boundary's centre) is the airport, not a
+/// smaller place nearer that centre.
 GatedPlace? matchGatedPlace({
   required List<GateRow> places,
   required List<GateRow> gates,
@@ -109,8 +111,9 @@ GatedPlace? matchGatedPlace({
   GateUsage? usage,
 }) {
   if (places.isEmpty) return null;
-  GateRow? place;
-  if (point != null) {
+  final q = _normalize(name ?? '');
+  GateRow? place = q.isEmpty ? null : places.where((p) => _normalize('${p.values['name'] ?? ''}') == q).firstOrNull;
+  if (place == null && point != null) {
     const distance = Distance();
     var best = double.infinity;
     for (final p in places) {
@@ -123,7 +126,6 @@ GatedPlace? matchGatedPlace({
       }
     }
   }
-  final q = _normalize(name ?? '');
   if (place == null && q.isNotEmpty) {
     for (final p in places) {
       final pn = _normalize('${p.values['name'] ?? ''}');
