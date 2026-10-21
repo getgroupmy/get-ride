@@ -6,10 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/airport_areas.dart';
+import '../../core/airport_queue.dart';
+import '../../core/gate_snap.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/place_types.dart';
 import '../../core/smart_address.dart';
+import '../../data/airport_repository.dart' show airportSettingsProvider;
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/place_gates_repository.dart';
@@ -20,10 +23,10 @@ import '../../providers.dart';
 import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/map_pick_icon.dart';
 import '../../widgets/place_type_badge.dart';
+import 'gate_picker.dart';
 import 'map_place_picker.dart';
 import 'saved_place_form.dart';
 import '../../widgets/page_style_host.dart';
-import '../../widgets/chip_button.dart';
 
 /// Result of the place picker: either a concrete place or a request to drop
 /// a pin on the map.
@@ -557,15 +560,12 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
             usage: _usage,
           );
     final gates = gated?.gates ?? const <GateOption>[];
-    final blocked = gated?.blocksPlace ?? false;
     final km = p.pending ? _km[p.placeId] ?? p.km : _km[_at(p.point)];
     final t = Theme.of(context);
     final muted = mutedTextColor(t, background: routeSheetBackground(t));
     // A pin, or what the place is (smart address A) where that says more.
     final typed = smart.clean ? placeIcon(p) : null;
-    final icon = gates.isNotEmpty
-        ? Icons.door_front_door_outlined
-        : typed == null || typed == Icons.place_outlined || typed == Icons.home_outlined
+    final icon = typed == null || typed == Icons.place_outlined || typed == Icons.home_outlined
         ? Icons.location_on_outlined
         : typed;
     final saved = _savedAt(p);
@@ -576,7 +576,11 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     return InkWell(
       // Suggestions have no position yet: each by Google's id, so no two share a key.
       key: ValueKey('result-${_id(p)}'),
-      onTap: blocked || _picking ? null : () => _pick(p, catalogue, smart),
+      onTap: _picking
+          ? null
+          : gated != null && gates.isNotEmpty
+          ? () => _chooseGate(p, gated, catalogue!)
+          : () => _pick(p, catalogue, smart),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Row(
@@ -628,24 +632,12 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                     ),
                   ],
                   if (gates.isNotEmpty) ...[
-                    if (blocked)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text('Choose a gate', style: t.textTheme.labelMedium),
-                      ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final g in gates)
-                          ActionChipButton(
-                            key: ValueKey('gate-${g.id}'),
-                            avatar: const Icon(Icons.door_front_door_outlined, size: 16),
-                            label: Text(g.name),
-                            onPressed: () => _done(PlacePick.place(gatePlace(p, gated!, g))),
-                          ),
-                      ],
+                    const SizedBox(height: 4),
+                    Text(
+                      // The type line already counts the gates.
+                      type != null ? 'Choose a gate' : gates.length == 1 ? '1 gate · Choose a gate' : '${gates.length} gates · Choose a gate',
+                      key: ValueKey('result-gates-${_id(p)}'),
+                      style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.primary),
                     ),
                   ],
                 ],
@@ -779,6 +771,39 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     );
   }
 
+  /// A multi-gate place picked: its gates in the gate sheet (the map on
+  /// top, the wheel under it), then the place at the chosen gate, or the
+  /// place itself for "Any gate" where the place lets riders skip it.
+  Future<void> _chooseGate(Place p, GatedPlace gated, GateCatalogue catalogue) async {
+    final rows = {for (final g in catalogue.gates) g.id: g.values};
+    final doors = [
+      for (final g in gated.gates)
+        if (rows[g.id] case final v?) AirportDoor.fromGate(g.id, v),
+    ];
+    AirportArea? area;
+    AirportSettings? settings;
+    try {
+      final areas = await ref.read(airportAreasProvider.future);
+      area = areas.where((a) => a.id == gated.id).firstOrNull ?? gateAreaAt(areas, p.point);
+      if (area != null) settings = (await ref.read(airportSettingsProvider.future))[area.id];
+    } catch (_) {}
+    if (!mounted) return;
+    final side = _usage == GateUsage.drop ? AirportSide.drop : AirportSide.pick;
+    final pick = await showGatePicker(
+      context,
+      placeName: gated.name.isEmpty ? p.name : gated.name,
+      gates: doors,
+      rings: area?.rings ?? const [],
+      required: gated.gateRequired,
+      side: side,
+      guides: side == AirportSide.pick && (settings?.guideOn ?? false),
+    );
+    if (pick == null || !mounted) return;
+    final door = pick.door;
+    final option = door == null ? null : gated.gates.where((g) => g.id == door.id).firstOrNull;
+    _done(PlacePick.place(option == null ? p : gatePlace(p, gated, option)));
+  }
+
   /// A result picked: an Autocomplete suggestion looked up first (shown
   /// again with its gates when it turns out to have some), a street
   /// address checked by Google with smart address C, then handed back.
@@ -802,10 +827,12 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           usage: _usage,
         );
         if (gated != null && gated.gates.isNotEmpty) {
-          // Choose its gate from the list, as for any gated place.
+          // Choose its gate in the gate sheet, as for any gated place.
           final looked = place;
           setState(() => _results = [for (final r in _results) identical(r, p) ? looked : r]);
           _measure(_results);
+          setState(() => _picking = false);
+          await _chooseGate(looked, gated, catalogue);
           return;
         }
       }
