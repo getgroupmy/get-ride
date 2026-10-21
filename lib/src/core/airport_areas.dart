@@ -124,6 +124,26 @@ class AirportArea {
   }
 }
 
+/// Whether [p] is inside [ring].
+bool ringContains(List<LatLng> ring, LatLng p) => ring.length >= 3 && _inRing(p, ring);
+
+/// How far [p] is from [ring]'s edge, in metres.
+double ringDistanceM(List<LatLng> ring, LatLng p) => ring.isEmpty ? double.infinity : _distToRing(p, ring);
+
+/// [ring]'s rough size (its box, in square degrees), to tell a terminal's
+/// outline from the whole airport's.
+double ringBoxSize(List<LatLng> ring) {
+  if (ring.isEmpty) return 0;
+  var n = -90.0, s = 90.0, e = -180.0, w = 180.0;
+  for (final p in ring) {
+    n = math.max(n, p.latitude);
+    s = math.min(s, p.latitude);
+    e = math.max(e, p.longitude);
+    w = math.min(w, p.longitude);
+  }
+  return (n - s) * (e - w);
+}
+
 String _norm(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
 
 bool _inRing(LatLng p, List<LatLng> ring) {

@@ -9,6 +9,16 @@
 // On the home map the chosen gate shows as a callout over the pin
 // ([GateCallout]) that opens the picker again, and the boundary and gate dots
 // stay drawn ([gateAreaLayers]).
+//
+// On an iPhone the map is Apple's own (a native view under the app's
+// layers). Two rules keep the panel under it on screen there:
+// - the map is clipped square (ClipRect), never rounded: a rounded clip on a
+//   native view makes Flutter clip everything drawn after the view to that
+//   rounded shape, which took the whole panel away (TestFlight 167);
+// - the panel is painted before the map (a bottom-up column), so nothing
+//   drawn after the native view lies outside it.
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -27,8 +37,13 @@ class GatePick {
   final AirportDoor? door;
 }
 
-/// How close the picker's map comes (about street level).
-const gatePickerZoom = 18.0;
+/// How close the picker's map comes (about street level), on opening and
+/// whenever the wheel turns to a gate.
+const gatePickerZoom = 17.75;
+
+/// The most of the sheet the panel under the map takes; it scrolls past
+/// that (large text, a guide), so the map always keeps the rest.
+const gatePickerPanelShare = 0.62;
 
 /// Opens the picker; answers the choice, or null when it was closed.
 Future<GatePick?> showGatePicker(
@@ -109,21 +124,34 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
   static const _extent = 58.0;
 
   late final List<GateGroup> _groups = gateGroups(widget.gates);
-  late int _group = gateIndex(_groups, widget.selectedId ?? _firstWithPoint()?.id).$1;
-  late int _index = gateIndex(_groups, widget.selectedId ?? _firstWithPoint()?.id).$2;
+  late final (int, int) _start = gateIndex(_groups, _startId());
+  late int _group = _start.$1;
+  late int _index = _start.$2;
   late final FixedExtentScrollController _groupWheel = FixedExtentScrollController(initialItem: _group);
   late FixedExtentScrollController _gateWheel = FixedExtentScrollController(initialItem: _index);
   final _map = MapController();
   late final _fly = AnimationController(vsync: this, duration: const Duration(milliseconds: 350));
   Animation<LatLng>? _flight;
+  Animation<double>? _flightZoom;
   bool _mapReady = false;
   AirportDoor? _guide;
 
   AirportDoor? _firstWithPoint() => widget.gates.where((g) => doorPoint(g) != null).firstOrNull ?? widget.gates.firstOrNull;
 
+  /// The gate to open on: the one chosen before when it is still listed,
+  /// else the first with a point.
+  String? _startId() {
+    final id = widget.selectedId;
+    if (id != null && widget.gates.any((g) => g.id == id)) return id;
+    return _firstWithPoint()?.id;
+  }
+
+  /// The gates of the group on the wheel (none when the place has none).
+  List<AirportDoor> get _gatesHere =>
+      _groups.isEmpty ? const <AirportDoor>[] : _groups[_group.clamp(0, _groups.length - 1)].gates;
+
   AirportDoor? get _selected {
-    if (_groups.isEmpty) return null;
-    final gates = _groups[_group.clamp(0, _groups.length - 1)].gates;
+    final gates = _gatesHere;
     return gates.isEmpty ? null : gates[_index.clamp(0, gates.length - 1)];
   }
 
@@ -134,7 +162,7 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
       final f = _flight;
       if (f == null || !_mapReady) return;
       try {
-        _map.move(f.value, _map.camera.zoom);
+        _map.move(f.value, _flightZoom?.value ?? _map.camera.zoom);
       } catch (_) {}
     });
   }
@@ -147,17 +175,22 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
     super.dispose();
   }
 
-  /// The map glides so [door] sits under the pin.
+  /// The map glides so [door] sits under the pin, back in to street level
+  /// if the rider had zoomed out.
   void _flyTo(AirportDoor? door) {
     final to = door == null ? null : doorPoint(door);
     if (to == null || !_mapReady) return;
     LatLng from;
+    double zoom;
     try {
       from = _map.camera.center;
+      zoom = _map.camera.zoom;
     } catch (_) {
       return;
     }
-    _flight = LatLngTween(begin: from, end: to).animate(CurvedAnimation(parent: _fly, curve: Curves.easeInOut));
+    final curve = CurvedAnimation(parent: _fly, curve: Curves.easeInOut);
+    _flight = LatLngTween(begin: from, end: to).animate(curve);
+    _flightZoom = Tween<double>(begin: zoom, end: math.max(zoom, gatePickerZoom)).animate(curve);
     _fly.forward(from: 0);
   }
 
@@ -219,6 +252,7 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
       children: [
         Positioned.fill(
           child: FlutterMap(
+            key: const ValueKey('gate-picker-map'),
             mapController: _map,
             options: MapOptions(
               initialCenter: start,
@@ -229,7 +263,8 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
               if (widget.tiles) baseTileLayer(context),
               ...gateAreaLayers(
                 context,
-                rings: widget.rings,
+                // Only the outline the chosen gate is in.
+                rings: ringsAround(widget.rings, (selected == null ? null : doorPoint(selected)) ?? start),
                 gates: widget.gates,
                 selectedId: selected?.id,
                 letters: letters,
@@ -239,35 +274,39 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
             ],
           ),
         ),
-        // The fixed pickup pin, the gate's name over it.
+        // The fixed pickup pin, the gate's name over it (its text grows
+        // with the phone's text size only so far, so it stays on the map).
         Positioned.fill(
           child: IgnorePointer(
-            child: Align(
-              child: FractionalTranslation(
-                translation: const Offset(0, -0.5),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 240),
-                      child: Container(
-                        key: const ValueKey('gate-picker-chip'),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: scheme.inverseSurface,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          selected?.name ?? 'Any gate',
-                          textAlign: TextAlign.center,
-                          softWrap: true,
-                          style: t.textTheme.labelLarge?.copyWith(color: scheme.onInverseSurface),
+            child: MediaQuery.withClampedTextScaling(
+              maxScaleFactor: 1.3,
+              child: Align(
+                child: FractionalTranslation(
+                  translation: const Offset(0, -0.5),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 240),
+                        child: Container(
+                          key: const ValueKey('gate-picker-chip'),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: scheme.inverseSurface,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            selected?.name ?? 'Any gate',
+                            textAlign: TextAlign.center,
+                            softWrap: true,
+                            style: t.textTheme.labelLarge?.copyWith(color: scheme.onInverseSurface),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    const PickupPin(),
-                  ],
+                      const SizedBox(height: 4),
+                      const PickupPin(),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -338,19 +377,21 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
       ],
     );
 
-    final gatesHere = _groups.isEmpty ? const <AirportDoor>[] : _groups[_group].gates;
+    final gatesHere = _gatesHere;
     final panel = Material(
+      key: const ValueKey('gate-picker-panel'),
       color: scheme.surface,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       child: SafeArea(
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: guide != null
-              ? AirportGuideViewer(
-                  door: guide,
-                  onBack: () => setState(() => _guide = null),
-                  onPickHere: () => setState(() => _guide = null),
+              ? SingleChildScrollView(
+                  child: AirportGuideViewer(
+                    door: guide,
+                    onBack: () => setState(() => _guide = null),
+                    onPickHere: () => setState(() => _guide = null),
+                  ),
                 )
               : Column(
                   mainAxisSize: MainAxisSize.min,
@@ -363,6 +404,8 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
                           child: Text(
                             widget.placeName,
                             key: const ValueKey('gate-picker-title'),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                             textAlign: TextAlign.center,
                             style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
                           ),
@@ -381,36 +424,59 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
                       style: t.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
                     ),
                     const SizedBox(height: 8),
-                    SizedBox(
-                      height: _extent * 3,
-                      child: Row(
-                        children: [
-                          if (_groups.length > 1)
-                            Expanded(
-                              child: wheel(
-                                const ValueKey('gate-picker-groups'),
-                                _groupWheel,
-                                [for (final g in _groups) g.name],
-                                _onGroup,
+                    // The wheel scrolls under the title and over Done when
+                    // the text is large, so those always show.
+                    Flexible(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (widget.gates.isEmpty)
+                              Padding(
+                                key: const ValueKey('gate-picker-empty'),
+                                padding: const EdgeInsets.symmetric(vertical: 24),
+                                child: Text(
+                                  'No gates listed here yet.',
+                                  textAlign: TextAlign.center,
+                                  style: t.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+                                ),
+                              )
+                            else
+                              SizedBox(
+                                height: _extent * 3,
+                                child: Row(
+                                  children: [
+                                    if (_groups.length > 1)
+                                      Expanded(
+                                        child: wheel(
+                                          const ValueKey('gate-picker-groups'),
+                                          _groupWheel,
+                                          [for (final g in _groups) g.name],
+                                          _onGroup,
+                                        ),
+                                      ),
+                                    Expanded(
+                                      child: wheel(
+                                        ValueKey('gate-picker-gates-$_group'),
+                                        _gateWheel,
+                                        [for (final g in gatesHere) g.name],
+                                        _onGate,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          Expanded(
-                            child: wheel(
-                              ValueKey('gate-picker-gates-$_group'),
-                              _gateWheel,
-                              [for (final g in gatesHere) g.name],
-                              _onGate,
-                            ),
-                          ),
-                        ],
+                            if (pickup && widget.guides && selected != null && guideLinkLabel(selected) != null)
+                              TextButton(
+                                key: const ValueKey('gate-picker-guide'),
+                                onPressed: () => setState(() => _guide = selected),
+                                child: Text(guideLinkLabel(selected)!),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                    if (pickup && widget.guides && selected != null && guideLinkLabel(selected) != null)
-                      TextButton(
-                        key: const ValueKey('gate-picker-guide'),
-                        onPressed: () => setState(() => _guide = selected),
-                        child: Text(guideLinkLabel(selected)!),
-                      ),
                     const SizedBox(height: 8),
                     FilledButton(
                       key: const ValueKey('gate-picker-done'),
@@ -418,7 +484,8 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
                       onPressed: selected == null ? null : () => widget.onDone(GatePick(selected)),
                       child: const Text('Done'),
                     ),
-                    if (!widget.required)
+                    // With no gates listed there is nothing else to choose.
+                    if (!widget.required || widget.gates.isEmpty)
                       TextButton(
                         key: const ValueKey('gate-picker-any'),
                         onPressed: () => widget.onDone(const GatePick(null)),
@@ -430,16 +497,20 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
       ),
     );
 
-    return Column(
-      children: [
-        Expanded(
-          child: ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            child: map,
+    // Bottom-up, so the panel is painted before the map (see the top).
+    return LayoutBuilder(
+      builder: (context, box) => Column(
+        verticalDirection: VerticalDirection.up,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: box.maxHeight.isFinite ? box.maxHeight * gatePickerPanelShare : double.infinity,
+            ),
+            child: panel,
           ),
-        ),
-        panel,
-      ],
+          Expanded(child: ClipRect(key: const ValueKey('gate-picker-map-clip'), child: map)),
+        ],
+      ),
     );
   }
 }
