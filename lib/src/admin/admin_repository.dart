@@ -97,39 +97,6 @@ class AdminRepository {
     return {for (final r in rows) r['id'] as String: r};
   }
 
-  // ---- Dashboard -----------------------------------------------------------
-
-  /// A count-only (HEAD) request: the number comes back, no rows.
-  Future<int> _count(String table, [PostgrestFilterBuilder<int> Function(PostgrestFilterBuilder<int>)? f]) async {
-    try {
-      var q = _db.from(table).count(CountOption.exact);
-      if (f != null) q = f(q);
-      return await q;
-    } catch (_) {
-      return -1; // table missing or not readable
-    }
-  }
-
-  Future<Map<String, int>> dashboardCounts() async {
-    final results = await Future.wait([
-      _count('profiles'),
-      _count('partners'),
-      _count('partners', (q) => q.eq('status', 'unapproved')),
-      _count('vehicle'),
-      _count('ride_requests', (q) => q.eq('status', 'open')),
-      _count('ride_requests', (q) => q.inFilter('status', ['accepted', 'arrived', 'on_trip'])),
-      _count('ride_requests', (q) => q.eq('status', 'completed')),
-      _count('provider_documents', (q) => q.eq('status', 'Pending Review')),
-      _count('vehicle_documents', (q) => q.eq('status', 'Pending Review')),
-      _count('support_tickets', (q) => q.neq('status', 'closed')),
-    ]);
-    const keys = [
-      'users', 'partners', 'partnersPending', 'vehicles', 'ridesOpen', 'ridesActive',
-      'ridesCompleted', 'providerDocsPending', 'vehicleDocsPending', 'ticketsOpen',
-    ];
-    return {for (var i = 0; i < keys.length; i++) keys[i]: results[i]};
-  }
-
   // ---- People & vehicles ---------------------------------------------------
 
   /// The newest [limit] users, or those matching [query] in any of the
