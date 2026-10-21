@@ -60,7 +60,9 @@ create or replace function pg_temp.ride(p_id uuid, p_apart_m double precision) r
           3.1579, 101.7116, now(), 3.1579 + p_apart_m / 111320.0, 101.7116, now());
 $$;
 
--- 1. Off, as shipped: a trip starting 2 km from the passenger isn't flagged ---------------
+-- 1. Turned off: a trip starting 2 km from the passenger isn't flagged (on by default
+-- since 0269, city_ride_0269.sql) ---------------------------------------------------------
+select pg_temp.switches('{"safety_start_check": false, "safety_separation": false}');
 select pg_temp.ride('00000000-0000-0000-0000-0000000154e1', 2000);
 update public.ride_requests set status = 'on_trip' where id = '00000000-0000-0000-0000-0000000154e1';
 select pg_temp.check((select start_flag is null from public.ride_requests where id = '00000000-0000-0000-0000-0000000154e1'),
