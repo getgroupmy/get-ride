@@ -8,6 +8,8 @@ import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/admin_shell.dart';
 import 'package:get_ride/src/admin/screens/dashboard_screen.dart';
+import 'package:get_ride/src/core/admin_dashboard.dart';
+import 'package:get_ride/src/data/admin_dashboard_repository.dart';
 import 'package:get_ride/src/admin/screens/support_screens.dart' show ticketTitle;
 import 'package:get_ride/src/admin/widgets/admin_widgets.dart' show StatusChip;
 import 'package:get_ride/src/core/app_permissions.dart';
@@ -66,6 +68,26 @@ import 'package:get_ride/src/features/ride/home_screen.dart' show homePillAtTop;
 import 'package:get_ride/src/core/vehicle_info.dart' show WriteTarget;
 import 'package:get_ride/src/features/meter/vehicle_info_screen.dart' show writeTargetCaption;
 
+class _DashboardRepo extends AdminDashboardRepository {
+  _DashboardRepo() : super(null);
+
+  @override
+  Future<DashboardSummary> summary(DashboardRange r) async => const DashboardSummary(
+    attention: DashboardAttention(partnersPending: 12345, vehicleDocsPending: 3, partnerDocsPending: 7),
+  );
+
+  @override
+  Future<DashboardLive> live() async => const DashboardLive(driversOnline: 12345, sosOpen: 2);
+}
+
+class _DashboardChoices implements DashboardChoiceStore {
+  @override
+  Future<DashboardChoice> load() async => DashboardChoice.initial;
+
+  @override
+  Future<void> save(DashboardChoice choice) async {}
+}
+
 const _sizes = [Size(412, 915), Size(360, 640), Size(320, 640)];
 
 Future<void> _at(WidgetTester tester, Size size) async {
@@ -95,16 +117,29 @@ void main() {
           await tester.pumpWidget(
             ProviderScope(
               overrides: [
-                dashboardCountsProvider.overrideWith(
-                  (ref) async => {'partnersPending': 12345, 'vehicleDocsPending': 3, 'providerDocsPending': 7},
-                ),
+                adminDashboardRepositoryProvider.overrideWithValue(_DashboardRepo()),
+                adminDashboardRefreshProvider.overrideWithValue(null),
+                dashboardChoiceStoreProvider.overrideWithValue(_DashboardChoices()),
               ],
-              child: _app(const AdminDashboardScreen(), b: b, scale: scale),
+              // Less motion: the live dot holds still, so the page settles.
+              child: _app(
+                Builder(
+                  builder: (c) => MediaQuery(
+                    data: MediaQuery.of(c).copyWith(disableAnimations: true),
+                    child: const AdminDashboardScreen(),
+                  ),
+                ),
+                b: b,
+                scale: scale,
+              ),
             ),
           );
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
+          await tester.scrollUntilVisible(find.text('Partners awaiting approval'), 300,
+              scrollable: find.descendant(of: find.byKey(const ValueKey('dashboard-scroll')), matching: find.byType(Scrollable)).first);
           expect(find.text('Partners awaiting approval'), findsOneWidget);
+          expect(tester.takeException(), isNull);
         });
 
         testWidgets('Settings → Permissions keeps the reason readable ($at)', (tester) async {
