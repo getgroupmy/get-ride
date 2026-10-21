@@ -136,6 +136,48 @@ Deno.test("search: each provider's request carries the key, the country and wher
   assertEquals(searchRequest("nominatim", sp, "K"), null);
 });
 
+Deno.test("google search: the main type and its colour come back, for the place types (0264)", () => {
+  const r = searchRequest("google", { q: "klcc", countries: [], countries3: [], lang: "en" }, "K")!;
+  assertStringIncludes(r.headers!["X-Goog-FieldMask"], "places.primaryType");
+  assertStringIncludes(r.headers!["X-Goog-FieldMask"], "places.iconBackgroundColor");
+  assert(!r.headers!["X-Goog-FieldMask"].includes("iconMaskBaseUri"), "Google's own icon images are not used");
+  assertEquals(
+    parseSearch("google", {
+      places: [{
+        displayName: { text: "Suria KLCC" },
+        formattedAddress: "Jalan Ampang, KL",
+        location: { latitude: 3.15, longitude: 101.71 },
+        types: ["shopping_mall", "point_of_interest"],
+        primaryType: "shopping_mall",
+        iconBackgroundColor: "#4B96F3",
+      }, {
+        displayName: { text: "Odd" },
+        formattedAddress: "KL",
+        location: { latitude: 3.1, longitude: 101.7 },
+        primaryType: "Not A Type",
+        iconBackgroundColor: "blue",
+      }],
+    }),
+    [
+      {
+        name: "Suria KLCC",
+        address: "Jalan Ampang, KL",
+        lat: 3.15,
+        lng: 101.71,
+        types: ["shopping_mall", "point_of_interest"],
+        primaryType: "shopping_mall",
+        iconBackgroundColor: "#4B96F3",
+      },
+      { name: "Odd", address: "KL", lat: 3.1, lng: 101.7 },
+    ],
+  );
+  assertStringIncludes(googleDetailsRequest("ChIJ-x", "en", "K", null).headers!["X-Goog-FieldMask"], "primaryType");
+  assertEquals(
+    parseDetails({ displayName: { text: "KLIA" }, formattedAddress: "Sepang", location: { latitude: 2.74, longitude: 101.7 }, primaryType: "airport", iconBackgroundColor: "#10BDFF" }),
+    { name: "KLIA", address: "Sepang", lat: 2.74, lng: 101.7, primaryType: "airport", iconBackgroundColor: "#10BDFF" },
+  );
+});
+
 Deno.test("search: answers read the same way", () => {
   const want = [{ name: "KLCC", address: "Jalan Ampang, KL", lat: 3.15, lng: 101.71 }];
   assertEquals(
