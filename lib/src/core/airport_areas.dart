@@ -113,12 +113,14 @@ class AirportArea {
     return false;
   }
 
+  /// Whether [text] names this airport: its name, code or place name as
+  /// whole words, never as part of a word ("KUA" is not in "Kuala Lumpur").
   bool matchesName(String text) {
     final r = _norm(text);
     if (r.isEmpty) return false;
     for (final c in [name, code, placeName ?? ''].map(_norm)) {
       if (c.length < 3) continue;
-      if (r == c || r.contains(c) || c.contains(r)) return true;
+      if (r == c || _hasWords(r, c) || _hasWords(c, r)) return true;
     }
     return false;
   }
@@ -145,6 +147,9 @@ double ringBoxSize(List<LatLng> ring) {
 }
 
 String _norm(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+
+/// Whether [words] appear in [text] as whole words, in order.
+bool _hasWords(String text, String words) => ' $text '.contains(' $words ');
 
 bool _inRing(LatLng p, List<LatLng> ring) {
   var inside = false;

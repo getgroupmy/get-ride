@@ -61,4 +61,27 @@ void main() {
       results,
     );
   });
+
+  test('an airport code matches only as a whole word: KUA is not in Kuala Lumpur', () {
+    const kua = AirportArea(
+      id: 'kua',
+      name: 'Sultan Ahmad Shah Airport',
+      code: 'KUA',
+      rings: [],
+      north: 3.78,
+      south: 3.77,
+      east: 103.21,
+      west: 103.20,
+    );
+    expect(kua.matchesName('KLCC Kuala Lumpur City Centre, 50088 Kuala Lumpur'), isFalse);
+    expect(kua.matchesName('Kuantan'), isFalse);
+    expect(kua.matchesName('KUA'), isTrue);
+    expect(kua.matchesName('Sultan Ahmad Shah Airport, Kuantan'), isTrue);
+    expect(kua.matchesName('Kuantan Airport KUA'), isTrue);
+    final results = [('KLCC', const LatLng(3.1579, 101.7116)), ('Suria KLCC, Kuala Lumpur', const LatLng(3.158, 101.712))];
+    expect(
+      collapseAirports(results, const [kua], point: (r) => r.$2, text: (r) => r.$1, airport: (_) => ('KUA', const LatLng(0, 0))),
+      results,
+    );
+  });
 }
