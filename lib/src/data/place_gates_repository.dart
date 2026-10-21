@@ -56,10 +56,13 @@ final placeGatesProvider = FutureProvider<GateCatalogue>((ref) async {
 /// The areas with a drawn boundary, in the order a point is matched
 /// ([areasByPrecedence]): Admin → Airport Areas' airports, then the
 /// multi-gate places whose boundary is on (0258), smallest first. Empty
-/// when unreadable. Search collapses results into airports only
-/// ([airportsOnly]); the door picker and fares use every area.
+/// when unreadable. A place's area row has its name only: its search
+/// grouping, address, position and type come from its multi_gate row (the
+/// same id). Search collapses results into the areas that group them
+/// ([AirportArea.groupResults]); the door picker and fares use every area.
 final airportAreasProvider = FutureProvider<List<AirportArea>>((ref) async {
   ref.watchLive('airport_areas');
+  ref.watchLive('multi_gate');
   final db = ref.watch(supabaseProvider);
   Map<String, dynamic> m(Object? v) => Map<String, dynamic>.from((v as Map?) ?? const {});
   try {
@@ -70,6 +73,16 @@ final airportAreasProvider = FutureProvider<List<AirportArea>>((ref) async {
       // Before 0258: airports only.
       rows = await db.from('airport_areas').select('id, values').order('position', ascending: true).order('created_at', ascending: true);
     }
+    final placeValues = <String, Map<String, dynamic>>{};
+    if (rows.any((r) => r['kind'] == 'place')) {
+      try {
+        for (final r in await db.from('multi_gate').select('id, values').eq('kind', 'place')) {
+          placeValues['${r['id']}'] = m(r['values']);
+        }
+      } catch (_) {
+        // Without them a place keeps its defaults: not grouped.
+      }
+    }
     return areasByPrecedence([
       for (final r in rows)
         if (r['kind'] != 'place')
@@ -77,7 +90,7 @@ final airportAreasProvider = FutureProvider<List<AirportArea>>((ref) async {
         else if (r['active'] != false)
           ?AirportArea.fromEntry(
             '${r['id']}',
-            {'name': m(r['values'])['name'], 'boundary': r['shape']},
+            placeAreaValues(m(r['values']), placeValues['${r['id']}'], r['shape']),
             kind: AreaKind.place,
             sizeM2: (r['size_m2'] as num?)?.toDouble(),
           ),
@@ -87,6 +100,13 @@ final airportAreasProvider = FutureProvider<List<AirportArea>>((ref) async {
   }
 });
 
-/// The airports among [areas] (search collapses results into these only;
-/// places keep their gates in search, as before 0258).
-List<AirportArea> airportsOnly(List<AirportArea> areas) => [for (final a in areas) if (!a.isPlace) a];
+/// A place area's entry for [AirportArea.fromEntry]: its area row's name and
+/// [shape], with its multi_gate row's search grouping, address, position
+/// and type ([place], null when unread).
+Map<String, dynamic> placeAreaValues(Map<String, dynamic> area, Map<String, dynamic>? place, Object? shape) => {
+  'name': area['name'],
+  'boundary': shape,
+  if (place != null)
+    for (final k in const ['groupResults', 'groupWords', 'address', 'lat', 'lon', 'placeType'])
+      if (place[k] != null) k: place[k],
+};

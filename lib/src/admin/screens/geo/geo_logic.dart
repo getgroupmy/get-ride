@@ -12,6 +12,7 @@ import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/airport_areas.dart' show groupWord, parseGroupResults, parseGroupWords;
 import '../../../core/place_gates.dart' show partOfKey, partOrderOf;
 import '../../../core/region_rules.dart';
 import '../../../core/ride_bidding.dart' show RegionBlock, regionBlockOf;
@@ -963,6 +964,8 @@ class AirportForm {
     this.placeName = '',
     this.partOf = '',
     this.partOrder = '1',
+    this.groupResults = true,
+    this.groupWords = const [],
   });
 
   factory AirportForm.fromValues(Map<String, dynamic> v) {
@@ -979,6 +982,8 @@ class AirportForm {
       placeName: s('placeName'),
       partOf: s('partOf').trim(),
       partOrder: partOrderText(v),
+      groupResults: parseGroupResults(v['groupResults']) ?? true,
+      groupWords: parseGroupWords(v['groupWords']),
     );
   }
 
@@ -986,6 +991,11 @@ class AirportForm {
 
   /// The place the airport is part of, and its order there (as a place's).
   String partOf, partOrder;
+
+  /// Search shows the results inside the boundary, or named with
+  /// [groupWords], as the airport (on unless the admin turns it off).
+  bool groupResults;
+  List<String> groupWords;
 
   /// Expo `onSave` checks.
   String? validate() {
@@ -1007,6 +1017,7 @@ class AirportForm {
         'lon': lon.trim(),
         'placeName': placeName.trim(),
         ...partOfValues(partOf, partOrder),
+        ...groupResultsValues(groupResults, groupWords),
       };
 
   /// Applies a picked search result; region fields are only filled when empty
@@ -1033,6 +1044,20 @@ Map<String, dynamic> partOfValues(String partOf, String partOrder) => {
       'partOf': partOf.trim().replaceAll(RegExp(r'\s+'), ' '),
       'partOrder': _parseIntPrefix(partOrder) ?? 1,
     };
+
+/// `values.groupResults` and `values.groupWords` as saved: the words each
+/// trimmed and lower case, no blanks or repeats.
+Map<String, dynamic> groupResultsValues(bool on, List<String> words) => {
+      'groupResults': on,
+      'groupWords': parseGroupWords(words),
+    };
+
+/// [words] with [word] added as stored ([groupWord]); unchanged when it is
+/// blank or already there.
+List<String> addGroupWord(List<String> words, String word) {
+  final w = groupWord(word);
+  return w.isEmpty || words.contains(w) ? words : [...words, w];
+}
 
 /// A stored order as the form's text ('1' when unset).
 String partOrderText(Map<String, dynamic> v) {
@@ -1271,6 +1296,8 @@ class PlaceForm {
     this.iconBackgroundColor,
     this.partOf = '',
     this.partOrder = '1',
+    this.groupResults = false,
+    this.groupWords = const [],
   });
 
   factory PlaceForm.fromValues(Map<String, dynamic> v) => PlaceForm(
@@ -1289,6 +1316,8 @@ class PlaceForm {
             '${v['iconBackgroundColor'] ?? ''}'.trim().isEmpty ? null : '${v['iconBackgroundColor']}'.trim(),
         partOf: '${v['partOf'] ?? ''}'.trim(),
         partOrder: partOrderText(v),
+        groupResults: parseGroupResults(v['groupResults']) ?? false,
+        groupWords: parseGroupWords(v['groupWords']),
       );
 
   /// Pre-filled from a search hit (2 gates by default, like Expo), with
@@ -1328,6 +1357,12 @@ class PlaceForm {
   /// the rider's door sheet.
   String partOf, partOrder;
 
+  /// Search shows the results inside the boundary, or named with
+  /// [groupWords], as this place (off unless the admin turns it on; only
+  /// with a boundary).
+  bool groupResults;
+  List<String> groupWords;
+
   String? validate() {
     if (name.trim().isEmpty) return 'Please enter a place name.';
     final n = _parseIntPrefix(gates);
@@ -1348,6 +1383,7 @@ class PlaceForm {
         if (primaryType != null) 'primaryType': primaryType,
         if (iconBackgroundColor != null) 'iconBackgroundColor': iconBackgroundColor,
         ...partOfValues(partOf, partOrder),
+        ...groupResultsValues(groupResults, groupWords),
       };
 }
 
@@ -1363,6 +1399,14 @@ bool placeGateRequired(Map<String, dynamic> v) => _flag(v['gateRequired']);
 /// Whether a place's boundary is switched on (0258): `values.areaOn` with a
 /// boundary drawn. Off, the place keeps its gates only.
 bool placeAreaOn(Map<String, dynamic> v) => _flag(v['areaOn'], fallback: false) && parseBoundary(v['boundary']) != null;
+
+/// Why a place's search results can't be grouped yet (Edit Place): no
+/// boundary drawn, or it is off; null when they can.
+String? placeGroupBlocked(Map<String, dynamic>? v) => v == null || parseBoundary(v['boundary']) == null
+    ? 'Draw a boundary first'
+    : placeAreaOn(v)
+        ? null
+        : 'Turn the boundary on first';
 
 enum GateMode { both, pickup, drop }
 

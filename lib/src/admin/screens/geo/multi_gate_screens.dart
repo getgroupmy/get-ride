@@ -19,6 +19,7 @@ import 'airport_editor.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
+import 'group_results_fields.dart';
 import 'part_of_fields.dart';
 import 'place_search_field.dart';
 import '../../../widgets/search_select.dart';
@@ -55,6 +56,7 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
         initial: initial ?? (entry == null ? PlaceForm() : PlaceForm.fromValues(entry.values)),
         editing: entry != null,
         id: entry?.id,
+        groupBlocked: placeGroupBlocked(entry?.values),
       ),
     );
     if (form == null || !context.mounted) return;
@@ -244,9 +246,12 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
 }
 
 class _PlaceFormBody extends ConsumerStatefulWidget {
-  const _PlaceFormBody({required this.initial, required this.editing, this.id});
+  const _PlaceFormBody({required this.initial, required this.editing, this.id, this.groupBlocked});
   final PlaceForm initial;
   final bool editing;
+
+  /// Why its search results can't be grouped yet (no boundary on).
+  final String? groupBlocked;
 
   /// The place being edited (null when adding one).
   final String? id;
@@ -394,6 +399,15 @@ class _PlaceFormBodyState extends ConsumerState<_PlaceFormBody> {
       ]),
       gap,
       PartOfFields(partOf: _partOf, order: _partOrder, selfId: widget.id),
+      gap,
+      GroupResultsFields(
+        value: f.groupResults,
+        words: f.groupWords,
+        disabledHint: widget.groupBlocked,
+        onChanged: (on, words) => setState(() => f
+          ..groupResults = on
+          ..groupWords = words),
+      ),
       gap,
       SwitchListTile(
         contentPadding: EdgeInsets.zero,

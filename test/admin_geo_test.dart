@@ -413,6 +413,8 @@ void main() {
         'active': true,
         'partOf': '',
         'partOrder': 1,
+        'groupResults': false,
+        'groupWords': [],
       });
       final fromRow = PlaceForm.fromValues({'name': 'KLCC', 'gates': 4});
       expect(fromRow.gateRequired, isTrue);
