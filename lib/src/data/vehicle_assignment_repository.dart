@@ -81,6 +81,12 @@ class VehicleAssignmentRepository {
     );
   }
 
+  /// Whether this account has a vehicle session now (it has taken a vehicle).
+  Future<bool> hasSession() async {
+    final row = await _db.from('vehicle_active_session').select('vehicle_id').eq('user_id', _uid).maybeSingle();
+    return row != null;
+  }
+
   /// Takes the vehicle (or re-confirms it). Throws the RPC's refusal
   /// (`vehicle_in_use`, `user_busy`, `not_assigned`).
   Future<void> claim(String vehicleId) =>

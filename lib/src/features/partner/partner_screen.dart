@@ -160,6 +160,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool _notHere = false;
   StreamSubscription<LatLng>? _fixes;
   String? _accepting;
+
+  /// A vehicle question is on screen ([_askForVehicle]).
+  bool _askingVehicle = false;
   bool _autoAccept = false;
   bool _allowOfferMe = true;
 
@@ -605,16 +608,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// [_vehicleReady]'s check alone: null when the driver may start, else
   /// the vehicles to choose from (maybe none).
   Future<List<AssignableVehicle>?> _vehicleNeeded(Partner partner, {required bool teksi}) async {
+    if (await _vehicleRequired(partner, teksi: teksi) != true) return null;
     List<AssignableVehicle> vehicles;
-    bool required;
     try {
-      final entries = await ref.read(partnerTypeEntriesProvider.future).timeout(goOnlineCheckTimeout);
-      final modes = [
-        for (final m in partnerModeOptions(parseStringList(partner.raw['partner_types']), entries))
-          if (m.isTeksi == teksi) m.name,
-      ];
-      required = (modes.isEmpty ? [teksi ? 'teksi' : 'ehailing'] : modes).any((m) => vehicleRequiredFor(m, entries));
-      if (!required) return null;
       vehicles = await ref.read(assignableVehiclesProvider.future).timeout(goOnlineCheckTimeout);
     } catch (_) {
       return null;
@@ -623,30 +619,91 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     return vehicles;
   }
 
-  /// Asks for a vehicle: pick one that can be driven, finish the one this
-  /// driver added but left half set up (saying what is missing), or add one.
-  /// True once one is taken.
-  Future<bool> _askForVehicle(List<AssignableVehicle> vehicles, {required bool teksi}) async {
-    final usable = vehicles.where((v) => v.selectable).toList();
-    final unfinished = usable.isNotEmpty
-        ? null
-        : vehicles.where((v) => v.status == AssignableStatus.incomplete && v.role == VehicleRole.owner).firstOrNull;
-    final start = teksi ? 'start the meter' : 'go online';
-    final String message;
-    if (usable.isNotEmpty) {
-      message = 'You need a vehicle before you can $start. Pick the one you are driving.';
-    } else if (unfinished != null) {
-      final name = unfinished.plate.isEmpty ? 'Your vehicle' : unfinished.plate;
-      message = "$name isn't set up yet: ${firstVehicleStep(unfinished.vehicle).label} is still missing. "
-          'Finish it before you can $start.';
-    } else {
-      message = 'You need a vehicle before you can $start. Add the vehicle you drive.';
+  /// Whether the driver's modes (the meter's, for [teksi]) need a vehicle;
+  /// null when the catalogue can't be read.
+  Future<bool?> _vehicleRequired(Partner partner, {required bool teksi}) async {
+    try {
+      final entries = await ref.read(partnerTypeEntriesProvider.future).timeout(goOnlineCheckTimeout);
+      final modes = [
+        for (final m in partnerModeOptions(parseStringList(partner.raw['partner_types']), entries))
+          if (m.isTeksi == teksi) m.name,
+      ];
+      return (modes.isEmpty ? [teksi ? 'teksi' : 'ehailing'] : modes).any((m) => vehicleRequiredFor(m, entries));
+    } catch (_) {
+      return null;
     }
+  }
+
+  /// Asks for a vehicle ([vehicleGateFor]): the only one that can be driven
+  /// is taken for the driver; else pick one, finish the one this driver
+  /// added but left half set up (saying what is missing), see why none can
+  /// be driven yet, or add one. True once one is taken. [action] is what
+  /// waits for it ("go online" when not given).
+  Future<bool> _askForVehicle(List<AssignableVehicle> vehicles, {required bool teksi, String? action}) async {
+    // One question at a time (auto-accept may ask while a dialog is up).
+    if (_askingVehicle) return false;
+    _askingVehicle = true;
+    try {
+      return await _askForVehicleNow(vehicles, teksi: teksi, action: action);
+    } finally {
+      _askingVehicle = false;
+    }
+  }
+
+  Future<bool> _askForVehicleNow(List<AssignableVehicle> vehicles, {required bool teksi, String? action}) async {
+    final gate = vehicleGateFor(vehicles);
+    switch (gate.kind) {
+      case VehicleGateKind.ready:
+        return true;
+      case VehicleGateKind.takeOnly:
+        final only = gate.vehicle!;
+        try {
+          await ref.read(vehicleAssignmentRepositoryProvider).claim(only.id);
+        } catch (e) {
+          if (mounted) showInfo(context, claimVehicleErrorMessage(e));
+          return false;
+        }
+        ref.invalidate(assignableVehiclesProvider);
+        if (mounted) showInfo(context, 'Driving ${only.plate.isEmpty ? only.title : only.plate}');
+        return true;
+      case VehicleGateKind.choose:
+      case VehicleGateKind.finish:
+      case VehicleGateKind.waiting:
+      case VehicleGateKind.add:
+        break;
+    }
+    final unfinished = gate.kind == VehicleGateKind.finish ? gate.vehicle : null;
+    final start = action ?? (teksi ? 'start the meter' : 'go online');
+    final String title;
+    final String message;
+    final String button;
+    switch (gate.kind) {
+      case VehicleGateKind.finish:
+        final name = unfinished!.plate.isEmpty ? 'Your vehicle' : unfinished.plate;
+        title = 'Finish your vehicle';
+        message = "$name isn't set up yet: ${firstVehicleStep(unfinished.vehicle).label} is still missing. "
+            'Finish it before you can $start.';
+        button = 'Finish vehicle';
+      case VehicleGateKind.waiting:
+        title = 'No vehicle ready to drive';
+        message = 'You need a vehicle before you can $start, and none of yours can be driven yet.\n\n'
+            '${vehicleGateWaitingLines(vehicles)}';
+        button = 'My vehicles';
+      case VehicleGateKind.add:
+        title = 'Choose a vehicle';
+        message = 'You need a vehicle before you can $start. Add the vehicle you drive.';
+        button = 'Add a vehicle';
+      default:
+        title = 'Choose a vehicle';
+        message = 'You need a vehicle before you can $start. Pick the one you are driving.';
+        button = 'Choose vehicle';
+    }
+    if (!mounted) return false;
     final choose = await showAppDialog<bool>(id: 'partner.vehicle-ready',
       context: context,
       builder: (c) => AlertDialog(
         key: const ValueKey('vehicle-required'),
-        title: Text(unfinished == null ? 'Choose a vehicle' : 'Finish your vehicle'),
+        title: Text(title),
         content: Text(message),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Not now')),
@@ -654,24 +711,29 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             key: const ValueKey('vehicle-required-go'),
             style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
             onPressed: () => Navigator.pop(c, true),
-            child: Text(
-              usable.isNotEmpty ? 'Choose vehicle' : (unfinished != null ? 'Finish vehicle' : 'Add a vehicle'),
-            ),
+            child: Text(button),
           ),
         ],
       ),
     );
     if (choose != true || !mounted) return false;
-    if (usable.isEmpty) {
-      context.push(unfinished == null ? '/drive/vehicles/new' : '/drive/vehicles/${unfinished.id}');
-      return false;
+    switch (gate.kind) {
+      case VehicleGateKind.finish:
+        unawaited(context.push('/drive/vehicles/${unfinished!.id}'));
+        return false;
+      case VehicleGateKind.waiting:
+        unawaited(context.push('/drive/vehicles'));
+        return false;
+      case VehicleGateKind.add:
+        unawaited(context.push('/drive/vehicles/new'));
+        return false;
+      default:
+        break;
     }
     final picked = await showAppSheet<AssignableVehicle>(id: 'partner.vehicle-ready-2',
       context: context,
       isScrollControlled: true,
-      // The one vehicle that can be driven comes picked out; still the
-      // driver's tap takes it.
-      builder: (_) => VehiclePickerSheet(vehicles: vehicles, preselect: usable.length == 1 ? usable.single.id : null),
+      builder: (_) => VehiclePickerSheet(vehicles: vehicles),
     );
     if (picked == null || !mounted) return false;
     if (picked.inUseByMe) return true;
@@ -683,6 +745,27 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       if (mounted) showInfo(context, claimVehicleErrorMessage(e));
       return false;
     }
+  }
+
+  /// Before an offer or an accept: a driver whose mode needs a vehicle has
+  /// a vehicle session, so the rider sees the plate and car with the offer.
+  /// The session is read fresh (it may have ended on another phone or by an
+  /// admin); without one the vehicles are read again and the driver asked
+  /// as when going online, and nothing is sent. Unanswered lets the offer
+  /// through, as going online does (the server fills the car in once a
+  /// vehicle is taken, 0260).
+  Future<bool> _vehicleReadyToOffer(Partner partner, {required bool accepting}) async {
+    if (await _vehicleRequired(partner, teksi: false) != true) return mounted;
+    try {
+      final has = await ref.read(vehicleAssignmentRepositoryProvider).hasSession().timeout(goOnlineCheckTimeout);
+      if (has) return mounted;
+    } catch (_) {
+      return mounted;
+    }
+    ref.invalidate(assignableVehiclesProvider);
+    final needed = await _vehicleNeeded(partner, teksi: false);
+    if (needed == null || !mounted) return mounted;
+    return _askForVehicle(needed, teksi: false, action: accepting ? 'accept a request' : 'send an offer');
   }
 
   /// Accept: an offer at the rider's own fare. The rider still says yes,
@@ -697,6 +780,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// A counter-offer on [r]: [preset] when one was tapped, else the amount
   /// the driver types. [accepting] is an Accept at the rider's own fare.
   Future<void> _offer(RideRequest r, Partner partner, {double? preset, bool accepting = false}) async {
+    // A vehicle first (no offer goes without one), then the questions.
+    if (!await _vehicleReadyToOffer(partner, accepting: accepting) || !mounted) return;
     // "Passenger added extras" first (0253). The extras ticked to stop
     // showing are saved either way: at once on Cancel, after the answer
     // went through otherwise (saved first, the request would be hidden
