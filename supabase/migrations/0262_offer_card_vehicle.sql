@@ -134,3 +134,6 @@ update public.ride_requests r
        partner_vehicle = coalesce(nullif(btrim(r.partner_vehicle), ''), d.vehicle)
   from due d
  where d.id = r.id;
+
+-- Live drift: 0141 revoked execute on this trigger function, but live still grants it.
+revoke execute on function public.ride_requests_auto_accept() from public, anon, authenticated;
