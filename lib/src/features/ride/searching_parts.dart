@@ -6,6 +6,7 @@ import '../../core/payment_types.dart' show paymentModeLabel;
 import '../../core/ride_bidding.dart' show driverTripsLabel;
 import '../../core/request_viewers.dart';
 import '../../core/ride_cancel.dart';
+import '../../core/ride_offers.dart';
 import '../../core/search_stage.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../../data/models.dart';
@@ -495,10 +496,14 @@ class SearchOfferView {
     this.amount,
     this.difference,
     this.secondsLeft,
+    this.lowest = false,
   });
 
   final String key;
   final String price;
+
+  /// The cheapest of the offers on screen ("Lowest", 0269).
+  final bool lowest;
 
   /// The offer's amount, for ordering the cards by price.
   final double? amount;
@@ -528,6 +533,39 @@ class SearchOfferView {
   final int? etaMin;
   final bool demo;
   final Key? cardKey, acceptKey, declineKey;
+
+  /// This with the "Lowest" badge.
+  SearchOfferView withLowest() => SearchOfferView(
+    key: key,
+    price: price,
+    yourFare: yourFare,
+    progress: progress,
+    onAccept: onAccept,
+    onDecline: onDecline,
+    name: name,
+    rating: rating,
+    trips: trips,
+    vehicle: vehicle,
+    plate: plate,
+    plateColours: plateColours,
+    photo: photo,
+    etaMin: etaMin,
+    demo: demo,
+    cardKey: cardKey,
+    acceptKey: acceptKey,
+    declineKey: declineKey,
+    amount: amount,
+    difference: difference,
+    secondsLeft: secondsLeft,
+    lowest: true,
+  );
+}
+
+/// "AF" for Aisyah Farid, "A" for one name, "?" for none.
+String offerInitials(String? name) {
+  final words = (name ?? '').trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return '?';
+  return words.take(2).map((w) => w.characters.first.toUpperCase()).join();
 }
 
 /// The cards in the order the rider compares them: cheapest first, then
@@ -671,6 +709,7 @@ class SearchOfferCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (o.lowest) LowestOfferBadge(key: ValueKey('offer-lowest-${o.key}')),
                 if (o.demo) const _DemoTag(),
               ],
             ),
@@ -700,7 +739,7 @@ class SearchOfferCard extends StatelessWidget {
                 CircleAvatar(
                   radius: 22,
                   child: o.photo == null
-                      ? Text((o.name ?? '?').characters.first)
+                      ? Text(offerInitials(o.name))
                       : ClipOval(
                           child: Image.network(
                             o.photo!,
@@ -776,6 +815,80 @@ class SearchOfferCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "Lowest" on the cheapest offer card, in the good-news green of either theme.
+class LowestOfferBadge extends StatelessWidget {
+  const LowestOfferBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final fg = dark ? const Color(0xFF4FD39B) : const Color(0xFF17885E);
+    final bg = dark ? const Color(0xFF12301F) : const Color(0xFFE2F5EC);
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      child: Text('Lowest', style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w700)),
+    );
+  }
+}
+
+/// The rider's order for the offers: Cheapest, Nearest, Top rated.
+class OfferSortChips extends StatelessWidget {
+  const OfferSortChips({super.key, required this.sort, required this.onChanged, this.onDark = false});
+  final OfferSort sort;
+  final ValueChanged<OfferSort> onChanged;
+
+  /// On the dim of "Choose a driver": white text.
+  final bool onDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        for (final s in OfferSort.values)
+          ChoiceChip(
+            key: ValueKey('offer-sort-${s.name}'),
+            label: Text(s.label),
+            selected: s == sort,
+            onSelected: (_) => onChanged(s),
+            labelStyle: onDark && s != sort ? const TextStyle(color: Colors.white) : null,
+            backgroundColor: onDark ? Colors.white.withValues(alpha: 0.12) : null,
+            selectedColor: onDark ? Colors.white : t.colorScheme.secondaryContainer,
+            side: onDark ? BorderSide(color: Colors.white.withValues(alpha: 0.4)) : null,
+            showCheckmark: false,
+          ),
+      ],
+    );
+  }
+}
+
+/// "+3 more waiting" under the cards.
+class OffersWaiting extends StatelessWidget {
+  const OffersWaiting({super.key, required this.waiting, this.onDark = false});
+  final int waiting;
+  final bool onDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = offersWaitingLabel(waiting);
+    if (label == null) return const SizedBox.shrink();
+    final t = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        label,
+        key: const ValueKey('offers-waiting'),
+        textAlign: TextAlign.center,
+        style: t.textTheme.titleSmall?.copyWith(color: onDark ? Colors.white70 : t.colorScheme.onSurfaceVariant),
       ),
     );
   }
@@ -990,8 +1103,15 @@ class _SideOpenClip extends CustomClipper<Rect> {
 /// the offers stack under the title. Cancel request stays the sheet's own,
 /// pinned under the dim (one way to cancel, not two).
 class ChooseDriverOverlay extends StatelessWidget {
-  const ChooseDriverOverlay({super.key, required this.offers});
+  const ChooseDriverOverlay({super.key, required this.offers, this.sort, this.onSort, this.waiting = 0});
   final List<SearchOfferView> offers;
+
+  /// The order chips (0269); none without [onSort].
+  final OfferSort? sort;
+  final ValueChanged<OfferSort>? onSort;
+
+  /// Offers waiting for a place on screen.
+  final int waiting;
 
   @override
   Widget build(BuildContext context) {
@@ -1027,6 +1147,10 @@ class ChooseDriverOverlay extends StatelessWidget {
                         ),
                         const SizedBox(height: 4),
                         const DriversVerified(color: Colors.white),
+                        if (onSort != null && offers.length > 1) ...[
+                          const SizedBox(height: 10),
+                          OfferSortChips(sort: sort ?? OfferSort.cheapest, onChanged: onSort!, onDark: true),
+                        ],
                       ],
                     ),
                   ),
@@ -1037,7 +1161,10 @@ class ChooseDriverOverlay extends StatelessWidget {
                   top: false,
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
-                    child: OfferStack(offers: offers),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [OfferStack(offers: offers), OffersWaiting(waiting: waiting, onDark: true)],
+                    ),
                   ),
                 ),
               ),

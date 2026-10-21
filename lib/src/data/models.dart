@@ -129,6 +129,24 @@ class RideRequest {
   int get passengers => _i(raw['passengers']) ?? 1;
   int? get luggage => _i(raw['luggage']);
   double? get riderRating => _d(raw['rider_rating']);
+
+  /// How many ratings [riderRating] is the average of, and the rider's
+  /// completed trips, stamped by the server at booking (migration 0269);
+  /// null on rides from before it.
+  int? get riderRatingsCount => _i(raw['rider_ratings_count']);
+  int? get riderTrips => _i(raw['rider_trips']);
+
+  /// A late-cancel or no-show fee from an earlier ride the rider's wallet
+  /// couldn't pay, added to this one (0269); null when none.
+  double? get priorFees => _d(raw['prior_fees']);
+
+  /// What cancelling this ride cost the rider, and whether it was taken
+  /// ('charged'), left 'due' for the next ride, or 'none' (0269).
+  double? get cancelFee => _d(raw['cancel_fee']);
+  String? get cancelFeeStatus => raw['cancel_fee_status'] as String?;
+
+  /// The scheduled booking this ride was released from (0189); null for a ride now.
+  String? get scheduledRideId => raw['scheduled_ride_id'] as String?;
   String? get note => raw['note'] as String?;
   RideStatus get status => RideStatus.parse(raw['status'] as String?);
   String? get partnerId => raw['partner_id'] as String?;
@@ -214,12 +232,12 @@ class RideRequest {
     return f == null ? const [] : pricing.linesFor(f);
   }
 
-  /// Fare plus its surcharges and taxes, and the tolls and other charges
-  /// the driver declared.
+  /// Fare plus its surcharges and taxes, the tolls and other charges the
+  /// driver declared, and fees carried over from an earlier ride.
   double? get totalDue {
     final f = effectiveFare;
     if (f == null) return null;
-    return f + surchargeAmount + taxAmount + (tollCharges ?? 0) + (otherCharges ?? 0);
+    return f + surchargeAmount + taxAmount + (tollCharges ?? 0) + (otherCharges ?? 0) + (priorFees ?? 0);
   }
 
   /// What the rider's GET.coin paid towards [totalDue] (migration 0101; the

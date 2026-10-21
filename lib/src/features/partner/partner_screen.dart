@@ -31,6 +31,8 @@ import '../../data/partner_doc_check.dart';
 import '../../data/partner_type_check.dart';
 import '../../core/partner_type_rules.dart' show PartnerTypeCheck, hailNotOfferedMessage;
 import '../../providers.dart';
+import '../../core/ride_offers.dart';
+import '../../data/city_ride_repository.dart';
 import '../../widgets/offer_motion.dart';
 import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
@@ -813,7 +815,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         fallbackPhone: profile?.phone,
       );
     } catch (e) {
-      if (mounted) showError(context, e);
+      if (mounted) {
+        // The server's reasons (0269): declined already, offers paused for
+        // cancelling too much, an amount out of range.
+        '$e'.contains('OFFER') ? showInfo(context, rideOfferError(e)) : showError(context, e);
+      }
       return;
     } finally {
       if (mounted) setState(() => _accepting = null);
@@ -834,9 +840,25 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final won = await showAppDialog<RideRequest>(id: 'partner.offer',
       context: context,
       barrierDismissible: false,
-      builder: (_) => OfferPendingDialog(repo: repo, ride: r, me: me, amount: amount, accepting: accepting),
+      builder: (_) => OfferPendingDialog(
+        repo: repo,
+        ride: r,
+        me: me,
+        amount: amount,
+        accepting: accepting,
+        myOffers: _myOfferRows(me),
+      ),
     );
     if (won != null && mounted) context.push('/drive/trip/${won.id}');
+  }
+
+  /// This driver's offer rows (0269); null where they can't be read.
+  Stream<List<RideOfferRow>>? _myOfferRows(String me) {
+    try {
+      return ref.read(cityRideRepositoryProvider).myOffers(me);
+    } catch (_) {
+      return null;
+    }
   }
 
   bool get _destinationOn {

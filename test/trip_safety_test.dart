@@ -47,15 +47,24 @@ Widget _app(Brightness b, Widget child, List overrides) => ProviderScope(
 
 void main() {
   group('settings', () {
-    test('all off until turned on; numbers clamped; kept beside the other switches', () {
+    test('the checks on until turned off (0269), lost items off until turned on; numbers clamped; '
+        'kept beside the other switches', () {
       expect(SafetySettings.fromValues(null), const SafetySettings());
+      const d = SafetySettings();
+      expect((d.startCheck, d.separation, d.routeCheck, d.autoShare, d.lostItems), (true, true, true, true, false));
+      expect((d.routeOffM, d.routeOffMin, d.stoppedMin, d.noAnswerS), (500, 2, 5, 60));
       final s = SafetySettings.fromValues({
         'safety_separation': 'true',
+        'safety_start_check': false,
         'safety_far_apart_m': 9,
         'safety_separation_min': '99',
+        'safety_route_off_m': 1,
+        'safety_no_answer_s': 100000,
       });
       expect(s.separation, isTrue);
       expect(s.startCheck, isFalse);
+      expect(s.routeOffM, SafetySettings.minRouteOff);
+      expect(s.noAnswerS, SafetySettings.maxNoAnswer);
       expect(s.farApartM, SafetySettings.minFarApart);
       expect(s.separationMin, SafetySettings.maxSeparation);
       expect(SafetySettings.fromValues(s.toValues()), s);

@@ -25,6 +25,7 @@ import '../trip_handover_card.dart';
 import '../permission_rules_card.dart';
 import '../ride_privacy_card.dart';
 import '../trip_cancellation_card.dart';
+import '../ride_offers_card.dart';
 import 'app_icon_card.dart';
 import 'app_updates_card.dart';
 import 'backend_network_card.dart';
@@ -498,6 +499,9 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                 TripHandoverCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 TripCancellationCard(canEdit: canEdit),
+                const SizedBox(height: 8),
+                // City ride (0269).
+                RideOffersCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 RidePrivacyCard(canEdit: canEdit),
                 const SizedBox(height: 8),

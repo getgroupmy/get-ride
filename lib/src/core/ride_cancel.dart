@@ -12,6 +12,8 @@ const otherCancelReason = 'other';
 const _all = <CancelReason>[
   (id: 'driver_too_long', label: 'Driver taking too long'),
   (id: 'driver_not_moving', label: "Driver isn't moving"),
+  // A safety reason (0269): like "Driver isn't moving", always free.
+  (id: 'wrong_car', label: "Car doesn't match"),
   (id: 'changed_plans', label: 'Changed my plans'),
   (id: 'booked_by_mistake', label: 'Booked by mistake'),
   (id: 'driver_asked_cancel', label: 'Driver asked me to cancel'),
@@ -60,7 +62,7 @@ String driverCancelNotice(RideRequest r) {
 List<CancelReason> cancelReasonsFor(RideStatus status) => status == RideStatus.open
     ? [
         for (final r in _all)
-          if (!r.id.startsWith('driver_')) r,
+          if (!r.id.startsWith('driver_') && r.id != 'wrong_car') r,
       ]
     : _all;
 
