@@ -13,6 +13,8 @@ import '../../core/driver_permit.dart';
 import '../../core/street_hail.dart';
 import '../../core/teksi_tariff.dart';
 import '../../core/vehicle_assignment.dart';
+import '../../core/driver_services.dart' show HailGate;
+import '../../data/driver_services_repository.dart' show myDriverServicesProvider;
 import '../../data/geo_service.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../providers.dart';
@@ -279,6 +281,36 @@ Future<void> planTeksiTrip(BuildContext context, WidgetRef ref, TeksiTariff tari
   final currency = card.profile.currency.trim().isEmpty || card.profile.currency.toUpperCase() == 'MYR'
       ? 'RM'
       : card.profile.currency.trim();
+  // Services (0263): a street hail with a destination, or the meter, turned
+  // off for this car (or kept off by get.ride) can't be started.
+  HailGate gate = const HailGate();
+  try {
+    gate = HailGate.of(await ref.read(myDriverServicesProvider.future).timeout(const Duration(seconds: 6)));
+  } catch (_) {}
+  final off = gate.refusal(withDestination: true);
+  if (off != null) {
+    if (!context.mounted) return;
+    await showAppDialog<void>(
+      id: 'teksi-pickup.hail-off',
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(off.title),
+        content: Text(off.message),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(c);
+              context.push('/drive/services');
+            },
+            child: const Text('Services'),
+          ),
+          FilledButton(onPressed: () => Navigator.pop(c), child: const Text('OK')),
+        ],
+      ),
+    );
+    return;
+  }
+  if (!context.mounted) return;
   HailDestination? dest;
   while (context.mounted) {
     dest = await context.push<HailDestination>(

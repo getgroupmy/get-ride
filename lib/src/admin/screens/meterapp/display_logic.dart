@@ -68,6 +68,8 @@ const standGroupsMenuItemId = 'stand-groups';
 const myPermitMenuItemId = 'my-permit';
 /// The driver menu's Telematics: their km and trips (0255).
 const telematicsMenuItemId = 'telematics';
+/// The driver menu's Services: what the car in use takes (0263).
+const servicesMenuItemId = 'services';
 
 const defaultPartnerMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
@@ -80,6 +82,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   ('trip-history', 'Trip history'),
   (scheduledRidesMenuItemId, 'Scheduled rides'), // this app's own; the Expo menu skips it
   ('vehicle', 'Vehicle'),
+  (servicesMenuItemId, 'Services'), // this app's own (0263): the services the car in use takes
   (myPermitMenuItemId, 'My permit'), // this app's own (0254): the vehicle's and driver's permits
   (standGroupsMenuItemId, 'Stand groups'), // this app's own (0251): groups a driver asks to join
   (vehicleInfoMenuItemId, 'Vehicle information'),

@@ -8,11 +8,13 @@ import '../../admin/screens/meterapp/display_logic.dart'
         myQrMenuItemId,
         myRideCodeMenuItemId,
         scheduledRidesMenuItemId,
+        servicesMenuItemId,
         standGroupsMenuItemId,
         telematicsMenuItemId,
         vehicleInfoMenuItemId;
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
+import '../../data/driver_services_repository.dart' show servicesPageAvailableProvider;
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
 import '../../data/obd/obd_session.dart';
 import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
@@ -36,7 +38,9 @@ Future<void> showPartnerMenu(BuildContext context) => showAppSheet<void>(id: 'dr
 /// Whether a driver menu row shows now: Vehicle information only while an
 /// OBD-II reader is linked, My Ride code only where the driver has a code
 /// (none on a database without My Ride, or while it loads), Scheduled
-/// rides only while scheduled rides are on. Before an admin approves the
+/// rides only while scheduled rides are on, Services only for a partner
+/// with a car in use whose types offer services ([servicesPage]). Before an
+/// admin approves the
 /// partner ([approved] false) the pages that need an approved driver
 /// (Earnings, Trip history, Scheduled rides, My Ride code) stay out of the
 /// menu; Dashboard, Vehicle and Documents, which the application uses, stay.
@@ -46,9 +50,11 @@ bool partnerMenuRowShows(
   required bool hasMyRideCode,
   bool scheduledRides = false,
   bool approved = true,
+  bool servicesPage = false,
 }) => switch (id) {
   _ when !approved && partnerRowsAfterApproval.contains(id) => false,
   vehicleInfoMenuItemId => obdLinked,
+  servicesMenuItemId => servicesPage,
   myRideCodeMenuItemId => hasMyRideCode,
   scheduledRidesMenuItemId => scheduledRides,
   _ => true,
@@ -77,6 +83,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     'vehicle': '/drive/vehicles',
     standGroupsMenuItemId: '/drive/groups',
     myPermitMenuItemId: '/drive/permits',
+    servicesMenuItemId: '/drive/services',
     // The trips taken as a partner; the rides booked are on the user side.
     'trip-history': '/drive/history',
     scheduledRidesMenuItemId: '/drive/scheduled',
@@ -132,6 +139,7 @@ class PartnerMenuSheet extends ConsumerWidget {
     final hasCode = ref.watch(myRideCodeProvider).value != null;
     final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
     final approved = ref.watch(partnerProvider).value?.approved ?? true;
+    final services = ref.watch(servicesPageAvailableProvider);
     final menu = [
       for (final e in resolveSideMenu(blob, 'partner'))
         if (partnerMenuRowShows(
@@ -140,6 +148,7 @@ class PartnerMenuSheet extends ConsumerWidget {
           hasMyRideCode: hasCode,
           scheduledRides: scheduled,
           approved: approved,
+          servicesPage: services,
         ))
           e,
     ];

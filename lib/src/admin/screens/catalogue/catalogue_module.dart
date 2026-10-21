@@ -6,6 +6,7 @@ import '../../admin_registry.dart';
 import 'assign_service_screens.dart';
 import 'catalogue_logic.dart';
 import 'document_screens.dart';
+import 'driver_service_locks_screen.dart';
 import 'make_model_screen.dart';
 import 'partner_type_screen.dart';
 import 'partner_type_services_screen.dart';
@@ -30,6 +31,7 @@ final catalogueRoutes = <RouteBase>[
   GoRoute(path: serviceOrderPath, builder: (_, _) => const ServiceOrderScreen()),
   GoRoute(path: '/admin/m/partner-type', builder: (_, _) => const PartnerTypeScreen()),
   GoRoute(path: '/admin/m/partner-type-services', builder: (_, _) => const PartnerTypeServicesScreen()),
+  GoRoute(path: '/admin/m/driver-service-locks', builder: (_, _) => const DriverServiceLocksScreen()),
   GoRoute(path: '/admin/m/document-type', builder: (_, _) => const DocumentTypeScreen()),
   GoRoute(path: '/admin/m/required-documents', builder: (_, _) => const RequiredDocumentsScreen()),
   GoRoute(path: '/admin/m/vehicle-make-model', builder: (_, _) => const VehicleMakeModelScreen()),
@@ -80,6 +82,14 @@ const catalogueEntries = <AdminScreenEntry>[
     path: partnerTypeServicesPath,
     pages: [partnerTypeServicesPage, 'admin-settings-partner-type'],
     icon: Icons.rule_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'Services & catalogue',
+    title: 'Driver service locks',
+    subtitle: 'Keep a service on or off for some drivers, over their own switches',
+    path: driverServiceLocksPath,
+    pages: [driverServiceLocksPage],
+    icon: Icons.lock_outline,
   ),
   AdminScreenEntry(
     section: 'Services & catalogue',

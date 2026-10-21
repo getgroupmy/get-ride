@@ -15,6 +15,7 @@ import '../../widgets/side_menu_host.dart';
 import '../../widgets/side_menu_style.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../partner/driver_online.dart';
+import '../../data/driver_services_repository.dart' show servicesPageAvailableProvider;
 import '../partner/partner_menu.dart' show partnerMenuAction, partnerMenuRowShows;
 import '../meter/meter_session_toggle.dart';
 import '../partner/partner_mode_picker.dart' show openPartnerMode;
@@ -154,6 +155,7 @@ class PartnerSideMenu extends ConsumerWidget {
             hasMyRideCode: hasCode,
             scheduledRides: scheduled,
             approved: approved,
+            servicesPage: ref.watch(servicesPageAvailableProvider),
           )) ...[
             if (e.id == 'sign-out') const SideMenuLogoutDivider(),
             SideMenuTile(

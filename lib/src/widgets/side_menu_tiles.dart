@@ -56,6 +56,7 @@ const _builtInIcons = <String, IconData>{
   'vehicle': Icons.directions_car_outlined,
   'stand-groups': Icons.groups_outlined,
   'my-permit': Icons.verified_user_outlined,
+  'services': Icons.tune,
   'vehicle-information': Icons.speed,
   'documents': Icons.description_outlined,
   'emergency-contacts': Icons.contact_emergency_outlined,
