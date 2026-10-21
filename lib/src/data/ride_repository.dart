@@ -120,7 +120,8 @@ class RideRepository {
       'rider_id': uid,
       'rider_name': riderName,
       'rider_phone': riderPhone,
-      'rider_rating': 5,
+      // The rider's rating, ratings and trips are the server's (0269 stamps
+      // them on the new row); nothing made up is sent.
       'service': service,
       'payment_mode': paymentMode,
       'pickup_name': pickupName,
@@ -732,6 +733,13 @@ class RideRepository {
 
   /// A partner's counter-offer on an open request. Null when the request is
   /// no longer open (taken, cancelled, expired).
+  ///
+  /// Since 0269 it is an offer of its own (`ride_offer_make`), standing
+  /// beside other drivers' offers; the server copies the latest one onto the
+  /// row for older apps, and refuses it (a [PostgrestException] whose
+  /// message [rideOfferError] reads) when the rider declined this driver
+  /// already, or their offers are paused. A database without 0269 gets the
+  /// single bid written on the row, as before.
   Future<RideRequest?> submitOffer(
     String id,
     double amount,
@@ -741,6 +749,24 @@ class RideRepository {
     String? fallbackName,
     String? fallbackPhone,
   }) async {
+    if (_offersRpc) {
+      try {
+        await _db.rpc('ride_offer_make', params: {
+          'p_request': id,
+          'p_amount': double.parse(amount.toStringAsFixed(2)),
+          // The rider's app works the ETA out from where the driver is.
+          'p_eta_min': null,
+          'p_lat': lat,
+          'p_lng': lng,
+        });
+        final row = await _db.from(_table).select().eq('id', id).maybeSingle();
+        return row == null ? null : RideRequest(row);
+      } on PostgrestException catch (e) {
+        if ('${e.message}${e.hint}'.contains('OFFER_REQUEST_CLOSED')) return null;
+        if (e.code != 'PGRST202' && e.code != '42883') rethrow;
+        _offersRpc = false;
+      }
+    }
     final row = await _db
         .from(_table)
         .update({
@@ -771,10 +797,23 @@ class RideRepository {
     await _db.from(_table).update({'auto_accept_fare': limit}).eq('id', id).eq('rider_id', uid).eq('status', 'open');
   }
 
-  /// Takes this partner's own standing offer back off the row.
+  /// Whether `ride_offer_make` and friends exist (0269); false once the
+  /// database said they don't.
+  bool _offersRpc = true;
+
+  /// Takes this partner's own standing offer back (off the row too).
   Future<void> withdrawOffer(String id) async {
     final uid = _uid;
     if (uid == null) return;
+    if (_offersRpc) {
+      try {
+        await _db.rpc('ride_offer_withdraw', params: {'p_request': id});
+        return;
+      } on PostgrestException catch (e) {
+        if (e.code != 'PGRST202' && e.code != '42883') rethrow;
+        _offersRpc = false;
+      }
+    }
     await _db.from(_table).update(_noBid).eq('id', id).eq('status', 'open').eq('partner_id', uid);
   }
 

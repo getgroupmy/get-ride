@@ -8,6 +8,9 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../data/ride_cancel_config.dart';
+import '../../data/city_ride_repository.dart';
+import '../../core/ride_offers.dart';
+import '../../core/permits.dart' show plateColoursFromJson;
 import '../../data/active_location.dart';
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/airport_queue.dart' show airportNoDriverMessage, airportNoDriverReason;
@@ -53,6 +56,8 @@ import 'ride_call_screen.dart' show RideCallButton;
 import 'ride_payment_overlay.dart';
 import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
+import 'city_cancel_parts.dart';
+import 'route_check.dart';
 import 'home_screen.dart' show nearbyDriversProvider, roundedPoint;
 import 'shared_ride_screen.dart' show shareRide;
 import '../../widgets/offline_ride_banner.dart';
@@ -254,6 +259,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   /// How many minutes each offer's driver is from the pickup, by road from
   /// where they made the offer (keyed by [RideOffer.key]).
   final _offerEta = <String, int>{};
+
+  /// The rider's order for the offers (null: the admin's first sort), and
+  /// the cards on screen, which keep their places while they stand (0269).
+  OfferSort? _sort;
+  Set<String> _onScreen = const {};
+  int _waiting = 0;
 
   /// The fare the −/+ keys have moved to, not yet confirmed (null: the
   /// request's own fare).
@@ -655,6 +666,36 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     });
   }
 
+  /// An offer of the many (0269), taken or turned down by its id.
+  Future<void> _acceptOfferRow(RideOfferRow o) async {
+    await _run(() async {
+      try {
+        await ref.read(cityRideRepositoryProvider).acceptOffer(o.id);
+      } catch (e) {
+        if (mounted) showInfo(context, rideOfferError(e));
+      }
+    });
+  }
+
+  Future<void> _declineOfferRow(RideOfferRow o) async {
+    await _run(() => ref.read(cityRideRepositoryProvider).declineOffer(o.id));
+  }
+
+  /// How far an offer's driver is from the pickup when their app didn't say.
+  void _routeOfferRow(RideOfferRow o) {
+    final r = widget.ride;
+    final fromLat = o.fromLat, fromLng = o.fromLng, toLat = r.pickupLat, toLng = r.pickupLng;
+    if (o.etaMin != null || fromLat == null || fromLng == null || toLat == null || toLng == null) return;
+    if (_offerEta.containsKey(o.id)) return;
+    _offerEta[o.id] = -1;
+    unawaited(() async {
+      try {
+        final route = await ref.read(geoServiceProvider).route(LatLng(fromLat, fromLng), LatLng(toLat, toLng));
+        if (mounted) setState(() => _offerEta[o.id] = offerEtaMinutes(route.durationMin));
+      } catch (_) {}
+    }());
+  }
+
   Future<void> _declineOffer(RideOffer o) async {
     if (_isDemo) return;
     await _run(() => ref.read(rideRepositoryProvider).declineOffer(widget.ride.id, partnerId: o.partnerId));
@@ -704,7 +745,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   Future<void> _cancel() async {
     final r = widget.ride;
     if (r.status == RideStatus.open) return _cancelSearch();
-    final reason = await showAppDialog<String>(id: 'ride-tracking.cancel', context: context, builder: (_) => _CancelReasonDialog(status: r.status));
+    final note = _isDemo
+        ? null
+        : cancelFeeNote(ref.read(cancelTermsProvider(r.id)).value, r, ref.read(cityCancelClockProvider)());
+    final reason = await showAppDialog<String>(
+      id: 'ride-tracking.cancel',
+      context: context,
+      builder: (_) => _CancelReasonDialog(status: r.status, feeNote: note),
+    );
     if (reason == null) return;
     if (_isDemo) return _demoRides.cancel(r.id, reason: reason);
     await _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: reason, by: 'rider'));
@@ -749,7 +797,38 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       return left.isNegative ? 0 : (left.inMilliseconds / 1000).ceil();
     }
 
-    if (offer != null) {
+    // Many offers at once (0269): each its own row. Without them (an older
+    // database) the one bid on the request row.
+    final rows = _isDemo
+        ? const <RideOfferRow>[]
+        : [for (final o in ref.watch(rideOffersProvider(r.id)).value ?? const <RideOfferRow>[]) if (o.isLive(_now)) o];
+    for (final o in rows) {
+      _routeOfferRow(o);
+      final eta = o.etaMin ?? _offerEta[o.id];
+      views.add(SearchOfferView(
+        amount: o.amount,
+        difference: difference(o.amount),
+        secondsLeft: (o.expiresAt.difference(_now).inMilliseconds / 1000).ceil().clamp(0, 1 << 20),
+        key: o.id,
+        cardKey: ValueKey('ride-offer-${o.id}'),
+        acceptKey: ValueKey('accept-offer-${o.id}'),
+        declineKey: ValueKey('decline-offer-${o.id}'),
+        price: r.fareText(o.amount),
+        yourFare: r.fare != null && (o.amount - r.fare!).abs() < 0.005,
+        progress: o.progress(_now),
+        name: o.name,
+        rating: o.rating,
+        trips: o.trips,
+        vehicle: o.vehicle,
+        plate: o.plate,
+        plateColours: plateColoursFromJson(o.plateColours),
+        photo: o.photo,
+        etaMin: eta == null || eta < 0 ? null : eta,
+        onAccept: _busy ? null : () => _acceptOfferRow(o),
+        onDecline: _busy ? null : () => _declineOfferRow(o),
+      ));
+    }
+    if (offer != null && rows.isEmpty) {
       views.add(SearchOfferView(
         amount: offer.amount,
         difference: difference(offer.amount),
@@ -795,8 +874,19 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
         onDecline: () => _demo?.dismiss(o),
       ));
     }
-    return sortOffers(views);
+    // The rider's order, the admin's number on screen (the rest wait in
+    // line), and "Lowest" on the cheapest.
+    final config = ref.watch(cityRideConfigProvider).value ?? CityRideConfig.standard;
+    final sorted = sortOfferList(views, _sort ?? config.offers.sort,
+        amount: (v) => v.amount, eta: (v) => v.etaMin, rating: (v) => v.rating);
+    final q = offerQueue(sorted, shown: config.offers.shown, key: (v) => v.key, onScreen: _onScreen);
+    _onScreen = {for (final v in q.shown) v.key};
+    _waiting = q.waiting;
+    final lowest = lowestOfferKey(q.shown, amount: (v) => v.amount, key: (v) => v.key);
+    return [for (final v in q.shown) v.key == lowest ? v.withLowest() : v];
   }
+
+  void _setSort(OfferSort s) => setState(() => _sort = s);
 
   /// The open request's sheet, as inDrive's: the stage and its countdown,
   /// the fare to raise, auto-accept, payment, the route and Cancel request.
@@ -953,12 +1043,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     }
     final asked = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider';
     if ((r.status == RideStatus.accepted || r.status == RideStatus.arrived) && !asked) {
-      return BusyButton.outlined(
-        key: const ValueKey('ride-cancel'),
-        icon: const Icon(Icons.close),
-        onPressed: _busy ? null : _cancel,
-        child: const Text('Cancel ride'),
-      );
+      // With the city ride rules (0269): "Free to cancel for m:ss", then the
+      // fee on the button.
+      return CityCancelButton(ride: r, onPressed: _busy ? null : _cancel);
     }
     return null;
   }
@@ -1200,6 +1287,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           const SizedBox(height: 12),
           // Trip safety (Phase D4): "Are you in the car?" / "still on your trip?".
           if (r.status == RideStatus.onTrip && !_isDemo) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
+          // The route check (0269): asks when the car leaves the planned route.
+          if (r.status == RideStatus.onTrip && !_isDemo) RouteCheckWatcher(ride: r, onSos: () => _sos(r)),
           if (r.status == RideStatus.completed && !_isDemo) RideRatingCard(ride: r),
           if (r.status == RideStatus.completed && !_isDemo) LostItemCard(ride: r),
           // On the trip itself the X only asks: the driver approves it.
@@ -1342,7 +1431,22 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 child: SingleChildScrollView(
                   child: ValueListenableBuilder(
                     valueListenable: _clock,
-                    builder: (_, _, _) => OfferStack(offers: _offerViews()),
+                    builder: (_, _, _) {
+                      final offers = _offerViews();
+                      final config = ref.watch(cityRideConfigProvider).value ?? CityRideConfig.standard;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (offers.length > 1)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: OfferSortChips(sort: _sort ?? config.offers.sort, onChanged: _setSort),
+                            ),
+                          OfferStack(offers: offers),
+                          OffersWaiting(waiting: _waiting),
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),
@@ -1391,7 +1495,16 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             ),
             child: ValueListenableBuilder(
               valueListenable: _clock,
-              builder: (_, _, _) => ChooseDriverOverlay(offers: _offerViews()),
+              builder: (_, _, _) {
+                final offers = _offerViews();
+                final config = ref.watch(cityRideConfigProvider).value ?? CityRideConfig.standard;
+                return ChooseDriverOverlay(
+                  offers: offers,
+                  sort: _sort ?? config.offers.sort,
+                  onSort: _setSort,
+                  waiting: _waiting,
+                );
+              },
             ),
           ),
         ),
@@ -1403,8 +1516,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 /// needs the rider's own words. Pops the value to store, or null to keep
 /// the ride.
 class _CancelReasonDialog extends StatefulWidget {
-  const _CancelReasonDialog({required this.status});
+  const _CancelReasonDialog({required this.status, this.feeNote});
   final RideStatus status;
+
+  /// What cancelling now costs (0269); null when it is free.
+  final String? feeNote;
 
   @override
   State<_CancelReasonDialog> createState() => _CancelReasonDialogState();
@@ -1437,6 +1553,14 @@ class _CancelReasonDialogState extends State<_CancelReasonDialog> {
                     ? "You're on your trip. Your driver will be asked to approve the cancellation."
                     : 'Your driver has accepted. They will be asked to approve the cancellation.',
               ),
+            if (widget.feeNote case final note?) ...[
+              const SizedBox(height: 8),
+              Text(
+                note,
+                key: const ValueKey('cancel-fee-note'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
             const SizedBox(height: 8),
             Text('Why are you cancelling?', style: Theme.of(context).textTheme.titleSmall),
             RadioGroup<String>(

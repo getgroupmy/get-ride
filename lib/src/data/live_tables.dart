@@ -50,6 +50,8 @@ const liveSettingTables = <String>[
   'fare_tariffs',
   // Ride Options by place: charges, offered here, blocked services (0253).
   'ride_option_places',
+  // City ride cancel and no-show rules by place (0269).
+  'ride_cancel_places',
   'get_coin_rate_history',
   'required_document',
   'document_type',

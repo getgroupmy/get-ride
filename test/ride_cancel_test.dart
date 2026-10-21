@@ -61,7 +61,7 @@ void main() {
   group('rules', () {
     test('driver reasons are not offered before a driver accepts', () {
       expect(cancelReasonsFor(RideStatus.open).map((r) => r.id), ['changed_plans', 'booked_by_mistake', 'other']);
-      expect(cancelReasonsFor(RideStatus.onTrip), hasLength(6));
+      expect(cancelReasonsFor(RideStatus.onTrip), hasLength(7));
     });
 
     test('the stored value is the Expo id, or the rider\'s words for Other', () {

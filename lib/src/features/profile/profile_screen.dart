@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/rider_rating.dart' show ownRiderRatingText;
+import '../partner/rate_rider.dart' show riderStarColor;
 import '../../core/contact_phone.dart' show formatPhoneDisplay;
 import '../../data/models.dart';
 import '../../providers.dart';
@@ -121,6 +123,26 @@ class _ProfileBody extends ConsumerWidget {
               '${p.totalRides} ride${p.totalRides == 1 ? '' : 's'}',
               textAlign: TextAlign.center,
               style: TextStyle(color: muted),
+            ),
+          ),
+        // Your rating as a rider, from your drivers (0269).
+        if (p != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              key: const ValueKey('profile-rider-rating'),
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.star_rounded, size: 18, color: riderStarColor(context)),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(
+                    'Your rating: ${ownRiderRatingText(rating: p.riderRating, ratings: p.riderRatingsCount)}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: muted),
+                  ),
+                ),
+              ],
             ),
           ),
         const SizedBox(height: 12),

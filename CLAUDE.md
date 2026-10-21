@@ -53,3 +53,24 @@ calendar as a shortcut button.
 hint, `TextInputType.datetime`) or a bare `showDatePicker` appears outside the
 widget, unless that file is on its allow-list with the reason (report date-range
 filters, date-and-time pickers).
+
+## Offer cards move the same way everywhere (locked by the owner)
+
+Every incoming-offer card in every module (ride, scheduled, My Ride, Freight,
+Courier, partner counter-offers and any new one) uses the shared motion in
+`lib/src/widgets/offer_motion.dart`:
+
+- A new offer slides in from the right, moving right to left into place with a small overshoot.
+- An offer that is declined, expires, is withdrawn or is taken slides out to the left with a slight tilt (about −6°) and fades.
+- Reduced motion turns off the slide and tilt.
+
+Do not change the direction, tilt or timing unless the owner asks for it.
+`test/offer_motion_test.dart` fails when the constants change or an offer card
+animates on its own.
+
+## Parked work is listed in docs/KIV.md
+
+`docs/KIV.md` is the owner's keep-in-view list: features they have parked.
+Don't build an item from it until the owner asks. When a PR ships an item,
+remove that item from `docs/KIV.md` in the same PR. Add a new item only when
+the owner parks one.

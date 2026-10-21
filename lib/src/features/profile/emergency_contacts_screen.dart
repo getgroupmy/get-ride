@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_native_contact_picker/flutter_native_contact_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/trip_safety.dart' show TripShareMode;
+import '../../data/city_ride_repository.dart';
 import '../../config.dart';
 import '../../core/contact_phone.dart';
 import '../../core/picked_contact.dart';
@@ -267,7 +269,74 @@ class EmergencyContactsScreen extends ConsumerWidget {
                     ]),
                   ),
                 ),
+                // When the trip is shared with them (0269).
+                const ResponsiveCenter(child: TripShareModeCard()),
               ]),
+      ),
+    );
+  }
+}
+
+/// Share every trip, at night only, or never: the contacts get the live link
+/// by SMS or WhatsApp when a trip starts.
+class TripShareModeCard extends ConsumerStatefulWidget {
+  const TripShareModeCard({super.key});
+
+  @override
+  ConsumerState<TripShareModeCard> createState() => _TripShareModeCardState();
+}
+
+class _TripShareModeCardState extends ConsumerState<TripShareModeCard> {
+  TripShareMode? _picked;
+
+  Future<void> _set(TripShareMode m) async {
+    final before = _picked;
+    setState(() => _picked = m);
+    try {
+      await ref.read(cityRideRepositoryProvider).setTripShareMode(m);
+      ref.invalidate(tripShareModeProvider);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _picked = before);
+      showError(context, e);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final mode = _picked ?? ref.watch(tripShareModeProvider).value ?? TripShareMode.night;
+    return Card(
+      key: const ValueKey('trip-share-mode'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Share my trips automatically', style: t.textTheme.titleSmall),
+            const SizedBox(height: 2),
+            Text(
+              'When a trip starts, your contacts get its live link by SMS or WhatsApp.',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
+            RadioGroup<TripShareMode>(
+              groupValue: mode,
+              onChanged: (v) {
+                if (v != null && v != mode) _set(v);
+              },
+              child: Column(children: [
+                for (final m in TripShareMode.values)
+                  RadioListTile<TripShareMode>(
+                    key: ValueKey('trip-share-${m.name}'),
+                    value: m,
+                    title: Text(m.label),
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                  ),
+              ]),
+            ),
+          ],
+        ),
       ),
     );
   }

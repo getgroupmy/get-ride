@@ -75,7 +75,7 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
           'Declared value': r.declaredValue == null ? null : formatMoney(r.declaredValue, r.currency),
           'Recipient': [?r.recipientName, ?r.recipientPhone].join(' · '),
           'Waiting fee': (r.waitingFee ?? 0) > 0 ? '${formatMoney(r.waitingFee, r.currency)} (${r.waitingMinutes} min)' : null,
-          'Cancel fee': r.cancelFee == null ? null : '${formatMoney(r.cancelFee, r.currency)} (${r.raw['freight_cancel_fee_status']})',
+          'Cancel fee': r.freightCancelFee == null ? null : '${formatMoney(r.freightCancelFee, r.currency)} (${r.raw['freight_cancel_fee_status']})',
           'Commission': r.raw['commission_amount'] == null
               ? null
               : '${formatMoney(r.raw['commission_amount'] as num, r.currency)} '

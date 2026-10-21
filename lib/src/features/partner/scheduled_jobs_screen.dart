@@ -16,6 +16,7 @@ import 'package:intl/intl.dart';
 import '../../core/format.dart';
 import '../../core/scheduled_rides.dart';
 import '../../data/scheduled_ride_repository.dart';
+import '../../widgets/offer_motion.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../ride/driver_code_sheet.dart';
@@ -224,9 +225,10 @@ class _MineTab extends ConsumerWidget {
             if (incoming.isNotEmpty) ...[
               Text('Requests for you', style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              for (final o in incoming) _OfferCard(offer: o),
-              const SizedBox(height: 8),
             ],
+            // Kept mounted while empty, so the last offer still slides out.
+            OfferMotionList(children: [for (final o in incoming) _OfferCard(key: ValueKey('scheduled-offer-motion-${o.id}'), offer: o)]),
+            if (incoming.isNotEmpty) const SizedBox(height: 8),
             if (rides.isEmpty && incoming.isEmpty)
               EmptyState(
                 key: const ValueKey('scheduled-jobs-empty'),
@@ -256,7 +258,7 @@ class _MineTab extends ConsumerWidget {
 }
 
 class _OfferCard extends ConsumerWidget {
-  const _OfferCard({required this.offer});
+  const _OfferCard({super.key, required this.offer});
 
   final ScheduledOffer offer;
 

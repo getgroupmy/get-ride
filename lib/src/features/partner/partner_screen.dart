@@ -31,6 +31,11 @@ import '../../data/partner_doc_check.dart';
 import '../../data/partner_type_check.dart';
 import '../../core/partner_type_rules.dart' show PartnerTypeCheck, hailNotOfferedMessage;
 import '../../providers.dart';
+import '../../core/ride_offers.dart';
+import '../../data/city_ride_repository.dart';
+import '../../core/rider_rating.dart';
+import '../../widgets/rider_badge.dart';
+import '../../widgets/offer_motion.dart';
 import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -812,7 +817,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         fallbackPhone: profile?.phone,
       );
     } catch (e) {
-      if (mounted) showError(context, e);
+      if (mounted) {
+        // The server's reasons (0269): declined already, offers paused for
+        // cancelling too much, an amount out of range.
+        '$e'.contains('OFFER') ? showInfo(context, rideOfferError(e)) : showError(context, e);
+      }
       return;
     } finally {
       if (mounted) setState(() => _accepting = null);
@@ -833,9 +842,25 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final won = await showAppDialog<RideRequest>(id: 'partner.offer',
       context: context,
       barrierDismissible: false,
-      builder: (_) => OfferPendingDialog(repo: repo, ride: r, me: me, amount: amount, accepting: accepting),
+      builder: (_) => OfferPendingDialog(
+        repo: repo,
+        ride: r,
+        me: me,
+        amount: amount,
+        accepting: accepting,
+        myOffers: _myOfferRows(me),
+      ),
     );
     if (won != null && mounted) context.push('/drive/trip/${won.id}');
+  }
+
+  /// This driver's offer rows (0269); null where they can't be read.
+  Stream<List<RideOfferRow>>? _myOfferRows(String me) {
+    try {
+      return ref.read(cityRideRepositoryProvider).myOffers(me);
+    } catch (_) {
+      return null;
+    }
   }
 
   bool get _destinationOn {
@@ -1355,19 +1380,13 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
   }
 
-  /// The new request over the map (desktop): it flies in from the right and
-  /// back out when it is accepted, declined, taken or times out.
+  /// The new request over the map (desktop), with the app's one offer
+  /// motion: it slides in from the right and out to the left, tilting, when
+  /// it is accepted, declined, taken or times out.
   Widget _alertOverlay(Partner partner) {
     final list = ref.watch(openRequestsProvider).value ?? const <RideRequest>[];
     final alert = list.where((r) => r.id == _alertId).firstOrNull;
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 350),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, animation) => SlideTransition(
-        position: Tween(begin: const Offset(1.25, 0), end: Offset.zero).animate(animation),
-        child: FadeTransition(opacity: animation, child: child),
-      ),
+    return OfferMotionSwitcher(
       child: alert == null
           ? const SizedBox.shrink(key: ValueKey('no-alert'))
           : Material(
@@ -1731,6 +1750,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 Row(
                   children: [
                     Flexible(child: Text(r.firstNameForDrivers, style: t.textTheme.titleSmall)),
+                    // "New rider" or "Low" (0269).
+                    Padding(padding: const EdgeInsets.only(left: 6), child: RiderBadgeChip(ride: r)),
                     if (r.isForOthers)
                       Padding(
                         padding: const EdgeInsets.only(left: 4),
@@ -1747,7 +1768,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     final away = _distanceTo(r);
                     return Text(
                       [
-                        if (r.riderRating != null) '★ ${r.riderRating!.toStringAsFixed(1)}',
+                        if (showRiderStars(r, ref.read(cityRideConfigProvider).value?.riderRating ??
+                            RiderRatingSettings.standard))
+                          '★ ${r.riderRating!.toStringAsFixed(1)}',
+                        // The rider's trips (0269).
+                        if (r.riderTrips case final n?) '$n ${n == 1 ? 'trip' : 'trips'}',
                         if (away != null) '${formatDistance(away)} away',
                         if (away != null) '~${pickupMinutes(away)} min',
                       ].join(' · '),

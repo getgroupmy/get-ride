@@ -150,7 +150,8 @@ void main() {
     tester.view.physicalSize = const Size(900, 3200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final repo = _Repo(const ReliabilitySettings(ble: BleSettings(enabled: true)));
+    // The mid-trip check is on by default since 0269: turned off here first.
+    final repo = _Repo(const ReliabilitySettings(ble: BleSettings(enabled: true), safety: SafetySettings(separation: false)));
     await tester.pumpWidget(
       ProviderScope(
         overrides: [reliabilityRepositoryProvider.overrideWithValue(repo)],

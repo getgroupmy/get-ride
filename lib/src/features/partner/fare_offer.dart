@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/ride_bidding.dart';
+import '../../core/ride_offers.dart';
 import '../../data/models.dart';
 import '../../data/ride_repository.dart';
 import '../../widgets/page_style_host.dart';
@@ -102,7 +103,14 @@ class OfferPendingDialog extends StatefulWidget {
     required this.amount,
     this.accepting = false,
     this.window = counterOfferWindow,
+    this.myOffers,
   });
+
+  /// This driver's offer rows (0269), live: with many offers on a request
+  /// the row's single bid may be another driver's, so the offer's own row
+  /// says how it ended ("Another driver got this ride"). Null on a
+  /// database without them.
+  final Stream<List<RideOfferRow>>? myOffers;
 
   final RideRepository repo;
   final RideRequest ride;
@@ -122,6 +130,11 @@ const offerClosedAutoClose = Duration(seconds: 3);
 
 class _OfferPendingDialogState extends State<OfferPendingDialog> with SingleTickerProviderStateMixin {
   StreamSubscription<RideRequest>? _sub;
+  StreamSubscription<List<RideOfferRow>>? _rowsSub;
+
+  /// The offer's own row has been seen: it, not the request row's bid, says
+  /// how the offer ended.
+  bool _rowSeen = false;
   Timer? _tick;
 
   /// Reads the row every few seconds as well: the rider's answer must reach
@@ -138,6 +151,7 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> with SingleTick
   void initState() {
     super.initState();
     _sub = widget.repo.watch(widget.ride.id).listen(_update, onError: (Object _) {});
+    _rowsSub = widget.myOffers?.listen(_updateRows, onError: (Object _) {});
     _poll = Timer.periodic(offerAnswerPoll, (_) => _check());
     _tick = Timer.periodic(const Duration(seconds: 1), (_) {
       if (_outcome != null) return;
@@ -151,16 +165,55 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> with SingleTick
   @override
   void dispose() {
     _sub?.cancel();
+    _rowsSub?.cancel();
     _tick?.cancel();
     _poll?.cancel();
     _closing.dispose();
     super.dispose();
   }
 
+  void _updateRows(List<RideOfferRow> rows) {
+    if (_outcome != null || _popped) return;
+    final mine = rows
+        .where((o) => o.requestId == widget.ride.id && (o.amount - widget.amount).abs() < 0.005)
+        .fold<RideOfferRow?>(null, (a, o) => a == null || o.createdAt.isAfter(a.createdAt) ? o : a);
+    if (mine == null) return;
+    _rowSeen = true;
+    if (mine.status == OfferStatus.open) {
+      // The server's own window (the admin's lifetime), with a moment's grace.
+      final left = mine.expiresAt.difference(DateTime.now()) + const Duration(seconds: 2);
+      if (left < _left) setState(() => _left = left.isNegative ? Duration.zero : left);
+      return;
+    }
+    final o = rowOfferOutcome(mine);
+    if (o == null) return;
+    switch (o.outcome) {
+      case OfferOutcome.won:
+        unawaited(_check());
+      case OfferOutcome.outbid:
+        _finish('Another driver got this ride.');
+      case OfferOutcome.raised:
+        _finish('The rider raised the fare. You can accept it or offer again.');
+      case OfferOutcome.declined:
+        _finish(o.expired ? 'The rider did not answer in time. Your offer was withdrawn.' : 'The rider declined your offer.');
+      case OfferOutcome.closed:
+        _finish('The rider cancelled this request.');
+      case OfferOutcome.pending:
+        break;
+    }
+  }
+
   void _update(RideRequest r) {
     // The answer can arrive twice (realtime and the read): act on it once.
     if (_outcome != null || _popped) return;
     final o = offerOutcome(r, me: widget.me, amount: widget.amount, fareWhenOffered: widget.ride.fare);
+    // With the offer's own row in hand, the request row's bid (the latest
+    // of several drivers') says nothing of this one: only the win and the
+    // end of the request count.
+    if (_rowSeen && (o == OfferOutcome.outbid || o == OfferOutcome.declined || o == OfferOutcome.raised)) {
+      if (o == OfferOutcome.outbid && r.status != RideStatus.open) _finish('Another driver got this ride.');
+      return;
+    }
     switch (o) {
       case OfferOutcome.pending:
         return;
@@ -193,6 +246,7 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> with SingleTick
     _tick?.cancel();
     _poll?.cancel();
     _sub?.cancel();
+    _rowsSub?.cancel();
   }
 
   void _finish(String message, {bool withdraw = false}) {
@@ -229,7 +283,7 @@ class _OfferPendingDialogState extends State<OfferPendingDialog> with SingleTick
                   : 'You offered ${r.fareText(widget.amount)}. Waiting for the rider…',
             ),
             const SizedBox(height: 12),
-            LinearProgressIndicator(value: _left.inMilliseconds / widget.window.inMilliseconds),
+            LinearProgressIndicator(value: (_left.inMilliseconds / widget.window.inMilliseconds).clamp(0.0, 1.0)),
             const SizedBox(height: 4),
             Text('${_left.inSeconds}s'),
           ] else ...[
