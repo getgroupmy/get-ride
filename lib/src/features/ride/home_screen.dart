@@ -1018,12 +1018,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// The map was dragged under the pickup pin and it dropped at [p]: that
-  /// is the pickup now, named once the geocoder answers.
+  /// is the pickup now, named once the geocoder answers. Inside an airport
+  /// or a place with pickup gates (0258) the pin first runs on to the
+  /// nearest gate and drops again there.
   Future<void> _onPinDropped(LatLng p) async {
     setState(() {
       _dragged = p;
       _pickup = Place(name: 'Finding address…', address: '', point: p);
     });
+    if (await _runToGate(p) || !mounted || _pickup?.point != p) return;
+    // At a gate: its callout at once, before the address is found.
+    await _syncPickupGate();
+    if (!mounted || _pickup?.point != p) return;
     final place = await ref.read(geoServiceProvider).reverse(p);
     // A later drag, search or swap has moved the pickup on since.
     if (!mounted || _pickup?.point != p) return;
@@ -1031,6 +1037,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await _syncPickupGate();
     if (!mounted) return;
     _updateRoute();
+  }
+
+  /// The pickup pin dropped at [p] inside an area with pickup gates: the map
+  /// glides under the lifted pin to the nearest gate, where it drops again
+  /// ([MapDragPinState.runTo]). False when [p] is at no gate's area, already
+  /// on its gate, or the pin can't move; true also when the pickup moved on
+  /// meanwhile.
+  Future<bool> _runToGate(LatLng p) async {
+    List<AirportArea> areas;
+    List<AirportDoor> doors;
+    try {
+      areas = await ref.read(airportAreasProvider.future);
+      doors = await ref.read(airportDoorsProvider.future);
+    } catch (_) {
+      return false;
+    }
+    if (!mounted || _pickup?.point != p) return true;
+    final snap = snapToGate(areas: areas, doors: doors, p: p);
+    final to = snap == null ? null : doorPoint(snap.door);
+    if (to == null || const Distance()(p, to) < 1) return false;
+    final pin = _pin.currentState;
+    if (pin == null) return false;
+    double zoom;
+    try {
+      zoom = math.max(_map.camera.zoom, homeStreetZoom);
+    } catch (_) {
+      return false;
+    }
+    return pin.runTo(p, to, zoom: zoom, offset: _focusOffset);
   }
 
   /// An admin changed a region (bidding, pricing, services, its rules): the
@@ -1321,7 +1356,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         guides: s?.guideOn ?? !snap.area.isPlace,
       );
       _pickupDoor = door;
-      if (at == null) _pickup = _atGate(snap.area, door, a);
+      // A pin dropped on the gate (or run on to it) is named for it too; a
+      // gate picked in search keeps its "Place - Gate".
+      if (at == null || !a.name.endsWith(door.name)) _pickup = _atGate(snap.area, door, a);
     });
     if (at == null) _flyToPickup();
     if (open) await _openGatePicker();

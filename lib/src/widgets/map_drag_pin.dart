@@ -57,7 +57,7 @@ class MapDragPin extends StatefulWidget {
   State<MapDragPin> createState() => MapDragPinState();
 }
 
-class MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMixin {
+class MapDragPinState extends State<MapDragPin> with TickerProviderStateMixin {
   late final AnimationController _lift = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 200),
@@ -71,6 +71,9 @@ class MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMi
   StreamSubscription<MapEvent>? _events;
   Timer? _quiet;
 
+  /// The map gliding under the lifted pin ([runTo]).
+  late final AnimationController _run = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+
   /// The pin's point on the map widget while it is off the map; null when
   /// it is down.
   Offset? _at;
@@ -80,6 +83,7 @@ class MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMi
   void initState() {
     super.initState();
     _events = widget.controller.mapEventStream.listen(_onEvent);
+    _run.addListener(_onRun);
   }
 
   @override
@@ -92,6 +96,7 @@ class MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMi
     // Switched off mid-drag (a destination was set): put it back unmoved.
     if (!widget.enabled && _at != null) {
       _quiet?.cancel();
+      _run.stop();
       _lift.value = 0;
       _at = null;
       WidgetsBinding.instance.addPostFrameCallback((_) => widget.onMoving?.call(false));
@@ -102,6 +107,7 @@ class MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMi
   void dispose() {
     _events?.cancel();
     _quiet?.cancel();
+    _run.dispose();
     _lift.dispose();
     super.dispose();
   }
@@ -149,6 +155,68 @@ class MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMi
     });
   }
 
+  /// Lifts the pin from [from], where it was dropped, and carries it on to
+  /// [to] while the map glides under it ([zoom] at the end, [to] kept at
+  /// [offset] from the map's centre, as [MapController.move]), then drops it
+  /// there with [MapDragPin.onDropped] told [to]: the pickup running on to
+  /// the nearest gate of the place it was dropped in (0258). False when the
+  /// pin can't move now (off, or the map not drawn yet).
+  bool runTo(LatLng from, LatLng to, {required double zoom, Offset offset = Offset.zero}) {
+    if (!widget.enabled || !mounted) return false;
+    final MapCamera camera;
+    try {
+      camera = widget.controller.camera;
+    } catch (_) {
+      return false;
+    }
+    _quiet?.cancel();
+    final focus = camera.nonRotatedSize.center(offset);
+    final pin = camera.latLngToScreenOffset(from);
+    // From the point under the pin's resting place now, so the glide starts
+    // where the map is.
+    _glide = (
+      from: camera.screenOffsetToLatLng(focus),
+      to: to,
+      fromZoom: camera.zoom,
+      toZoom: zoom,
+      offset: offset,
+      pin: pin,
+      focus: focus,
+    );
+    final lifting = _at == null;
+    setState(() => _at = pin);
+    if (lifting) widget.onMoving?.call(true);
+    _lift.forward();
+    _run.forward(from: 0).then((_) {
+      if (!mounted) return;
+      _quiet = Timer(widget.settle, () {
+        if (mounted && _at == focus) _land(to);
+      });
+    });
+    return true;
+  }
+
+  /// The glide [runTo] is making: the map's point under [focus] from
+  /// [from] to [to], and the pin from [pin] to [focus].
+  ({LatLng from, LatLng to, double fromZoom, double toZoom, Offset offset, Offset pin, Offset focus})? _glide;
+
+  void _onRun() {
+    final g = _glide;
+    if (g == null || !mounted) return;
+    final t = Curves.easeInOut.transform(_run.value);
+    try {
+      widget.controller.move(
+        LatLng(
+          g.from.latitude + (g.to.latitude - g.from.latitude) * t,
+          g.from.longitude + (g.to.longitude - g.from.longitude) * t,
+        ),
+        g.fromZoom + (g.toZoom - g.fromZoom) * t,
+        offset: g.offset,
+      );
+    } catch (_) {}
+    setState(() => _at = t >= 1 ? g.focus : Offset.lerp(g.pin, g.focus, t));
+  }
+
   void _armDrop() {
     _quiet?.cancel();
     _quiet = Timer(widget.settle, _drop);
@@ -176,7 +244,11 @@ class MapDragPinState extends State<MapDragPin> with SingleTickerProviderStateMi
     return Stack(
       children: [
         Listener(
-          onPointerDown: (_) => _pointers++,
+          onPointerDown: (_) {
+            _pointers++;
+            // A finger on the map takes over from a glide ([runTo]).
+            if (_run.isAnimating) _run.stop();
+          },
           onPointerUp: (_) => _release(),
           onPointerCancel: (_) => _release(),
           child: widget.child,

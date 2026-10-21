@@ -55,12 +55,13 @@ void main() {
       expect(snapToGate(areas: areas, doors: doors, p: const LatLng(5, 103)), isNull);
     });
 
-    test('overlaps: the smallest place, and an airport before a place', () {
+    test('overlaps: the smallest place, and a place before an airport (0266)', () {
       expect(snapToGate(areas: areas, doors: doors, p: const LatLng(3.11, 101.61))!.area.id, 'mall');
       expect(snapToGate(areas: areas, doors: doors, p: const LatLng(3.15, 101.65))!.door.id, 'c1');
       final both = snapToGate(areas: areas, doors: doors, p: const LatLng(2.78, 101.78))!;
-      expect(both.area.id, 'airport');
-      expect(both.door.id, 'a1');
+      expect(both.area.id, 'hotel');
+      expect(both.door.id, 'h1');
+      expect(snapToGate(areas: areas, doors: doors, p: const LatLng(2.72, 101.72))!.area.id, 'airport');
       expect(snapToGate(areas: areas, doors: doors, p: const LatLng(2.83, 101.83))!.area.id, 'hotel');
     });
 
@@ -69,8 +70,8 @@ void main() {
       expect(snapToGate(areas: areas, doors: doors, p: const LatLng(4.05, 102.05)), isNull);
     });
 
-    test('areas by precedence: airports first, then places smallest up', () {
-      expect(areasByPrecedence(areas).map((a) => a.id), ['airport', 'park', 'mall', 'hotel', 'complex']);
+    test('areas by precedence: places smallest up, then airports', () {
+      expect(areasByPrecedence(areas).map((a) => a.id), ['park', 'mall', 'hotel', 'complex', 'airport']);
     });
   });
 

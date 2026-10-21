@@ -5,8 +5,8 @@
 /// A pickup dropped anywhere inside an area that has pickup gates snaps to
 /// the nearest of them (straight-line distance); outside every area, or in
 /// one without gates, it stays where it was dropped. Where boundaries
-/// overlap, the area is the server's (`area_at`): an airport first, then
-/// the smallest place.
+/// overlap, the area is the server's (`area_at`, 0266): the smallest place,
+/// then an airport.
 library;
 
 import 'package:latlong2/latlong.dart';

@@ -294,8 +294,9 @@ List<T> collapseIntoAreas<T>(
 }
 
 /// [areas] in the order a point is matched (as the server's `area_at`,
-/// 0258): every airport first, in the order given, then the places from
-/// the smallest boundary up.
+/// 0266): the places from the smallest boundary up, then every airport, in
+/// the order given. A mall with its own boundary inside an airport's is the
+/// mall.
 List<AirportArea> areasByPrecedence(List<AirportArea> areas) {
   final airports = [for (final a in areas) if (!a.isPlace) a];
   final places = [for (final a in areas) if (a.isPlace) a];
@@ -304,5 +305,5 @@ List<AirportArea> areasByPrecedence(List<AirportArea> areas) {
     final c = (a.sizeM2 ?? double.infinity).compareTo(b.sizeM2 ?? double.infinity);
     return c != 0 ? c : order[a.id]!.compareTo(order[b.id]!);
   });
-  return [...airports, ...places];
+  return [...places, ...airports];
 }
