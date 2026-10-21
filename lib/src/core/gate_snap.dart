@@ -100,3 +100,28 @@ List<GateGroup> gateGroups(List<AirportDoor> gates) {
   }
   return (0, 0);
 }
+
+/// The one outline of an area to draw around [focus] (the chosen gate, or
+/// the pickup): an area copied from OpenStreetMap can hold many pieces
+/// (KLIA's terminals, its runways), and drawing them all buries the gates.
+/// The smallest piece holding [focus], else the nearest; every piece when
+/// there is no [focus].
+List<List<LatLng>> ringsAround(List<List<LatLng>> rings, LatLng? focus) {
+  final usable = [for (final r in rings) if (r.length >= 3) r];
+  if (focus == null || usable.length < 2) return usable;
+  final holding = [for (final r in usable) if (ringContains(r, focus)) r];
+  if (holding.isNotEmpty) {
+    holding.sort((a, b) => ringBoxSize(a).compareTo(ringBoxSize(b)));
+    return [holding.first];
+  }
+  var best = usable.first;
+  var bestM = double.infinity;
+  for (final r in usable) {
+    final m = ringDistanceM(r, focus);
+    if (m < bestM) {
+      bestM = m;
+      best = r;
+    }
+  }
+  return [best];
+}

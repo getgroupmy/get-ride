@@ -15,7 +15,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'map_brightness.dart';
 
 /// Whether this device can draw Apple's map: iPhone and iPad.
-bool get appleNativeSupported => !kIsWeb && Platform.isIOS;
+bool get appleNativeSupported => debugAppleNativeSupported ?? (!kIsWeb && Platform.isIOS);
+
+/// Tests set this to build Apple's map (a native view) as an iPhone would.
+@visibleForTesting
+bool? debugAppleNativeSupported;
 
 /// Sets Apple's maps light or dark (ios/Runner/AppDelegate.swift).
 const appleMapAppearanceChannel = MethodChannel('get_ride/map_appearance');
@@ -121,6 +125,14 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
               _styled = null;
               _follow(MapCamera.of(context));
               _style(_wanted);
+              // A map just created may not have its size yet (in a sheet
+              // still sliding up): MapKit then fits the area to nothing and
+              // stays far out. Once more when it has settled.
+              Future<void>.delayed(const Duration(milliseconds: 400), () {
+                if (!mounted || _map != c) return;
+                _shown = null;
+                _follow(MapCamera.of(this.context));
+              });
             },
             mapType: switch (widget.type) {
               'satellite' => am.MapType.satellite,

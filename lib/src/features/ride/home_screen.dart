@@ -2362,7 +2362,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 if (_gateArea case final g? when _pickup != null && g.area.contains(_pickup!.point, bufferM: 0))
                   ...gateAreaLayers(
                     context,
-                    rings: g.area.rings,
+                    // Only the outline the pickup is in, not every piece
+                    // of the area (KLIA's terminals and runways).
+                    rings: ringsAround(g.area.rings, _pickup!.point),
                     gates: g.gates,
                     selectedId: _pickupDoor?.id,
                     letters: {for (var i = 0; i < g.gates.length; i++) g.gates[i].id: gateLetter(i)},
