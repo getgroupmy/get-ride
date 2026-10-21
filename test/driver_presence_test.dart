@@ -16,15 +16,15 @@ void main() {
     at = (lat: 3.15, lng: 101.71);
   });
 
-  testWidgets('online reports where the driver is, every minute, and offline once', (tester) async {
+  testWidgets('online reports where the driver is, at once when they move, and offline once', (tester) async {
     {
       final r = reporter();
       r.setOnline(true);
       await tester.pump();
       expect(reports, ['true 3.15 101.71']);
       at = (lat: 3.16, lng: 101.72);
-      await tester.pump(const Duration(seconds: 61));
-      expect(reports.last, 'true 3.16 101.72');
+      await tester.pump(const Duration(seconds: 10));
+      expect(reports.last, 'true 3.16 101.72', reason: 'moved: the next 10 s check-in sends');
       expect(reports, hasLength(2));
       r.setOnline(false);
       await tester.pump();
@@ -32,6 +32,33 @@ void main() {
       await tester.pump(const Duration(minutes: 5));
       expect(reports, hasLength(3), reason: 'nothing more while offline');
     }
+  });
+
+  testWidgets('standing still: a heartbeat every 30 s, not every 10 s', (tester) async {
+    final r = reporter();
+    r.setOnline(true);
+    await tester.pump();
+    expect(reports, hasLength(1));
+    at = (lat: 3.15005, lng: 101.71005); // about 8 m
+    await tester.pump(const Duration(seconds: 10));
+    await tester.pump(const Duration(seconds: 10));
+    expect(reports, hasLength(1), reason: 'under 15 m and under 30 s: skipped');
+    await tester.pump(const Duration(seconds: 10));
+    expect(reports, hasLength(2), reason: '30 s: the heartbeat');
+    at = (lat: 3.1504, lng: 101.71005); // about 45 m on
+    await tester.pump(const Duration(seconds: 10));
+    expect(reports, hasLength(3), reason: 'moved 15 m: sent at once');
+    r.dispose();
+  });
+
+  test('presenceReportDue', () {
+    const here = (lat: 3.15, lng: 101.71);
+    expect(presenceMetres(here, (lat: 3.15, lng: 101.7101)), closeTo(11.1, 0.5));
+    expect(presenceReportDue(sinceLast: const Duration(seconds: 10), last: here, now: here), isFalse);
+    expect(presenceReportDue(sinceLast: const Duration(seconds: 30), last: here, now: here), isTrue);
+    expect(presenceReportDue(sinceLast: const Duration(seconds: 10), last: here, now: (lat: 3.1503, lng: 101.71)), isTrue);
+    expect(presenceReportDue(sinceLast: const Duration(seconds: 10), last: here, now: null), isFalse);
+    expect(presenceReportDue(sinceLast: const Duration(seconds: 10), last: null, now: here), isTrue);
   });
 
   testWidgets('no location still says the driver is online; a failed report is not fatal', (tester) async {
@@ -49,8 +76,8 @@ void main() {
       await tester.pump();
       expect(reports, isEmpty);
       fail = false;
-      await tester.pump(const Duration(seconds: 61));
-      expect(reports, ['true null null']);
+      await tester.pump(const Duration(seconds: 10));
+      expect(reports, ['true null null'], reason: 'a failed first report is tried again at the next check-in');
       r.dispose();
       await tester.pump();
       expect(reports.last, 'false null null', reason: 'signing out takes the driver offline');

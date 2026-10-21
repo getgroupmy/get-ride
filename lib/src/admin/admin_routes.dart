@@ -4,6 +4,7 @@ import 'admin_registry.dart';
 import 'admin_shell.dart';
 import 'screens/commission_screen.dart';
 import 'screens/fare_tariffs_screen.dart';
+import 'screens/god_view_screen.dart';
 import 'screens/messaging_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/dispatch/admin_dispatch_screen.dart';
@@ -23,6 +24,7 @@ final adminRoute = ShellRoute(
   routes: [
     GoRoute(path: '/admin', redirect: (_, _) => '/admin/dashboard'),
     GoRoute(path: '/admin/dashboard', builder: (_, _) => const AdminDashboardScreen()),
+    GoRoute(path: '/admin/god-view', builder: (_, _) => const GodViewScreen()),
     GoRoute(
       path: '/admin/users',
       builder: (_, s) => AdminUsersScreen(initialFilter: s.uri.queryParameters['status']),
@@ -41,7 +43,10 @@ final adminRoute = ShellRoute(
     ),
     GoRoute(
       path: '/admin/rides',
-      builder: (_, s) => AdminRidesScreen(initialFilter: s.uri.queryParameters['status']),
+      builder: (_, s) => AdminRidesScreen(
+        initialFilter: s.uri.queryParameters['status'],
+        openRideId: s.uri.queryParameters['ride'],
+      ),
     ),
     GoRoute(path: '/admin/support', builder: (_, _) => const AdminSupportScreen()),
     GoRoute(
