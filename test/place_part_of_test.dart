@@ -464,8 +464,9 @@ void main() {
           'Opens with KLIA Terminal 1 and KLIA Terminal 2.',
         );
         await tester.enterText(find.byKey(const ValueKey('part-order-field')), '1');
-        await tester.ensureVisible(find.text('Save'));
-        await tester.tap(find.text('Save'));
+        // The sheet's Save (the page's Places inside an airport card has one too).
+        await tester.ensureVisible(find.text('Save').last);
+        await tester.tap(find.text('Save').last);
         await _settle(tester);
         final saved = db.airports.single['values'] as Map;
         expect(saved['partOf'], 'KLIA');

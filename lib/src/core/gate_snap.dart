@@ -5,8 +5,9 @@
 /// A pickup dropped anywhere inside an area that has pickup gates snaps to
 /// the nearest of them (straight-line distance); outside every area, or in
 /// one without gates, it stays where it was dropped. Where boundaries
-/// overlap, the area is the server's (`area_at`): an airport first, then
-/// the smallest place.
+/// overlap, the area is the server's (`area_at`, 0266): the smallest place,
+/// the first airport, and a point in both as the admin set it
+/// ([AreaPrecedenceRule]).
 library;
 
 import 'package:latlong2/latlong.dart';
@@ -14,12 +15,28 @@ import 'package:latlong2/latlong.dart';
 import 'airport_areas.dart';
 import 'airport_queue.dart';
 
-/// The area holding [p] (no buffer), by the server's precedence.
-AirportArea? gateAreaAt(List<AirportArea> areas, LatLng p) {
-  for (final a in areasByPrecedence(areas)) {
-    if (a.contains(p, bufferM: 0)) return a;
-  }
-  return null;
+/// The area holding [p] (no buffer), as the server's `area_at`: the
+/// smallest place holding it, or the first airport, and where both hold it
+/// the one [rule] picks.
+AirportArea? gateAreaAt(List<AirportArea> areas, LatLng p, {AreaPrecedenceRule rule = const AreaPrecedenceRule()}) {
+  final holding = [for (final a in areasByPrecedence(areas)) if (a.contains(p, bufferM: 0)) a];
+  final airport = holding.where((a) => !a.isPlace).firstOrNull;
+  final place = holding.where((a) => a.isPlace).firstOrNull;
+  if (airport == null || place == null) return airport ?? place;
+  return rule.pick(place, airport);
+}
+
+/// The area a search result at [p] opens (place search's `airportId`): the
+/// area [gateAreaAt] gives, when it is an airport or a place grouping its
+/// search results (#483); a place that doesn't group results only when
+/// [rule] put a point also inside an airport at it, so the doors offered
+/// are the ones the server's `area_at` accepts. Otherwise null (the nearest
+/// place is matched).
+AirportArea? searchAreaAt(List<AirportArea> areas, LatLng p, {AreaPrecedenceRule rule = const AreaPrecedenceRule()}) {
+  final area = gateAreaAt(areas, p, rule: rule);
+  if (area == null || !area.isPlace || area.groupResults) return area;
+  final inAirport = areas.any((a) => !a.isPlace && a.contains(p, bufferM: 0));
+  return inAirport ? area : null;
 }
 
 /// The point of a door, or null when the admin left it blank.
@@ -46,15 +63,16 @@ AirportDoor? nearestGate(List<AirportDoor> gates, LatLng p) {
 /// Where a pickup (or drop-off, [side]) at [p] snaps to.
 typedef GateSnap = ({AirportArea area, List<AirportDoor> gates, AirportDoor door});
 
-/// The area [p] is in and the nearest of its gates for [side]; null when
+/// The area [p] is in (by [rule]) and the nearest of its gates for [side]; null when
 /// [p] is in no area, or its area has no gate with a point.
 GateSnap? snapToGate({
   required List<AirportArea> areas,
   required List<AirportDoor> doors,
   required LatLng p,
   AirportSide side = AirportSide.pick,
+  AreaPrecedenceRule rule = const AreaPrecedenceRule(),
 }) {
-  final area = gateAreaAt(areas, p);
+  final area = gateAreaAt(areas, p, rule: rule);
   if (area == null) return null;
   final gates = doorsFor(doors, area.id, side);
   final door = nearestGate(gates, p);

@@ -55,13 +55,43 @@ void main() {
       expect(snapToGate(areas: areas, doors: doors, p: const LatLng(5, 103)), isNull);
     });
 
-    test('overlaps: the smallest place, and an airport before a place', () {
+    test('overlaps: the smallest place; in an airport too, as the setting says (0266)', () {
       expect(snapToGate(areas: areas, doors: doors, p: const LatLng(3.11, 101.61))!.area.id, 'mall');
       expect(snapToGate(areas: areas, doors: doors, p: const LatLng(3.15, 101.65))!.door.id, 'c1');
+      // The hotel, part of nothing, in the airport: the hotel by default.
       final both = snapToGate(areas: areas, doors: doors, p: const LatLng(2.78, 101.78))!;
-      expect(both.area.id, 'airport');
-      expect(both.door.id, 'a1');
-      expect(snapToGate(areas: areas, doors: doors, p: const LatLng(2.83, 101.83))!.area.id, 'hotel');
+      expect(both.area.id, 'hotel');
+      expect(both.door.id, 'h1');
+      const airportFirst = AreaPrecedenceRule(mode: AreaPrecedence.airport);
+      final old = snapToGate(areas: areas, doors: doors, p: const LatLng(2.78, 101.78), rule: airportFirst)!;
+      expect(old.area.id, 'airport');
+      expect(old.door.id, 'a1');
+      expect(snapToGate(areas: areas, doors: doors, p: const LatLng(2.72, 101.72))!.area.id, 'airport');
+      expect(snapToGate(areas: areas, doors: doors, p: const LatLng(2.83, 101.83), rule: airportFirst)!.area.id, 'hotel');
+    });
+
+    test('search: the area a result opens, keeping #483\'s grouping (0266)', () {
+      // In the airport only: the airport.
+      expect(searchAreaAt(areas, const LatLng(2.72, 101.72))?.id, 'airport');
+      // In the airport and the hotel (which doesn't group results): the hotel
+      // by default, as area_at; the airport with Always the airport.
+      expect(searchAreaAt(areas, const LatLng(2.78, 101.78))?.id, 'hotel');
+      expect(
+        searchAreaAt(areas, const LatLng(2.78, 101.78), rule: const AreaPrecedenceRule(mode: AreaPrecedence.airport))?.id,
+        'airport',
+      );
+      // A place not grouping results, outside every airport: the nearest place is matched.
+      expect(searchAreaAt(areas, const LatLng(2.83, 101.83)), isNull);
+      expect(searchAreaAt(areas, const LatLng(3.11, 101.61)), isNull);
+      // One that groups them: itself.
+      final grouping = AirportArea.fromEntry(
+        'mall',
+        {'name': 'mall', 'boundary': _box(3.12, 3.10, 101.62, 101.60), 'groupResults': true},
+        kind: AreaKind.place,
+        sizeM2: 4e6,
+      )!;
+      expect(searchAreaAt([complex, grouping], const LatLng(3.11, 101.61))?.id, 'mall');
+      expect(searchAreaAt(areas, const LatLng(5, 103)), isNull);
     });
 
     test('a place with a boundary and no gates: no snap', () {

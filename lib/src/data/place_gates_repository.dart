@@ -25,8 +25,27 @@ final placeGatesProvider = FutureProvider<GateCatalogue>((ref) async {
     }
   }
 
+  // A page at a time: the API answers at most 1,000 rows a request, and the
+  // places and their gates outgrow that. Unpaged, every row past the first
+  // 1,000 (the newest gates) was silently left out.
+  Future<List<Map<String, dynamic>>> allGates() async {
+    const page = 1000;
+    final out = <Map<String, dynamic>>[];
+    while (true) {
+      final rows = await db
+          .from('multi_gate')
+          .select('id, kind, values, position')
+          .order('position', ascending: true)
+          .order('created_at', ascending: true)
+          .order('id', ascending: true)
+          .range(out.length, out.length + page - 1);
+      out.addAll(rows);
+      if (rows.length < page) return out;
+    }
+  }
+
   final results = await Future.wait([
-    read(() => db.from('multi_gate').select('id, kind, values, position').order('position', ascending: true).order('created_at', ascending: true)),
+    read(allGates),
     // A place's own area row (kind 'place', 0258) is the place itself, already
     // listed from multi_gate. Before 0258 there is no kind column.
     read(() async {
@@ -55,8 +74,9 @@ final placeGatesProvider = FutureProvider<GateCatalogue>((ref) async {
 
 /// The areas with a drawn boundary, in the order a point is matched
 /// ([areasByPrecedence]): Admin → Airport Areas' airports, then the
-/// multi-gate places whose boundary is on (0258), smallest first. Empty
-/// when unreadable. A place's area row has its name only: its search
+/// multi-gate places whose boundary is on (0258), smallest first; a point in
+/// both is at the one the admin's setting picks (gate_snap.dart's
+/// `gateAreaAt`, 0266). Empty when unreadable. A place's area row has its name only: its search
 /// grouping, address, position and type come from its multi_gate row (the
 /// same id). Search collapses results into the areas that group them
 /// ([AirportArea.groupResults]); the door picker and fares use every area.
@@ -76,8 +96,19 @@ final airportAreasProvider = FutureProvider<List<AirportArea>>((ref) async {
     final placeValues = <String, Map<String, dynamic>>{};
     if (rows.any((r) => r['kind'] == 'place')) {
       try {
-        for (final r in await db.from('multi_gate').select('id, values').eq('kind', 'place')) {
-          placeValues['${r['id']}'] = m(r['values']);
+        // A page at a time, past the API's 1,000-row cap.
+        const page = 1000;
+        for (var from = 0; ; from += page) {
+          final rows = await db
+              .from('multi_gate')
+              .select('id, values')
+              .eq('kind', 'place')
+              .order('id', ascending: true)
+              .range(from, from + page - 1);
+          for (final r in rows) {
+            placeValues['${r['id']}'] = m(r['values']);
+          }
+          if (rows.length < page) break;
         }
       } catch (_) {
         // Without them a place keeps its defaults: not grouped.

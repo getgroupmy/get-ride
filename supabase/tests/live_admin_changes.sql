@@ -61,7 +61,9 @@ begin
     -- Driver services: switches per car, locks and their log (migration 0263).
     'driver_service_prefs', 'driver_service_locks', 'driver_service_lock_events',
     -- Place types (migration 0264).
-    'place_types'
+    'place_types',
+    -- Places inside an airport (migration 0266).
+    'area_precedence_settings'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

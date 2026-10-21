@@ -316,8 +316,9 @@ void main() {
         await _settle(tester);
         expect(find.byKey(const ValueKey('group-word-gateway')), findsNothing);
 
-        await tester.ensureVisible(find.text('Save'));
-        await tester.tap(find.text('Save'));
+        // The sheet's Save (the page's Places inside an airport card has one too).
+        await tester.ensureVisible(find.text('Save').last);
+        await tester.tap(find.text('Save').last);
         await _settle(tester);
         final saved = db.airports.single['values'] as Map;
         expect(saved['groupResults'], isTrue);

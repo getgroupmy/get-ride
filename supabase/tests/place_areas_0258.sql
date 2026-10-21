@@ -48,6 +48,15 @@ insert into public.countries (name, values, geofence) values
   ('Placeland 257', '{"timezone": "Asia/Kuala_Lumpur"}', jsonb_build_object('boundary',
     '{"bbox":{"north":40,"south":30,"east":130,"west":120}}'));
 
+-- Written for 0258's rule, an airport before a place where both hold a
+-- point: 0266 makes that an admin setting.
+do $$
+begin
+  if to_regclass('public.area_precedence_settings') is not null then
+    update public.area_precedence_settings set mode = 'airport' where id = 1;
+  end if;
+end $$;
+
 -- An airport 35.0..35.2 / 125.0..125.2.
 insert into public.airport_areas (id, values) values
   ('00000000-0000-0000-0000-0000000257e0', jsonb_build_object('name', 'Airport 257', 'code', 'APT',
