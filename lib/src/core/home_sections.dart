@@ -7,6 +7,7 @@ import 'dart:math' as math;
 
 import '../admin/screens/meterapp/display_logic.dart';
 import 'expo_routes.dart';
+import 'freight.dart' show freightPageRoute, freightServiceType;
 
 /// Which home parts show, read with Expo's defaults (the service boxes and
 /// the on-map cars start off).
@@ -113,6 +114,7 @@ class ServiceBoxView {
     this.imageUri,
     this.route,
     this.badge,
+    this.freight = false,
   });
 
   final int index;
@@ -127,19 +129,27 @@ class ServiceBoxView {
   /// 'SOON', 'NEW' or none.
   final String? badge;
 
+  /// The Freight box: it opens the Freight page ([freightPageRoute]) once
+  /// there is a freight size to book, whatever its "coming soon" says.
+  final bool freight;
+
   /// Box 0 is the large card.
   bool get featured => index == 0;
 }
 
 /// The five boxes as configured. [serviceNames] names the admin services a
 /// box can be linked to (by id); [regionServices], when the rider's region
-/// restricts them, are the ones switched on there.
+/// restricts them, are the ones switched on there. The Freight box (named
+/// Freight, linked to the Freight service or set to [freightPageRoute])
+/// opens the Freight page only while [freightAvailable] (an active Vehicle
+/// Service under Freight, core/freight.dart), else it is "coming soon".
 List<ServiceBoxView> serviceBoxViews(
   Map<String, dynamic> settings, {
   Map<String, String> serviceNames = const {},
   bool serviceEnabled = true,
   bool newBadge = true,
   Set<String>? regionServices,
+  bool freightAvailable = false,
 }) {
   final boxes = normalizeBoxes(settings['serviceBoxes']);
   return [
@@ -156,15 +166,23 @@ List<ServiceBoxView> serviceBoxViews(
         // A box linked to a service the rider's region has switched off
         // (Admin → Country / States / Cities) is not available there.
         final offHere = regionServices != null && str('serviceId') != null && !regionServices.contains(str('serviceId'));
-        final route = serviceEnabled && b['comingSoon'] != true && !offHere ? flutterRouteFor(str('route')) : null;
+        final title = str('name') ?? linked ?? preset.$1;
+        final freight = str('route') == freightPageRoute ||
+            [title, ?linked].any((n) => n.trim().toLowerCase() == freightServiceType.toLowerCase());
+        final route = !serviceEnabled || offHere
+            ? null
+            : freight
+                ? (freightAvailable ? freightPageRoute : null)
+                : (b['comingSoon'] != true ? flutterRouteFor(str('route')) : null);
         return ServiceBoxView(
           index: i,
-          title: str('name') ?? linked ?? preset.$1,
+          title: title,
           accent: preset.$2,
           iconName: str('iconName'),
           imageUri: str('imageUri'),
           route: route,
           badge: route == null ? 'SOON' : (i == 0 && newBadge ? 'NEW' : null),
+          freight: freight,
         );
       }(),
   ];

@@ -279,6 +279,8 @@ const liveAdminTables = <String>[
   // Driver services (0263): every driver's switches, and who changed a lock.
   'driver_service_prefs',
   'driver_service_lock_events',
+  // Freight (0267): the recipient's tracking link, on the ride's admin page.
+  'freight_recipient_notices',
 ];
 
 /// Rides and sessions change every few seconds while trips run; an admin

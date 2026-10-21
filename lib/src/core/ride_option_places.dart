@@ -22,6 +22,14 @@ abstract final class OptionChargeKey {
   static String pet(String type) => 'pet:$type';
   static String petSize(String size) => 'pet-size:$size';
   static String assist(String id) => 'assist:$id';
+
+  /// A freight option's fixed charge is kept under its own id ('helper-1').
+  static String freight(RideOptionKind k) => k.id;
+
+  /// The most a freight sender may declare (core/freight.dart): an amount
+  /// up to [freightDeclaredCapMax], over an option charge's most.
+  static const freightDeclaredCap = 'freight-declared-cap';
+  static const freightDeclaredCapMax = 1000000.0;
 }
 
 /// A charge set at a place: a fixed amount or a percentage of the fare,
@@ -108,6 +116,11 @@ class OptionPlaceSettings {
 
   static String _s(Object? v) => v is String ? v.trim() : '';
 
+  static double _amount(Object? v, double max) {
+    final n = v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
+    return n == null || !n.isFinite || n < 0 ? 0 : (n > max ? max : n);
+  }
+
   static OptionPlaceSettings fromRow(Map<String, dynamic> r) {
     final scope = RegionScope(country: _s(r['country']), state: _s(r['state']), city: _s(r['city']), suburb: _s(r['suburb']));
     final charges = r['charges'], offered = r['offered'], blocked = r['blocked'];
@@ -116,7 +129,10 @@ class OptionPlaceSettings {
       charges: {
         if (charges is Map)
           for (final e in charges.entries)
-            if (e.key is String && e.value is Map) e.key as String: PlaceCharge.fromJson(e.value),
+            if (e.key is String && e.value is Map)
+              e.key as String: e.key == OptionChargeKey.freightDeclaredCap
+                  ? PlaceCharge(OptionCharge(value: _amount((e.value as Map)['value'], OptionChargeKey.freightDeclaredCapMax)))
+                  : PlaceCharge.fromJson(e.value),
       },
       offered: {
         if (offered is Map)
@@ -295,6 +311,9 @@ class RideOptionsHere {
 
   /// Once for the ride.
   OptionCharge get morePassengers => charge(OptionChargeKey.morePassengers).charge;
+
+  /// A freight option's fixed charge, once for the request.
+  OptionCharge freight(RideOptionKind k) => charge(OptionChargeKey.freight(k)).charge;
 }
 
 /// One charge line on the admin page: its key, its option and its name.
@@ -320,6 +339,10 @@ List<OptionChargeSlot> optionChargeSlots(RideOptionsConfig config, PetConfig pet
         for (final i in help.items)
           if (!i.isGuideDog)
             (key: OptionChargeKey.assist(i.id), option: k, label: i.name, perPetChoice: false, fixedOnly: false),
+      ],
+      // A fixed charge each (the Freight page, 0267).
+      RideOptionKind.helperOne || RideOptionKind.helperTwo || RideOptionKind.closedBody || RideOptionKind.rideAlong => [
+        (key: OptionChargeKey.freight(k), option: k, label: config.labelOf(k), perPetChoice: false, fixedOnly: true),
       ],
     },
 ];

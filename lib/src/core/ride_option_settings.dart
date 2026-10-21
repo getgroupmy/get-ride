@@ -7,20 +7,31 @@ library;
 import 'ride_assistance.dart';
 import 'ride_confirm.dart' show RideOptions;
 
-/// The options on the rider's Options sheet.
+/// The options on the rider's Options sheet, and the Freight page's
+/// ([freight]: helpers, closed body, riding along; migration 0267).
 enum RideOptionKind {
   childSeat('child-seat', 'Child safety seat'),
   morePassengers('more-passengers', 'More than ${RideOptions.standardSeats} passengers'),
   pet('pet', 'Pet with me'),
-  assistance('assistance', 'Assistance required');
+  assistance('assistance', 'Assistance required'),
+  helperOne('helper-1', '1 helper', freight: true),
+  helperTwo('helper-2', '2 helpers', freight: true),
+  closedBody('closed-body', 'Closed body', freight: true),
+  rideAlong('ride-along', "I'll ride along", freight: true);
 
-  const RideOptionKind(this.id, this.defaultLabel);
+  const RideOptionKind(this.id, this.defaultLabel, {this.freight = false});
 
   /// As stored.
   final String id;
 
   /// The name riders see until the admin renames it.
   final String defaultLabel;
+
+  /// Offered on the Freight page, not on a ride's Options sheet.
+  final bool freight;
+
+  /// The Freight page's options, in their built-in order.
+  static List<RideOptionKind> get freightKinds => [for (final k in values) if (k.freight) k];
 
   static RideOptionKind? byId(Object? id) {
     for (final k in values) {
@@ -113,17 +124,33 @@ class RideOptionsConfig {
         RideOptionKind.morePassengers => o.morePassengers,
         RideOptionKind.pet => o.pet,
         RideOptionKind.assistance => o.assistance != null,
+        // Booked from the Freight page (freightNamesFor).
+        RideOptionKind.helperOne || RideOptionKind.helperTwo || RideOptionKind.closedBody || RideOptionKind.rideAlong =>
+          false,
       })
         k.id: labelOf(k),
+  };
+
+  /// The names the freight options [on] were offered under, by option id.
+  Map<String, String> freightNamesFor(Set<RideOptionKind> on) => {
+    for (final k in order)
+      if (k.freight && on.contains(k)) k.id: labelOf(k),
   };
 
   bool isShown(RideOptionKind k) => !hidden.contains(k);
 
   /// What the sheet shows, in order. "Assistance required" also needs
-  /// something in its [catalogue] to pick.
+  /// something in its [catalogue] to pick. The freight options are the
+  /// Freight page's ([freightShown]).
   List<RideOptionKind> shown({AssistanceCatalogue catalogue = const AssistanceCatalogue()}) => [
     for (final k in order)
-      if (isShown(k) && (k != RideOptionKind.assistance || catalogue.visible.isNotEmpty)) k,
+      if (!k.freight && isShown(k) && (k != RideOptionKind.assistance || catalogue.visible.isNotEmpty)) k,
+  ];
+
+  /// What the Freight page shows, in order.
+  List<RideOptionKind> get freightShown => [
+    for (final k in order)
+      if (k.freight && isShown(k)) k,
   ];
 
   /// Whether any option is shown (the Options sheet always has Comments).

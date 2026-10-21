@@ -37,6 +37,7 @@ import '../../widgets/common.dart';
 import '../../widgets/fly_in_list.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart' show mapAttributionClearance;
+import '../ride/freight_parts.dart' show FreightCargoView;
 import '../ride/place_search.dart';
 import '../ride/demo_ride.dart';
 import 'demo_jobs.dart';
@@ -1619,6 +1620,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             padding: const EdgeInsets.only(top: 6),
             child: Text('“${r.note}”', style: t.textTheme.bodySmall),
           ),
+          // Freight (0267): the cargo, the size and the options.
+          if (r.isFreight)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: FreightCargoView(request: r, locked: r.status == RideStatus.open),
+            ),
           if (r.offeredFare != null && r.partnerId != null)
             Padding(
               padding: const EdgeInsets.only(top: 6),

@@ -15,6 +15,7 @@ import '../core/ride_request_metadata.dart';
 import '../core/ride_share.dart';
 import '../core/session_telemetry.dart';
 import '../core/fare_coins.dart';
+import '../core/freight.dart' show FreightRecipient, freightRequestColumns;
 import '../core/my_qr.dart' show QrBookingError, QrBookingFailure;
 import '../core/my_ride.dart' show myRideMaxTargets;
 import '../core/region_pricing.dart';
@@ -105,6 +106,11 @@ class RideRepository {
     double? myRideMaxKm,
     String? directQrToken,
     String? promoCodeId,
+    String? cargoDescription,
+    String? cargoPhotoPath,
+    double? declaredValue,
+    bool prohibitedAck = false,
+    FreightRecipient? recipient,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -168,6 +174,16 @@ class RideRepository {
       // A promo code (0242): the server checks it again against this ride
       // and keeps it only when it applies.
       if (promoCodeId != null && promoCodeId.isNotEmpty) 'promo_code_id': promoCodeId,
+      // Freight (0267): the cargo, checked by the server. Never dropped: a
+      // freight request without it would reach drivers saying nothing.
+      if (cargoDescription != null)
+        ...freightRequestColumns(
+          description: cargoDescription,
+          photoPath: cargoPhotoPath,
+          declaredValue: declaredValue,
+          prohibitedAck: prohibitedAck,
+          recipient: recipient,
+        ),
     };
     // Stops, the metadata, the region's pricing and its time zone are
     // extras: a database without one of their columns (stops needs 0098,

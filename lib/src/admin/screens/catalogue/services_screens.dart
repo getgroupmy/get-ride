@@ -11,6 +11,8 @@ import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'service_order_screen.dart' show serviceOrderPath;
 import 'catalogue_widgets.dart';
+import '../../../core/freight.dart' show isFreightTypes;
+import '../../../data/permits_repository.dart' show permitsRepositoryProvider;
 import '../../../core/service_tree.dart' show serviceParentIds;
 import '../../../widgets/search_select.dart';
 
@@ -286,11 +288,24 @@ class VehicleServicesScreen extends ConsumerWidget {
     } catch (_) {
       options = [];
     }
+    // The vehicle permit types a freight size may ask for (0254, 0267).
+    List<({String key, String name})> permits;
+    try {
+      final types = await ref.read(permitsRepositoryProvider).permitTypes();
+      final seen = <String>{};
+      permits = [
+        for (final t in types)
+          if (!t.forDriver && t.key.isNotEmpty && seen.add(t.key)) (key: t.key, name: t.name),
+      ];
+    } catch (_) {
+      permits = const [];
+    }
     if (!context.mounted) return;
     final values = await openEditor<Map<String, dynamic>>(
       context,
       e == null ? 'Add Vehicle Service' : 'Edit Vehicle Service',
       _VehicleServiceEditor(
+        permits: permits,
         entry: e,
         count: all.length,
         serviceTypes: options,
@@ -354,8 +369,12 @@ class _VehicleServiceEditor extends StatefulWidget {
     required this.serviceTypes,
     this.parents = const [],
     required this.canEdit,
+    this.permits = const [],
   });
   final SettingEntry? entry;
+
+  /// The vehicle permit types (by key) a freight size may ask for.
+  final List<({String key, String name})> permits;
   final int count;
   final List<String> serviceTypes;
 
@@ -383,6 +402,12 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
   late final _dispatch = {
     for (final f in vehicleServiceDispatchFields) f.key: TextEditingController(text: dispatchFieldText(v, f)),
   };
+  late final _freight = {
+    for (final f in vehicleServiceFreightFields)
+      f.key: TextEditingController(text: v[f.key] == null || v[f.key] == 0 ? '' : '${v[f.key]}'),
+  };
+  late bool _closedBody = v[closedBodyKey] == true;
+  late String _permit = str(v[goodsPermitKey]);
   late final _images = {for (final k in ['iconUri', 'heroImageUri', 'mapIconUri']) k: str(v[k])};
   late String _color = str(v['mapIconColor']);
   late List<String> _serviceTypes = stringList(v['serviceTypes']);
@@ -393,7 +418,7 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
 
   @override
   void dispose() {
-    for (final c in [..._text.values, ..._numbers.values, ..._dispatch.values]) {
+    for (final c in [..._text.values, ..._numbers.values, ..._dispatch.values, ..._freight.values]) {
       c.dispose();
     }
     super.dispose();
@@ -412,6 +437,9 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
       fuel: _fuel,
       status: _status,
       dispatch: _dispatchText,
+      freight: {for (final e in _freight.entries) e.key: e.value.text},
+      closedBody: _closedBody,
+      goodsPermit: _permit,
       existing: widget.entry?.values,
     );
     if (r.error != null) return setState(() => _error = r.error);
@@ -579,6 +607,55 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
               ),
             ),
           ),
+        // A freight size (0267): what it carries, shown to riders and drivers.
+        if (isFreightTypes(_serviceTypes) ||
+            _closedBody ||
+            _permit.isNotEmpty ||
+            _freight.values.any((c) => c.text.trim().isNotEmpty)) ...[
+          const SectionLabel(
+            'Freight',
+            hint: 'Shown on the rider\'s Vehicle size list and the driver\'s request. Leave a field blank if it '
+                'doesn\'t apply.',
+          ),
+          for (final f in vehicleServiceFreightFields)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: TextField(
+                key: ValueKey('vs-${f.key}'),
+                controller: _freight[f.key],
+                enabled: widget.canEdit,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: sentenceCaseLabel(f.label), suffixText: f.suffix),
+              ),
+            ),
+          SwitchListTile(
+            key: const ValueKey('vs-closedBody'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Closed body'),
+            subtitle: const Text('A covered van or lorry. Riders who ask for a closed body can only book these.'),
+            value: _closedBody,
+            onChanged: widget.canEdit ? (x) => setState(() => _closedBody = x) : null,
+          ),
+          SearchableDropdownFormField<String>(
+            key: const ValueKey('vs-goodsPermit'),
+            isExpanded: true,
+            initialValue: _permit,
+            decoration: const InputDecoration(
+              labelText: 'Goods-vehicle permit',
+              helperText: 'The Permits type a driver\'s vehicle must hold, approved, to get these requests.',
+              helperMaxLines: 3,
+            ),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('None')),
+              for (final p in widget.permits) DropdownMenuItem(value: p.key, child: Text('${p.name} (${p.key})')),
+              // A key kept from before, no longer a type.
+              if (_permit.isNotEmpty && !widget.permits.any((p) => p.key == _permit))
+                DropdownMenuItem(value: _permit, child: Text(_permit)),
+            ],
+            onChanged: widget.canEdit ? (x) => setState(() => _permit = x ?? '') : null,
+          ),
+          const SizedBox(height: 12),
+        ],
         for (final section in [searchRadiusSection, myRideSection]) ...[
           SectionLabel(
             section,

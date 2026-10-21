@@ -24,6 +24,7 @@ import 'direct_booking_badge.dart';
 import 'stand_order_label.dart';
 import 'my_ride_badges.dart';
 import '../ride/promo_parts.dart' show PromoAppliedIcon, rideHasPromo;
+import '../ride/freight_parts.dart' show FreightCargoView;
 import '../ride/pet_parts.dart' show RidePetsView;
 import '../ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
 import '../../core/ride_option_settings.dart' show RideOptionKind;
@@ -476,6 +477,13 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text('“${r.note}”', style: t.textTheme.bodySmall),
+              ),
+            // Freight (0267): what is carried, the size, the options; the
+            // photo comes with the request once it is taken.
+            if (r.isFreight)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: FreightCargoView(request: r, locked: r.status == RideStatus.open),
               ),
             // "Pet with me": the photos come with the ride once it is taken.
             if (r.pets.isNotEmpty)

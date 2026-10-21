@@ -68,6 +68,7 @@ import 'rider_handover_card.dart';
 import '../../widgets/page_style_host.dart';
 import 'promo_parts.dart' show ridePromoLine;
 import '../../core/promo_codes.dart' show promoPayLine;
+import 'freight_parts.dart' show FreightSenderPanel;
 
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>((ref, id) {
   // A demo rider's request lives on the phone alone: it is never asked of
@@ -1091,6 +1092,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             RiderHandoverPrompt(ride: r, pushes: PushService.instance?.received),
             // The chosen pickup door's guide (0249, 0258).
             PickupGuideCard(ride: r),
+            // Freight (0267): the proof of delivery, and the signature.
+            if (r.isFreight) FreightSenderPanel(request: r),
           ],
           if (r.hasDriver)
             Card(

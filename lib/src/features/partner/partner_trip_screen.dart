@@ -52,6 +52,8 @@ import 'my_permits_screen.dart' show DriverPermitButton;
 import 'trip_handover_panel.dart';
 import '../../widgets/page_style_host.dart';
 import '../ride/promo_parts.dart' show DriverPromoLine, PromoAppliedIcon, rideHasPromo;
+import '../ride/freight_parts.dart' show FreightCargoView, FreightDriverPanel;
+import '../../data/freight_repository.dart' show freightRepositoryProvider;
 import '../ride/pet_parts.dart' show RidePetsView;
 import '../ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
 import '../../core/ride_option_settings.dart' show RideOptionKind;
@@ -407,6 +409,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   }
 
   Future<void> _start(RideRequest r) async {
+    // Freight (0267): the photo of the cargo at pickup comes first.
+    if (r.isFreight && r.pickupProofPath == null) {
+      return showInfo(context, 'Take the photo of the cargo at pickup first.');
+    }
     final repo = ref.read(rideRepositoryProvider);
     // The server checks the code (start_trip, 0152); the app never sees it.
     // A wrong code is said in the dialog, which stays open to try again.
@@ -414,7 +420,12 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       context: context,
       builder: (_) => _TripCodeDialog(start: (code) => repo.startTrip(r.id, code)),
     );
-    if (started == true) _advance(r, RideStatus.onTrip);
+    if (started == true) {
+      _advance(r, RideStatus.onTrip);
+      // The recipient's tracking link goes now (the server's job sends any
+      // left over).
+      if (r.isFreight && r.recipientPhone != null) unawaited(ref.read(freightRepositoryProvider).notifyRecipient(r.id));
+    }
   }
 
   /// The driver cancels before pickup, with a reason; the passenger is told
@@ -459,6 +470,9 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   /// early?"): the fare is recalculated for the distance actually covered and
   /// confirmed first, then stored on the ride.
   Future<void> _complete(RideRequest r) async {
+    if (r.isFreight && r.dropoffProofPath == null) {
+      return showInfo(context, 'Take the photo of the cargo at drop-off first.');
+    }
     // A metered stand order (0251) has no fare until the meter's: asked here.
     if (r.raw['stand_id'] != null && r.raw['fare_mode'] == 'meter' && r.effectiveFare == null) {
       final fare = await showAppDialog<double>(
@@ -860,6 +874,22 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             // The vehicle's permits, to show an officer (0254).
             if (r.status == RideStatus.accepted || r.status == RideStatus.arrived || r.status == RideStatus.onTrip)
               const Padding(padding: EdgeInsets.fromLTRB(16, 4, 16, 8), child: DriverPermitButton()),
+            // Freight (0267): the cargo, its photo once the request is taken.
+            if (r.isFreight)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: FreightCargoView(
+                  key: const ValueKey('trip-freight'),
+                  request: r,
+                  locked: r.status == RideStatus.open,
+                  title: 'Cargo',
+                ),
+              ),
+            if (r.isFreight)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: FreightDriverPanel(key: const ValueKey('trip-freight-panel'), request: r),
+              ),
             if (r.pets.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),

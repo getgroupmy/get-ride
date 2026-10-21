@@ -85,14 +85,14 @@ typedef RideExtraSwitch = ({String key, String label});
 
 /// The switches, by option in the admin's order: a child safety seat, more
 /// passengers, each pet type and each kind of help offered. Options the
-/// admin hides from riders are left out.
+/// admin hides from riders, and the Freight page's, are left out.
 List<({RideOptionKind option, String title, List<RideExtraSwitch> items})> rideExtraGroups(
   RideOptionsConfig config,
   PetConfig pets,
   AssistanceCatalogue help,
 ) => [
   for (final k in config.order)
-    if (config.isShown(k))
+    if (config.isShown(k) && !k.freight)
       (
         option: k,
         title: config.labelOf(k),
@@ -103,6 +103,8 @@ List<({RideOptionKind option, String title, List<RideExtraSwitch> items})> rideE
           RideOptionKind.assistance => [
             for (final i in help.visible) (key: RideExtraKey.assist(i.id), label: i.name),
           ],
+          RideOptionKind.helperOne || RideOptionKind.helperTwo || RideOptionKind.closedBody || RideOptionKind.rideAlong =>
+            const <RideExtraSwitch>[],
         },
       ),
 ];
