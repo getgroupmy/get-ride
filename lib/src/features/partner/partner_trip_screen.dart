@@ -34,6 +34,7 @@ import '../../data/ride_chat_repository.dart';
 import '../../data/trip_handover_repository.dart';
 import '../../providers.dart';
 import 'rate_rider.dart';
+import '../ride/city_cancel_parts.dart' show NoShowPanel, DriverCancelRateNote;
 import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
@@ -968,6 +969,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         // The phones find each other at the kerb (Phase D); the code still works.
         if (r.status == RideStatus.accepted || r.status == RideStatus.arrived)
           BleHandshakeBadge(rideId: r.id, status: r.status.db, driver: true),
+        // At the pickup: the waiting timer and "Rider didn't come" (0269).
+        if (r.status == RideStatus.arrived) NoShowPanel(ride: r),
         if (!primaryInFooter) ?_primaryAction(r),
         if (driverMayCancel(r.status))
           restLine(restAt == _RestAt.cancel, BusyButton.text(
@@ -975,6 +978,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
             onPressed: _busy ? null : () => _cancel(r),
             child: const Text('Cancel ride'),
           )),
+        // Their cancel rate, and the pause it brings over the limit (0269).
+        if (driverMayCancel(r.status)) const DriverCancelRateNote(),
         if (r.status == RideStatus.completed) _CollectCard(ride: r),
         // The driver rates the rider (0269): optional, Skip leaves it for
         // trip history (24 hours).

@@ -3,6 +3,7 @@
 // unlocks, and a driver's own cancel rate. Pure. The server works the fee
 // out the same way (ride_cancel_fee) and is the one that charges it.
 import '../data/models.dart';
+import 'format.dart' show formatMoney;
 
 /// The rules at a place: Default, or a country / state / city / suburb's own
 /// (Admin > App Settings > Cancel and no-show). Null fields inherit.
@@ -121,15 +122,15 @@ String cancelTermsLine(CancelRules rules, RideRequest r, DateTime now, {String F
   if (left != null) return 'Free to cancel for ${minSec(left)}';
   final fee = cityCancelFee(rules, acceptedAt: r.acceptedAt, arrivedAt: r.arrivedAt, at: now);
   if (fee <= 0) return 'Free to cancel';
-  final m = money?.call(fee) ?? 'RM ${fee.toStringAsFixed(2)}';
+  final m = money?.call(fee) ?? formatMoney(fee, r.currency);
   return r.arrivedAt != null
       ? 'Your driver is here: cancelling now costs $m'
       : 'Cancelling now costs $m. Safety reasons are always free.';
 }
 
-/// The Cancel button: "Cancel ride" or "Cancel ride (RM 3.00)".
+/// The Cancel button: "Cancel ride" or "Cancel ride (RM3.00)".
 String cancelButtonLabel(double fee, {String Function(double)? money}) =>
-    fee <= 0 ? 'Cancel ride' : 'Cancel ride (${money?.call(fee) ?? 'RM ${fee.toStringAsFixed(2)}'})';
+    fee <= 0 ? 'Cancel ride' : 'Cancel ride (${money?.call(fee) ?? formatMoney(fee)})';
 
 /// Whether a ride is a city ride the rules apply to: taken by a driver,
 /// before pickup, not a scheduled booking.

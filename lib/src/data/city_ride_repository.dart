@@ -183,13 +183,14 @@ final myRideOffersProvider = StreamProvider.autoDispose<List<RideOfferRow>>((ref
   }
 });
 
-/// A ride's cancel terms; the standard rules when unreadable.
-final cancelTermsProvider = FutureProvider.autoDispose.family<CancelTerms, String>((ref, rideId) async {
+/// A ride's cancel terms; null when unreadable (a database without 0269
+/// charges no fee, so none is shown).
+final cancelTermsProvider = FutureProvider.autoDispose.family<CancelTerms?, String>((ref, rideId) async {
   try {
     ref.watchLive('ride_cancel_places');
     return await ref.watch(cityRideRepositoryProvider).cancelTerms(rideId);
   } catch (_) {
-    return const CancelTerms();
+    return null;
   }
 });
 

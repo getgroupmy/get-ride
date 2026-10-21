@@ -56,6 +56,7 @@ import 'ride_call_screen.dart' show RideCallButton;
 import 'ride_payment_overlay.dart';
 import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
+import 'city_cancel_parts.dart';
 import 'home_screen.dart' show nearbyDriversProvider, roundedPoint;
 import 'shared_ride_screen.dart' show shareRide;
 import '../../widgets/offline_ride_banner.dart';
@@ -743,7 +744,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   Future<void> _cancel() async {
     final r = widget.ride;
     if (r.status == RideStatus.open) return _cancelSearch();
-    final reason = await showAppDialog<String>(id: 'ride-tracking.cancel', context: context, builder: (_) => _CancelReasonDialog(status: r.status));
+    final note = _isDemo
+        ? null
+        : cancelFeeNote(ref.read(cancelTermsProvider(r.id)).value, r, ref.read(cityCancelClockProvider)());
+    final reason = await showAppDialog<String>(
+      id: 'ride-tracking.cancel',
+      context: context,
+      builder: (_) => _CancelReasonDialog(status: r.status, feeNote: note),
+    );
     if (reason == null) return;
     if (_isDemo) return _demoRides.cancel(r.id, reason: reason);
     await _run(() => ref.read(rideRepositoryProvider).cancel(r, reason: reason, by: 'rider'));
@@ -1034,12 +1042,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     }
     final asked = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider';
     if ((r.status == RideStatus.accepted || r.status == RideStatus.arrived) && !asked) {
-      return BusyButton.outlined(
-        key: const ValueKey('ride-cancel'),
-        icon: const Icon(Icons.close),
-        onPressed: _busy ? null : _cancel,
-        child: const Text('Cancel ride'),
-      );
+      // With the city ride rules (0269): "Free to cancel for m:ss", then the
+      // fee on the button.
+      return CityCancelButton(ride: r, onPressed: _busy ? null : _cancel);
     }
     return null;
   }
@@ -1508,8 +1513,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
 /// needs the rider's own words. Pops the value to store, or null to keep
 /// the ride.
 class _CancelReasonDialog extends StatefulWidget {
-  const _CancelReasonDialog({required this.status});
+  const _CancelReasonDialog({required this.status, this.feeNote});
   final RideStatus status;
+
+  /// What cancelling now costs (0269); null when it is free.
+  final String? feeNote;
 
   @override
   State<_CancelReasonDialog> createState() => _CancelReasonDialogState();
@@ -1542,6 +1550,14 @@ class _CancelReasonDialogState extends State<_CancelReasonDialog> {
                     ? "You're on your trip. Your driver will be asked to approve the cancellation."
                     : 'Your driver has accepted. They will be asked to approve the cancellation.',
               ),
+            if (widget.feeNote case final note?) ...[
+              const SizedBox(height: 8),
+              Text(
+                note,
+                key: const ValueKey('cancel-fee-note'),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
             const SizedBox(height: 8),
             Text('Why are you cancelling?', style: Theme.of(context).textTheme.titleSmall),
             RadioGroup<String>(
