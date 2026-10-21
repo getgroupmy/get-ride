@@ -56,6 +56,7 @@ Future<GatePick?> showGatePicker(
   AirportSide side = AirportSide.pick,
   bool guides = false,
   List<Marker> cars = const [],
+  Widget? typeIcon,
 }) => showAppSheet<GatePick>(
   id: 'ride.gate_picker',
   context: context,
@@ -74,6 +75,7 @@ Future<GatePick?> showGatePicker(
       side: side,
       guides: guides,
       cars: cars,
+      typeIcon: typeIcon,
       onDone: (p) => Navigator.of(c).pop(p),
       onClose: () => Navigator.of(c).pop(),
     ),
@@ -94,7 +96,11 @@ class GatePickerSheet extends StatefulWidget {
     this.guides = false,
     this.cars = const [],
     this.tiles = true,
+    this.typeIcon,
   });
+
+  /// The place type's icon (0264), before the place's name.
+  final Widget? typeIcon;
 
   final String placeName;
   final List<AirportDoor> gates;
@@ -401,13 +407,21 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
                       children: [
                         const SizedBox(width: 48),
                         Expanded(
-                          child: Text(
-                            widget.placeName,
-                            key: const ValueKey('gate-picker-title'),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (widget.typeIcon case final icon?) ...[icon, const SizedBox(width: 8)],
+                              Flexible(
+                                child: Text(
+                                  widget.placeName,
+                                  key: const ValueKey('gate-picker-title'),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: TextAlign.center,
+                                  style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                         IconButton.filledTonal(
@@ -614,10 +628,13 @@ class GateDot extends StatelessWidget {
 /// Over the pickup pin once a gate is chosen: "Pickup point" over the
 /// gate's name, with a chevron; tapping it opens the picker again.
 class GateCallout extends StatelessWidget {
-  const GateCallout({super.key, required this.name, required this.onTap, this.label = 'Pickup point'});
+  const GateCallout({super.key, required this.name, required this.onTap, this.label = 'Pickup point', this.leading});
   final String name;
   final String label;
   final VoidCallback onTap;
+
+  /// The place type's icon (0264), before the words.
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
@@ -639,6 +656,7 @@ class GateCallout extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (leading case final l?) ...[l, const SizedBox(width: 10)],
                 Flexible(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,

@@ -13,6 +13,7 @@ import '../profile_search.dart';
 import '../sub_admin_grants.dart';
 import 'catalogue/driver_service_locks_screen.dart' show driverServiceLocksPage;
 import 'catalogue/partner_type_services_screen.dart' show partnerTypeServicesPage;
+import 'geo/place_types_screen.dart' show placeTypesPage;
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/search_select.dart';
@@ -36,6 +37,7 @@ final grantablePages = <String, String>{
   for (final c in crudCategories) c.page: 'Settings · ${c.title}',
   partnerTypeServicesPage: 'Settings · Partner type services',
   driverServiceLocksPage: 'Settings · Driver service locks',
+  placeTypesPage: 'Settings · Place types',
 };
 
 String _personLabel(Map<String, dynamic>? p, String id) => '${p?['name'] ?? p?['phone'] ?? p?['email'] ?? id}'.trim();

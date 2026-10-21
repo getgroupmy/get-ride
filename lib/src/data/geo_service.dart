@@ -20,6 +20,8 @@ class Place {
     this.placeId,
     this.km,
     this.verified = false,
+    this.primaryType,
+    this.iconBackgroundColor,
   });
 
   /// One of Google's Autocomplete suggestions: no position until it is
@@ -31,7 +33,9 @@ class Place {
     this.types = const [],
     this.km,
   }) : point = const LatLng(0, 0),
-       verified = false;
+       verified = false,
+       primaryType = null,
+       iconBackgroundColor = null;
 
   final String name;
   final String address;
@@ -48,6 +52,12 @@ class Place {
 
   /// Google's Address Validation confirmed the address (smart address C).
   final bool verified;
+
+  /// Google's main type ("shopping_mall") and its category colour
+  /// ("#4B96F3"), where Places (New) said: a place type's guess and its
+  /// icon colour (migration 0264).
+  final String? primaryType;
+  final String? iconBackgroundColor;
 
   /// An Autocomplete suggestion not looked up yet: [point] means nothing.
   bool get pending => placeId != null && point == const LatLng(0, 0);
@@ -227,6 +237,8 @@ class GeoService {
         address: address,
         point: LatLng((p['lat'] as num).toDouble(), (p['lng'] as num).toDouble()),
         types: types,
+        primaryType: p['primaryType'] is String ? p['primaryType'] as String : null,
+        iconBackgroundColor: p['iconBackgroundColor'] is String ? p['iconBackgroundColor'] as String : null,
       );
     }
     final id = p['id'];
@@ -259,7 +271,14 @@ class GeoService {
       final found = _placeFrom(body?['place']);
       if (found == null || found.pending) return null;
       // Keep the suggestion's short name; the address is Google's full one.
-      return Place(name: p.name, address: found.address, point: found.point, types: found.types);
+      return Place(
+        name: p.name,
+        address: found.address,
+        point: found.point,
+        types: found.types,
+        primaryType: found.primaryType,
+        iconBackgroundColor: found.iconBackgroundColor,
+      );
     } catch (_) {
       return null;
     }

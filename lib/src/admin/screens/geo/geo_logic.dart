@@ -1079,6 +1079,8 @@ class PlaceResult {
     this.country,
     this.state,
     this.city,
+    this.primaryType,
+    this.iconBackgroundColor,
   });
   final String id;
   final String name;
@@ -1089,6 +1091,11 @@ class PlaceResult {
   final String? country;
   final String? state;
   final String? city;
+
+  /// Google's main type and category colour, from a Google Places (New)
+  /// search (place types, migration 0264); null from OpenStreetMap.
+  final String? primaryType;
+  final String? iconBackgroundColor;
 }
 
 /// Address keys tried for the primary name, per screen.
@@ -1153,6 +1160,11 @@ class PlaceForm {
     this.lon = '',
     this.gateRequired = true,
     this.active = true,
+    this.placeType,
+    this.placeTypeSet = false,
+    this.osmType,
+    this.primaryType,
+    this.iconBackgroundColor,
   });
 
   factory PlaceForm.fromValues(Map<String, dynamic> v) => PlaceForm(
@@ -1163,14 +1175,45 @@ class PlaceForm {
         lon: '${v['lon'] ?? ''}',
         gateRequired: _flag(v['gateRequired']),
         active: _flag(v['active']),
+        placeType: '${v['placeType'] ?? ''}'.trim().isEmpty ? null : '${v['placeType']}'.trim(),
+        placeTypeSet: v['placeTypeSet'] == true || '${v['placeTypeSet']}' == 'true',
+        osmType: '${v['osmType'] ?? ''}'.trim().isEmpty ? null : '${v['osmType']}'.trim(),
+        primaryType: '${v['primaryType'] ?? ''}'.trim().isEmpty ? null : '${v['primaryType']}'.trim(),
+        iconBackgroundColor:
+            '${v['iconBackgroundColor'] ?? ''}'.trim().isEmpty ? null : '${v['iconBackgroundColor']}'.trim(),
       );
 
-  /// Pre-filled from a search hit (2 gates by default, like Expo).
-  factory PlaceForm.fromResult(PlaceResult r) =>
-      PlaceForm(name: r.name, gates: '2', address: r.address, lat: r.lat, lon: r.lon);
+  /// Pre-filled from a search hit (2 gates by default, like Expo), with
+  /// OpenStreetMap's type kept for the place type's guess (0264).
+  factory PlaceForm.fromResult(PlaceResult r) => PlaceForm(
+        name: r.name,
+        gates: '2',
+        address: r.address,
+        lat: r.lat,
+        lon: r.lon,
+        osmType: r.primaryType != null || const {'', 'place', 'yes'}.contains(r.type.trim().toLowerCase())
+            ? null
+            : r.type.trim().toLowerCase(),
+        primaryType: r.primaryType,
+        iconBackgroundColor: r.iconBackgroundColor,
+      );
 
   String name, gates, address, lat, lon;
   bool gateRequired, active;
+
+  /// The place type's key (0264), and whether the admin chose it (false:
+  /// the guess from the name, which follows the name as it is typed).
+  String? placeType;
+  bool placeTypeSet;
+
+  /// OpenStreetMap's type for the place (Nominatim's `type`), when it was
+  /// added from a search.
+  String? osmType;
+
+  /// Google's main type and category colour, when it was added from a
+  /// Google Places search: the guess and the icon chip's colour.
+  String? primaryType;
+  String? iconBackgroundColor;
 
   String? validate() {
     if (name.trim().isEmpty) return 'Please enter a place name.';
@@ -1187,6 +1230,10 @@ class PlaceForm {
         'lon': lon.trim(),
         'gateRequired': gateRequired,
         'active': active,
+        if (placeType != null) ...{'placeType': placeType, 'placeTypeSet': placeTypeSet},
+        if (osmType != null) 'osmType': osmType,
+        if (primaryType != null) 'primaryType': primaryType,
+        if (iconBackgroundColor != null) 'iconBackgroundColor': iconBackgroundColor,
       };
 }
 

@@ -11,6 +11,9 @@ import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../../core/airport_queue.dart';
+import '../../../core/place_types.dart';
+import '../../../data/place_types_repository.dart';
+import '../../../widgets/place_type_badge.dart';
 import '../../../data/airport_repository.dart' show airportSettingsProvider;
 import 'airport_editor.dart';
 import 'boundary_editor.dart';
@@ -57,7 +60,8 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
       context,
       () => ref
           .read(geoAdminRepositoryProvider)
-          .saveMultiGate('place', id: entry?.id, values: form.toValues(), position: entry?.position ?? 0),
+          // Keys the form doesn't edit (the boundary and its tools, 0258) are kept.
+          .saveMultiGate('place', id: entry?.id, values: {...?entry?.values, ...form.toValues()}, position: entry?.position ?? 0),
       success: 'Place saved',
     );
     if (ok) ref.invalidate(multiGatePlacesProvider);
@@ -76,6 +80,7 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
     final canEdit = ref.watch(pageAccessProvider(multiGatePlacesPage)) == AccessLevel.edit;
     final async = ref.watch(multiGatePlacesProvider);
     final settings = ref.watch(airportSettingsProvider).value ?? const <String, AirportSettings>{};
+    final types = placeTypesNow(ref);
     return AdminPage(
       title: 'Multi-Gate Places',
       page: multiGatePlacesPage,
@@ -135,10 +140,23 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
     if (q.isEmpty || searchSelectMatches('${e.values['name'] ?? ''} ${e.values['address'] ?? ''}', q) || false)
       Card(
                     child: ListTile(
-                      leading: const Icon(Icons.apartment),
+                      // The place's type (0264): Other until it has one.
+                      leading: PlaceTypeIcon(
+                        key: ValueKey('place-type-icon-${e.id}'),
+                        type: placeTypeFor(placeTypeKeyOf(e.values), types),
+                        background: placeIconColorOf(e.values),
+                      ),
                       title: Text('${e.values['name'] ?? 'Place'}'),
                       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         Wrap(children: [
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6, top: 4),
+                            child: PlaceTypePill(
+                              key: ValueKey('place-type-pill-${e.id}'),
+                              type: placeTypeFor(placeTypeKeyOf(e.values), types),
+                              fontSize: 11,
+                            ),
+                          ),
                           _pill('${e.values['gates'] ?? 0} gates', t.colorScheme.primary),
                           _pill(placeIsActive(e.values) ? 'Active' : 'Inactive',
                               placeIsActive(e.values) ? Colors.green : Colors.grey),
@@ -185,18 +203,24 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
   }
 }
 
-class _PlaceFormBody extends StatefulWidget {
+class _PlaceFormBody extends ConsumerStatefulWidget {
   const _PlaceFormBody({required this.initial, required this.editing});
   final PlaceForm initial;
   final bool editing;
 
   @override
-  State<_PlaceFormBody> createState() => _PlaceFormBodyState();
+  ConsumerState<_PlaceFormBody> createState() => _PlaceFormBodyState();
 }
 
-class _PlaceFormBodyState extends State<_PlaceFormBody> {
+class _PlaceFormBodyState extends ConsumerState<_PlaceFormBody> {
   late final PlaceForm f = widget.initial;
-  late final _name = TextEditingController(text: f.name);
+  late final _name = TextEditingController(text: f.name)..addListener(_nameChanged);
+  String _guessedFor = '\u0000';
+
+  /// The guess follows the name while the admin hasn't chosen a type.
+  void _nameChanged() {
+    if (!f.placeTypeSet && _name.text != _guessedFor && mounted) setState(() {});
+  }
   late final _gates = TextEditingController(text: f.gates);
   late final _address = TextEditingController(text: f.address);
   late final _lat = TextEditingController(text: f.lat);
@@ -212,6 +236,7 @@ class _PlaceFormBodyState extends State<_PlaceFormBody> {
   }
 
   void _submit() {
+    if (!f.placeTypeSet) f.placeType = _guess(placeTypesNow(ref));
     f
       ..name = _name.text
       ..gates = _gates.text
@@ -226,12 +251,76 @@ class _PlaceFormBodyState extends State<_PlaceFormBody> {
     Navigator.pop(context, f);
   }
 
+  /// The type the name (and OpenStreetMap's type) suggest.
+  String _guess(List<PlaceType> types) {
+    _guessedFor = _name.text;
+    return pickPlaceType(_name.text, types, osmType: f.osmType, googleType: f.primaryType);
+  }
+
+  /// The place type: a chip per type, searchable; the guess until the
+  /// admin taps one (0264).
+  Widget _typePicker(BuildContext context) {
+    final t = Theme.of(context);
+    final types = placeTypesNow(ref);
+    final chosen = f.placeTypeSet ? (f.placeType ?? otherPlaceTypeKey) : _guess(types);
+    final shown = [for (final x in types) if (x.active || x.key == chosen) x];
+    final good = t.brightness == Brightness.dark ? Colors.green.shade300 : Colors.green.shade800;
+    return Column(
+      key: const ValueKey('place-type-picker'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Place type', style: t.textTheme.titleSmall),
+        ListSearchFilter(
+          count: shown.length,
+          hint: 'Search types',
+          fieldKey: const ValueKey('place-type-picker-search'),
+          builder: (context, q) => Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final x in shown)
+                  if (q.isEmpty || searchSelectMatches(x.name, q) || x.key == chosen)
+                    ChoiceChip(
+                      key: ValueKey('place-type-chip-${x.key}'),
+                      avatar: Icon(x.iconData, size: 18, color: x.colorFor(t.brightness)),
+                      label: Text(x.name),
+                      selected: x.key == chosen,
+                      onSelected: (_) => setState(() {
+                        f
+                          ..placeType = x.key
+                          ..placeTypeSet = true;
+                      }),
+                    ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          f.placeTypeSet
+              ? 'Set by admin'
+              : f.primaryType != null
+                  ? "Suggested from Google's place type and the name"
+                  : f.osmType == null
+                      ? 'Suggested from the name'
+                      : 'Suggested from the name and map data',
+          key: const ValueKey('place-type-source'),
+          style: t.textTheme.bodySmall?.copyWith(color: f.placeTypeSet ? mutedTextColor(t) : good),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     const gap = SizedBox(height: 12);
     const coord = TextInputType.numberWithOptions(decimal: true, signed: true);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(controller: _name, decoration: const InputDecoration(labelText: 'Place Name *', hintText: 'e.g. KLIA Terminal 1')),
+      gap,
+      _typePicker(context),
       gap,
       TextField(
         controller: _gates,

@@ -42,7 +42,9 @@ final placeGatesProvider = FutureProvider<GateCatalogue>((ref) async {
     places: [
       for (final r in multi)
         if (r['kind'] == 'place') row(r),
-      for (final r in results[1]) row(r),
+      // An airport is always the Airport type (0264).
+      for (final r in results[1])
+        (id: row(r).id, values: {...row(r).values, 'placeType': 'airport', 'placeTypeSet': true}),
     ],
     gates: [
       for (final r in multi)

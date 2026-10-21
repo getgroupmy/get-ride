@@ -14,6 +14,7 @@ import '../../core/ride_bidding.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/ride_map.dart';
@@ -445,9 +446,20 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                 style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary, fontWeight: FontWeight.w600),
               ),
             _end(context, 'A', RideRequestSheet.toPickup, _place(r.pickupLabel, r.pickupAddress)),
+            // The pickup's place type at a Multi-Gate place or airport (0264).
+            RidePlaceTypeTag(
+              key: const ValueKey('request-pickup-type'),
+              typeKey: r.pickupPlaceType,
+              padding: const EdgeInsetsDirectional.only(start: 28, top: 4),
+            ),
             // The door the rider chose at an airport (0249).
             if (r.pickupDoor case final door?) _doorLine(context, 'Pickup door: $door', 'request-pickup-door'),
             _end(context, 'B', RideRequestSheet.trip, _place(r.dropLabel, null)),
+            RidePlaceTypeTag(
+              key: const ValueKey('request-drop-type'),
+              typeKey: r.dropPlaceType,
+              padding: const EdgeInsetsDirectional.only(start: 28, top: 4),
+            ),
             if (r.dropDoor case final door?) _doorLine(context, 'Drop-off door: $door', 'request-drop-door'),
             const SizedBox(height: 6),
             Text(

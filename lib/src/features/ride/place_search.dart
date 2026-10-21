@@ -8,15 +8,18 @@ import 'package:latlong2/latlong.dart';
 import '../../core/airport_areas.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
+import '../../core/place_types.dart';
 import '../../core/smart_address.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/place_gates_repository.dart';
+import '../../data/place_types_repository.dart';
 import '../../core/saved_places.dart';
 import '../../data/saved_places_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/map_pick_icon.dart';
+import '../../widgets/place_type_badge.dart';
 import 'map_place_picker.dart';
 import 'saved_place_form.dart';
 import '../../widgets/page_style_host.dart';
@@ -566,6 +569,10 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
         ? Icons.location_on_outlined
         : typed;
     final saved = _savedAt(p);
+    // A Multi-Gate place or an airport: its type's icon and label (0264),
+    // Other when it has none.
+    final type = gated == null ? null : placeTypeFor(gated.typeKey, placeTypesNow(ref));
+    final areaLine = placeAreaLine(p, clean: smart.clean, homeRegion: areaRegion(_current));
     return InkWell(
       // Suggestions have no position yet: each by Google's id, so no two share a key.
       key: ValueKey('result-${_id(p)}'),
@@ -575,10 +582,21 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 2, right: 16),
-              child: Icon(icon, size: 24, color: muted),
-            ),
+            if (type != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: PlaceTypeIcon(
+                  key: ValueKey('result-type-icon-${_id(p)}'),
+                  type: type,
+                  size: 40,
+                  background: parsePlaceTypeColor(gated!.iconColor),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(top: 2, right: 16),
+                child: Icon(icon, size: 24, color: muted),
+              ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -589,7 +607,18 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                     overflow: TextOverflow.ellipsis,
                     style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500),
                   ),
-                  if (placeAreaLine(p, clean: smart.clean, homeRegion: areaRegion(_current)) case final line?) ...[
+                  // "Mall · 4 gates · address": the type in its colour.
+                  if (type != null) ...[
+                    const SizedBox(height: 2),
+                    _typeLine(
+                      t,
+                      type,
+                      gates: gated!.gates.length,
+                      address: areaLine ?? gated.address,
+                      muted: muted,
+                      key: ValueKey('result-type-${_id(p)}'),
+                    ),
+                  ] else if (areaLine case final line?) ...[
                     const SizedBox(height: 2),
                     Text(
                       line,
@@ -652,6 +681,22 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           ],
         ),
       ),
+    );
+  }
+
+  /// A place's type line: the coloured type label, then "4 gates ·
+  /// address" (as [placeTypeLine]).
+  static Widget _typeLine(ThemeData t, PlaceType type, {required int gates, String? address, required Color muted, Key? key}) {
+    final rest = placeTypeLine(type, gates: gates, address: address).substring(type.name.length);
+    return Text.rich(
+      TextSpan(children: [
+        WidgetSpan(alignment: PlaceholderAlignment.middle, child: PlaceTypePill(type: type)),
+        if (rest.isNotEmpty) TextSpan(text: rest),
+      ]),
+      key: key,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
     );
   }
 
@@ -1030,31 +1075,74 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     final v = arrangeSavedPlaces(ref.watch(savedPlacesProvider).value ?? const []);
     final muted = mutedTextColor(t, background: routeSheetBackground(t));
     final titleStyle = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w500);
+    final catalogue = ref.watch(placeGatesProvider).value;
+    final types = placeTypesNow(ref);
+    // The Multi-Gate place or airport a saved place is at (0264): its type.
+    // Closer than search's match: within 250 m of the place or a gate.
+    GatedPlace? at(SavedPlace p) {
+      if (catalogue == null) return null;
+      final m = matchGatedPlace(places: catalogue.places, gates: catalogue.gates, point: p.point);
+      if (m == null) return null;
+      const distance = Distance();
+      bool near(Map<String, dynamic>? v) {
+        final la = double.tryParse('${v?['lat'] ?? ''}'), lo = double.tryParse('${v?['lon'] ?? ''}');
+        return la != null && lo != null && distance.as(LengthUnit.Meter, p.point, LatLng(la, lo)) <= 250;
+      }
+      final place = catalogue.places.where((x) => x.id == m.id).firstOrNull;
+      final gateNear = catalogue.gates.any((g) => '${g.values['placeId'] ?? ''}' == m.id && near(g.values));
+      return near(place?.values) || gateNear ? m : null;
+    }
     // The same row as a search result: icon, name over address, distance,
     // and a round button (here: edit).
-    Widget saved(SavedPlace p, IconData icon) => InkWell(
+    Widget saved(SavedPlace p, IconData icon) {
+      final gated = at(p);
+      final type = gated == null ? null : placeTypeFor(gated.typeKey, types);
+      return InkWell(
       key: ValueKey('saved-${p.kind.name}-${p.id}'),
       onTap: () => _done(PlacePick.place(savedPlaceAsPlace(p), entrance: p.entrance)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Row(
           children: [
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Icon(icon, size: 24, color: muted),
-            ),
+            // Home and Work keep their own icon; another place at a
+            // Multi-Gate place shows its type's.
+            if (type != null && p.kind == SavedPlaceKind.other)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: PlaceTypeIcon(
+                  key: ValueKey('saved-type-icon-${p.id}'),
+                  type: type,
+                  size: 40,
+                  background: parsePlaceTypeColor(gated!.iconColor),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(right: 16),
+                child: Icon(icon, size: 24, color: muted),
+              ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: titleStyle),
                   const SizedBox(height: 2),
-                  Text(
-                    [savedPlaceLine(p), if (p.entrance.isNotEmpty) p.entrance].join(' · '),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
-                  ),
+                  if (type != null)
+                    _typeLine(
+                      t,
+                      type,
+                      gates: gated!.gates.length,
+                      address: [savedPlaceLine(p), if (p.entrance.isNotEmpty) p.entrance].join(' · '),
+                      muted: muted,
+                      key: ValueKey('saved-type-${p.id}'),
+                    )
+                  else
+                    Text(
+                      [savedPlaceLine(p), if (p.entrance.isNotEmpty) p.entrance].join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.textTheme.bodyMedium?.copyWith(color: muted, fontSize: 15),
+                    ),
                 ],
               ),
             ),
@@ -1079,6 +1167,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
         ),
       ),
     );
+    }
     Widget add(String label, IconData icon, SavedPlaceKind kind, Key key) => InkWell(
       key: key,
       onTap: () => _add(kind),

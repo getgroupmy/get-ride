@@ -28,7 +28,10 @@ import '../../core/place_gates.dart';
 import '../../core/airport_areas.dart' show AirportArea;
 import '../../core/airport_queue.dart';
 import '../../data/airport_repository.dart';
-import '../../data/place_gates_repository.dart' show airportAreasProvider;
+import '../../data/place_gates_repository.dart' show airportAreasProvider, placeGatesProvider;
+import '../../data/place_types_repository.dart';
+import '../../core/place_types.dart';
+import '../../widgets/place_type_badge.dart';
 import '../../core/gate_snap.dart';
 import 'gate_picker.dart';
 import '../../core/region_pricing.dart';
@@ -1324,6 +1327,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (open) await _openGatePicker();
   }
 
+  /// The type of [area] (0264): an airport's is Airport, a place's its own
+  /// (Other without one).
+  PlaceType _areaType(AirportArea area) {
+    final types = ref.read(placeTypesProvider).value ?? defaultPlaceTypes;
+    if (!area.isPlace) return placeTypeFor(airportPlaceTypeKey, types);
+    final v = ref.read(placeGatesProvider).value?.places.where((p) => p.id == area.id).firstOrNull?.values;
+    return placeTypeFor(placeTypeKeyOf(v), types);
+  }
+
   /// The pickup at [door] of [area]: "Area - Gate", at the gate.
   Place _atGate(AirportArea area, AirportDoor door, Place base) =>
       Place(name: '${area.name} - ${door.name}', address: base.address, point: doorPoint(door) ?? base.point);
@@ -1354,6 +1366,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       required: g.required,
       guides: g.guides,
       cars: [for (final c in _cars) demoCarMarker(c, serviceIndex)],
+      typeIcon: PlaceTypeIcon(type: _areaType(g.area), size: 32),
     );
     if (pick == null || !mounted) return false;
     setState(() {
@@ -1413,6 +1426,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         required: s?.doorRequired(side) ?? true,
         side: side,
         guides: side == AirportSide.pick && (s?.guideOn ?? true),
+        typeIcon: PlaceTypeIcon(type: _areaType(airport), size: 32),
       );
       return picked?.door;
     }
@@ -2150,6 +2164,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (mounted) _syncRouteEnds();
     });
     ref.listenLive(liveRegionTables, _regionsChanged);
+    // The pickup place's type icon on the map follows the admin's types (0264).
+    ref.watch(placeTypesProvider);
     // The ride card follows its ride: a ride that is cancelled, expires or
     // ends (on this device or anywhere else) leaves the home screen, and one
     // that moves on shows its new status, however the rider came back here
@@ -2379,7 +2395,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     _gateArea!.area.contains(_pickup!.point, bufferM: 0))
                   labelAbovePin(
                     _pickup!.point,
-                    GateCallout(name: _pickupDoor?.name ?? 'Any gate', onTap: _openGatePicker),
+                    GateCallout(
+                      name: _pickupDoor?.name ?? 'Any gate',
+                      onTap: _openGatePicker,
+                      // The place's type icon on the map (0264).
+                      leading: PlaceTypeIcon(type: _areaType(_gateArea!.area), size: 32),
+                    ),
                     width: math.min(280, screenWidth - 32),
                     height: 96,
                     gap: mapLayout.pillGap,

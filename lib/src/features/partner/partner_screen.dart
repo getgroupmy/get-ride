@@ -31,6 +31,7 @@ import '../../data/partner_doc_check.dart';
 import '../../data/partner_type_check.dart';
 import '../../core/partner_type_rules.dart' show PartnerTypeCheck, hailNotOfferedMessage;
 import '../../providers.dart';
+import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/fly_in_list.dart';
@@ -1587,6 +1588,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             const SizedBox(width: 8),
             Expanded(child: Text(r.pickupLabel, maxLines: 2, overflow: TextOverflow.ellipsis)),
           ]),
+          // The pickup's place type at a Multi-Gate place or airport (0264).
+          RidePlaceTypeTag(
+            key: ValueKey('queue-pickup-type-${r.id}'),
+            typeKey: r.pickupPlaceType,
+            padding: const EdgeInsetsDirectional.only(start: 24, top: 2, bottom: 2),
+          ),
           if (r.stops.isNotEmpty)
             Row(key: ValueKey('queue-stops-${r.id}'), children: [
               Icon(Icons.more_vert, size: 16, color: Colors.orange.shade800),
@@ -1603,6 +1610,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             const SizedBox(width: 8),
             Expanded(child: Text(r.dropLabel, maxLines: 2, overflow: TextOverflow.ellipsis)),
           ]),
+          RidePlaceTypeTag(
+            key: ValueKey('queue-drop-type-${r.id}'),
+            typeKey: r.dropPlaceType,
+            padding: const EdgeInsetsDirectional.only(start: 24, top: 2),
+          ),
           if (r.note != null) Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text('“${r.note}”', style: t.textTheme.bodySmall),
@@ -1753,6 +1765,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             title: Text(r.pickupLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
             subtitle: r.pickupAddress == null ? null : Text(r.pickupAddress!, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
+          // The pickup's place type at a Multi-Gate place or airport (0264).
+          RidePlaceTypeTag(
+            key: ValueKey('request-card-pickup-type-${r.id}'),
+            typeKey: r.pickupPlaceType,
+            padding: const EdgeInsetsDirectional.only(start: 40, bottom: 4),
+          ),
           ListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
@@ -1764,6 +1782,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 if (r.durationMin != null) '${r.durationMin} min',
               ].join(' · '),
             ),
+          ),
+          RidePlaceTypeTag(
+            key: ValueKey('request-card-drop-type-${r.id}'),
+            typeKey: r.dropPlaceType,
+            padding: const EdgeInsetsDirectional.only(start: 40, bottom: 4),
           ),
           // Facts, not choices: plain text to a screen reader (a Chip read
           // as an unchecked checkbox on the web).

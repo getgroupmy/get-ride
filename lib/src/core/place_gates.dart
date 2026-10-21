@@ -27,10 +27,29 @@ class GateOption {
 }
 
 class GatedPlace {
-  const GatedPlace({required this.id, required this.name, required this.gates, required this.gateRequired});
+  const GatedPlace({
+    required this.id,
+    required this.name,
+    required this.gates,
+    required this.gateRequired,
+    this.typeKey,
+    this.address = '',
+    this.iconColor,
+  });
   final String id;
   final String name;
   final List<GateOption> gates;
+
+  /// The place's type key (0264's `values.placeType`; 'airport' for an
+  /// airport); null when it has none (shown as Other).
+  final String? typeKey;
+
+  /// The address the admin keeps for the place ('' for none).
+  final String address;
+
+  /// The chip colour Google gave the place (`values.iconBackgroundColor`,
+  /// `#RRGGBB`), when it came from Places search; null for the type's own.
+  final String? iconColor;
 
   /// Whether the rider must pick a gate (the place itself can't be tapped).
   /// Defaults to true, as in Expo.
@@ -112,10 +131,16 @@ GatedPlace? matchGatedPlace({
         if (usage == null || _mode(g.values['mode']) == 'both' || _mode(g.values['mode']) == usage.name) g,
   ]..sort((a, b) => (_num(a.values['displayPriority']) ?? 9999).compareTo(_num(b.values['displayPriority']) ?? 9999));
 
+  final type = '${place.values['placeType'] ?? ''}'.trim();
   return GatedPlace(
     id: place.id,
     name: '${place.values['name'] ?? ''}'.trim(),
     gateRequired: _flag(place.values['gateRequired']),
+    typeKey: type.isEmpty ? null : type,
+    address: '${place.values['address'] ?? ''}'.trim(),
+    iconColor: RegExp(r'^#[0-9A-Fa-f]{6}$').hasMatch('${place.values['iconBackgroundColor'] ?? ''}')
+        ? '${place.values['iconBackgroundColor']}'
+        : null,
     gates: [
       for (final g in mine)
         GateOption(
