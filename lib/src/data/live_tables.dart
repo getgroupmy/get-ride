@@ -38,6 +38,8 @@ const liveSettingTables = <String>[
   'vehicle_service_order',
   // Whether that order applies to every booking (0250).
   'service_order_settings',
+  // Places inside an airport: the place or the airport (0266).
+  'area_precedence_settings',
   'ip_access_rules',
   'admin_access',
   'vehicle_make_models',

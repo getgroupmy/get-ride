@@ -13,6 +13,7 @@ import '../../core/place_gates.dart';
 import '../../core/place_types.dart';
 import '../../core/smart_address.dart';
 import '../../data/airport_repository.dart' show airportSettingsProvider;
+import '../../data/area_precedence_repository.dart' show areaPrecedenceRuleProvider;
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/place_gates_repository.dart';
@@ -550,20 +551,22 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
 
   Future<void> _add(SavedPlaceKind kind) => addSavedPlace(context, kind, near: widget.near);
 
+  /// Where a point in both an airport and a place is (0266), as the admin
+  /// set it.
+  AreaPrecedenceRule get _areaRule => ref.read(areaPrecedenceRuleProvider).value ?? const AreaPrecedenceRule();
+
   /// The admin place [p] is at, with its gates for this end: the place of
   /// that name, else the airport (or the place grouping its search results)
   /// whose boundary holds [p] (an address at KLIA opens KLIA's doors, not a
-  /// station's nearer by), else the nearest.
+  /// station's nearer by; one at a mall with its own boundary inside KLIA's,
+  /// the mall's, as [_areaRule] says), else the nearest.
   GatedPlace? _gatedAt(Place p, GateCatalogue catalogue) => matchGatedPlace(
     places: catalogue.places,
     gates: catalogue.gates,
     point: p.point,
     name: p.name,
     usage: _usage,
-    airportId: gateAreaAt([
-      for (final a in ref.read(airportAreasProvider).value ?? const <AirportArea>[])
-        if (!a.isPlace || a.groupResults) a,
-    ], p.point)?.id,
+    airportId: searchAreaAt(ref.read(airportAreasProvider).value ?? const [], p.point, rule: _areaRule)?.id,
   );
 
   /// The result standing for [a] and the results grouped into it: the
@@ -835,7 +838,8 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       final areas = await ref.read(airportAreasProvider.future);
       for (final l in linked) {
         final area =
-            areas.where((a) => a.id == l.id).firstOrNull ?? (l.id == gated.id ? gateAreaAt(areas, p.point) : null);
+            areas.where((a) => a.id == l.id).firstOrNull ??
+            (l.id == gated.id ? gateAreaAt(areas, p.point, rule: _areaRule) : null);
         if (area != null) rings.addAll(area.rings);
         if (area != null && l.id == gated.id) settings = (await ref.read(airportSettingsProvider.future))[area.id];
       }
@@ -967,6 +971,8 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final catalogue = ref.watch(placeGatesProvider).value;
+    // Read when a result is matched to its place ([_areaRule]).
+    ref.watch(areaPrecedenceRuleProvider);
     final typing = _query.text.trim().isNotEmpty;
     final smart = ref.watch(geoServiceProvider).smartAddress;
     return Column(

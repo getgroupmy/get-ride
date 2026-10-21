@@ -1,9 +1,10 @@
 // The pickup pin at a place with doors (0258, 0266), with the owner's
 // Mitsui Outlet Park KLIA Sepang: five doors inside its boundary, which lies
-// inside KLIA's own. A pin dropped inside the mall runs on to the mall's
-// nearest door (not to an airport door), the door sheet lists all five and
-// opens on the chosen one, and the gates are read past the API's 1,000-row
-// page.
+// inside KLIA's own, and KLIA T2 (ERL), "Part of" KLIA, inside it too. Under
+// the admin's Places inside an airport setting a pin dropped inside the mall
+// runs on to the mall's nearest door (or KLIA's, with Always the airport),
+// the door sheet lists all five and opens on the chosen one, and the gates
+// are read past the API's 1,000-row page. The admin card saves the setting.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:get_ride/src/admin/screens/geo/area_precedence_card.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/airport_areas.dart';
 import 'package:get_ride/src/core/airport_queue.dart';
@@ -21,6 +23,7 @@ import 'package:get_ride/src/core/place_gates.dart';
 import 'package:get_ride/src/core/region_pricing.dart';
 import 'package:get_ride/src/data/airport_repository.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
+import 'package:get_ride/src/data/area_precedence_repository.dart';
 import 'package:get_ride/src/data/coin_trade_repository.dart';
 import 'package:get_ride/src/data/device_access.dart';
 import 'package:get_ride/src/data/fare_tariff_repository.dart';
@@ -47,6 +50,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const _mitsuiId = '450a0b30-5fc1-4790-9b8d-a5f5b400a850';
 const _kliaId = '473ece8d-817b-4501-a5c2-725700071a78';
 const _mitsuiName = 'Mitsui Outlet Park KLIA Sepang';
+const _erlId = '00000000-0000-0000-0000-00000000e201';
 
 String _box(double n, double s, double e, double w) => jsonEncode({
   'coords': [
@@ -66,6 +70,14 @@ final _mitsui = AirportArea.fromEntry(
   sizeM2: 2.1e5,
 )!;
 final _klia = AirportArea.fromEntry(_kliaId, {'name': 'KLIA', 'boundary': _box(2.83, 2.70, 101.76, 101.64)})!;
+
+/// KLIA T2 (ERL), part of KLIA, with its own boundary and a door.
+final _erl = AirportArea.fromEntry(
+  _erlId,
+  {'name': 'KLIA T2 (ERL)', 'boundary': _box(2.7440, 2.7400, 101.6880, 101.6840)},
+  kind: AreaKind.place,
+  sizeM2: 1.9e5,
+)!;
 
 /// The mall's doors as the live rows keep them (lat / lon, a priority).
 const _doors = [
@@ -96,17 +108,33 @@ final GateCatalogue _catalogue = (
       id: _mitsuiId,
       values: <String, dynamic>{'name': _mitsuiName, 'lat': 2.780405, 'lon': 101.67736, 'gateRequired': true},
     ),
-    (id: _kliaId, values: <String, dynamic>{'name': 'KLIA', 'placeType': 'airport', 'placeTypeSet': true}),
+    (
+      id: _kliaId,
+      values: <String, dynamic>{'name': 'KLIA', 'partOf': 'KLIA', 'partOrder': 1, 'placeType': 'airport'},
+    ),
+    (id: _erlId, values: <String, dynamic>{'name': 'KLIA T2 (ERL)', 'lat': 2.742, 'lon': 101.686, 'partOf': ' klia '}),
   ],
   gates: [
     for (final d in _doors) _gateRow(d.$1, _mitsuiId, d.$2, d.$3, d.$4, d.$5, 'multi-gate-places'),
     // KLIA's own four doors, at the terminals kilometres away.
     for (var i = 1; i <= 4; i++)
       _gateRow('k$i', _kliaId, 'Door $i', 2.7456 + i * 0.0003, 101.7072, i, 'airport-areas'),
+    _gateRow('erl1', _erlId, 'ERL Arrival', 2.7421, 101.6861, 1, 'multi-gate-places'),
   ],
 );
 
 final List<AirportDoor> _allDoors = [for (final g in _catalogue.gates) AirportDoor.fromGate(g.id, g.values)];
+
+final _areas = [_klia, _mitsui, _erl];
+
+/// [mode] with the catalogue's "Part of"s, as areaPrecedenceRuleProvider makes it.
+AreaPrecedenceRule _rule(AreaPrecedence mode) => AreaPrecedenceRule(
+  mode: mode,
+  partOf: {
+    for (final p in _catalogue.places)
+      if (partOfKey(p.values['partOf']) case final k when k.isNotEmpty) p.id: k,
+  },
+);
 
 LatLng _at(String id) {
   final d = _doors.firstWhere((d) => d.$1 == id);
@@ -152,7 +180,12 @@ class _QuietLive extends LiveTables {
 }
 
 /// The home screen with the rider standing at [here], inside the mall.
-Future<void> _home(WidgetTester tester, LatLng here, Brightness brightness) async {
+Future<void> _home(
+  WidgetTester tester,
+  LatLng here,
+  Brightness brightness, {
+  AreaPrecedence mode = AreaPrecedence.partOf,
+}) async {
   SharedPreferences.setMockInitialValues({});
   tester.view.physicalSize = const Size(400, 860);
   tester.view.devicePixelRatio = 1;
@@ -176,7 +209,8 @@ Future<void> _home(WidgetTester tester, LatLng here, Brightness brightness) asyn
       promoRepositoryProvider.overrideWithValue(PromoRepository(null)),
       locationSourceProvider.overrideWithValue(_Here(here)),
       placeGatesProvider.overrideWith((ref) async => _catalogue),
-      airportAreasProvider.overrideWith((ref) async => areasByPrecedence([_klia, _mitsui])),
+      airportAreasProvider.overrideWith((ref) async => areasByPrecedence(_areas)),
+      areaPrecedenceProvider.overrideWith((ref) async => mode),
       airportSettingsProvider.overrideWith(
         (ref) async => {_mitsuiId: const AirportSettings.place(_mitsuiId).copyWith(pickDoorRequired: true)},
       ),
@@ -218,20 +252,53 @@ String _callout(WidgetTester tester) => tester
     .join(' / ');
 
 void main() {
-  test('a pin in the mall snaps to the mall\'s nearest door, though KLIA holds the mall too', () {
-    final areas = [_klia, _mitsui];
-    // The mall comes first: the smallest place, then an airport (0266).
-    expect(areasByPrecedence(areas).map((a) => a.id), [_mitsuiId, _kliaId]);
-    expect(gateAreaAt(areas, const LatLng(2.780405, 101.67736))?.id, _mitsuiId);
-    final snap = snapToGate(areas: areas, doors: _allDoors, p: const LatLng(2.7794, 101.6769))!;
-    expect(snap.area.name, _mitsuiName);
-    expect(snap.gates.map((g) => g.name), [for (final d in _doors) d.$2], reason: 'all five, in priority order');
-    expect(snap.door.id, 'e3');
-    // A single-door mall: that door.
-    final one = snapToGate(areas: areas, doors: [_allDoors.first], p: const LatLng(2.7785, 101.6762))!;
-    expect(one.door.id, 'e1');
-    // KLIA outside the mall is still KLIA's.
-    expect(snapToGate(areas: areas, doors: _allDoors, p: const LatLng(2.75, 101.70))!.door.id, startsWith('k'));
+  group('places inside an airport (0266)', () {
+    const inMitsui = LatLng(2.7794, 101.6769), inErl = LatLng(2.7421, 101.6862), inKlia = LatLng(2.75, 101.70);
+    String? at(AreaPrecedence mode, LatLng p) => gateAreaAt(_areas, p, rule: _rule(mode))?.id;
+
+    test('Part of (the default): Mitsui is its own; the ERL, part of KLIA, is KLIA\'s', () {
+      expect(AreaPrecedence.of(null), AreaPrecedence.partOf);
+      expect(AreaPrecedence.of('nonsense'), AreaPrecedence.partOf);
+      expect(at(AreaPrecedence.partOf, inMitsui), _mitsuiId);
+      expect(at(AreaPrecedence.partOf, inErl), _kliaId);
+      expect(gateAreaAt(_areas, inMitsui)?.id, _mitsuiId, reason: 'the default rule');
+      expect(gateAreaAt(_areas, inErl)?.id, _erlId, reason: 'without the Part ofs read, a place is its own');
+    });
+
+    test('Always the place: both are their own', () {
+      expect(at(AreaPrecedence.place, inMitsui), _mitsuiId);
+      expect(at(AreaPrecedence.place, inErl), _erlId);
+    });
+
+    test('Always the airport: both are KLIA\'s', () {
+      expect(at(AreaPrecedence.airport, inMitsui), _kliaId);
+      expect(at(AreaPrecedence.airport, inErl), _kliaId);
+    });
+
+    test('outside every place: KLIA in every mode; outside KLIA: nothing', () {
+      for (final m in AreaPrecedence.values) {
+        expect(at(m, inKlia), _kliaId, reason: m.key);
+        expect(at(m, const LatLng(3.1, 101.6)), isNull, reason: m.key);
+      }
+    });
+
+    test('a pin in the mall snaps to the mall\'s nearest door, all five listed', () {
+      final snap = snapToGate(areas: _areas, doors: _allDoors, p: inMitsui, rule: _rule(AreaPrecedence.partOf))!;
+      expect(snap.area.name, _mitsuiName);
+      expect(snap.gates.map((g) => g.name), [for (final d in _doors) d.$2], reason: 'all five, in priority order');
+      expect(snap.door.id, 'e3');
+      // A single-door mall: that door.
+      final one = snapToGate(areas: _areas, doors: [_allDoors.first], p: const LatLng(2.7785, 101.6762))!;
+      expect(one.door.id, 'e1');
+      // Always the airport: KLIA's nearest door.
+      final klia = snapToGate(areas: _areas, doors: _allDoors, p: inMitsui, rule: _rule(AreaPrecedence.airport))!;
+      expect(klia.area.id, _kliaId);
+      expect(klia.door.id, startsWith('k'));
+      // The ERL under Part of: KLIA's doors; under Always the place, its own.
+      expect(snapToGate(areas: _areas, doors: _allDoors, p: inErl, rule: _rule(AreaPrecedence.partOf))!.door.id,
+          startsWith('k'));
+      expect(snapToGate(areas: _areas, doors: _allDoors, p: inErl, rule: _rule(AreaPrecedence.place))!.door.id, 'erl1');
+    });
   });
 
   test('the gates are read a page at a time, past the first 1,000 rows', () async {
@@ -262,6 +329,54 @@ void main() {
     addTearDown(container.dispose);
     final catalogue = await container.read(placeGatesProvider.future);
     expect(catalogue.gates.length, 1003);
+    expect(asked, ['0+1000', '1000+1000']);
+  });
+
+  test('the places\' own values for the areas are read a page at a time too', () async {
+    final places = [
+      for (var i = 0; i < 1002; i++)
+        {'id': 'p$i', 'values': {'name': 'Place $i', 'groupResults': i == 1001}},
+    ];
+    final asked = <String>[];
+    final db = SupabaseClient(
+      'http://localhost',
+      'anon',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: MockClient((req) async {
+        final json = {'content-type': 'application/json'};
+        if (req.url.path.endsWith('/rest/v1/multi_gate')) {
+          final offset = int.parse(req.url.queryParameters['offset'] ?? '0');
+          final limit = int.parse(req.url.queryParameters['limit'] ?? '1000');
+          asked.add('$offset+$limit');
+          final page = places.skip(offset).take(limit.clamp(0, 1000)).toList();
+          return http.Response(jsonEncode(page), 200, headers: json, request: req);
+        }
+        if (req.url.path.endsWith('/rest/v1/airport_areas')) {
+          return http.Response(
+            jsonEncode([
+              {
+                'id': 'p1001',
+                'kind': 'place',
+                'active': true,
+                'size_m2': 1e5,
+                'shape': jsonDecode(_box(3.1, 3.0, 101.1, 101.0)),
+                'values': {'name': 'Place 1001'},
+              },
+            ]),
+            200,
+            headers: json,
+            request: req,
+          );
+        }
+        return http.Response('[]', 200, headers: json, request: req);
+      }),
+    );
+    final container = ProviderContainer(
+      overrides: [supabaseProvider.overrideWithValue(db), liveTablesProvider.overrideWith(_QuietLive.new)],
+    );
+    addTearDown(container.dispose);
+    final areas = await container.read(airportAreasProvider.future);
+    expect(areas.single.groupResults, isTrue, reason: 'the place past the first 1,000 rows');
     expect(asked, ['0+1000', '1000+1000']);
   });
 
@@ -390,4 +505,107 @@ void main() {
     await tester.pumpAndSettle();
     expect(_m(_sheetCamera(tester).center, _at('e5')), lessThan(0.5));
   });
+
+  testWidgets('Always the airport: a pin in the mall goes to KLIA\'s nearest door, a drop runs there again', (
+    tester,
+  ) async {
+    await _home(tester, const LatLng(2.7795, 101.6769), Brightness.light, mode: AreaPrecedence.airport);
+    final k4 = _allDoors.firstWhere((d) => d.id == 'k4');
+    expect(_pickup(tester), doorPoint(k4));
+    expect(_callout(tester), contains('Door 4'));
+
+    // Dragged a little off the door (still in KLIA): it runs back to it.
+    final g = await tester.startGesture(const Offset(200, 250));
+    for (var i = 0; i < 6; i++) {
+      await g.moveBy(const Offset(0, 10));
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    await g.up();
+    for (var i = 0; i < 25; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(_pickup(tester), doorPoint(k4));
+    expect(_callout(tester), contains('Door 4'));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the ERL, part of KLIA: KLIA\'s door by default, its own with Always the place', (tester) async {
+    const inErl = LatLng(2.7421, 101.6862);
+    await _home(tester, inErl, Brightness.dark);
+    expect(_callout(tester), contains('Door'));
+    expect(_callout(tester), isNot(contains('ERL Arrival')));
+    await tester.pumpWidget(const SizedBox());
+    await _home(tester, inErl, Brightness.dark, mode: AreaPrecedence.place);
+    expect(_pickup(tester), const LatLng(2.7421, 101.6861));
+    expect(_callout(tester), contains('ERL Arrival'));
+  });
+
+  for (final b in Brightness.values) {
+    testWidgets('${b.name}: Admin → Airport Areas card: three choices, the default marked, Save', (tester) async {
+      tester.view.physicalSize = const Size(420, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final saved = <Map<String, dynamic>>[];
+      final db = SupabaseClient(
+        'http://localhost',
+        'anon',
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+        httpClient: MockClient((req) async {
+          if (req.url.path.endsWith('/rest/v1/$areaPrecedenceTable') && req.method == 'PATCH') {
+            saved.add(Map<String, dynamic>.from(jsonDecode(req.body) as Map));
+            expect(req.url.queryParameters['id'], 'eq.1');
+            return http.Response('', 204, request: req);
+          }
+          // No row read yet: the default.
+          return http.Response('[]', 200, headers: {'content-type': 'application/json'}, request: req);
+        }),
+      );
+      Future<void> pump(bool canEdit) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [supabaseProvider.overrideWithValue(db), liveTablesProvider.overrideWith(_QuietLive.new)],
+            child: MaterialApp(
+              theme: appTheme(b),
+              home: Scaffold(body: SingleChildScrollView(child: AreaPrecedenceCard(canEdit: canEdit))),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      await pump(true);
+      expect(find.text('Places inside an airport'), findsOneWidget);
+      for (final (mode, title, line) in areaPrecedenceChoices) {
+        expect(find.byKey(ValueKey('area-precedence-${mode.key}')), findsOneWidget);
+        expect(find.textContaining(title), findsOneWidget);
+        expect(find.text(line), findsOneWidget);
+      }
+      expect(find.textContaining('DEFAULT', findRichText: true), findsOneWidget);
+      RadioListTile<AreaPrecedence> tile(AreaPrecedence m) =>
+          tester.widget(find.byKey(ValueKey('area-precedence-${m.key}')));
+      expect(tile(AreaPrecedence.partOf).selected, isTrue, reason: 'the default when nothing is stored');
+      final save = find.byKey(const ValueKey('area-precedence-save'));
+      expect(tester.widget<FilledButton>(save).onPressed, isNull, reason: 'nothing changed yet');
+
+      await tester.tap(find.byKey(const ValueKey('area-precedence-place')));
+      await tester.pumpAndSettle();
+      expect(tile(AreaPrecedence.place).selected, isTrue);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+      expect(saved, [
+        {'mode': 'place'},
+      ]);
+      expect(tester.takeException(), isNull);
+
+      // Without edit rights: shown, not changed, no Save.
+      await pump(false);
+      expect(find.byKey(const ValueKey('area-precedence-save')), findsNothing);
+      expect(find.byKey(const ValueKey('area-precedence-read-only')), findsOneWidget);
+      expect(tile(AreaPrecedence.airport).enabled, isFalse);
+      await tester.tap(find.byKey(const ValueKey('area-precedence-airport')));
+      await tester.pumpAndSettle();
+      expect(tile(AreaPrecedence.airport).selected, isFalse);
+      expect(saved.length, 1);
+    });
+  }
 }

@@ -9,6 +9,7 @@ import '../../widgets/admin_widgets.dart';
 import '../../../core/airport_queue.dart';
 import '../../../data/airport_repository.dart';
 import 'airport_editor.dart';
+import 'area_precedence_card.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
@@ -198,38 +199,44 @@ class _AdminAirportAreasScreenState extends ConsumerState<AdminAirportAreasScree
                 ]),
               ),
               Expanded(
-                child: filtered.isEmpty
-                    ? const EmptyState(
+                // Places inside an airport (0266) above the airports, scrolling with them.
+                child: ListView.builder(
+                  padding: EdgeInsets.fromLTRB(12, 4, 12, addActionListBottomPadding(context)),
+                  itemCount: 1 + (filtered.isEmpty ? 1 : filtered.length),
+                  itemBuilder: (_, j) {
+                    if (j == 0) return AreaPrecedenceCard(canEdit: canEdit);
+                    final i = j - 1;
+                    if (filtered.isEmpty) {
+                      return const EmptyState(
                         icon: Icons.flight_outlined,
                         title: 'No airports',
                         message: 'Adjust filters or add a new airport.',
-                      )
-                    : ListView.builder(
-                        padding: EdgeInsets.fromLTRB(12, 4, 12, addActionListBottomPadding(context)),
-                        itemCount: filtered.length,
-                        itemBuilder: (_, i) => _AirportTile(
-                          entry: filtered[i],
-                          selected: wide && filtered[i].id == open?.id,
-                          summary: airportCardSummary(
-                            filtered[i].values,
-                            doors: doors,
-                            airportId: filtered[i].id,
-                            settings: settings[filtered[i].id],
-                          ),
-                          canEdit: canEdit,
-                          onOpen: () => wide
-                              ? setState(() => _openId = filtered[i].id)
-                              : AirportEditor.open(
-                                  context,
-                                  entry: filtered[i],
-                                  canEdit: canEdit,
-                                  onEditDetails: () => _edit(filtered[i]),
-                                  onEditBoundary: () => _geofence(filtered[i], canEdit),
-                                ),
-                          onEdit: () => _edit(filtered[i]),
-                          onDelete: () => _delete(filtered[i]),
-                        ),
+                      );
+                    }
+                    return _AirportTile(
+                      entry: filtered[i],
+                      selected: wide && filtered[i].id == open?.id,
+                      summary: airportCardSummary(
+                        filtered[i].values,
+                        doors: doors,
+                        airportId: filtered[i].id,
+                        settings: settings[filtered[i].id],
                       ),
+                      canEdit: canEdit,
+                      onOpen: () => wide
+                          ? setState(() => _openId = filtered[i].id)
+                          : AirportEditor.open(
+                              context,
+                              entry: filtered[i],
+                              canEdit: canEdit,
+                              onEditDetails: () => _edit(filtered[i]),
+                              onEditBoundary: () => _geofence(filtered[i], canEdit),
+                            ),
+                      onEdit: () => _edit(filtered[i]),
+                      onDelete: () => _delete(filtered[i]),
+                    );
+                  },
+                ),
               ),
             ]);
           if (!wide || open == null) return ResponsiveCenter(maxWidth: 900, padding: EdgeInsets.zero, child: list);

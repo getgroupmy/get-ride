@@ -293,10 +293,52 @@ List<T> collapseIntoAreas<T>(
   return out;
 }
 
+/// Which area a point inside both an airport and a place is at (Admin →
+/// Airport Areas → Places inside an airport, migration 0266; the server's
+/// `area_at` follows the same setting).
+enum AreaPrecedence {
+  /// The place, unless it is "Part of" the same group as the airport (KLIA
+  /// T2 (ERL), part of KLIA, stays KLIA's; Mitsui Outlet Park is its own).
+  /// The default.
+  partOf('part_of'),
+
+  /// Always the place.
+  place('place'),
+
+  /// Always the airport (0258's rule).
+  airport('airport');
+
+  const AreaPrecedence(this.key);
+
+  /// As stored in `area_precedence_settings.mode`.
+  final String key;
+
+  /// The stored [key]'s choice; the default for anything else.
+  static AreaPrecedence of(Object? key) =>
+      AreaPrecedence.values.where((m) => m.key == '${key ?? ''}'.trim()).firstOrNull ?? AreaPrecedence.partOf;
+}
+
+/// The setting, with each area's "Part of" key (by area id: an airport's
+/// `airport_areas.values.partOf`, a place's `multi_gate.values.partOf`, as
+/// compared: trimmed, one space, any case; '' or missing for none).
+class AreaPrecedenceRule {
+  const AreaPrecedenceRule({this.mode = AreaPrecedence.partOf, this.partOf = const {}});
+  final AreaPrecedence mode;
+  final Map<String, String> partOf;
+
+  /// Which of [place] and [airport], both holding the point, it is at.
+  AirportArea pick(AirportArea place, AirportArea airport) => switch (mode) {
+    AreaPrecedence.place => place,
+    AreaPrecedence.airport => airport,
+    AreaPrecedence.partOf =>
+      (partOf[place.id] ?? '').isNotEmpty && partOf[place.id] == partOf[airport.id] ? airport : place,
+  };
+}
+
 /// [areas] in the order a point is matched (as the server's `area_at`,
-/// 0266): the places from the smallest boundary up, then every airport, in
-/// the order given. A mall with its own boundary inside an airport's is the
-/// mall.
+/// 0258): every airport first, in the order given, then the places from
+/// the smallest boundary up. Where a point is in both an airport and a
+/// place, [AreaPrecedenceRule] decides (gate_snap.dart's `gateAreaAt`).
 List<AirportArea> areasByPrecedence(List<AirportArea> areas) {
   final airports = [for (final a in areas) if (!a.isPlace) a];
   final places = [for (final a in areas) if (a.isPlace) a];
@@ -305,5 +347,5 @@ List<AirportArea> areasByPrecedence(List<AirportArea> areas) {
     final c = (a.sizeM2 ?? double.infinity).compareTo(b.sizeM2 ?? double.infinity);
     return c != 0 ? c : order[a.id]!.compareTo(order[b.id]!);
   });
-  return [...places, ...airports];
+  return [...airports, ...places];
 }

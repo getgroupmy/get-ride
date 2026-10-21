@@ -25,9 +25,10 @@ import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
-import '../../core/airport_areas.dart' show AirportArea;
+import '../../core/airport_areas.dart' show AirportArea, AreaPrecedenceRule;
 import '../../core/airport_queue.dart';
 import '../../data/airport_repository.dart';
+import '../../data/area_precedence_repository.dart' show areaPrecedenceRuleProvider;
 import '../../data/place_gates_repository.dart' show airportAreasProvider, placeGatesProvider;
 import '../../data/place_types_repository.dart';
 import '../../core/place_types.dart';
@@ -1047,14 +1048,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<bool> _runToGate(LatLng p) async {
     List<AirportArea> areas;
     List<AirportDoor> doors;
+    AreaPrecedenceRule rule;
     try {
       areas = await ref.read(airportAreasProvider.future);
       doors = await ref.read(airportDoorsProvider.future);
+      rule = await _areaRule();
     } catch (_) {
       return false;
     }
     if (!mounted || _pickup?.point != p) return true;
-    final snap = snapToGate(areas: areas, doors: doors, p: p);
+    final snap = snapToGate(areas: areas, doors: doors, p: p, rule: rule);
     final to = snap == null ? null : doorPoint(snap.door);
     if (to == null || const Distance()(p, to) < 1) return false;
     final pin = _pin.currentState;
@@ -1067,6 +1070,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     return pin.runTo(p, to, zoom: zoom, offset: _focusOffset);
   }
+
+  /// Where a point in both an airport and a place is (0266): the admin's
+  /// setting, the default when it can't be read.
+  Future<AreaPrecedenceRule> _areaRule() =>
+      ref.read(areaPrecedenceRuleProvider.future).catchError((_) => const AreaPrecedenceRule());
 
   /// An admin changed a region (bidding, pricing, services, its rules): the
   /// pickup's are read again, so the open booking sheet follows at once.
@@ -1327,15 +1335,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     List<AirportArea> areas;
     List<AirportDoor> doors;
     Map<String, AirportSettings> settings;
+    AreaPrecedenceRule rule;
     try {
       areas = await ref.read(airportAreasProvider.future);
       doors = await ref.read(airportDoorsProvider.future);
       settings = await ref.read(airportSettingsProvider.future);
+      rule = await _areaRule();
     } catch (_) {
       return;
     }
     if (!mounted || !identical(_pickup, a)) return;
-    final snap = snapToGate(areas: areas, doors: doors, p: a.point);
+    final snap = snapToGate(areas: areas, doors: doors, p: a.point, rule: rule);
     if (snap == null) {
       if (_gateArea != null) {
         setState(() {
@@ -1480,7 +1490,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } catch (_) {
       return true;
     }
-    final atPickup = airportAt(areas, a.point), atDrop = airportAt(areas, b.point);
+    final rule = await _areaRule();
+    final atPickup = gateAreaAt(areas, a.point, rule: rule), atDrop = gateAreaAt(areas, b.point, rule: rule);
     if (atPickup == null && atDrop == null) {
       _pickupDoor = _dropDoor = null;
       return true;
