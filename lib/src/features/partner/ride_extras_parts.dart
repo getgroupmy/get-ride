@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../config.dart';
-import '../../core/driver_services.dart' show guideDogExtraKey;
 import '../../core/ride_extras.dart';
 import '../../data/driver_extras_repository.dart';
 import '../../data/models.dart';
@@ -100,10 +99,8 @@ class RideExtrasScreen extends ConsumerWidget {
                                   BusySwitchListTile(
                                     key: ValueKey('ride-extra-${i.key}'),
                                     title: Text(g.items.length == 1 && i.label == g.title ? 'I take these' : i.label),
-                                    // The guide dog is always taken (0263).
-                                    subtitle: i.key == guideDogExtraKey ? const Text('Always on: required by law') : null,
-                                    value: i.key == guideDogExtraKey || !off.contains(i.key),
-                                    onChanged: i.key == guideDogExtraKey ? null : (v) => set(i.key, v),
+                                    value: !off.contains(i.key),
+                                    onChanged: (v) => set(i.key, v),
                                   ),
                             ]),
                           ),
@@ -184,7 +181,6 @@ class _RideExtrasDialogState extends State<RideExtrasDialog> {
                 style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t, background: t.dialogTheme.backgroundColor)),
               ),
               for (final x in widget.extras)
-                if (x.key != guideDogExtraKey)
                 CheckboxListTile(
                   key: ValueKey('ride-extras-stop-${x.key}'),
                   contentPadding: EdgeInsets.zero,

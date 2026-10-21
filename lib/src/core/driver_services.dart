@@ -39,9 +39,6 @@ abstract final class DriverServiceKey {
   static String? extraOf(String key) => key.startsWith('extra:') ? key.substring(6) : null;
 }
 
-/// The guide or service dog's add-on key: always taken (0263).
-const guideDogExtraKey = 'assist:guide-dog';
-
 // ---- Locks ------------------------------------------------------------------------
 
 /// Who a lock is for, most specific first.
@@ -486,7 +483,6 @@ class ServiceRow {
     this.on = true,
     this.reason,
     this.lock,
-    this.fixed = false,
   });
 
   /// The switch's key (DriverServiceKey).
@@ -502,11 +498,9 @@ class ServiceRow {
   /// Set by get.ride: the switch can't be changed.
   final ServiceLock? lock;
 
-  /// Always on (the guide dog).
-  final bool fixed;
 
   /// Whether the driver may flip it.
-  bool get switchable => reason == null && lock == null && !fixed;
+  bool get switchable => reason == null && lock == null;
 
   /// What the switch shows: a greyed-out service is off.
   bool get shownOn => reason == null && on;
@@ -582,16 +576,14 @@ List<ServiceSection> servicesPageSections(
         () {
           final key = DriverServiceKey.extra(i.key);
           final lock = o.key(key).lock;
-          final guideDog = i.key == guideDogExtraKey;
           final single = g.items.length == 1 && i.label == g.title;
           return ServiceRow(
             key: key,
             title: single ? g.title : i.label,
-            subtitle: guideDog ? 'Always on: required by law' : (single ? '' : g.title),
+            subtitle: single ? '' : g.title,
             kind: ServiceRowKind.addOn,
-            on: guideDog || effectiveOn(lock: lock, pref: !extrasOff.contains(i.key)),
-            lock: guideDog ? null : lock,
-            fixed: guideDog,
+            on: effectiveOn(lock: lock, pref: !extrasOff.contains(i.key)),
+            lock: lock,
           );
         }(),
   ];

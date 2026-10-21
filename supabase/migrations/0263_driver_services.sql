@@ -55,8 +55,7 @@
 --   * street hail: the meter and a hail trip run on the phone and reach the
 --     server only when finished (meter_trips, 0219), so the app refuses to
 --     start them while off.
--- The guide dog is always taken: a driver can't turn it off (the law
--- requires it), and a stored 'assist:guide-dog' is dropped.
+-- The guide dog stays an add-on the driver may turn off, as 0253 has it.
 -- ============================================================================
 
 -- ---- 1. Keys ------------------------------------------------------------------------------------
@@ -849,8 +848,7 @@ create trigger trg_ride_requests_c_services
   for each row execute function public.ride_requests_driver_services();
 
 -- ---- 9. Add-ons: a lock applies on top of the driver's own list ---------------------------------
--- As 0253, then: an 'extra:' lock 'on' takes the add-on back, 'off' adds it;
--- the guide dog is always taken.
+-- As 0253, then: an 'extra:' lock 'on' takes the add-on back, 'off' adds it.
 create or replace function public.driver_extras_off(p_driver uuid)
 returns text[]
 language plpgsql
@@ -882,28 +880,11 @@ begin
   end if;
   return coalesce((select array_agg(distinct x order by x)
                      from unnest(v_own || v_off) x
-                    where not (x = any (v_on)) and x <> 'assist:guide-dog'), '{}');
+                    where not (x = any (v_on))), '{}');
 end;
 $$;
 revoke execute on function public.driver_extras_off(uuid) from public, anon, authenticated;
 grant execute on function public.driver_extras_off(uuid) to service_role;
-
--- As 0253, and the guide dog never stays off.
-create or replace function public.driver_ride_extras_normalise()
-returns trigger
-language plpgsql
-set search_path = public
-as $$
-begin
-  new.off := coalesce((select array_agg(distinct k order by k)
-                         from (select lower(btrim(x)) k from unnest(coalesce(new.off, '{}')) x) y
-                        where k <> '' and k <> 'assist:guide-dog'), '{}');
-  new.updated_at := now();
-  return new;
-end;
-$$;
-revoke execute on function public.driver_ride_extras_normalise() from public, anon, authenticated;
-update public.driver_ride_extras set off = off where 'assist:guide-dog' = any (off);
 
 -- ---- 10. Who is pushed and offered --------------------------------------------------------------
 -- As 0253, the everyone push leaving out the drivers who don't take the

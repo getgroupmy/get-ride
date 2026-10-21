@@ -103,7 +103,6 @@ final lockServiceChoicesProvider = Provider.autoDispose<List<LockServiceChoice>>
     (key: DriverServiceKey.hailDestination, name: 'Street hail with destination', group: 'Street hail'),
     for (final g in addOns)
       for (final i in g.items)
-        if (i.key != guideDogExtraKey)
           (
             key: DriverServiceKey.extra(i.key),
             name: g.items.length == 1 && i.label == g.title ? g.title : '${g.title}: ${i.label}',

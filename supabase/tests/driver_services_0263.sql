@@ -9,7 +9,7 @@
 --     who made it; drivers read only the locks that apply to them;
 --   * an open request whose service is off is hidden from that driver, not
 --     from its rider or admins; a bid on one is refused;
---   * add-on locks reach the 0253 extras, and the guide dog is always taken;
+--   * add-on locks reach the 0253 extras (the guide dog is an add-on like any other);
 --   * the Services page's read.
 -- All names and numbers are made up.
 --
@@ -277,18 +277,18 @@ select pg_temp.check((select count(*) from public.driver_service_locks where sco
   'a driver reads their own locks, not another''s');
 reset role;
 
--- ---- 3. Add-ons: locks over the 0253 extras; the guide dog stays ----------------------------------
+-- ---- 3. Add-ons: locks over the 0253 extras -------------------------------------------------------
 insert into public.driver_ride_extras (driver_id, off) values
   ('00000000-0000-0000-0000-0000000263d2', array['child-seat', 'assist:guide-dog']);
 select pg_temp.check((select off from public.driver_ride_extras where driver_id = '00000000-0000-0000-0000-0000000263d2')
-                       = array['child-seat'], 'the guide dog can''t be turned off');
-select pg_temp.check(public.driver_extras_off('00000000-0000-0000-0000-0000000263d2') = array['child-seat', 'pet:dog'],
+                       = array['assist:guide-dog', 'child-seat'], 'the guide dog can be turned off, as 0253');
+select pg_temp.check(public.driver_extras_off('00000000-0000-0000-0000-0000000263d2') = array['assist:guide-dog', 'child-seat', 'pet:dog'],
   'an add-on locked off joins the driver''s list');
 select pg_temp.check(not public.driver_takes_extras('00000000-0000-0000-0000-0000000263d2', array['pet:dog']),
   'so a dog ride isn''t offered');
 insert into public.driver_service_locks (scope, driver_id, service_key, mode) values
   ('driver', '00000000-0000-0000-0000-0000000263d2', 'extra:child-seat', 'on');
-select pg_temp.check(public.driver_extras_off('00000000-0000-0000-0000-0000000263d2') = array['pet:dog'],
+select pg_temp.check(public.driver_extras_off('00000000-0000-0000-0000-0000000263d2') = array['assist:guide-dog', 'pet:dog'],
   'an add-on locked on is taken whatever the driver chose');
 
 -- ---- 4. Open requests --------------------------------------------------------------------------------

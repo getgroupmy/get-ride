@@ -1,7 +1,7 @@
 // The driver's Services page (0263) on a phone, light and dark: the car
 // card, the tabs, a switch saved for this car with its toast, a greyed-out
 // service with its reason, a padlock row that says who set it, the street
-// hail and add-on rows (the guide dog always on), and no car in use.
+// hail and add-on rows (the guide dog a switch like the others), and no car in use.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -128,11 +128,11 @@ void main() {
       expect(_switch(tester, 'hail:destination').value, isTrue);
       expect(_switch(tester, 'hail:meter').onChanged, isNotNull);
 
-      // Add-ons: the guide dog always on.
+      // Add-ons: the guide dog is a switch like any other.
       expect(find.text('Add-ons'), findsOneWidget);
-      expect(find.text('Always on: required by law'), findsOneWidget);
+      expect(find.text('Always on: required by law'), findsNothing);
       expect(_switch(tester, 'extra:assist:guide-dog').value, isTrue);
-      expect(_switch(tester, 'extra:assist:guide-dog').onChanged, isNull);
+      expect(_switch(tester, 'extra:assist:guide-dog').onChanged, isNotNull);
 
       // Nothing runs off the side of a phone.
       final page = tester.getRect(find.byKey(const ValueKey('driver-services')));

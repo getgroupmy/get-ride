@@ -258,9 +258,8 @@ void main() {
       expect(extras[0].title, 'Child safety seat');
       expect(extras[1].title, 'Dog');
       expect(extras[1].on, isFalse, reason: "the driver's own add-on list");
-      expect(extras[2].fixed, isTrue);
       expect(extras[2].on, isTrue);
-      expect(extras[2].switchable, isFalse, reason: 'the guide dog is always taken');
+      expect(extras[2].switchable, isTrue, reason: 'the guide dog may be turned off, as 0253');
     });
 
     test('an add-on lock wins over the driver list', () {

@@ -161,11 +161,11 @@ void main() {
       for (final w in ['One driver', 'Several drivers', 'Partner type', 'Fleet', 'Region', 'Everyone']) {
         expect(find.descendant(of: find.byKey(const ValueKey('dsl-form')), matching: find.text(w)), findsOneWidget, reason: w);
       }
-      // A row per service, street hail and add-on, with the off counts; never the guide dog.
+      // A row per service, street hail and add-on (the guide dog too), with the off counts.
       expect(find.byKey(const ValueKey('dsl-rule-ride')), findsOneWidget);
       expect(find.byKey(const ValueKey('dsl-rule-hail:meter')), findsOneWidget);
       expect(find.byKey(const ValueKey('dsl-rule-extra:child-seat')), findsOneWidget);
-      expect(find.byKey(const ValueKey('dsl-rule-extra:assist:guide-dog')), findsNothing);
+      expect(find.byKey(const ValueKey('dsl-rule-extra:assist:guide-dog')), findsOneWidget);
       expect(find.text('Services · 3 drivers have it off'), findsOneWidget);
       expect(find.text('Street hail · 1 driver has it off'), findsOneWidget);
 
