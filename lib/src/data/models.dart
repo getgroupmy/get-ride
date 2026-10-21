@@ -413,7 +413,7 @@ class RideRequest {
   /// the fee owed for cancelling after the driver arrived.
   int? get waitingMinutes => _i(raw['freight_waiting_minutes']);
   double? get waitingFee => _d(raw['freight_waiting_fee']);
-  double? get cancelFee => _d(raw['freight_cancel_fee']);
+  double? get freightCancelFee => _d(raw['freight_cancel_fee']);
 
   /// The value the sender declared, and whom the tracking link goes to.
   double? get declaredValue => _d(raw['declared_value']);
