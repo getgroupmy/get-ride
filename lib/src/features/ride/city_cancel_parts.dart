@@ -62,10 +62,12 @@ class _CityCancelButtonState extends ConsumerState<CityCancelButton> with _Ticki
     double fee = 0;
     String? line;
     if (terms != null && !terms.scheduled) {
-      final left = freeCancelLeft(terms.rules, acceptedAt: r.acceptedAt, arrivedAt: r.arrivedAt, now: now);
+      final left = terms.freight
+          ? null
+          : freeCancelLeft(terms.rules, acceptedAt: r.acceptedAt, arrivedAt: r.arrivedAt, now: now);
       tick(left != null);
-      fee = cityCancelFee(terms.rules, acceptedAt: r.acceptedAt, arrivedAt: r.arrivedAt, at: now);
-      line = cancelTermsLine(terms.rules, r, now, money: money);
+      fee = cancelFeeFor(terms, r, now);
+      line = cancelTermsLineFor(terms, r, now, money: money);
     } else {
       tick(false);
     }
@@ -101,8 +103,12 @@ class _CityCancelButtonState extends ConsumerState<CityCancelButton> with _Ticki
 /// What the cancel dialog says of the fee, or null when it is free.
 String? cancelFeeNote(CancelTerms? terms, RideRequest r, DateTime now) {
   if (terms == null || terms.scheduled || !cityCancelApplies(r)) return null;
-  final fee = cityCancelFee(terms.rules, acceptedAt: r.acceptedAt, arrivedAt: r.arrivedAt, at: now);
+  final fee = cancelFeeFor(terms, r, now);
   if (fee <= 0) return null;
+  if (terms.freight) {
+    return 'Your driver is at the pickup: cancelling now costs ${formatMoney(fee, r.currency)}, added to your next '
+        'request.';
+  }
   return 'Cancelling now costs ${formatMoney(fee, r.currency)}, paid to your driver from GET.wallet (or added to '
       'your next trip). "Driver isn\'t moving" and "Car doesn\'t match" are always free.';
 }

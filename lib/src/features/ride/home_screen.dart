@@ -23,6 +23,7 @@ import '../../core/smart_address.dart' show isCoordinateLabel;
 import '../../core/fare_tariff.dart';
 import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart';
+import '../../core/city_cancel.dart' show owedFeesNote;
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/airport_areas.dart' show AirportArea, AreaPrecedenceRule;
@@ -2730,7 +2731,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final myRideOn = myRideTargets.isNotEmpty;
     final direct = ref.watch(directBookingProvider);
     final scheduleConfig = ref.watch(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
-    final owed = scheduleConfig.enabled ? ref.watch(owedFeesProvider).value ?? 0 : 0.0;
+    // Every fee still owed (my_owed_fees, 0271): a late scheduled cancel, a
+    // freight cancel and a city cancel or no-show a short wallet left due.
+    final owed = ref.watch(owedFeesProvider).value ?? 0;
     final footer = confirming && _route != null
         ? ConfirmFooter(
             // Always there: Comments stays when every option is hidden.
@@ -2782,7 +2785,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             onUseCoins: (v) => setState(() => _useCoins = v),
             pickLater: scheduleConfig.enabled && direct == null ? () => _pickLater(scheduleConfig) : null,
             onLater: _bookLater,
-            owedNote: owed > 0 ? '+ ${formatMoney(owed, _currency)} late fee from an earlier booking' : null,
+            owedNote: owedFeesNote(owed, _currency),
             whoRiding: !layout.showBookForOther ? null : _WhoRiding(
               forOther: _forOther,
               name: _otherName,
