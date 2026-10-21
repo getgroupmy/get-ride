@@ -462,9 +462,17 @@ const placeTypeNameRules = <(String, List<String>)>[
   ('stadium', [' stadium', ' arena']),
   ('convention_center', [' convention', ' exhibition', ' auditorium', ' expo ']),
   ('tourist_attraction', [' museum', ' muzium', ' zoo ', ' aquarium', ' aquaria', ' theme park']),
+  // Shopping words before the park rule: "Shopping Park", "Gardens Mall" (0265).
+  ('shopping_mall', ['mall', ' shopping', ' outlet']),
   ('park', [' park ', ' tasik ', ' gardens', ' botanical']),
   ('corporate_office', [' tower', ' menara', ' office', ' wisma ']),
-  ('shopping_mall', ['mall', ' plaza', ' centre', ' center', ' square', ' shopping', ' galleria', ' klcc ', ' aeon ']),
+  // The usual mall names without "mall" in them (0265).
+  ('shopping_mall', [
+    ' plaza', ' centre', ' center', ' square', ' galleria', ' klcc ', ' aeon ', ' pavilion', ' pyramid', ' city ',
+    ' point ', ' central ', ' junction ', ' parade ', ' complex ', ' hub ', ' walk ', ' mytown ', ' utama ',
+    ' vivocity', ' the curve ', ' trx ', ' ion orchard', ' paragon ', ' suntec ', ' bugis', ' funan ', ' jem ',
+    ' westgate ', ' nex ',
+  ]),
 ];
 
 /// The type a place's Google main type ([googleType]), OpenStreetMap type

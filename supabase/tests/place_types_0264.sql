@@ -120,7 +120,9 @@ select pg_temp.check(public.place_type_guess(n) = k, format('%s guessed %s, not 
   from (values
     ('KLCC', 'shopping_mall'), ('Mid Valley Megamall', 'shopping_mall'), ('Plaza Low Yat', 'shopping_mall'),
     ('Times Square', 'shopping_mall'), ('Lrtx Plaza', 'shopping_mall'),
-    ('Sunway Pyramid', 'point_of_interest'), ('Pavilion KL', 'point_of_interest'), ('', 'point_of_interest'),
+    ('Sunway Pyramid', 'shopping_mall'), ('Pavilion KL', 'shopping_mall'), ('ION Orchard', 'shopping_mall'),
+    ('The Gardens Mall', 'shopping_mall'), ('Mitsui Shopping Park LaLaport Bukit Bintang City Centre', 'shopping_mall'),
+    ('Changi City Point', 'shopping_mall'), ('Somewhere 264', 'point_of_interest'), ('', 'point_of_interest'),
     ('Supermarket Giant', 'point_of_interest'),
     ('KLIA Terminal 1', 'airport'), ('klia2', 'airport'), ('Senai International Airport', 'airport'),
     ('KL Sentral', 'train_station'), ('KTM Rawang', 'train_station'), ('Stesen Keretapi Ipoh', 'train_station'),
@@ -162,7 +164,7 @@ insert into public.multi_gate (id, kind, values) values
   ('00000000-0000-0000-0000-0000000264f1', 'place', '{"name":"Mid Valley Megamall","lat":"41.0","lon":"131.0"}'),
   ('00000000-0000-0000-0000-0000000264f2', 'place', '{"name":"KL Sentral","lat":"41.1","lon":"131.1"}'),
   ('00000000-0000-0000-0000-0000000264f3', 'place', '{"name":"Grand Hotel 264","lat":"45.1","lon":"135.1"}'),
-  ('00000000-0000-0000-0000-0000000264f4', 'place', '{"name":"Sunway Pyramid","lat":"41.2","lon":"131.2"}'),
+  ('00000000-0000-0000-0000-0000000264f4', 'place', '{"name":"Somewhere 264","lat":"41.2","lon":"131.2"}'),
   ('00000000-0000-0000-0000-0000000264f5', 'place', '{"name":"Hospital 264","lat":"41.3","lon":"131.3","placeType":"stadium","placeTypeSet":true}'),
   ('00000000-0000-0000-0000-0000000264f6', 'place', '{"name":"Somewhere 264","osmType":"bus_station","lat":"41.4","lon":"131.4"}'),
   ('00000000-0000-0000-0000-0000000264f8', 'place', '{"name":"Hotel Plaza 264","primaryType":"shopping_mall","iconBackgroundColor":"#4B96F3","lat":"41.6","lon":"131.6"}');
