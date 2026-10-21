@@ -133,6 +133,7 @@ String claimVehicleErrorMessage(Object error) {
   if (msg.contains('vehicle_in_use')) return 'Another driver is using this vehicle. Ask them to hand it back first.';
   if (msg.contains('user_busy')) return "You're already driving another vehicle. Hand that one back first.";
   if (msg.contains('not_assigned')) return "You're not assigned to this vehicle any more.";
+  if (msg.contains('vehicle_not_approved')) return "This vehicle isn't approved to drive yet.";
   // Admin → Partner Type → Max vehicle age (0245): the server says why.
   if (msg.contains('vehicle_too_old')) {
     String? hint;
@@ -184,3 +185,56 @@ bool samePhone(String a, String b) {
   if (x == y) return true;
   return x.length >= 9 && y.length >= 9 && x.substring(x.length - 9) == y.substring(y.length - 9);
 }
+
+// ---- The vehicle gate ----------------------------------------------------------
+
+/// What a driver who must drive a vehicle (going online, sending an offer,
+/// accepting a request) needs first, from the vehicles they may drive.
+enum VehicleGateKind {
+  /// They have taken one: go ahead.
+  ready,
+
+  /// Exactly one can be driven: take it for them, no questions.
+  takeOnly,
+
+  /// Several can be driven: they pick one.
+  choose,
+
+  /// None can be driven, but one they added is half set up: finish it.
+  finish,
+
+  /// None can be driven yet (waiting for review, locked): see the vehicles.
+  waiting,
+
+  /// No vehicle at all: add one.
+  add,
+}
+
+class VehicleGate {
+  const VehicleGate(this.kind, {this.vehicle});
+  final VehicleGateKind kind;
+
+  /// [VehicleGateKind.takeOnly]: the one to take; [VehicleGateKind.finish]:
+  /// the one to finish.
+  final AssignableVehicle? vehicle;
+}
+
+/// The gate for [vehicles] (the picker's list, [buildAssignableVehicles]).
+VehicleGate vehicleGateFor(List<AssignableVehicle> vehicles) {
+  if (vehicles.any((v) => v.inUseByMe)) return const VehicleGate(VehicleGateKind.ready);
+  final usable = vehicles.where((v) => v.selectable).toList();
+  if (usable.length == 1) return VehicleGate(VehicleGateKind.takeOnly, vehicle: usable.single);
+  if (usable.length > 1) return const VehicleGate(VehicleGateKind.choose);
+  final unfinished = vehicles
+      .where((v) => v.status == AssignableStatus.incomplete && v.role == VehicleRole.owner)
+      .firstOrNull;
+  if (unfinished != null) return VehicleGate(VehicleGateKind.finish, vehicle: unfinished);
+  return VehicleGate(vehicles.isEmpty ? VehicleGateKind.add : VehicleGateKind.waiting);
+}
+
+/// Why none of [vehicles] can be driven, one line each ("WXY 1234: An admin
+/// is still reviewing this vehicle.").
+String vehicleGateWaitingLines(List<AssignableVehicle> vehicles) => [
+  for (final v in vehicles)
+    if (v.blockedReason != null) '${v.plate.isEmpty ? v.title : v.plate}: ${v.blockedReason}',
+].join('\n');

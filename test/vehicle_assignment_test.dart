@@ -72,6 +72,9 @@ class _FakeRepo implements VehicleAssignmentRepository {
   }
 
   @override
+  Future<bool> hasSession() async => vehicles.any((v) => v.inUseByMe);
+
+  @override
   Future<List<VehicleDriver>> driversFor(String vehicleId) async => drivers;
 
   @override
