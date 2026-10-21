@@ -21,6 +21,7 @@ import '../../core/obd.dart';
 import '../../core/street_hail.dart';
 import '../../core/taxi_meter.dart';
 import '../../core/teksi_tariff.dart';
+import '../../data/driver_services_repository.dart' show hailGateProvider;
 import '../../data/geo_service.dart';
 import '../../data/obd/obd_session.dart';
 import '../../data/vehicle_assignment_repository.dart';
@@ -232,6 +233,8 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   /// Where the passenger is going (Expo's street-hail trip summary). Set
   /// or changed at any time; the quote is on the card the hire bills on.
   Future<void> _setDestination() async {
+    final off = ref.read(hailGateProvider).destinationRefusal();
+    if (off != null) return _explain(off.title, off.message);
     final f = _freshFix ?? _fix;
     _inFront = false;
     await _orientation.release();
@@ -435,6 +438,13 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
     if (ref.read(partnerTypeCheckProvider(_hailKey)).value?.hailBlocked ?? false) {
       _held = false;
       return _explain('Street hail not available here', hailNotOfferedMessage);
+    }
+    // Services (0263): the driver turned street hail off for this car, or
+    // get.ride keeps it off. Known from the page's read; unknown lets it open.
+    final hailOff = ref.read(hailGateProvider).refusal(withDestination: _dest != null);
+    if (hailOff != null) {
+      _held = false;
+      return _explain(hailOff.title, hailOff.message);
     }
     if (!onGps && !_gate.canStart) {
       // The press is held: the sensor is asked for, and the hire opens by
@@ -875,6 +885,7 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
   Widget build(BuildContext context) {
     // Kept fresh for START ([_start]).
     ref.watch(partnerTypeCheckProvider(_hailKey));
+    ref.watch(hailGateProvider);
     ref.listen(meterCardsProvider, (_, _) => _resolveCard());
     ref.listen(obdSessionProvider, (_, _) => _checkHeld());
     // Keeps the partner, the permit and the fleet loaded: the plate and the

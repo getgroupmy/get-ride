@@ -86,6 +86,9 @@ const liveSettingTables = <String>[
   'trip_handover_candidates',
   // EV profiles for the OBD-II reader (0202; the active ones, or all for an admin).
   'ev_profiles',
+  // The locks get.ride keeps on driver services (0263; a driver reads the
+  // ones that apply to them, an admin every one).
+  'driver_service_locks',
 ];
 
 /// The signed-in account's own rows that an admin decides on (approving,
@@ -100,6 +103,8 @@ const liveOwnTables = <String, String>{
   'vehicle_documents': 'auth_user_id',
   // The ride extras the driver turned off (0253).
   'driver_ride_extras': 'driver_id',
+  // The services the driver switched on or off for each car (0263).
+  'driver_service_prefs': 'driver_id',
 };
 
 /// The region tables (Admin → Country / States / Cities / Suburbs, and the
@@ -267,6 +272,9 @@ const liveAdminTables = <String>[
   'driver_ride_extras',
   // Which services each partner type sees (0259): its admin page.
   'partner_type_services',
+  // Driver services (0263): every driver's switches, and who changed a lock.
+  'driver_service_prefs',
+  'driver_service_lock_events',
 ];
 
 /// Rides and sessions change every few seconds while trips run; an admin

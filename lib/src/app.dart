@@ -69,6 +69,7 @@ import 'features/partner/scheduled_jobs_screen.dart';
 import 'features/partner/demo_jobs.dart';
 import 'features/partner/my_ride_code_screen.dart';
 import 'features/partner/my_permits_screen.dart';
+import 'features/partner/driver_services_screen.dart';
 import 'features/partner/earnings_screen.dart';
 import 'features/partner/statement_verify_screen.dart';
 import 'features/partner/statements_screen.dart';
@@ -505,6 +506,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           // Side menu > My permit (0254): the vehicle being driven and the driver's own.
           GoRoute(path: '/drive/permits', builder: (_, _) => const MyPermitsScreen()),
+          // Side menu > Services (0263): what the car in use takes.
+          GoRoute(path: '/drive/services', builder: (_, _) => const DriverServicesScreen()),
           GoRoute(
             path: '/drive/trip/:id',
             // Demo jobs play out on /drive/demo, never as a real trip.

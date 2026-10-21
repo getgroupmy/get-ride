@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/vehicle_assignment.dart';
+import '../../data/driver_services_repository.dart' show servicesPageAvailableProvider;
 import '../../data/vehicle_assignment_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -81,6 +82,13 @@ class _CurrentVehicleCardState extends ConsumerState<CurrentVehicleCard> {
     } else if (current != null) {
       subtitle = Text('${current.plate} · ${current.title} · ${vehicleRoleLabel(current.role)}');
       actions = [
+        // What this car takes (0263), for a partner whose types offer services.
+        if (ref.watch(servicesPageAvailableProvider))
+          TextButton(
+            key: const ValueKey('current-vehicle-services'),
+            onPressed: () => context.push('/drive/services'),
+            child: const Text('Services'),
+          ),
         BusyButton.text(onPressed: _busy ? null : () => _pick(list), child: const Text('Change')),
         BusyButton.text(onPressed: _busy ? null : () => _handBack(current), child: const Text('Hand back')),
       ];
