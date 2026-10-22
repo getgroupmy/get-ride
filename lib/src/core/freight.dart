@@ -19,6 +19,51 @@ import 'service_tree.dart';
 /// The Service Settings type whose Vehicle Services are the freight sizes.
 const freightServiceType = 'Freight';
 
+/// The Service Settings type whose Vehicle Services are the courier
+/// vehicles (migration 0268, core/courier.dart).
+const courierServiceType = 'Courier';
+
+/// The two kinds of delivery built on these parts: Freight (vans and
+/// lorries, 0267) and Courier (parcels, 0268). A request of either is a
+/// ride request with a cargo; a courier one also has a parcel size.
+enum DeliveryKind {
+  freight(freightServiceType, 'cargo', 'driver'),
+  courier(courierServiceType, 'parcel', 'courier');
+
+  const DeliveryKind(this.serviceType, this.goods, this.worker);
+
+  /// The Service type a Vehicle Service names to be of this kind.
+  final String serviceType;
+
+  /// What is carried ("cargo", "parcel") and who carries it.
+  final String goods;
+  final String worker;
+
+  /// Whether a Vehicle Service's [types] (Service type names) are this kind.
+  bool ofTypes(Iterable<String> types) => types.any((t) => t.trim().toLowerCase() == serviceType.toLowerCase());
+
+  /// Whether a Vehicle Services entry's [values] are this kind.
+  bool ofValues(Map<String, dynamic> values) =>
+      values['serviceTypes'] is List && ofTypes([for (final t in values['serviceTypes'] as List) '$t']);
+}
+
+/// The delivery kind of a Vehicle Services entry's [values]; null for a ride.
+DeliveryKind? deliveryKindOfValues(Map<String, dynamic> values) {
+  for (final k in DeliveryKind.values) {
+    if (k.ofValues(values)) return k;
+  }
+  return null;
+}
+
+/// Whether a Vehicle Service's [types] make it courier.
+bool isCourierTypes(Iterable<String> types) => DeliveryKind.courier.ofTypes(types);
+
+/// Whether a Vehicle Services entry's [values] make it courier.
+bool isCourierValues(Map<String, dynamic> values) => DeliveryKind.courier.ofValues(values);
+
+/// Whether [s] is booked from the Courier page rather than the ride bar.
+bool isCourierService(RideService s) => isCourierTypes(s.serviceTypes);
+
 /// Where the home Freight box goes when there is a size to book.
 const freightPageRoute = '/freight';
 
@@ -26,12 +71,10 @@ const freightPageRoute = '/freight';
 const cargoDescriptionMax = 500;
 
 /// Whether a Vehicle Service's [types] (Service type names) make it freight.
-bool isFreightTypes(Iterable<String> types) =>
-    types.any((t) => t.trim().toLowerCase() == freightServiceType.toLowerCase());
+bool isFreightTypes(Iterable<String> types) => DeliveryKind.freight.ofTypes(types);
 
 /// Whether a Vehicle Services entry's [values] make it freight.
-bool isFreightValues(Map<String, dynamic> values) =>
-    values['serviceTypes'] is List && isFreightTypes([for (final t in values['serviceTypes'] as List) '$t']);
+bool isFreightValues(Map<String, dynamic> values) => DeliveryKind.freight.ofValues(values);
 
 /// Whether [s] is booked from the Freight page rather than the ride bar.
 bool isFreightService(RideService s) => isFreightTypes(s.serviceTypes);
@@ -73,12 +116,28 @@ class FreightVehicle {
   RideService get service =>
       RideService(name, description, multiplier, 1, id: id, image: image, serviceTypes: serviceTypes, parentIds: parentIds);
 
+  /// Whether it is a courier vehicle (core/courier.dart), not a freight size.
+  bool get isCourier => isCourierTypes(serviceTypes);
+
+  /// The name riders read: a courier vehicle's without its "Courier "
+  /// (seeded "Courier Car" reads "Car").
+  String get shortName {
+    if (!isCourier) return name;
+    final short = name.replaceFirst(RegExp(r'^courier\s+', caseSensitive: false), '').trim();
+    return short.isEmpty ? name : short;
+  }
+
   /// "up to 500 kg", or null without a load.
   String? get loadText => maxLoadKg == null ? null : 'up to ${_groupedKg(maxLoadKg!)} kg';
 
-  /// "len/wid/hgt 2.0/1.4/1.3 m", or null without any of them.
+  /// "len/wid/hgt 2.0/1.4/1.3 m", or null without any of them; a courier
+  /// vehicle's in centimetres ("30 x 30 x 30 cm").
   String? get sizeText {
     if (lengthM == null && widthM == null && heightM == null) return null;
+    if (isCourier) {
+      String cm(double? v) => v == null ? '-' : (v * 100).round().toString();
+      return '${cm(lengthM)} x ${cm(widthM)} x ${cm(heightM)} cm';
+    }
     String m(double? v) => v == null ? '-' : v.toStringAsFixed(1);
     return 'len/wid/hgt ${m(lengthM)}/${m(widthM)}/${m(heightM)} m';
   }
@@ -109,21 +168,24 @@ String? _image(Object? raw) {
   return s.isEmpty ? null : s;
 }
 
-/// The sizes a rider can book: the active Vehicle Services under Freight,
-/// in display priority (the ride bar's hide list and order are the ride
-/// bar's, not these).
-List<FreightVehicle> freightVehiclesFrom(List<({String id, Map<String, dynamic> values})> entries) {
+/// The sizes a rider can book: the active Vehicle Services under Freight
+/// (or, with [kind], Courier), in display priority (the ride bar's hide
+/// list and order are the ride bar's, not these).
+List<FreightVehicle> freightVehiclesFrom(
+  List<({String id, Map<String, dynamic> values})> entries, {
+  DeliveryKind kind = DeliveryKind.freight,
+}) {
   final active = arrangeVehicles(entries, const {}, id: (e) => e.id, values: (e) => e.values);
   return [
     for (final e in active)
-      if (isFreightValues(e.values))
+      if (kind.ofValues(e.values))
         () {
           final v = e.values;
           final cost = _num(v['costPerKm']);
           final name = '${v['name'] ?? ''}'.trim();
           return FreightVehicle(
             id: e.id,
-            name: name.isEmpty ? 'Freight' : name,
+            name: name.isEmpty ? kind.serviceType : name,
             description: '${v['shortDescription'] ?? ''}'.trim(),
             image: _image(v['heroImageUri']) ?? _image(v['iconUri']),
             maxLoadKg: _num(v['maxLoadKg']),
@@ -360,20 +422,51 @@ abstract final class FreightPlaceKey {
   static double max(String key) => key == declaredCap ? OptionChargeKey.freightDeclaredCapMax : (key == waitFreeMin ? 1440 : OptionCharge.maxAmount);
 }
 
-/// The Freight values at a pickup.
+/// The Courier values a place keeps beside Freight's (migration 0268):
+/// the same four, under 'courier-...' (10 free minutes when unset).
+abstract final class CourierPlaceKey {
+  static const waitFreeMin = 'courier-wait-free-min';
+  static const waitPerMin = 'courier-wait-per-min';
+  static const cancelArrived = 'courier-cancel-arrived';
+  static const declaredCap = OptionChargeKey.courierDeclaredCap;
+
+  static const all = [waitFreeMin, waitPerMin, cancelArrived, declaredCap];
+
+  static double fallback(String key) => switch (key) {
+    waitFreeMin => 10,
+    declaredCap => 500,
+    _ => 0,
+  };
+
+  static double max(String key) => key == declaredCap ? OptionChargeKey.freightDeclaredCapMax : (key == waitFreeMin ? 1440 : OptionCharge.maxAmount);
+}
+
+/// A kind's place keys: wait free, wait per minute, cancel fee, cap.
+List<String> deliveryPlaceKeys(DeliveryKind kind) =>
+    kind == DeliveryKind.courier ? CourierPlaceKey.all : FreightPlaceKey.all;
+
+/// What holds for [key] (either kind's) with nothing set anywhere.
+double deliveryPlaceFallback(String key) =>
+    key.startsWith('courier-') ? CourierPlaceKey.fallback(key) : FreightPlaceKey.fallback(key);
+
+/// The most an admin may set for [key] (either kind's).
+double deliveryPlaceMax(String key) => key.startsWith('courier-') ? CourierPlaceKey.max(key) : FreightPlaceKey.max(key);
+
+/// The Freight (or, with [kind], Courier) values at a pickup.
 typedef FreightPlaceValues = ({double waitFreeMin, double waitPerMin, double cancelFee, double declaredCap});
 
-FreightPlaceValues freightPlaceValues(OptionPlaces places, RegionScope place) {
+FreightPlaceValues freightPlaceValues(OptionPlaces places, RegionScope place, {DeliveryKind kind = DeliveryKind.freight}) {
   double v(String key) {
     final c = places.chargeAt(place, key);
-    return c.from == null ? FreightPlaceKey.fallback(key) : c.value.charge.value;
+    return c.from == null ? deliveryPlaceFallback(key) : c.value.charge.value;
   }
 
+  final keys = deliveryPlaceKeys(kind);
   return (
-    waitFreeMin: v(FreightPlaceKey.waitFreeMin),
-    waitPerMin: v(FreightPlaceKey.waitPerMin),
-    cancelFee: v(FreightPlaceKey.cancelArrived),
-    declaredCap: v(FreightPlaceKey.declaredCap),
+    waitFreeMin: v(keys[0]),
+    waitPerMin: v(keys[1]),
+    cancelFee: v(keys[2]),
+    declaredCap: v(keys[3]),
   );
 }
 

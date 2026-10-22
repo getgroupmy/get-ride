@@ -139,6 +139,8 @@ const defaultServiceBoxIcons = ['ShoppingBag', 'Car', 'Building2', 'Package', 'T
 /// Every navigable Expo route, for the "link to page" pickers (stored values
 /// are Expo paths, so the Expo app keeps working).
 const allAppRoutes = <String>[
+  // The Freight and Courier pages (0267, 0268), for the home service boxes.
+  '/freight', '/courier',
   '/', '/onboarding', '/role-selection', '/phone-auth', '/otp-verify', '/pin-setup', '/pin-verify',
   '/change-pin', '/change-number', '/name-entry', '/profile', '/edit-profile', '/profile-photo', '/settings',
   '/dark-mode', '/language', '/distances', '/navigation', '/user-guide', '/rules-terms', '/safety',
@@ -182,6 +184,8 @@ const allAppRoutes = <String>[
 const _routeAcronyms = {'api', 'ev', 'pin', 'otp', 'ui', 'teksi', 'id'};
 const _routeLabelOverrides = {
   '/': 'Home',
+  '/freight': 'Freight',
+  '/courier': 'Courier',
   '/teksi-ev': 'Book TEKSI EV',
   '/partner-teksi': 'Partner TEKSI',
   '/partner-ehailing': 'Partner eHailing',

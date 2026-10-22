@@ -55,6 +55,7 @@ import 'trip_handover_panel.dart';
 import '../../widgets/page_style_host.dart';
 import '../ride/promo_parts.dart' show DriverPromoLine, PromoAppliedIcon, rideHasPromo;
 import '../ride/freight_parts.dart' show FreightCargoView, FreightDriverPanel;
+import '../ride/courier_parts.dart' show CourierCodeDialog;
 import '../../data/freight_repository.dart' show freightRepositoryProvider;
 import '../ride/pet_parts.dart' show RidePetsView;
 import '../ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
@@ -413,7 +414,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   Future<void> _start(RideRequest r) async {
     // Freight (0267): the photo of the cargo at pickup comes first.
     if (r.isFreight && r.pickupProofPath == null) {
-      return showInfo(context, 'Take the photo of the cargo at pickup first.');
+      return showInfo(context, 'Take the photo of the ${r.isCourier ? 'parcel' : 'cargo'} at pickup first.');
     }
     final repo = ref.read(rideRepositoryProvider);
     // The server checks the code (start_trip, 0152); the app never sees it.
@@ -473,7 +474,16 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   /// confirmed first, then stored on the ride.
   Future<void> _complete(RideRequest r) async {
     if (r.isFreight && r.dropoffProofPath == null) {
-      return showInfo(context, 'Take the photo of the cargo at drop-off first.');
+      return showInfo(context, 'Take the photo of the ${r.isCourier ? 'parcel' : 'cargo'} at drop-off first.');
+    }
+    // Courier (0268): the recipient's confirmation code, checked by the
+    // server, before the delivery can end.
+    if (r.isCourier && r.deliveryCodeOkAt == null) {
+      final ok = await showAppDialog<bool>(id: 'partner-trip.courier-code',
+        context: context,
+        builder: (_) => CourierCodeDialog(rideId: r.id),
+      );
+      if (ok != true || !mounted) return;
     }
     // A metered stand order (0251) has no fare until the meter's: asked here.
     if (r.raw['stand_id'] != null && r.raw['fare_mode'] == 'meter' && r.effectiveFare == null) {
@@ -884,7 +894,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                   key: const ValueKey('trip-freight'),
                   request: r,
                   locked: r.status == RideStatus.open,
-                  title: 'Cargo',
+                  title: r.isCourier ? 'Parcel' : 'Cargo',
                 ),
               ),
             if (r.isFreight)

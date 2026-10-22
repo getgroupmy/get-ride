@@ -7,7 +7,10 @@
  *     existing Vault secret, checked by `push_webhook_secret_ok`), the
  *     service-role key, or the signed-in driver or rider of the ride asked
  *     about (`freight_notice_caller_ok`);
- *   * the message: the notice's text and the ride's share link (0108);
+ *   * the message: the notice's text and the ride's share link (0108),
+ *     and for a courier delivery (0268) the confirmation code, which the
+ *     database hands over only here (never stored in the notice row the
+ *     driver can read);
  *   * WhatsApp: a Business Cloud API text message, with the token and the
  *     sending number's id from this function's own secrets
  *     (WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID). Without them a WhatsApp
@@ -24,12 +27,17 @@ export interface Notice {
   to_phone: string;
   body: string;
   share_token: string | null;
+  /** A courier delivery's code (0268); absent before 0268 or for freight. */
+  delivery_code?: string | null;
 }
 
-/** The text sent: the notice's words and the link. */
+/** The text sent: the notice's words, the link and, for a courier, the code. */
 export function noticeText(n: Notice, base = SHARE_BASE_DEFAULT): string {
   const link = n.share_token ? `${base.replace(/\/+$/, "")}/share/${n.share_token}` : "";
-  return `${n.body}${link}`.trim().slice(0, 600);
+  const code = n.delivery_code && /^[0-9]{4}$/.test(n.delivery_code)
+    ? ` Your delivery code is ${n.delivery_code}. Give it to the courier only once you have the parcel.`
+    : "";
+  return `${`${n.body}${link}`.trim()}${code}`.trim().slice(0, 600);
 }
 
 /** A phone number as the WhatsApp API takes it: digits only. */

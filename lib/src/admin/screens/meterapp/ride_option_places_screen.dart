@@ -11,7 +11,8 @@ import '../../../config.dart' show AppConfig;
 import '../../../core/format.dart' show formatMoney;
 import '../../../core/option_charge.dart';
 import '../../../core/partner_type_rules.dart' show RegionScope;
-import '../../../core/freight.dart' show FreightPlaceKey, isFreightValues;
+import '../../../core/freight.dart'
+    show DeliveryKind, deliveryPlaceFallback, deliveryPlaceKeys, deliveryPlaceMax, isFreightValues;
 import '../../../core/ride_option_places.dart';
 import '../../../core/ride_option_settings.dart';
 import '../../../core/trip_charges.dart' show parseChargeAmount;
@@ -337,6 +338,8 @@ class _RideOptionPlacesScreenState extends ConsumerState<RideOptionPlacesScreen>
           for (final k in config.order)
             if (k.freight) optionCard(k),
           _freightValues(context, places, money, canEdit, fromBadge, useParent),
+          // Courier (0268): its own waiting, cancel fee and value cap.
+          _freightValues(context, places, money, canEdit, fromBadge, useParent, kind: DeliveryKind.courier),
           _SummaryCard(
             places: places,
             place: place,
@@ -358,42 +361,44 @@ class _RideOptionPlacesScreenState extends ConsumerState<RideOptionPlacesScreen>
     String Function(double) money,
     bool canEdit,
     Widget Function(RegionScope?, {required bool own}) fromBadge,
-    Widget Function(String, VoidCallback) useParent,
-  ) {
+    Widget Function(String, VoidCallback) useParent, {
+    DeliveryKind kind = DeliveryKind.freight,
+  }) {
     final t = Theme.of(context);
     final place = _place;
     final row = places.at(place);
-    const labels = {
-      FreightPlaceKey.waitFreeMin: 'Free waiting time',
-      FreightPlaceKey.waitPerMin: 'Waiting fee a minute after it',
-      FreightPlaceKey.cancelArrived: 'Fee when the sender cancels after the driver arrived',
-      FreightPlaceKey.declaredCap: 'Most value a sender may declare',
+    final keys = deliveryPlaceKeys(kind);
+    final labels = {
+      keys[0]: 'Free waiting time',
+      keys[1]: 'Waiting fee a minute after it',
+      keys[2]: 'Fee when the sender cancels after the ${kind.worker} arrived',
+      keys[3]: 'Most value a sender may declare',
     };
-    String shown(String key, double v) => key == FreightPlaceKey.waitFreeMin ? '${trimNumber(v)} min' : money(v);
+    String shown(String key, double v) => key == keys[0] ? '${trimNumber(v)} min' : money(v);
     return Card(
-      key: const ValueKey('place-freight-values'),
+      key: ValueKey('place-${kind.name}-values'),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Freight waiting, cancelling and value', style: t.textTheme.titleMedium),
+          Text('${kind.serviceType} waiting, cancelling and value', style: t.textTheme.titleMedium),
           Text(
             'The waiting fee is added to the fare when the trip starts; the cancel fee goes on the sender\'s next '
-            'request and to the driver who waited.',
+            'request and to the ${kind.worker} who waited.',
             style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t, background: cardSurfaceColor(t))),
           ),
-          for (final key in FreightPlaceKey.all)
+          for (final key in keys)
             () {
               final c = places.chargeAt(place, key);
               final own = row.charges.containsKey(key);
-              final v = c.from == null ? FreightPlaceKey.fallback(key) : c.value.charge.value;
+              final v = c.from == null ? deliveryPlaceFallback(key) : c.value.charge.value;
               Future<void> set() async {
                 final n = await showAppDialog<double>(id: 'display.freight-place-value',
                   context: context,
                   builder: (_) => _FreightValueDialog(
                     title: '${labels[key]} · ${place.placeName}',
                     initial: v,
-                    max: FreightPlaceKey.max(key),
-                    suffix: key == FreightPlaceKey.waitFreeMin ? 'min' : null,
+                    max: deliveryPlaceMax(key),
+                    suffix: key == keys[0] ? 'min' : null,
                   ),
                 );
                 if (n != null && mounted) {

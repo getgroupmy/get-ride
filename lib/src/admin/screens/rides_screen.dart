@@ -5,6 +5,7 @@ import '../../core/format.dart';
 import '../../core/region_time.dart' show formatInZone;
 import '../../data/models.dart';
 import '../../features/ride/freight_parts.dart' show FreightCargoView, FreightNoticesView, FreightProofView;
+import '../../features/ride/courier_parts.dart' show CourierCodeCard;
 import '../../features/ride/pet_parts.dart' show RidePetsView;
 import '../../features/ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
 import '../../core/ride_option_settings.dart' show RideOptionKind;
@@ -96,6 +97,10 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
           'Cancelled': dateText(r.raw['cancelled_at']),
           'Cancel reason': r.raw['cancel_reason'],
           // Freight (0267).
+          // Courier (0268).
+          'Parcel size': r.parcelSize,
+          'Who pays': r.isCourier ? (r.recipientPays ? 'Recipient, in cash on delivery' : 'Sender') : null,
+          'Code confirmed': r.isCourier ? (r.deliveryCodeOkAt == null ? 'Not yet' : dateText(r.raw['delivery_code_ok_at'])) : null,
           'Declared value': r.declaredValue == null ? null : formatMoney(r.declaredValue, r.currency),
           'Recipient': [?r.recipientName, ?r.recipientPhone].join(' · '),
           'Waiting fee': (r.waitingFee ?? 0) > 0 ? '${formatMoney(r.waitingFee, r.currency)} (${r.waitingMinutes} min)' : null,
@@ -108,11 +113,16 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
         // Freight (0267): the cargo and its photo.
         if (r.isFreight) ...[
           const SizedBox(height: 12),
-          FreightCargoView(key: const ValueKey('admin-ride-freight'), request: r, title: 'Cargo'),
+          FreightCargoView(key: const ValueKey('admin-ride-freight'), request: r, title: r.isCourier ? 'Parcel' : 'Cargo'),
           const SizedBox(height: 12),
           FreightProofView(request: r),
           const SizedBox(height: 8),
           FreightNoticesView(rideId: r.id),
+          // Courier (0268): the code, for support.
+          if (r.isCourier) ...[
+            const SizedBox(height: 8),
+            CourierCodeCard(request: r),
+          ],
         ],
         // "Pet with me" (0247): an open request's photos wait aside.
         if (r.pets.isNotEmpty) ...[

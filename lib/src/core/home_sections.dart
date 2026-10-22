@@ -7,7 +7,8 @@ import 'dart:math' as math;
 
 import '../admin/screens/meterapp/display_logic.dart';
 import 'expo_routes.dart';
-import 'freight.dart' show freightPageRoute, freightServiceType;
+import 'courier.dart' show courierPageRoute;
+import 'freight.dart' show DeliveryKind, freightPageRoute;
 
 /// Which home parts show, read with Expo's defaults (the service boxes and
 /// the on-map cars start off).
@@ -115,6 +116,7 @@ class ServiceBoxView {
     this.route,
     this.badge,
     this.freight = false,
+    this.courier = false,
   });
 
   final int index;
@@ -133,8 +135,50 @@ class ServiceBoxView {
   /// there is a freight size to book, whatever its "coming soon" says.
   final bool freight;
 
+  /// The Couriers box: it opens the Courier page ([courierPageRoute]) once
+  /// there is a courier vehicle to book (migration 0268).
+  final bool courier;
+
   /// Box 0 is the large card.
   bool get featured => index == 0;
+}
+
+/// The page of a delivery kind's home box.
+String deliveryPageRoute(DeliveryKind k) => k == DeliveryKind.courier ? courierPageRoute : freightPageRoute;
+
+/// Which delivery a home box is, if any: set to its page ([route]), or
+/// titled or linked to a Service named Freight, or Courier / Couriers.
+/// The home screen and Admin > Display Settings read it the same way.
+DeliveryKind? serviceBoxDelivery({String? route, required String title, String? linked}) {
+  for (final k in DeliveryKind.values) {
+    final names = {k.serviceType.toLowerCase(), '${k.serviceType.toLowerCase()}s'};
+    if (route?.trim() == deliveryPageRoute(k) || [title, ?linked].any((n) => names.contains(n.trim().toLowerCase()))) {
+      return k;
+    }
+  }
+  return null;
+}
+
+/// What a Freight or Courier box opens, as the admin reads it: its page,
+/// and that it opens once one of its Vehicle Services is active
+/// ([active] of them now).
+String serviceBoxDeliveryLabel(DeliveryKind k, int active) =>
+    '${k.serviceType} page — opens once a Vehicle Service under ${k.serviceType} is active '
+    '(${active == 0 ? 'none yet' : '$active active'})';
+
+/// The "Opens" line of a home box in Admin > Display Settings: what a tap
+/// really does. A Freight or Courier box ([serviceBoxDelivery]) says its
+/// page and how many of its Vehicle Services are active ([active]); any
+/// other its linked page, or that it shows Coming Soon.
+String serviceBoxOpensText({
+  String? route,
+  required String title,
+  String? linked,
+  Map<DeliveryKind, int> active = const {},
+}) {
+  final k = serviceBoxDelivery(route: route, title: title, linked: linked);
+  if (k != null) return serviceBoxDeliveryLabel(k, active[k] ?? 0);
+  return route != null && route.isNotEmpty ? routeLabelFor(route) : 'Nothing yet — shows Coming Soon';
 }
 
 /// The five boxes as configured. [serviceNames] names the admin services a
@@ -142,7 +186,9 @@ class ServiceBoxView {
 /// restricts them, are the ones switched on there. The Freight box (named
 /// Freight, linked to the Freight service or set to [freightPageRoute])
 /// opens the Freight page only while [freightAvailable] (an active Vehicle
-/// Service under Freight, core/freight.dart), else it is "coming soon".
+/// Service under Freight, core/freight.dart), else it is "coming soon"; the
+/// Couriers box (box 4 by default) the Courier page while
+/// [courierAvailable] (core/courier.dart).
 List<ServiceBoxView> serviceBoxViews(
   Map<String, dynamic> settings, {
   Map<String, String> serviceNames = const {},
@@ -150,6 +196,7 @@ List<ServiceBoxView> serviceBoxViews(
   bool newBadge = true,
   Set<String>? regionServices,
   bool freightAvailable = false,
+  bool courierAvailable = false,
 }) {
   final boxes = normalizeBoxes(settings['serviceBoxes']);
   return [
@@ -167,13 +214,16 @@ List<ServiceBoxView> serviceBoxViews(
         // (Admin → Country / States / Cities) is not available there.
         final offHere = regionServices != null && str('serviceId') != null && !regionServices.contains(str('serviceId'));
         final title = str('name') ?? linked ?? preset.$1;
-        final freight = str('route') == freightPageRoute ||
-            [title, ?linked].any((n) => n.trim().toLowerCase() == freightServiceType.toLowerCase());
+        final delivery = serviceBoxDelivery(route: str('route'), title: title, linked: linked);
+        final freight = delivery == DeliveryKind.freight;
+        final courier = delivery == DeliveryKind.courier;
         final route = !serviceEnabled || offHere
             ? null
             : freight
                 ? (freightAvailable ? freightPageRoute : null)
-                : (b['comingSoon'] != true ? flutterRouteFor(str('route')) : null);
+                : courier
+                    ? (courierAvailable ? courierPageRoute : null)
+                    : (b['comingSoon'] != true ? flutterRouteFor(str('route')) : null);
         return ServiceBoxView(
           index: i,
           title: title,
@@ -183,6 +233,7 @@ List<ServiceBoxView> serviceBoxViews(
           route: route,
           badge: route == null ? 'SOON' : (i == 0 && newBadge ? 'NEW' : null),
           freight: freight,
+          courier: courier,
         );
       }(),
   ];

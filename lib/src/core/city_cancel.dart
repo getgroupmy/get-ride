@@ -146,7 +146,7 @@ String cancelTermsLineFor(CancelTerms terms, RideRequest r, DateTime now, {Strin
   if (!terms.freight) return cancelTermsLine(terms.rules, r, now, money: money);
   final fee = cancelFeeFor(terms, r, now);
   if (fee <= 0) return 'Free to cancel';
-  return 'Your driver is here: cancelling now costs ${money?.call(fee) ?? formatMoney(fee, r.currency)}';
+  return 'Your ${r.isCourier ? 'courier' : 'driver'} is here: cancelling now costs ${money?.call(fee) ?? formatMoney(fee, r.currency)}';
 }
 
 /// The confirm sheet's line for the fees still owed from earlier rides

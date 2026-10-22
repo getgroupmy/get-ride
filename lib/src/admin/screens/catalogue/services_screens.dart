@@ -11,7 +11,7 @@ import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'service_order_screen.dart' show serviceOrderPath;
 import 'catalogue_widgets.dart';
-import '../../../core/freight.dart' show isFreightTypes;
+import '../../../core/freight.dart' show isCourierTypes, isFreightTypes;
 import '../../../data/permits_repository.dart' show permitsRepositoryProvider;
 import '../../../core/service_tree.dart' show serviceParentIds;
 import '../../../widgets/search_select.dart';
@@ -608,7 +608,26 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
             ),
           ),
         // A freight size (0267): what it carries, shown to riders and drivers.
-        if (isFreightTypes(_serviceTypes) ||
+        // A courier vehicle (0268): the same load and size fields, its
+        // weight and size limit; no closed body or goods-vehicle permit.
+        if (isCourierTypes(_serviceTypes) && !isFreightTypes(_serviceTypes)) ...[
+          const SectionLabel(
+            'Courier',
+            hint: 'The weight and size this vehicle carries. Senders only see it for parcels within its max load; '
+                'the parcel sizes are in Courier settings.',
+          ),
+          for (final f in vehicleServiceFreightFields)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: TextField(
+                key: ValueKey('vs-${f.key}'),
+                controller: _freight[f.key],
+                enabled: widget.canEdit,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(labelText: sentenceCaseLabel(f.label), suffixText: f.suffix),
+              ),
+            ),
+        ] else if (isFreightTypes(_serviceTypes) ||
             _closedBody ||
             _permit.isNotEmpty ||
             _freight.values.any((c) => c.text.trim().isNotEmpty)) ...[

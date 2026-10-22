@@ -106,7 +106,7 @@ String? cancelFeeNote(CancelTerms? terms, RideRequest r, DateTime now) {
   final fee = cancelFeeFor(terms, r, now);
   if (fee <= 0) return null;
   if (terms.freight) {
-    return 'Your driver is at the pickup: cancelling now costs ${formatMoney(fee, r.currency)}, added to your next '
+    return 'Your ${r.isCourier ? 'courier' : 'driver'} is at the pickup: cancelling now costs ${formatMoney(fee, r.currency)}, added to your next '
         'request.';
   }
   return 'Cancelling now costs ${formatMoney(fee, r.currency)}, paid to your driver from GET.wallet (or added to '

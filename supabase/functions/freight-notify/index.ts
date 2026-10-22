@@ -7,7 +7,8 @@
 // and/or WhatsApp (the Business Cloud API, with this function's secrets
 // WHATSAPP_TOKEN and WHATSAPP_PHONE_NUMBER_ID), as Admin > Freight settings
 // chose. Each notice is reported sent or failed (failed ones are tried up
-// to three times).
+// to three times). A courier delivery's notice (0268) also carries its
+// confirmation code, which freight_notices_claim hands over only here.
 //
 //   POST { rideId? }   -> { sent, failed }
 //

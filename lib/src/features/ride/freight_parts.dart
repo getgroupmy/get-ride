@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
+import '../../core/courier.dart' show CourierConfig;
 import '../../core/freight.dart';
 import '../../core/partner_type_rules.dart' show RegionScope;
 import '../../core/ride_chat.dart' show ridePhotoProblem;
@@ -24,6 +25,7 @@ import '../../widgets/chat_photo.dart' show choosePhotoSource;
 import '../../widgets/common.dart' show showError, showInfo;
 import '../../widgets/net_image.dart';
 import '../../widgets/page_style_host.dart';
+import 'courier_parts.dart' show CourierCodeCard, CourierParcelLines;
 import 'home_parts.dart' show uriImage;
 
 /// Each freight option's icon (Material Symbols' own).
@@ -119,7 +121,9 @@ class FreightCargoView extends ConsumerWidget {
     if (description == null) return const SizedBox.shrink();
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
-    final vehicle = freightVehicleNamed(ref.watch(freightVehiclesProvider).value ?? const [], r.service);
+    // A courier delivery's vehicle is among the courier ones (0268).
+    final kind = r.isCourier ? DeliveryKind.courier : DeliveryKind.freight;
+    final vehicle = freightVehicleNamed(ref.watch(deliveryVehiclesProvider(kind)).value ?? const [], r.service);
     final options = freightOptionsOf(r.optionNames);
     final path = r.cargoPhotoPath;
     final size = [
@@ -154,13 +158,16 @@ class FreightCargoView extends ConsumerWidget {
             const SizedBox(width: 6),
             Expanded(
               child: Text(
-                [r.service!, ...size].join(' · '),
+                [vehicle?.shortName ?? r.service!, ...size].join(' · '),
                 key: const ValueKey('freight-cargo-vehicle'),
                 style: t.textTheme.bodySmall?.copyWith(color: muted),
               ),
             ),
           ]),
         ],
+        // Courier (0268): the parcel size, and the cash the recipient pays.
+        if (r.isCourier)
+          Padding(padding: const EdgeInsets.only(top: 4), child: CourierParcelLines(request: r)),
         if (r.declaredValue case final v?)
           Padding(
             padding: const EdgeInsets.only(top: 4, left: 24),
@@ -545,13 +552,16 @@ class _FreightDriverPanelState extends ConsumerState<FreightDriverPanel> {
   }
 
   Future<void> _askCancel() async {
-    final minutes = (ref.read(freightConfigProvider).value ?? const FreightConfig()).cancelApproveMinutes;
+    final minutes = widget.request.isCourier
+        ? (ref.read(courierConfigProvider).value ?? const CourierConfig()).cancelApproveMinutes
+        : (ref.read(freightConfigProvider).value ?? const FreightConfig()).cancelApproveMinutes;
+    final goods = widget.request.isCourier ? 'parcel is' : 'goods are';
     final ok = await showAppDialog<bool>(id: 'ride.freight-driver-cancel',
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Ask the sender to cancel?'),
         content: Text(
-          'The goods are on board, so the sender decides. If they don\'t answer in $minutes min, the request is '
+          'The $goods on board, so the sender decides. If they don\'t answer in $minutes min, the request is '
           'cancelled.',
         ),
         actions: [
@@ -584,7 +594,7 @@ class _FreightDriverPanelState extends ConsumerState<FreightDriverPanel> {
       state: '${r.raw['state'] ?? ''}'.trim(),
       city: '${r.raw['city'] ?? ''}'.trim(),
     );
-    final values = freightPlaceValues(places, place);
+    final values = freightPlaceValues(places, place, kind: r.isCourier ? DeliveryKind.courier : DeliveryKind.freight);
     String money(double v) => formatMoney(v, r.currency, v == v.roundToDouble() ? 0 : 2);
     final status = r.status;
     final asked = r.cancelRequestedAt != null && r.cancelRequestedBy == 'partner';
@@ -675,12 +685,17 @@ class _FreightSenderPanelState extends ConsumerState<FreightSenderPanel> {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
+          // Courier (0268): the code for the recipient.
+          if (r.isCourier) ...[
+            CourierCodeCard(request: r),
+            const SizedBox(height: 12),
+          ],
           FreightProofView(request: r),
           if ((r.waitingFee ?? 0) > 0)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                'The driver waited ${r.waitingMinutes ?? 0} min: + ${r.fareText(r.waitingFee)} on the fare',
+                'The ${r.isCourier ? 'courier' : 'driver'} waited ${r.waitingMinutes ?? 0} min: + ${r.fareText(r.waitingFee)} on the fare',
                 style: t.textTheme.bodySmall,
               ),
             ),
