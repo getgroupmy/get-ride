@@ -613,6 +613,24 @@ class RideCallButton extends ConsumerWidget {
   }
 }
 
+/// What tapping [RideCallButton] does, for a call asked for from elsewhere
+/// (the trip card's Call, core/trip_card.dart): the in-app call, else the
+/// phone call when the number is known.
+Future<void> callRidePeer(BuildContext context, WidgetRef ref, RideRequest ride, {String? phone}) async {
+  String? me;
+  try {
+    me = ref.read(currentUserIdProvider);
+  } catch (_) {
+    me = null;
+  }
+  final inApp = rideCallsAvailable(ride) && me != null && (me == ride.riderId || me == ride.partnerId);
+  final number = phone?.trim();
+  final hasPhone = number != null && number.isNotEmpty;
+  final direct = hasPhone && callsPassengerDirectly(ride, me);
+  if (inApp && !direct) return startRideCall(context, ref, ride, phone: hasPhone ? number : null);
+  if (hasPhone) await ref.read(rideCallDialerProvider)(Uri(scheme: 'tel', path: number));
+}
+
 /// Rings the other person on [ride] and opens the call. If they rang at the
 /// same moment, their call is opened instead. A failure is reported where
 /// the button was, offering the phone call when [phone] is known.

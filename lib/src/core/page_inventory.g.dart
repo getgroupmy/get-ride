@@ -446,6 +446,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:teksi-pickup.pick-vehicle', SurfaceKind.sheet, 'Teksi pickup · Vehicle', 'lib/src/features/partner/teksi_pickup.dart'),
   SurfaceEntry('sheet:teksi-pickup.pick-vehicle-2', SurfaceKind.sheet, 'Teksi pickup · Vehicle', 'lib/src/features/partner/teksi_pickup.dart'),
   SurfaceEntry('sheet:toll-booths.toll-marker', SurfaceKind.sheet, 'Toll booths · Toll marker', 'lib/src/widgets/toll_booths.dart'),
+  SurfaceEntry('sheet:trip-card.preview', SurfaceKind.sheet, 'Trip card · Preview', 'lib/src/widgets/trip_card_preview.dart'),
   SurfaceEntry('sheet:unavailable.show-service-unavailable', SurfaceKind.sheet, 'Unavailable · Service unavailable', 'lib/src/features/ride/unavailable_sheet.dart'),
   SurfaceEntry('sheet:vehicle-picker.pick', SurfaceKind.sheet, 'Vehicle picker · Pick', 'lib/src/features/partner/vehicle_picker.dart'),
   SurfaceEntry('sheet:wallet-history.details', SurfaceKind.sheet, 'Wallet history · Details', 'lib/src/features/wallet/wallet_history_screen.dart'),

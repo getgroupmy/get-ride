@@ -35,6 +35,8 @@ import '../../config.dart';
 import '../../data/app_display_repository.dart' show displaySettingsBlobProvider;
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
+import '../../data/trip_card_controller.dart' show tripCardControllerProvider;
+import '../../core/trip_card.dart' show TripCardAction;
 import '../../data/push_service.dart';
 import '../../providers.dart';
 import '../../widgets/ble_handshake_badge.dart';
@@ -52,7 +54,7 @@ import 'live_ride_map.dart';
 import 'location_share_button.dart';
 import '../support/call/mic_gate.dart' show primeMicForCalls;
 import 'cancelled_countdown.dart';
-import 'ride_call_screen.dart' show RideCallButton;
+import 'ride_call_screen.dart' show RideCallButton, callRidePeer;
 import 'ride_payment_overlay.dart';
 import 'ride_chat_screen.dart' show RideChatBadge;
 import 'searching_parts.dart';
@@ -161,8 +163,12 @@ class _TrackingMap extends ConsumerWidget {
 
 /// Rider view of one request: searching → driver assigned → on trip → done.
 class RideTrackingScreen extends ConsumerWidget {
-  const RideTrackingScreen({super.key, required this.requestId});
+  const RideTrackingScreen({super.key, required this.requestId, this.cardAction});
   final String requestId;
+
+  /// The trip card's button that opened this page (`?card=call`), run once
+  /// the ride is on screen (core/trip_card.dart).
+  final String? cardAction;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -191,6 +197,7 @@ class RideTrackingScreen extends ConsumerWidget {
           // the map; on a wide (desktop) screen the panel sits beside it.
           final panel = _RidePanel(
             ride: r,
+            cardAction: cardAction,
             map: _TrackingMap(ride: r),
             wide: MediaQuery.sizeOf(context).width >= 900,
           );
@@ -213,8 +220,9 @@ class RideTrackingScreen extends ConsumerWidget {
 double offersClearOfMapButtons(double paddingRight) => 12 + paddingRight + RecenterButton.size + 12;
 
 class _RidePanel extends ConsumerStatefulWidget {
-  const _RidePanel({required this.ride, required this.map, this.wide = false});
+  const _RidePanel({required this.ride, required this.map, this.wide = false, this.cardAction});
   final RideRequest ride;
+  final String? cardAction;
   final Widget map;
 
   /// Desktop layout: the panel beside the map, offers over the map.
@@ -300,10 +308,32 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _askAboutCancel();
       unawaited(_pollViewers());
+      _runCardAction();
+      // The lock-screen card follows the ride on screen.
+      if (mounted && !_isDemo) ref.read(tripCardControllerProvider.notifier).follow(widget.ride.id, ride: widget.ride);
     });
   }
 
   final _cancelPrompt = CancelRequestPrompt();
+
+  /// The trip card's button that opened the ride: its call, share, SOS or
+  /// cancel, as the same buttons here do.
+  void _runCardAction() {
+    if (!mounted || _isDemo) return;
+    final r = widget.ride;
+    switch (TripCardAction.parse(widget.cardAction)) {
+      case TripCardAction.call when r.status.isOngoing && r.hasDriver:
+        unawaited(callRidePeer(context, ref, r, phone: r.partnerPhone));
+      case TripCardAction.share when r.status.isOngoing:
+        unawaited(shareRide(context, ref, r));
+      case TripCardAction.sos when r.status.isOngoing:
+        unawaited(_sos(r));
+      case TripCardAction.cancel when r.status.isOngoing:
+        unawaited(_cancel());
+      default:
+        break;
+    }
+  }
 
   /// A driver took the ride, so a call may come: ask for the microphone now,
   /// while the app is on screen, if it was never asked (see primeMicForCalls).

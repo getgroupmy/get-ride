@@ -28,6 +28,8 @@ import '../../core/ride_chat.dart';
 import '../../core/ride_read_aloud.dart';
 import '../../core/ride_payment.dart';
 import '../../data/models.dart';
+import '../../data/trip_card_controller.dart' show tripCardControllerProvider;
+import '../../core/trip_card.dart' show TripCardAction;
 import '../../data/read_aloud.dart';
 import '../../data/reliability_repository.dart';
 import '../../data/ride_chat_repository.dart';
@@ -43,7 +45,7 @@ import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_stop_tiles.dart';
 import '../ride/live_ride_map.dart';
 import '../ride/cancelled_countdown.dart';
-import '../ride/ride_call_screen.dart' show RideCallButton;
+import '../ride/ride_call_screen.dart' show RideCallButton, callRidePeer;
 import '../ride/ride_chat_screen.dart' show RideChatBadge;
 import '../../widgets/ble_handshake_badge.dart';
 import '../../widgets/offline_ride_banner.dart';
@@ -106,8 +108,12 @@ final tripClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
 /// Driver view of an accepted trip: navigate, arrive, verify code, start, complete.
 class PartnerTripScreen extends ConsumerStatefulWidget {
-  const PartnerTripScreen({super.key, required this.requestId});
+  const PartnerTripScreen({super.key, required this.requestId, this.cardAction});
   final String requestId;
+
+  /// The trip card's button that opened this page (`?card=call`), run once
+  /// the trip is on screen (core/trip_card.dart).
+  final String? cardAction;
 
   @override
   ConsumerState<PartnerTripScreen> createState() => _PartnerTripScreenState();
@@ -178,7 +184,29 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       final ahead = _ahead;
       if (ahead != null && (_rank(row.status) ?? 99) >= _rank(ahead)!) _ahead = null;
       _onRow(_withAhead(row));
+      if (!_cardSeen) {
+        _cardSeen = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) => _onFirstRow(row));
+      }
     }, fireImmediately: true);
+  }
+
+  bool _cardSeen = false;
+
+  /// The trip is on screen: the lock-screen card follows it, and the card's
+  /// button that opened it (Call, SOS) runs as the same buttons here do.
+  void _onFirstRow(RideRequest r) {
+    if (!mounted) return;
+    ref.read(tripCardControllerProvider.notifier).follow(r.id, ride: r);
+    if (!r.status.isOngoing) return;
+    switch (TripCardAction.parse(widget.cardAction)) {
+      case TripCardAction.call:
+        unawaited(callRidePeer(context, ref, r, phone: r.passengerPhone));
+      case TripCardAction.sos:
+        unawaited(showRideSos(context, ref, plate: r.partnerPlate, rideId: r.id));
+      default:
+        break;
+    }
   }
 
   /// The step the driver's own update moved the trip to, ahead of the row
