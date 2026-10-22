@@ -32,6 +32,9 @@ class MainActivity : FlutterActivity() {
         // "Always on" (lib/src/data/background_location.dart): reports from
         // the background with location already allowed all the time.
         BackgroundLocation.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        // The trip card: the trip's progress as a pinned notification
+        // (lib/src/data/trip_card_platform.dart).
+        TripCardNotifier.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         // Settings → Permissions (lib/src/data/permission_probe.dart): where
         // the camera, microphone and Bluetooth stand, without asking.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "get_ride/permissions").setMethodCallHandler { call, result ->
@@ -109,6 +112,18 @@ class MainActivity : FlutterActivity() {
 
     // A new home-screen icon is switched in once the app is off screen: the
     // launcher may close an app whose icon changes under it.
+    // On screen, the app keeps the trip card itself; a trip_card push only
+    // moves it while the app is away (TripCardPushReceiver).
+    override fun onResume() {
+        super.onResume()
+        TripCardNotifier.appVisible = true
+    }
+
+    override fun onPause() {
+        TripCardNotifier.appVisible = false
+        super.onPause()
+    }
+
     override fun onStop() {
         super.onStop()
         appIcon?.applyPending()

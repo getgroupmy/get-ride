@@ -37,6 +37,10 @@
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <!-- Android 13+: asked for at sign-in, before the push token is stored. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Android 16: the trip card (TripCardNotifier.kt) may be shown as a
+         Live Update, its minutes in the status bar. Install-time; nothing
+         is asked of the user. -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS"/>
     <!-- Bluetooth LE OBD-II readers (Meter Digital). Android 12+ asks for scan
          and connect only; older versions scan under the location permission
          the app already holds. -->
@@ -357,6 +361,17 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+        </receiver>
+        <!-- A trip_card data push moves the trip card on while the app is
+             closed (TripCardPushReceiver.kt). Firebase's own receiver takes
+             the same broadcast; only Google Play services may send it. -->
+        <receiver
+            android:name=".TripCardPushReceiver"
+            android:exported="true"
+            android:permission="com.google.android.c2dm.permission.SEND">
+            <intent-filter>
+                <action android:name="com.google.android.c2dm.intent.RECEIVE"/>
             </intent-filter>
         </receiver>
         <!-- Google's own map: the key the release build carries (build.gradle.kts). -->
