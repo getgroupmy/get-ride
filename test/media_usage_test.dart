@@ -160,7 +160,7 @@ void main() {
     test('uploads newest first, then pictures found in settings, then the built-ins', () {
       expect(items.take(3).map((i) => i.name), ['Old banner', 'Partner bank', 'Durian']);
       expect(items[3].source, MediaSource.found);
-      expect(items.where((i) => i.source == MediaSource.builtIn && i.kind == MediaKind.icon).map((i) => i.name),
+      expect(items.where((i) => i.source == MediaSource.builtIn && i.iconName != null).map((i) => i.name),
           ['Truck', 'Pill', 'Shopping bag', 'Plane']);
       expect(items.any((i) => i.key == wordmarkKey && i.kind == MediaKind.logo), isTrue);
       expect(items.firstWhere((i) => i.key == 'appicon:g_dot').kind, MediaKind.logo);

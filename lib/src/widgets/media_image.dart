@@ -13,6 +13,7 @@ import 'package:http/http.dart' as http;
 
 import '../config.dart';
 import '../core/backend_route.dart';
+import '../core/icon_pack.dart';
 import '../core/media_assets.dart';
 import '../data/media_repository.dart';
 import 'net_image.dart';
@@ -114,6 +115,18 @@ class MediaIcon extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final pack = packRefName(value);
+    if (pack != null) {
+      final side = size ?? IconTheme.of(context).size ?? 24;
+      return Image.asset(
+        packAsset(pack),
+        width: side,
+        height: side,
+        fit: BoxFit.contain,
+        semanticLabel: semanticLabel,
+        errorBuilder: (_, _, _) => Icon(fallback, size: side, color: color),
+      );
+    }
     final id = mediaRefId(value);
     if (id == null) {
       return Icon(builtInIcon(value) ?? fallback, size: size, color: color, semanticLabel: semanticLabel);
@@ -185,6 +198,18 @@ class MediaImage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final none = fallback ?? SizedBox(width: width, height: height);
     final v = value?.trim() ?? '';
+    final pack = packRefName(v);
+    if (pack != null) {
+      _settled();
+      return Image.asset(
+        packAsset(pack),
+        width: width,
+        height: height,
+        fit: fit,
+        alignment: alignment,
+        errorBuilder: (_, _, _) => none,
+      );
+    }
     final id = mediaRefId(v);
     if (id != null) {
       final assets = ref.watch(mediaAssetsByIdProvider);

@@ -17,6 +17,7 @@ import '../admin/screens/meterapp/display_logic.dart'
     show defaultMenuIconNames, defaultMenuItems, displayBool, normalizeBoxes;
 import 'app_icons.dart';
 import 'home_sections.dart' show serviceBoxPresets;
+import 'icon_pack.dart';
 import 'media_assets.dart';
 import 'page_inventory.g.dart';
 import 'ride_option_settings.dart';
@@ -107,6 +108,8 @@ String? mediaKeyOf(Object? value, {Map<String, String> idByPath = const {}}) {
   if (v.isEmpty) return null;
   final id = mediaRefId(v);
   if (id != null) return mediaRef(id);
+  final pack = packRefName(v);
+  if (pack != null) return packRef(pack);
   if (v.startsWith('data:image/')) return urlKey(v);
   if (v.startsWith('http://') || v.startsWith('https://')) {
     final path = mediaPathInUrl(v);
@@ -498,6 +501,15 @@ List<GalleryItem> galleryItems({
         source: MediaSource.builtIn,
         uses: uses(iconKey(n)),
         iconName: n,
+      ),
+    for (final n in iconPack)
+      GalleryItem(
+        key: packRef(n),
+        kind: MediaKind.icon,
+        name: packDisplayName(n),
+        source: MediaSource.builtIn,
+        uses: uses(packRef(n)),
+        assetPath: packAsset(n),
       ),
     GalleryItem(
       key: wordmarkKey,

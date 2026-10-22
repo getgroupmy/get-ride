@@ -8,6 +8,8 @@
 /// from the bucket's public address. Pure.
 library;
 
+import 'icon_pack.dart';
+
 /// What an upload is for: an icon (a 256 × 256 transparent PNG, or an SVG),
 /// an image (at most 1600 px wide), or a logo (light and dark versions).
 enum MediaKind {
@@ -64,8 +66,9 @@ String? mediaRefId(Object? v) {
   return id.isEmpty ? null : id;
 }
 
-/// Whether [v] is a `media:<id>` reference.
-bool isMediaRef(Object? v) => mediaRefId(v) != null;
+/// Whether [v] is drawn from the Media Gallery: a `media:<id>` upload or
+/// a `pack:<name>` icon of the built-in pack.
+bool isMediaRef(Object? v) => mediaRefId(v) != null || packRefName(v) != null;
 
 /// The file types the dialog takes, by extension.
 const mediaExtensions = ['png', 'jpg', 'jpeg', 'webp', 'svg'];

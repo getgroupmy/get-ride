@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../config.dart';
+import '../../../core/icon_pack.dart';
 import '../../../core/media_assets.dart';
 import '../../../core/media_usage.dart';
 import '../../../data/media_repository.dart';
@@ -103,7 +104,7 @@ class _MediaPickerSheetState extends ConsumerState<MediaPickerSheet> {
     if (c.isEmpty) return false;
     final a = i.asset;
     if (a != null) return c == a.ref || [a.path, a.darkPath].any((p) => p != null && mediaPathInUrl(c) == p);
-    return i.iconName == c;
+    return i.iconName == c || (i.assetPath != null && i.key == c);
   }
 
   Future<void> _upload() async {
@@ -128,6 +129,11 @@ class _MediaPickerSheetState extends ConsumerState<MediaPickerSheet> {
       if (widget.builtIns)
         for (final n in builtInIconData.keys)
           GalleryItem(key: iconKey(n), kind: MediaKind.icon, name: iconDisplayName(n), source: MediaSource.builtIn, iconName: n),
+      // The icon pack: full-colour pictures, for icon and picture slots
+      // that keep a reference (not those that store a file's address).
+      if (widget.store == MediaStore.ref && (kinds.contains(MediaKind.icon) || kinds.contains(MediaKind.image)))
+        for (final n in iconPack)
+          GalleryItem(key: packRef(n), kind: MediaKind.icon, name: packDisplayName(n), source: MediaSource.builtIn, assetPath: packAsset(n)),
     ].where((i) => q.isEmpty || '${i.name} ${i.iconName ?? ''}'.toLowerCase().contains(q)).toList();
 
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -199,7 +205,7 @@ class _MediaPickerSheetState extends ConsumerState<MediaPickerSheet> {
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: InkWell(
-                      onTap: () => Navigator.of(context).pop(item.asset != null ? _value(item.asset!) : item.iconName),
+                      onTap: () => Navigator.of(context).pop(item.asset != null ? _value(item.asset!) : item.iconName ?? item.key),
                       child: Padding(
                         padding: const EdgeInsets.all(6),
                         child: Column(children: [
