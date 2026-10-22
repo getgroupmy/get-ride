@@ -8,6 +8,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:http/http.dart' as http;
 
 import '../config.dart';
 import '../core/backend_route.dart';
@@ -72,6 +74,32 @@ String mediaUrlOf(String path) => onActiveBackend(
   activeBackendUrl(AppConfig.supabaseUrl),
 );
 
+/// The client SVG files load through; tests give their own.
+@visibleForTesting
+http.Client? svgHttpClient;
+
+/// An SVG upload at [url]: a skeleton while it loads, [fallback] if it
+/// can't be drawn, in [tint] when given ("Follow the theme colour").
+Widget svgNetwork(
+  String url, {
+  double? width,
+  double? height,
+  BoxFit fit = BoxFit.contain,
+  Alignment alignment = Alignment.center,
+  Color? tint,
+  required Widget fallback,
+}) => SvgPicture.network(
+  url,
+  httpClient: svgHttpClient,
+  width: width,
+  height: height,
+  fit: fit,
+  alignment: alignment,
+  colorFilter: tint == null ? null : ColorFilter.mode(tint, BlendMode.srcIn),
+  placeholderBuilder: (_) => ImageBone(width: width, height: height),
+  errorBuilder: (_, _, _) => fallback,
+);
+
 /// An icon slot: [value] is a built-in icon name, a `media:<id>` upload, or
 /// empty for [fallback] (the slot's own icon in code). An upload marked
 /// "Follow the theme colour" is drawn in [color] (else the icon theme's).
@@ -96,11 +124,14 @@ class MediaIcon extends ConsumerWidget {
     if (assets.isLoading && !assets.hasValue) return ImageBone(width: side, height: side, radius: 4);
     final a = assets.value?[id];
     final path = a?.pathFor(dark: Theme.of(context).brightness == Brightness.dark);
-    // An SVG upload needs an SVG renderer the app does not have yet.
-    if (a == null || path == null || a.isSvg) return plain();
+    if (a == null || path == null) return plain();
+    final ink = color ?? IconTheme.of(context).color ?? Theme.of(context).colorScheme.onSurface;
+    if (a.isSvg) {
+      final svg = svgNetwork(mediaUrlOf(path), width: side, height: side, tint: a.tint ? ink : null, fallback: plain());
+      return Semantics(label: semanticLabel, image: true, child: SizedBox.square(dimension: side, child: svg));
+    }
     Widget image = NetImage(mediaUrlOf(path), width: side, height: side, fit: BoxFit.contain, radius: 4, fallback: plain());
     if (a.tint) {
-      final ink = color ?? IconTheme.of(context).color ?? Theme.of(context).colorScheme.onSurface;
       image = ColorFiltered(colorFilter: ColorFilter.mode(ink, BlendMode.srcIn), child: image);
     }
     return Semantics(label: semanticLabel, image: true, child: SizedBox.square(dimension: side, child: image));
@@ -160,9 +191,13 @@ class MediaImage extends ConsumerWidget {
       if (assets.isLoading && !assets.hasValue) return ImageBone(width: width, height: height);
       final a = assets.value?[id];
       final path = a?.pathFor(dark: Theme.of(context).brightness == Brightness.dark);
-      if (a == null || path == null || a.isSvg) {
+      if (a == null || path == null) {
         _settled();
         return none;
+      }
+      if (a.isSvg) {
+        _settled();
+        return svgNetwork(mediaUrlOf(path), width: width, height: height, fit: fit, alignment: alignment, fallback: none);
       }
       return _network(mediaUrlOf(path), none);
     }
@@ -181,7 +216,13 @@ class MediaImage extends ConsumerWidget {
         return none;
       }
     }
-    if (v.startsWith('http')) return _network(v, none);
+    if (v.startsWith('http')) {
+      if (v.toLowerCase().split('?').first.endsWith('.svg')) {
+        _settled();
+        return svgNetwork(v, width: width, height: height, fit: fit, alignment: alignment, fallback: none);
+      }
+      return _network(v, none);
+    }
     _settled();
     return none;
   }

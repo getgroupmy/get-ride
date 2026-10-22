@@ -6,7 +6,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:get_ride/src/admin/screens/meterapp/display_logic.dart';
 import 'package:get_ride/src/admin/screens/meterapp/media_picker_sheet.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
@@ -160,6 +163,26 @@ void main() {
       await tester.pumpWidget(_app(const MediaIcon('media:$_tinted', fallback: Icons.apps, color: Colors.red)));
       await tester.pump();
       expect(find.byType(ColorFiltered), findsOneWidget);
+    });
+
+    testWidgets('an SVG upload: drawn as SVG, in the icon colour when it follows the theme', (tester) async {
+      svgHttpClient = MockClient((_) async => http.Response(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>',
+        200,
+      ));
+      addTearDown(() => svgHttpClient = null);
+      const svg = '33333333-3333-3333-3333-333333333333';
+      final assets = [
+        const MediaAsset(id: svg, kind: MediaKind.icon, name: 'Leaf', path: 'icon/$svg.svg', mime: 'image/svg+xml', tint: true),
+      ];
+      await tester.pumpWidget(_app(const MediaIcon('media:$svg', fallback: Icons.apps, color: Colors.red), assets: assets));
+      await tester.pump();
+      final filter = tester.widget<SvgPicture>(find.byType(SvgPicture)).colorFilter;
+      await tester.pumpWidget(_app(const MediaImage('https://example.com/a/logo.svg?v=2', width: 40, height: 40)));
+      await tester.pump();
+      final address = find.byType(SvgPicture).evaluate().length;
+      expect(filter, const ColorFilter.mode(Colors.red, BlendMode.srcIn));
+      expect(address, 1, reason: 'an SVG address too');
     });
 
     testWidgets('an upload that is gone: the fallback', (tester) async {

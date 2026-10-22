@@ -19,6 +19,7 @@ import '../../../data/media_repository.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/net_image.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../widgets/media_image.dart' show svgNetwork;
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
@@ -378,11 +379,15 @@ class MediaPreview extends StatelessWidget {
     final a = item.asset;
     if (a != null) {
       final path = a.pathFor(dark: isDark);
-      if (a.isSvg || path == null) return _SvgBadge(size: size);
+      if (path == null) return _SvgBadge(size: size);
+      final ink = IconTheme.of(context).color ?? t.colorScheme.onSurface;
+      if (a.isSvg) {
+        return svgNetwork(mediaFileUrl(path), width: wide, height: size, tint: a.tint ? ink : null, fallback: _SvgBadge(size: size));
+      }
       final image = NetImage(mediaFileUrl(path), width: wide, height: size, fit: BoxFit.contain, fallback: fallback());
       // "Follow the theme colour": drawn in the icon colour.
       return a.tint
-          ? ColorFiltered(colorFilter: ColorFilter.mode(IconTheme.of(context).color ?? t.colorScheme.onSurface, BlendMode.srcIn), child: image)
+          ? ColorFiltered(colorFilter: ColorFilter.mode(ink, BlendMode.srcIn), child: image)
           : image;
     }
     final uri = item.uri;
@@ -400,15 +405,16 @@ class MediaPreview extends StatelessWidget {
       }
     }
     if (uri != null && uri.startsWith('http')) {
-      if (uri.toLowerCase().split('?').first.endsWith('.svg')) return _SvgBadge(size: size);
+      if (uri.toLowerCase().split('?').first.endsWith('.svg')) {
+        return svgNetwork(uri, width: wide, height: size, fallback: _SvgBadge(size: size));
+      }
       return NetImage(uri, width: wide, height: size, fit: BoxFit.contain, fallback: fallback());
     }
     return fallback();
   }
 }
 
-/// An SVG upload: kept as it is; the app shows a placeholder for it until it
-/// can draw SVG.
+/// An SVG that can't be drawn (no file, or it failed to load).
 class _SvgBadge extends StatelessWidget {
   const _SvgBadge({required this.size});
   final double size;

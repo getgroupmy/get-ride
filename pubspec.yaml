@@ -85,6 +85,7 @@ dependencies:
   webview_windows: ^0.4.0
   google_maps_flutter_ios_sdk9: ^2.19.0
   apple_maps_flutter: ^1.4.0
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
