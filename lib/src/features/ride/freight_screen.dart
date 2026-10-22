@@ -61,17 +61,52 @@ import 'searching_parts.dart' show OfferStack, SearchOfferView;
 Future<void> openFreightPage(BuildContext context) =>
     Navigator.of(context).push<void>(AppPageRoute(id: 'ride.freight', builder: (_) => const FreightScreen()));
 
-/// A loading or drop-off point: the city or town, then the house number and
-/// street (the place booked).
-typedef FreightAddress = ({String city, Place place});
+/// A loading or drop-off point: the place searched (or pinned) and booked,
+/// and the house number and street as the rider typed them.
+typedef FreightAddress = ({String details, Place place});
 
-/// "12, Jalan Ampang, Kuala Lumpur": the street, then the city when it
-/// doesn't already say it.
+/// The longest house number and street the rider may type.
+const freightAddressDetailsMax = 120;
+
+/// "No. 12, Level 3, Menara KH": what the rider typed, then the place found
+/// when it doesn't already say it.
 String freightAddressLabel(FreightAddress a) {
   final name = a.place.name.trim();
-  final city = a.city.trim();
-  if (city.isEmpty || name.toLowerCase().contains(city.toLowerCase())) return name;
-  return '$name, $city';
+  final details = a.details.trim();
+  if (details.isEmpty) return name;
+  if (name.isEmpty || details.toLowerCase().contains(name.toLowerCase())) return details;
+  return '$details, $name';
+}
+
+/// The house number and street a search result gives, to fill the box in
+/// for the rider to change: its address up to the postcode ("12, Jalan
+/// Ampang" of "12, Jalan Ampang, 50450 Kuala Lumpur, Malaysia"), less the
+/// building's name when it leads; empty when the address doesn't say.
+String freightStreetOf(Place p) {
+  var parts = [for (final s in p.address.split(',')) if (s.trim().isNotEmpty) s.trim()];
+  final postcode = parts.indexWhere((s) => RegExp(r'(^|\s)\d{4,6}(\s|$)').hasMatch(s));
+  if (postcode >= 0) {
+    parts = parts.sublist(0, postcode);
+  } else {
+    parts = parts.length > 2 ? parts.sublist(0, parts.length - 2) : parts.take(parts.length - 1).toList();
+  }
+  // A building's name leading its address goes; a house number ("Lot 5") stays.
+  final lead = parts.isEmpty ? '' : parts.first;
+  if (parts.length > 1 && !RegExp(r'\d').hasMatch(lead) && lead.toLowerCase() == p.name.trim().toLowerCase()) {
+    parts = parts.sublist(1);
+  }
+  final street = parts.join(', ');
+  return street.length > freightAddressDetailsMax ? street.substring(0, freightAddressDetailsMax) : street;
+}
+
+/// The full address the driver reads: what the rider typed, then the
+/// place's own address.
+String freightAddressFull(FreightAddress a) {
+  final details = a.details.trim();
+  final address = a.place.address.trim();
+  if (address.isEmpty) return details;
+  if (details.isEmpty || address.toLowerCase().contains(details.toLowerCase())) return address;
+  return '$details, $address';
 }
 
 /// Looks a place up for the Freight page: the app's place search (saved
@@ -482,11 +517,11 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
         scheduleAt: scheduleAt,
         service: v!.name,
         pickupName: freightAddressLabel(a!),
-        pickupAddress: a.place.address,
+        pickupAddress: freightAddressFull(a),
         pickupLat: a.place.point.latitude,
         pickupLng: a.place.point.longitude,
         dropName: freightAddressLabel(b!),
-        dropAddress: b.place.address,
+        dropAddress: freightAddressFull(b),
         dropLat: b.place.point.latitude,
         dropLng: b.place.point.longitude,
         distanceKm: route?.km ?? const Distance().as(LengthUnit.Meter, a.place.point, b.place.point) / 1000,
@@ -873,8 +908,9 @@ class FreightSheetHead extends StatelessWidget {
   ]);
 }
 
-/// Cargo loading point / Cargo drop-off point: the city or town, then the
-/// house number and street, searched near it or pinned on the map.
+/// Cargo loading point / Cargo drop-off point: the address, searched or
+/// pinned on the map, then the house number and street: filled in from the
+/// search where it says, and the rider's to change.
 class _AddressSheet extends ConsumerStatefulWidget {
   const _AddressSheet({required this.pickup, this.initial});
   final bool pickup;
@@ -885,34 +921,45 @@ class _AddressSheet extends ConsumerStatefulWidget {
 }
 
 class _AddressSheetState extends ConsumerState<_AddressSheet> {
-  late Place? _city = widget.initial == null
-      ? null
-      : Place(name: widget.initial!.city, address: widget.initial!.city, point: widget.initial!.place.point);
-  late Place? _street = widget.initial?.place;
+  late Place? _place = widget.initial?.place;
+  late final _details = TextEditingController(text: widget.initial?.details ?? '');
 
-  Future<void> _pickCity() async {
-    final p = await ref.read(freightPlaceSearchProvider)(
-      context,
-      title: widget.pickup ? 'From which city or town?' : 'To which city or town?',
-    );
-    if (p != null && mounted) setState(() => _city = p);
+  /// What the last search filled in: a new search replaces it, never words
+  /// the rider typed.
+  String _filled = '';
+
+  @override
+  void dispose() {
+    _details.dispose();
+    super.dispose();
   }
 
-  Future<void> _pickStreet({bool onMap = false}) async {
+  Future<void> _pick({bool onMap = false}) async {
     final p = await ref.read(freightPlaceSearchProvider)(
       context,
-      title: 'House number and street',
-      near: _street?.point ?? _city?.point,
+      title: widget.pickup ? 'Pickup address' : 'Drop-off address',
+      near: _place?.point,
       onMap: onMap,
     );
-    if (p != null && mounted) setState(() => _street = p);
+    if (p == null || !mounted) return;
+    setState(() {
+      _place = p;
+      final typed = _details.text.trim();
+      if (typed.isEmpty || typed == _filled) {
+        _filled = freightStreetOf(p);
+        _details.text = _filled;
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final street = _street;
+    final place = _place;
+    final t = Theme.of(context);
+    final look = DeliveryLook.of(context);
+    final radius = BorderRadius.circular(look.fieldRadius);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
+      padding: EdgeInsets.fromLTRB(16, 8, 8, 16 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(
         key: const ValueKey('freight-address-sheet'),
         mainAxisSize: MainAxisSize.min,
@@ -920,40 +967,59 @@ class _AddressSheetState extends ConsumerState<_AddressSheet> {
         children: [
           FreightSheetHead(widget.pickup ? 'Cargo loading point' : 'Cargo drop-off point'),
           const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FreightField(
-              key: const ValueKey('freight-address-city'),
-              label: widget.pickup ? 'From which city or town?' : 'To which city or town?',
-              value: _city?.name,
-              onTap: _pickCity,
-            ),
-          ),
-          const SizedBox(height: 8),
           Row(children: [
             Expanded(
               child: FreightField(
-                key: const ValueKey('freight-address-street'),
-                label: 'House number and street',
-                value: street?.name,
-                onTap: _pickStreet,
+                key: const ValueKey('freight-address-search'),
+                label: 'Address',
+                placeholder: 'Search the address',
+                leading: const Icon(Icons.search),
+                value: place?.name,
+                onTap: _pick,
               ),
             ),
             IconButton(
               key: const ValueKey('freight-address-map'),
               tooltip: 'Pin on the map',
               icon: const Icon(Icons.map_outlined),
-              onPressed: () => _pickStreet(onMap: true),
+              onPressed: () => _pick(onMap: true),
             ),
           ]),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: TextField(
+              key: const ValueKey('freight-address-details'),
+              controller: _details,
+              maxLength: freightAddressDetailsMax,
+              textCapitalization: TextCapitalization.words,
+              style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400, color: look.onField),
+              decoration: InputDecoration(
+                labelText: 'House number and street',
+                hintText: 'No. 12, Jalan Ampang, Level 3',
+                counterText: '',
+                filled: true,
+                fillColor: look.field,
+                labelStyle: TextStyle(color: look.mutedOnField),
+                hintStyle: TextStyle(color: look.mutedOnField),
+                border: OutlineInputBorder(borderRadius: radius, borderSide: BorderSide.none),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              ),
+            ),
+          ),
           const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: FilledButton(
               key: const ValueKey('freight-address-next'),
-              onPressed: street == null
+              style: FilledButton.styleFrom(
+                backgroundColor: look.button,
+                foregroundColor: look.onButton,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              onPressed: place == null
                   ? null
-                  : () => Navigator.pop(context, (city: _city?.name.trim() ?? '', place: street)),
+                  : () => Navigator.pop(context, (details: _details.text.trim(), place: place)),
               child: const Text('Next'),
             ),
           ),

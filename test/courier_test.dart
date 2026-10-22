@@ -345,7 +345,6 @@ void main() {
   for (final b in Brightness.values) {
 
     testWidgets('the page in the app\'s look, and the admin\'s App Page Settings (${b.name})', (tester) async {
-      final theme = appTheme(b);
       Color? fill(Finder f) =>
           tester.widget<Material>(find.descendant(of: f, matching: find.byType(Material)).first).color;
       Material boxOf(String key) =>

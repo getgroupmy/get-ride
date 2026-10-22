@@ -139,16 +139,12 @@ RideRequest _request({String status = 'open', bool offer = false}) => RideReques
   if (offer) 'partner_name': 'Ali',
 });
 
-/// The page's places: the city first, then the street, then the pin.
+/// The page's places: the address search gives the place, and its address
+/// the house number and street.
 Future<Place?> _search(BuildContext context, {required String title, LatLng? near, bool onMap = false}) async {
-  if (title.contains('city or town')) {
-    return title.startsWith('From')
-        ? const Place(name: 'Kuala Lumpur', address: 'Kuala Lumpur', point: LatLng(3.139, 101.687))
-        : const Place(name: 'Petaling Jaya', address: 'Petaling Jaya', point: LatLng(3.107, 101.607));
-  }
-  return (near?.latitude ?? 0) > 3.12
-      ? const Place(name: '12, Jalan Ampang', address: '12, Jalan Ampang, Kuala Lumpur', point: LatLng(3.158, 101.712))
-      : const Place(name: '8, Jalan SS2/24', address: '8, Jalan SS2/24, Petaling Jaya', point: LatLng(3.118, 101.623));
+  return title.startsWith('Pickup')
+      ? const Place(name: 'Kuala Lumpur', address: '12, Jalan Ampang, 50450 Kuala Lumpur, Malaysia', point: LatLng(3.158, 101.712))
+      : const Place(name: 'Petaling Jaya', address: '8, Jalan SS2/24, 47300 Petaling Jaya, Malaysia', point: LatLng(3.118, 101.623));
 }
 
 List<Override> _overrides(_Rides rides, {List<RideRequest> mine = const [], List<FreightVehicle> vehicles = const [_van, _lorry]}) => [
@@ -190,9 +186,7 @@ Future<void> _pump(WidgetTester tester, Widget home, List<Override> overrides, B
 Future<void> _address(WidgetTester tester, String field) async {
   await tester.tap(find.byKey(ValueKey(field)));
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const ValueKey('freight-address-city')));
-  await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const ValueKey('freight-address-street')));
+  await tester.tap(find.byKey(const ValueKey('freight-address-search')));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('freight-address-next')));
   await tester.pumpAndSettle();
@@ -200,6 +194,19 @@ Future<void> _address(WidgetTester tester, String field) async {
 
 void main() {
   group('pure', () {
+    test('the house number and street: the search\'s address up to the postcode', () {
+      Place at(String name, String address) => Place(name: name, address: address, point: const LatLng(0, 0));
+      expect(freightStreetOf(at('Kuala Lumpur', '12, Jalan Ampang, 50450 Kuala Lumpur, Malaysia')), '12, Jalan Ampang');
+      expect(freightStreetOf(at('Menara KH', 'Menara KH, Jalan Sultan Ismail, 50250 Kuala Lumpur')), 'Jalan Sultan Ismail',
+          reason: 'the place\'s own name is not the street');
+      expect(freightStreetOf(at('Lot 5', 'Lot 5, Kampung Baru, Selangor, Malaysia')), 'Lot 5, Kampung Baru');
+      expect(freightStreetOf(at('Sepang', 'Sepang')), '', reason: 'nothing to fill from a town alone');
+      final a = (details: 'No. 3, Level 2', place: at('Menara KH', 'Jalan Sultan Ismail, 50250 Kuala Lumpur'));
+      expect(freightAddressLabel(a), 'No. 3, Level 2, Menara KH');
+      expect(freightAddressFull(a), 'No. 3, Level 2, Jalan Sultan Ismail, 50250 Kuala Lumpur');
+      expect(freightAddressLabel((details: '', place: a.place)), 'Menara KH');
+    });
+
     test('the sizes: active Vehicle Services under Freight, with their load', () {
       final sizes = freightVehiclesFrom([
         (id: 'a', values: {'name': 'Ride', 'serviceTypes': ['Car']}),
@@ -467,6 +474,25 @@ void main() {
       expect(boxOf('freight-pickup').borderRadius, BorderRadius.circular(20));
       expect(DeliveryLook.of(tester.element(find.byKey(const ValueKey('freight-pickup')))).chosen, chosen);
     });
+    testWidgets('the address: searched, then the street filled in and the rider\'s to change (${b.name})', (tester) async {
+      await _pump(tester, const FreightScreen(), _overrides(_Rides()), b);
+      await tester.tap(find.byKey(const ValueKey('freight-pickup')));
+      await tester.pumpAndSettle();
+      String typed() => tester.widget<TextField>(find.byKey(const ValueKey('freight-address-details'))).controller!.text;
+      FilledButton next() => tester.widget<FilledButton>(find.byKey(const ValueKey('freight-address-next')));
+      expect(next().onPressed, isNull, reason: 'the address is searched first');
+      await tester.tap(find.byKey(const ValueKey('freight-address-search')));
+      await tester.pumpAndSettle();
+      expect(typed(), '12, Jalan Ampang', reason: 'filled in from the search');
+      await tester.enterText(find.byKey(const ValueKey('freight-address-details')), 'No. 12A, Level 3');
+      await tester.tap(find.byKey(const ValueKey('freight-address-search')));
+      await tester.pumpAndSettle();
+      expect(typed(), 'No. 12A, Level 3', reason: 'a new search keeps what the rider typed');
+      await tester.tap(find.byKey(const ValueKey('freight-address-next')));
+      await tester.pumpAndSettle();
+      expect(find.text('No. 12A, Level 3, Kuala Lumpur'), findsOneWidget);
+    });
+
     testWidgets('the Freight page: fill it in, pick the size and options, offer, create (${b.name})', (tester) async {
       final rides = _Rides();
       await _pump(tester, const FreightScreen(), _overrides(rides), b);
