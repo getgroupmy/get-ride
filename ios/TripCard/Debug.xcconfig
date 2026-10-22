@@ -1,0 +1,5 @@
+// The TripCard widget extension's base settings (docs/trip_card_ios.md).
+// Flutter's generated settings give it the app's version and build number
+// (FLUTTER_BUILD_NAME / FLUTTER_BUILD_NUMBER in TripCard/Info.plist), which
+// must match the app's for App Store Connect to take the upload.
+#include "../Flutter/Generated.xcconfig"

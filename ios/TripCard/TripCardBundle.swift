@@ -1,6 +1,6 @@
 // The TripCard widget extension's entry point: only the trip card's Live
 // Activity. The extension targets iOS 16.2, where Live Activities take
-// ActivityContent. Not in the Xcode project yet (docs/trip_card_ios.md).
+// ActivityContent (docs/trip_card_ios.md).
 import SwiftUI
 import WidgetKit
 

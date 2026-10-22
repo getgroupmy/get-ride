@@ -1,8 +1,7 @@
 // The trip card's Live Activity data (lib/src/core/trip_card.dart,
 // TripCard.toPlatform). Shared by the app (Runner/TripCardActivities.swift,
-// which starts and updates it) and the widget extension (which draws it), so
-// it is in both targets. Not in the Xcode project yet: see
-// docs/trip_card_ios.md.
+// which starts and updates it) and the TripCard widget extension (which draws
+// it), so it is a member of both targets (docs/trip_card_ios.md).
 import ActivityKit
 import Foundation
 

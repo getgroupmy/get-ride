@@ -1,9 +1,10 @@
-// The app's side of the trip card on the iPhone, ready for when the TripCard
-// widget extension exists (docs/trip_card_ios.md): the MethodChannel
-// `getride/trip_card` (lib/src/data/trip_card_platform.dart) starts, updates
-// and ends the trip's Live Activity. Goes into the Runner target together
-// with ../TripCardAttributes.swift, and replaces TripCardStubPlugin in
-// AppDelegate.swift. Not in the Xcode project yet.
+// The app's side of the trip card on the iPhone (docs/trip_card_ios.md): the
+// MethodChannel `getride/trip_card` (lib/src/data/trip_card_platform.dart)
+// starts, updates and ends the trip's Live Activity, which the TripCard
+// widget extension draws. In the Runner target together with
+// ../TripCard/TripCardAttributes.swift; registered in AppDelegate.swift.
+// Below iOS 16.2 every call answers false and the app carries on without a
+// card.
 import ActivityKit
 import Flutter
 import Foundation
@@ -62,8 +63,12 @@ final class TripCardPlugin: NSObject, FlutterPlugin {
 final class TripCardActivities {
   static let shared = TripCardActivities()
 
+  /// The ride's card still on screen (one the user swiped away or that
+  /// ended is skipped, so the next update starts a new one).
   private func activity(_ rideId: String) -> Activity<TripCardAttributes>? {
-    Activity<TripCardAttributes>.activities.first { $0.attributes.rideId == rideId }
+    Activity<TripCardAttributes>.activities.first {
+      $0.attributes.rideId == rideId && ($0.activityState == .active || $0.activityState == .stale)
+    }
   }
 
   func show(_ args: [String: Any], channel: FlutterMethodChannel?, done: @escaping (Bool) -> Void) {

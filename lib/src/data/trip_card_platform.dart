@@ -2,8 +2,8 @@
 // MethodChannel `getride/trip_card`:
 //   * Android: a pinned notification with a progress bar on its own
 //     "Trip progress" channel (android/.../TripCardNotifier.kt);
-//   * iPhone: a Live Activity, once its widget extension is in the app
-//     (docs/trip_card_ios.md); until then the iPhone answers false.
+//   * iPhone: a Live Activity drawn by the TripCard widget extension
+//     (docs/trip_card_ios.md); below iOS 16.2 the iPhone answers false.
 // Nothing on the web or a desktop.
 import 'dart:io' show Platform;
 
