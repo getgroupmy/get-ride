@@ -11,6 +11,7 @@ import 'always_on_screen.dart';
 import 'app_release_screen.dart';
 import 'display_screen.dart';
 import 'ev_profiles_screen.dart';
+import 'media_gallery_screen.dart';
 import 'meter_digital_screen.dart';
 import 'mock_screen.dart';
 import 'page_settings_screen.dart';
@@ -18,7 +19,21 @@ import 'site_screen.dart';
 
 final meterappRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/meter-digital', builder: (_, _) => const AdminMeterDigitalScreen()),
-  GoRoute(path: '/admin/m/display', builder: (_, _) => const AdminDisplaySettingsScreen()),
+  GoRoute(
+    path: '/admin/m/display',
+    builder: (_, s) => AdminDisplaySettingsScreen(highlight: s.uri.queryParameters['highlight']),
+  ),
+  // A side menu's editor on its own address, so the Media Gallery's "Where
+  // used" can open it with the item picked out.
+  GoRoute(
+    path: '/admin/m/display/side-menu/:menu',
+    redirect: (_, s) => const {'user', 'partner'}.contains(s.pathParameters['menu']) ? null : '/admin/m/display',
+    builder: (_, s) => SideMenuEditorScreen(
+      menu: s.pathParameters['menu']!,
+      highlight: s.uri.queryParameters['highlight'],
+    ),
+  ),
+  GoRoute(path: '/admin/m/media-gallery', builder: (_, _) => const AdminMediaGalleryScreen()),
   GoRoute(path: '/admin/m/mock', builder: (_, _) => const AdminMockSettingsScreen()),
   GoRoute(path: '/admin/m/page-settings', builder: (_, _) => const AdminPageSettingsScreen()),
   GoRoute(path: '/admin/m/site', builder: (_, _) => const AdminSiteSettingsScreen()),
@@ -48,6 +63,16 @@ const meterappEntries = <AdminScreenEntry>[
     path: '/admin/m/display',
     pages: ['admin-settings-display'],
     icon: Icons.visibility_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'Meter & app',
+    title: 'Media Gallery',
+    subtitle: 'Every icon, image and logo, where each is used, and uploads',
+    path: mediaGalleryPath,
+    pages: ['admin-settings-display'],
+    icon: Icons.photo_library_outlined,
+    // Opened from Display Settings.
+    listed: false,
   ),
   AdminScreenEntry(
     section: 'Meter & app',

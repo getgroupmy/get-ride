@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/option_charge.dart';
@@ -24,6 +25,7 @@ import 'demo_accounts.dart';
 import 'display_logic.dart';
 import '../../../core/demo_mode.dart' show demoDriverIdsKey, demoRiderIdsKey;
 import 'display_store.dart';
+import 'media_gallery_screen.dart' show mediaGalleryPath;
 import 'ride_option_places_screen.dart' show RideOptionPlacesScreen;
 import 'freight_settings_screen.dart' show FreightSettingsScreen;
 import 'courier_settings_screen.dart' show CourierSettingsScreen;
@@ -84,64 +86,6 @@ const lucideIcons = <String, IconData>{
 
 IconData lucide(String? name) => lucideIcons[name] ?? Icons.star_border;
 
-const _defaultMenuIcons = <String, Map<String, String>>{
-  'user': {
-    'teksi-ev': 'Car',
-    'wallet': 'Wallet',
-    'emergency-contacts': 'Phone',
-    'invite-friends': 'Gift',
-    'city': 'Car',
-    'request-history': 'Clock',
-    'scheduled-rides': 'Clock',
-    'my-ride': 'Heart',
-    'my-qr': 'Tag',
-    'freight': 'Truck',
-    'courier': 'Package',
-    'buy-sell': 'Tag',
-    'grocery': 'ShoppingCart',
-    'city-to-city': 'Navigation',
-    'food': 'Utensils',
-    'pharmacy': 'Pill',
-    'shopping': 'ShoppingBag',
-    'mall': 'Building2',
-    'finance': 'Landmark',
-    'bills-prepaid': 'Receipt',
-    'dine-out': 'Coffee',
-    'mart': 'Store',
-    'express': 'Zap',
-    'hotel': 'Hotel',
-    'gift': 'Gift',
-    'loan': 'Banknote',
-    'pay-later': 'CreditCard',
-    'insurance': 'Shield',
-    'notifications': 'Bell',
-    'safety': 'Shield',
-    'settings': 'Settings',
-    'user-guide': 'BookOpen',
-    'support': 'MessageCircle',
-    'logout': 'User',
-  },
-  'partner': {
-    'teksi-ev': 'Car',
-    'wallet': 'Wallet',
-    'vehicle-information': 'Car',
-    'my-qr': 'Tag',
-    'dashboard': 'Settings',
-    'my-ride-code': 'Star',
-    'earnings': 'Wallet',
-    'telematics': 'Clock',
-    'trip-history': 'Clock',
-    'scheduled-rides': 'Clock',
-    'vehicle': 'Car',
-    'documents': 'FileText',
-    'notifications': 'Bell',
-    'safety': 'Shield',
-    'support': 'HelpCircle',
-    'settings': 'Settings',
-    'sign-out': 'User',
-  },
-};
-
 /// Shared write helper for the display / mock screens.
 Future<void> applyDisplay(BuildContext context, WidgetRef ref, DisplayEdit edit) =>
     runAdminAction(context, () => ref.read(displaySettingsProvider.notifier).apply(edit));
@@ -193,7 +137,11 @@ class _RoutePickerState extends State<_RoutePicker> {
 }
 
 class AdminDisplaySettingsScreen extends ConsumerWidget {
-  const AdminDisplaySettingsScreen({super.key});
+  const AdminDisplaySettingsScreen({super.key, this.highlight});
+
+  /// The item to pick out (`service-box-2`, `ride-option-pet`,
+  /// `sign-in-logo`), from the Media Gallery's "Where used".
+  final String? highlight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -215,16 +163,17 @@ class AdminDisplaySettingsScreen extends ConsumerWidget {
       body: AsyncView(
         value: ref.watch(displaySettingsProvider),
         onRetry: () => ref.invalidate(displaySettingsProvider),
-        data: (s) => _DisplayBody(settings: s, canEdit: canEdit),
+        data: (s) => _DisplayBody(settings: s, canEdit: canEdit, highlight: highlight),
       ),
     );
   }
 }
 
 class _DisplayBody extends ConsumerWidget {
-  const _DisplayBody({required this.settings, required this.canEdit});
+  const _DisplayBody({required this.settings, required this.canEdit, this.highlight});
   final Map<String, dynamic> settings;
   final bool canEdit;
+  final String? highlight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -266,6 +215,17 @@ class _DisplayBody extends ConsumerWidget {
       ResponsiveCenter(
         maxWidth: 820,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const _Section('Media'),
+          Card(
+            child: ListTile(
+              key: const ValueKey('display-media-gallery'),
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Media Gallery'),
+              subtitle: const Text('Every icon, image and logo the app uses, where each is used, and your uploads'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push(mediaGalleryPath),
+            ),
+          ),
           const _Section('Home Screen Sections'),
           Card(
             child: Column(children: [
@@ -276,7 +236,7 @@ class _DisplayBody extends ConsumerWidget {
             ]),
           ),
           const _Section('Sign-in Screen'),
-          Card(
+          Spotlight(id: 'sign-in-logo', highlight: highlight, child: Card(
             child: Column(children: [
               toggle(
                   'Allow new registrations',
@@ -287,7 +247,7 @@ class _DisplayBody extends ConsumerWidget {
               toggle('Show logo', 'Show the GET.ride logo at the top of the sign-in screen',
                   displayBool(s, 'signInLogo'), (v) => set('signInLogo', v)),
             ]),
-          ),
+          )),
           const _Section('Connection Status Popups'),
           Card(
             child: Column(children: [
@@ -357,7 +317,7 @@ class _DisplayBody extends ConsumerWidget {
             ]),
           ),
           const _Section('Ride Options'),
-          RideOptionsCard(settings: s, canEdit: canEdit),
+          RideOptionsCard(settings: s, canEdit: canEdit, highlight: highlight),
           const _Section('Ride Tracking Layout'),
           Card(
             child: Column(children: [
@@ -417,7 +377,12 @@ class _DisplayBody extends ConsumerWidget {
             child: toggle('Show "NEW" badge', 'Toggle the NEW badge on the featured (large) service box',
                 displayBool(s, 'serviceBoxBadge'), (v) => set('serviceBoxBadge', v)),
           ),
-          for (var i = 0; i < serviceBoxCount; i++) ServiceBoxCard(settings: s, index: i, canEdit: canEdit),
+          for (var i = 0; i < serviceBoxCount; i++)
+            Spotlight(
+              id: 'service-box-$i',
+              highlight: highlight,
+              child: ServiceBoxCard(settings: s, index: i, canEdit: canEdit),
+            ),
           const _Section('Vehicle Type Bar'),
           Card(
             child: Column(children: [
@@ -484,6 +449,51 @@ class _Section extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(4, 20, 4, 6),
         child: Text(title, style: Theme.of(context).textTheme.titleMedium),
       );
+}
+
+/// [child], picked out and scrolled into view when [highlight] is [id]
+/// (the Media Gallery's "Where used" opens a page at one item).
+class Spotlight extends StatefulWidget {
+  const Spotlight({super.key, required this.id, required this.highlight, required this.child});
+  final String id;
+  final String? highlight;
+  final Widget child;
+
+  @override
+  State<Spotlight> createState() => _SpotlightState();
+}
+
+class _SpotlightState extends State<Spotlight> {
+  final _key = GlobalKey();
+
+  bool get _on => widget.highlight == widget.id;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_on) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final c = _key.currentContext;
+        if (c != null && c.mounted) {
+          Scrollable.ensureVisible(c, alignment: 0.1, duration: const Duration(milliseconds: 300));
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_on) return widget.child;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      key: _key,
+      decoration: BoxDecoration(
+        border: Border.all(color: cs.primary, width: 2),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: KeyedSubtree(key: ValueKey('spotlight-${widget.id}'), child: widget.child),
+    );
+  }
 }
 
 class _StepperTile extends StatelessWidget {
@@ -914,8 +924,11 @@ class _VehicleArrangement extends ConsumerWidget {
 // ---------------------------------------------------------------------------
 
 class SideMenuEditorScreen extends ConsumerWidget {
-  const SideMenuEditorScreen({super.key, required this.menu});
+  const SideMenuEditorScreen({super.key, required this.menu, this.highlight});
   final String menu;
+
+  /// The item to pick out (its id), from the Media Gallery.
+  final String? highlight;
 
   /// [icon] is the item's icon now; [defaultIcon] a built-in item's own
   /// (null for a custom item).
@@ -993,7 +1006,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
             Future<void> Function()? onEdit,
             Future<void> Function()? onDelete,
           }) =>
-              Card(
+              Spotlight(id: id, highlight: highlight, child: Card(
                 child: ListTile(
                   leading: Row(mainAxisSize: MainAxisSize.min, children: [?leadingExtra, Icon(icon)]),
                   title: Text(title),
@@ -1020,7 +1033,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                     ),
                   ]),
                 ),
-              );
+              ));
 
           return ListView(padding: EdgeInsets.fromLTRB(0, 16, 0, addActionListBottomPadding(context)), children: [
             ResponsiveCenter(
@@ -1038,7 +1051,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                     final o = ordered[i];
                     final c = custom[o.id];
                     final label = o.isCustom ? '${c?['label'] ?? 'Item'}' : (renames[o.id] as String?) ?? defaults[o.id] ?? o.id;
-                    final defaultIcon = o.isCustom ? null : (_defaultMenuIcons[menu]![o.id] ?? 'Settings');
+                    final defaultIcon = o.isCustom ? null : (defaultMenuIconNames[menu]![o.id] ?? 'Settings');
                     final iconName = o.isCustom ? ((c?['iconName'] as String?) ?? 'Star') : (icons[o.id] as String?) ?? defaultIcon!;
                     final route = o.isCustom ? (c?['route'] as String?) : (routes[o.id] as String?);
                     final defRoute = o.isCustom ? null : defaultMenuRoutes[menu]![o.id];
@@ -1304,9 +1317,12 @@ Widget _moveArrows({required String key, VoidCallback? up, VoidCallback? down}) 
 /// Options sheet shown or hidden, renamed and moved, with its own settings
 /// under it. With every option hidden the Options button goes.
 class RideOptionsCard extends ConsumerWidget {
-  const RideOptionsCard({super.key, required this.settings, required this.canEdit});
+  const RideOptionsCard({super.key, required this.settings, required this.canEdit, this.highlight});
   final Map<String, dynamic> settings;
   final bool canEdit;
+
+  /// An option to pick out (`ride-option-<id>`), from the Media Gallery.
+  final String? highlight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1335,7 +1351,7 @@ class RideOptionsCard extends ConsumerWidget {
     Widget optionTile(List<RideOptionKind> kinds, int i) {
       final k = kinds[i];
       final renamed = c.labels.containsKey(k);
-      return ListTile(
+      return Spotlight(id: 'ride-option-${k.id}', highlight: highlight, child: ListTile(
         key: ValueKey('ride-option-${k.id}'),
         leading: _moveArrows(
           key: 'ride-option-${k.id}',
@@ -1372,7 +1388,7 @@ class RideOptionsCard extends ConsumerWidget {
             onChanged: canEdit ? (v) => edit((x) => setRideOptionShown(x, k, v)) : null,
           ),
         ]),
-      );
+      ));
     }
 
     return Card(

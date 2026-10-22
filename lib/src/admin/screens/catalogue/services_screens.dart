@@ -28,6 +28,7 @@ class _PriorityList extends ConsumerStatefulWidget {
     required this.isDefault,
     required this.deleteMessage,
     this.header,
+    this.openId,
   });
 
   final SettingsCategory category;
@@ -42,14 +43,31 @@ class _PriorityList extends ConsumerStatefulWidget {
   /// Above the list (Vehicle Services: the service order).
   final Widget? header;
 
+  /// An entry to open as the list loads (the Media Gallery's "Where used").
+  final String? openId;
+
   @override
   ConsumerState<_PriorityList> createState() => _PriorityListState();
 }
 
 class _PriorityListState extends ConsumerState<_PriorityList> {
   String _query = '';
+  bool _opened = false;
 
   SettingsCategory get c => widget.category;
+
+  /// Opens [SettingsCategory] entry [_PriorityList.openId] once, after the
+  /// list first shows.
+  void _openOnce(List<SettingEntry> all) {
+    final id = widget.openId;
+    if (_opened || id == null) return;
+    _opened = true;
+    final e = all.where((x) => x.id == id).firstOrNull;
+    if (e == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.edit(context, all, e);
+    });
+  }
 
   Future<void> _move(List<SettingEntry> sorted, int i, int dir) async {
     final changes = reorderPriorities(sorted, i, dir);
@@ -91,6 +109,7 @@ class _PriorityListState extends ConsumerState<_PriorityList> {
         value: entries,
         onRetry: () => ref.invalidate(catalogueEntriesProvider(c)),
         data: (all) {
+          _openOnce(all);
           final sorted = sortByPriority(all);
           final rows = sorted.where((e) => entryMatches(e, _query)).toList();
           final searching = _query.trim().isNotEmpty;
@@ -160,7 +179,10 @@ Future<void> _saveEntry(
 // ---------------------------------------------------------------------------
 
 class ServiceSettingsScreen extends ConsumerWidget {
-  const ServiceSettingsScreen({super.key});
+  const ServiceSettingsScreen({super.key, this.openId});
+
+  /// An entry to open as the list loads.
+  final String? openId;
 
   Future<void> _edit(BuildContext context, WidgetRef ref, List<SettingEntry> all, SettingEntry? e) async {
     final values = await openEditor<Map<String, dynamic>>(
@@ -173,6 +195,7 @@ class ServiceSettingsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => _PriorityList(
+        openId: openId,
         category: serviceSettingsCategory,
         title: 'Service Settings',
         emptyTitle: 'No services yet',
@@ -279,7 +302,10 @@ class _ServiceEditorState extends State<_ServiceEditor> {
 // ---------------------------------------------------------------------------
 
 class VehicleServicesScreen extends ConsumerWidget {
-  const VehicleServicesScreen({super.key});
+  const VehicleServicesScreen({super.key, this.openId});
+
+  /// An entry to open as the list loads.
+  final String? openId;
 
   Future<void> _edit(BuildContext context, WidgetRef ref, List<SettingEntry> all, SettingEntry? e) async {
     List<String> options;
@@ -318,6 +344,7 @@ class VehicleServicesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => _PriorityList(
+        openId: openId,
         category: vehicleServicesCategory,
         title: 'Vehicle Services',
         emptyTitle: 'No vehicle services yet',
