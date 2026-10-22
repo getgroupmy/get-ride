@@ -36,6 +36,7 @@ import 'package:get_ride/src/data/ride_option_places_repository.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/partner/request_sheet.dart';
 import 'package:get_ride/src/features/ride/freight_parts.dart';
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show accentFill;
 import 'package:get_ride/src/features/ride/freight_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:get_ride/src/core/page_styles.dart';
@@ -425,13 +426,13 @@ void main() {
       Material boxOf(String key) =>
           tester.widget<Material>(find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Material)).first);
 
-      // Nothing set: the theme's button, the route sheet's grey boxes, the
-      // home vehicle bar's chosen colour.
+      // Nothing set: "Find a driver"'s blue button, the route sheet's grey
+      // boxes, the home vehicle bar's chosen colour.
       await _pump(tester, const FreightScreen(), _overrides(_Rides()), b);
       final button = find.byKey(const ValueKey('freight-create'));
       final style = tester.widget<FilledButton>(button).style;
-      expect(style?.backgroundColor, isNull, reason: 'no colour of its own: the theme\'s');
-      expect(style?.foregroundColor, isNull);
+      expect(style?.backgroundColor?.resolve({}), accentFill, reason: 'the ride flow\'s request blue');
+      expect(style?.foregroundColor?.resolve({}), Colors.white);
       expect(tester.getSize(button).height, 52, reason: 'the theme\'s button height');
       final ctx = tester.element(find.byKey(const ValueKey('freight-pickup')));
       expect(boxOf('freight-pickup').color, routeSheetFill(Theme.of(ctx)));
@@ -596,7 +597,7 @@ void main() {
       // Everything filled in: the button is ready and the hint is gone.
       expect(create().onPressed, isNotNull);
       final ready = find.descendant(of: find.byKey(const ValueKey('freight-create')), matching: find.byType(Material));
-      expect(tester.widget<Material>(ready.first).color, appTheme(b).colorScheme.primary, reason: 'the theme\'s primary');
+      expect(tester.widget<Material>(ready.first).color, accentFill, reason: 'the ride flow\'s request blue');
       expect(find.byKey(const ValueKey('freight-create-hint')), findsNothing);
       await tester.ensureVisible(find.byKey(const ValueKey('freight-create')));
       await tester.tap(find.byKey(const ValueKey('freight-create')));

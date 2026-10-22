@@ -10,6 +10,7 @@ import '../../core/page_styles.dart';
 import '../../widgets/busy.dart' show BusySpinner;
 import '../../widgets/common.dart' show inkOn, mutedTextColor;
 import '../../widgets/page_style_host.dart';
+import 'confirm_parts.dart' show accentFill;
 import 'place_search.dart' show routeSheetFill;
 
 /// The colours and sizes of the Courier or Freight page [context] is on.
@@ -23,6 +24,8 @@ class DeliveryLook {
     required this.chosen,
     required this.onChosen,
     required this.choiceRadius,
+    required this.button,
+    required this.onButton,
   });
 
   /// The address and detail boxes: their fill, words, label and size.
@@ -32,6 +35,10 @@ class DeliveryLook {
   /// The chosen size or vehicle card, and its words.
   final Color chosen, onChosen;
   final double choiceRadius;
+
+  /// The request button at the foot, "Find a driver"'s blue unless the
+  /// admin sets another, and its words.
+  final Color button, onButton;
 
   /// The page's values; off the Courier and Freight pages (a sheet opened
   /// from elsewhere), Freight's.
@@ -44,6 +51,7 @@ class DeliveryLook {
     final chosen = s.setColor('chosenColor', b) ??
         SurfaceStyle.of(context, homeSurface).color('vehicleSelected', b) ??
         t.colorScheme.secondaryContainer;
+    final button = s.color('buttonColor', b) ?? accentFill;
     return DeliveryLook(
       field: field,
       onField: inkOn(field, preferred: t.colorScheme.onSurface),
@@ -53,6 +61,8 @@ class DeliveryLook {
       chosen: chosen,
       onChosen: inkOn(chosen, preferred: t.colorScheme.onSurface),
       choiceRadius: s.number('choiceRadius'),
+      button: button,
+      onButton: inkOn(button, preferred: Colors.white),
     );
   }
 
@@ -157,7 +167,8 @@ class DeliveryFooter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final fg = t.colorScheme.onPrimary;
+    final look = DeliveryLook.of(context);
+    final fg = look.onButton;
     return Material(
       color: t.colorScheme.surface,
       elevation: 12,
@@ -168,7 +179,12 @@ class DeliveryFooter extends StatelessWidget {
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             FilledButton.icon(
               key: buttonKey,
-              style: FilledButton.styleFrom(textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              style: FilledButton.styleFrom(
+                backgroundColor: look.button,
+                foregroundColor: fg,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
               onPressed: busy || problem != null ? null : onPressed,
               icon: busy ? BusySpinner(size: 20, color: fg) : const Icon(Icons.bolt),
               label: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),

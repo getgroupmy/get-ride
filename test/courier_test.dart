@@ -32,6 +32,7 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/ride_option_places_repository.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/ride/courier_parts.dart';
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show accentFill;
 import 'package:get_ride/src/features/ride/courier_screen.dart';
 import 'package:get_ride/src/features/ride/freight_parts.dart';
 import 'package:get_ride/src/features/ride/freight_screen.dart';
@@ -350,20 +351,20 @@ void main() {
       Material boxOf(String key) =>
           tester.widget<Material>(find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Material)).first);
 
-      // Nothing set: the theme's button, the route sheet's grey boxes, the
-      // home vehicle bar's chosen colour.
+      // Nothing set: "Find a driver"'s blue button, the route sheet's grey
+      // boxes, the home vehicle bar's chosen colour.
       await _pump(tester, const CourierScreen(), _overrides(_Rides()), b);
       final button = find.byKey(const ValueKey('courier-create'));
       final style = tester.widget<FilledButton>(button).style;
-      expect(style?.backgroundColor, isNull, reason: 'no colour of its own: the theme\'s');
-      expect(style?.foregroundColor, isNull);
+      expect(style?.backgroundColor?.resolve({}), accentFill, reason: 'the ride flow\'s request blue');
+      expect(style?.foregroundColor?.resolve({}), Colors.white);
       expect(tester.getSize(button).height, 52, reason: 'the theme\'s button height');
       final ctx = tester.element(find.byKey(const ValueKey('courier-pickup')));
       expect(boxOf('courier-pickup').color, routeSheetFill(Theme.of(ctx)));
       final look = DeliveryLook.of(ctx);
       expect(look.chosen, b == Brightness.dark ? const Color(0xFF2B2E8C) : const Color(0xFFD8EEFB));
       expect(Theme.of(ctx).brightness, b);
-      expect(fill(button), isNot(theme.colorScheme.primary), reason: 'greyed out while the form is empty');
+      expect(fill(button), isNot(accentFill), reason: 'greyed out while the form is empty');
       // The chosen size: the chosen colour, its words readable on it.
       expect(boxOf('courier-size-S').color, look.chosen);
       expect(unreadableTexts(tester, find.byKey(const ValueKey('courier-form'))), isEmpty);
@@ -464,7 +465,7 @@ void main() {
       // Everything filled in: the button is ready and the hint is gone.
       expect(create().onPressed, isNotNull);
       final ready = find.descendant(of: find.byKey(const ValueKey('courier-create')), matching: find.byType(Material));
-      expect(tester.widget<Material>(ready.first).color, appTheme(b).colorScheme.primary, reason: 'the theme\'s primary');
+      expect(tester.widget<Material>(ready.first).color, accentFill, reason: 'the ride flow\'s request blue');
       expect(find.byKey(const ValueKey('courier-create-hint')), findsNothing);
       await _tap(tester, 'courier-create');
       final a = rides.call(#createRequest)!.namedArguments;

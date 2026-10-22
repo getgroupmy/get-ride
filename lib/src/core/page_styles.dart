@@ -145,6 +145,8 @@ const _deliveryTokens = <StyleToken>[
   StyleToken.color('fieldColor', 'Background', group: 'Address and detail boxes'),
   StyleToken.number('choiceRadius', 'Card curve', 12, min: 0, max: 30, group: 'Size and vehicle cards'),
   StyleToken.color('chosenColor', 'Chosen card', group: 'Size and vehicle cards'),
+  // The ride flow's "Find a driver" blue (`accentFill`, confirm_parts.dart).
+  StyleToken.color('buttonColor', 'Background', light: 0xFF0C7AB8, dark: 0xFF0C7AB8, group: 'Request button'),
 ];
 
 /// Items inside particular surfaces, beyond what every surface of their kind
