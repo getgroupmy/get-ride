@@ -72,8 +72,10 @@ import flutter_callkit_incoming
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BackgroundLocationPlugin") {
       BackgroundLocationPlugin.register(with: registrar)
     }
-    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "TripCardStubPlugin") {
-      TripCardStubPlugin.register(with: registrar)
+    // The trip card's Live Activity (TripCardActivities.swift); below iOS
+    // 16.2 every call answers false and the app carries on without a card.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "TripCardPlugin") {
+      TripCardPlugin.register(with: registrar)
     }
   }
 
@@ -521,28 +523,6 @@ final class PermissionsPlugin: NSObject, FlutterPlugin, CLLocationManagerDelegat
     pending = nil
     NotificationCenter.default.removeObserver(self)
     result(locationStatus())
-  }
-}
-
-/// The trip card (lib/src/data/trip_card_platform.dart) until its widget
-/// extension exists: the lock-screen Live Activity needs a TripCard target
-/// with an App ID and profile of its own (docs/trip_card_ios.md). Until
-/// then every call answers that no card is showing, and the app carries on
-/// without one. ios/TripCard/Runner/TripCardActivities.swift replaces this.
-/// Kept in this file so it needs no change to the Xcode project.
-final class TripCardStubPlugin: NSObject, FlutterPlugin {
-  static func register(with registrar: FlutterPluginRegistrar) {
-    let channel = FlutterMethodChannel(name: "getride/trip_card", binaryMessenger: registrar.messenger())
-    registrar.addMethodCallDelegate(TripCardStubPlugin(), channel: channel)
-  }
-
-  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-    switch call.method {
-    case "start", "update", "end":
-      result(false)
-    default:
-      result(FlutterMethodNotImplemented)
-    }
   }
 }
 

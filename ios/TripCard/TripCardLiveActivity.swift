@@ -1,8 +1,8 @@
 // The trip card on the iPhone: the lock screen card and the Dynamic Island,
 // drawn as the approved sample (GET.ride and the stage chip, the headline
 // with its accent part, the car and plate line, the car moving along the bar
-// to the drop pin, and the buttons). Part of the TripCard widget extension;
-// not in the Xcode project yet (docs/trip_card_ios.md).
+// to the drop pin, and the buttons). Part of the TripCard widget extension
+// (docs/trip_card_ios.md).
 import ActivityKit
 import SwiftUI
 import WidgetKit

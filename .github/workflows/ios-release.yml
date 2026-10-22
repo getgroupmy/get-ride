@@ -22,12 +22,19 @@
 #   IOS_DIST_CERT_P12            base64 of the Apple Distribution .p12
 #   IOS_DIST_CERT_PASSWORD       the password that .p12 was exported with
 #   IOS_PROVISIONING_PROFILE     base64 of the App Store .mobileprovision
+#   IOS_TRIPCARD_PROVISIONING_PROFILE
+#                                base64 of the App Store .mobileprovision for
+#                                the trip card extension, com.taxxee.teksi.TripCard
+#                                (docs/trip_card_ios.md). Both profiles need
+#                                the App Group group.com.taxxee.teksi.
 #   APP_STORE_CONNECT_KEY_ID     the 10-character Key ID
 #   APP_STORE_CONNECT_ISSUER_ID  the issuer UUID
 #   APP_STORE_CONNECT_KEY_P8     the whole AuthKey_XXXX.p8, PEM
 #
 # Optional: IOS_ADHOC_PROVISIONING_PROFILE, base64 of an Ad Hoc
-# .mobileprovision for the same bundle id and certificate. With it, every
+# .mobileprovision for the same bundle id and certificate, together with
+# IOS_TRIPCARD_ADHOC_PROVISIONING_PROFILE, the Ad Hoc one for
+# com.taxxee.teksi.TripCard (without it the Ad Hoc IPA is skipped). With them, every
 # run also exports an Ad Hoc IPA and publishes it as the `ios-latest`
 # GitHub release, which Admin → App Release offers as a download, an
 # over-the-air install link and a QR code (only on the iPhones registered in
@@ -63,6 +70,10 @@ concurrency:
 
 env:
   BUNDLE_ID: com.taxxee.teksi
+  # The trip card's widget extension (ios/TripCard, docs/trip_card_ios.md),
+  # embedded in the app and signed with a profile of its own.
+  TRIPCARD_BUNDLE_ID: com.taxxee.teksi.TripCard
+  APP_GROUP: group.com.taxxee.teksi
 
 jobs:
   release:
@@ -134,8 +145,19 @@ jobs:
           IOS_DIST_CERT_P12: ${{ secrets.IOS_DIST_CERT_P12 }}
           IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
           IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+          IOS_TRIPCARD_PROVISIONING_PROFILE: ${{ secrets.IOS_TRIPCARD_PROVISIONING_PROFILE }}
         run: |
           set -euo pipefail
+          # The app embeds the trip card extension, which is signed with a
+          # profile of its own: without it the archive cannot be signed.
+          if [ -z "$IOS_TRIPCARD_PROVISIONING_PROFILE" ]; then
+            msg="The IOS_TRIPCARD_PROVISIONING_PROFILE secret is missing. The app now embeds the trip card extension ($TRIPCARD_BUNDLE_ID),"
+            msg="$msg which needs its own App Store profile: Apple Developer -> Profiles -> + -> App Store -> $TRIPCARD_BUNDLE_ID,"
+            msg="$msg then save its base64 as that secret. See docs/trip_card_ios.md."
+            echo "::error::$msg"
+            echo "* **Stopped:** \`IOS_TRIPCARD_PROVISIONING_PROFILE\` is missing (docs/trip_card_ios.md)" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
           keychain="$RUNNER_TEMP/ios-release.keychain-db"
           pass=$(uuidgen)
 
@@ -180,12 +202,49 @@ jobs:
               ;;
           esac
 
+          # Whether a decoded profile's entitlements carry the App Group
+          # that Runner.entitlements and TripCard.entitlements ask for.
+          has_group() {
+            echo "$1" > "$RUNNER_TEMP/profile-group.plist"
+            # Read once, then searched, so no pipe can cut it short.
+            local groups
+            groups=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.security.application-groups" \
+              "$RUNNER_TEMP/profile-group.plist" 2>/dev/null) || return 1
+            grep -qxF "    $APP_GROUP" <<<"$groups"
+          }
+          if ! has_group "$plist"; then
+            echo "::error::The IOS_PROVISIONING_PROFILE profile has no App Group $APP_GROUP. Tick App Groups on the App ID $BUNDLE_ID (pick $APP_GROUP), regenerate the App Store profile and replace the secret (docs/trip_card_ios.md)."
+            exit 1
+          fi
+
+          # The trip card extension's profile, read the same way.
+          echo "$IOS_TRIPCARD_PROVISIONING_PROFILE" | base64 --decode \
+            > "$profiles/tripcard.mobileprovision"
+          tplist=$(security cms -D -i "$profiles/tripcard.mobileprovision")
+          tuuid=$(echo "$tplist" | plutil -extract UUID raw -)
+          tappid=$(echo "$tplist" | plutil -extract Entitlements.application-identifier raw -)
+          echo "trip card profile UUID: $tuuid"
+          echo "trip card profile app id: $tappid"
+          case "$tappid" in
+            "${appid%%.*}.$TRIPCARD_BUNDLE_ID") ;;
+            *)
+              echo "::error::The IOS_TRIPCARD_PROVISIONING_PROFILE profile is for $tappid, not ${appid%%.*}.$TRIPCARD_BUNDLE_ID (same team as the app's). See docs/trip_card_ios.md."
+              exit 1
+              ;;
+          esac
+          if ! has_group "$tplist"; then
+            echo "::error::The IOS_TRIPCARD_PROVISIONING_PROFILE profile has no App Group $APP_GROUP. Tick App Groups on the App ID $TRIPCARD_BUNDLE_ID (pick $APP_GROUP), regenerate its profile and replace the secret (docs/trip_card_ios.md)."
+            exit 1
+          fi
+          echo "TRIPCARD_UUID=$tuuid" >> "$GITHUB_ENV"
+
       # Optional: the profile that makes a build installable over the air
       # on registered iPhones. Same certificate, so the same archive.
       - name: Ad Hoc profile
         if: steps.creds.outputs.ready == 'true'
         env:
           IOS_ADHOC_PROVISIONING_PROFILE: ${{ secrets.IOS_ADHOC_PROVISIONING_PROFILE }}
+          IOS_TRIPCARD_ADHOC_PROVISIONING_PROFILE: ${{ secrets.IOS_TRIPCARD_ADHOC_PROVISIONING_PROFILE }}
         run: |
           set -euo pipefail
           if [ -z "$IOS_ADHOC_PROVISIONING_PROFILE" ]; then
@@ -207,7 +266,45 @@ jobs:
           esac
           devices=$(echo "$plist" | plutil -extract ProvisionedDevices raw - 2>/dev/null || echo 0)
           echo "Ad Hoc profile $uuid, $devices registered device(s)"
+
+          # The archive embeds the trip card extension, so the Ad Hoc export
+          # needs its Ad Hoc profile too. Missing or wrong: no Ad Hoc IPA
+          # this run (the App Store IPA is published), never a failed release.
+          group_ok() {
+            echo "$1" > "$RUNNER_TEMP/adhoc-group.plist"
+            # Read once, then searched, so no pipe can cut it short.
+            local groups
+            groups=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.security.application-groups" \
+              "$RUNNER_TEMP/adhoc-group.plist" 2>/dev/null) || return 1
+            grep -qxF "    $APP_GROUP" <<<"$groups"
+          }
+          if ! group_ok "$plist"; then
+            echo "::warning::The Ad Hoc profile has no App Group $APP_GROUP; regenerate it from the App ID $BUNDLE_ID and replace IOS_ADHOC_PROVISIONING_PROFILE (docs/trip_card_ios.md). This run publishes the App Store IPA instead."
+            exit 0
+          fi
+          if [ -z "$IOS_TRIPCARD_ADHOC_PROVISIONING_PROFILE" ]; then
+            echo "::warning::No IOS_TRIPCARD_ADHOC_PROVISIONING_PROFILE (the Ad Hoc profile for $TRIPCARD_BUNDLE_ID, docs/trip_card_ios.md): skipping the Ad Hoc IPA; this run publishes the App Store IPA instead."
+            exit 0
+          fi
+          echo "$IOS_TRIPCARD_ADHOC_PROVISIONING_PROFILE" | base64 --decode \
+            > "$profiles/tripcard-adhoc.mobileprovision"
+          tplist=$(security cms -D -i "$profiles/tripcard-adhoc.mobileprovision")
+          tuuid=$(echo "$tplist" | plutil -extract UUID raw -)
+          tappid=$(echo "$tplist" | plutil -extract Entitlements.application-identifier raw -)
+          case "$tappid" in
+            *."$TRIPCARD_BUNDLE_ID") ;;
+            *)
+              echo "::warning::The trip card Ad Hoc profile is for $tappid, not $TRIPCARD_BUNDLE_ID; skipping the Ad Hoc IPA."
+              exit 0
+              ;;
+          esac
+          if ! group_ok "$tplist"; then
+            echo "::warning::The trip card Ad Hoc profile has no App Group $APP_GROUP; regenerate it and replace IOS_TRIPCARD_ADHOC_PROVISIONING_PROFILE. Skipping the Ad Hoc IPA."
+            exit 0
+          fi
+          echo "trip card Ad Hoc profile $tuuid"
           echo "ADHOC_UUID=$uuid" >> "$GITHUB_ENV"
+          echo "TRIPCARD_ADHOC_UUID=$tuuid" >> "$GITHUB_ENV"
 
       # Universal links: a phone camera scanning a My QR code
       # (https://qr.getride.my/<ref|me|now>/<token>) opens the app instead
@@ -284,7 +381,9 @@ jobs:
       # ios/Flutter/Release.xcconfig (Runner's base config only) rather
       # than on the xcodebuild command line, where they would apply to
       # every pod and package and be refused by the ones that are never
-      # signed on their own.
+      # signed on their own. The trip card extension gets its twin in
+      # ios/TripCard/Release.xcconfig (the TripCard target's base config),
+      # with its own profile.
       - name: Archive
         id: archive
         if: steps.creds.outputs.ready == 'true'
@@ -321,6 +420,7 @@ jobs:
             <key>provisioningProfiles</key>
             <dict>
               <key>$BUNDLE_ID</key><string>$PROFILE_UUID</string>
+              <key>$TRIPCARD_BUNDLE_ID</key><string>$TRIPCARD_UUID</string>
             </dict>
             <key>uploadSymbols</key><true/>
           </dict>
@@ -348,6 +448,16 @@ jobs:
           CODE_SIGN_IDENTITY = Apple Distribution
           CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
           GOOGLE_MAPS_IOS_API_KEY = ${GOOGLE_MAPS_IOS_API_KEY:-}
+          CFG
+
+          cat >> ios/TripCard/Release.xcconfig <<CFG
+
+          // Added by .github/workflows/ios-release.yml for this build only.
+          CODE_SIGN_STYLE = Manual
+          DEVELOPMENT_TEAM = $TEAM_ID
+          PROVISIONING_PROFILE_SPECIFIER = $TRIPCARD_UUID
+          CODE_SIGN_IDENTITY = Apple Distribution
+          CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Distribution
           CFG
 
           xcodebuild archive \
@@ -381,6 +491,7 @@ jobs:
             <key>provisioningProfiles</key>
             <dict>
               <key>$BUNDLE_ID</key><string>$ADHOC_UUID</string>
+              <key>$TRIPCARD_BUNDLE_ID</key><string>$TRIPCARD_ADHOC_UUID</string>
             </dict>
             <key>compileBitcode</key><false/>
             <key>thinning</key><string>&lt;none&gt;</string>
@@ -472,4 +583,6 @@ jobs:
           security delete-keychain "$RUNNER_TEMP/ios-release.keychain-db" || true
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/release.mobileprovision" || true
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/adhoc.mobileprovision" || true
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/tripcard.mobileprovision" || true
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/tripcard-adhoc.mobileprovision" || true
           rm -rf "$HOME/.appstoreconnect/private_keys" || true

@@ -16,5 +16,11 @@
 	<array>
 		<string>webcredentials:www.getride.my</string>
 	</array>
+	<!-- Shared with the TripCard widget extension (TripCard/TripCard.entitlements,
+	     docs/trip_card_ios.md). The App ID and its profiles need App Groups on. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.taxxee.teksi</string>
+	</array>
 </dict>
 </plist>

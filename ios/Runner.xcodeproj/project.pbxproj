@@ -16,6 +16,15 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		99D66AD0B877CC7D5608E3C5 /* TripCardAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B4E49980FF0A53782E01C8 /* TripCardAttributes.swift */; };
+		626503DC5FA9A036808F0355 /* TripCardAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3B4E49980FF0A53782E01C8 /* TripCardAttributes.swift */; };
+		19C54CFA0B4811AE7F110B22 /* TripCardLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1365F28F3650E23E589D90C /* TripCardLiveActivity.swift */; };
+		1CDC1251BCA55F73C2D04EE4 /* TripCardBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6365D70E278E96AA87AE050F /* TripCardBundle.swift */; };
+		D88224E89A8E69922BD4028D /* TripCardActivities.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE8B200489CB23E25165CFBF /* TripCardActivities.swift */; };
+		D7ABC8F1699B5ECF0CAEA470 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3C62AAF3BF37695A14200ABE /* WidgetKit.framework */; };
+		2034A4C63E1F5A94792B68B9 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 38CFAF2E053B9DED0FC37BC6 /* SwiftUI.framework */; };
+		1167948EDF800575C5C128C1 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D8E7DC44ED02E51EB1D54089 /* ActivityKit.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
+		BF71DF29C96CB2B9EB962FA0 /* TripCard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 00DF0EB9619CC240ECC57BCB /* TripCard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,6 +34,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
 			remoteInfo = Runner;
+		};
+		289882A18DEE7A3D57984AA3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8CFCBCEBC15132F99B2F9C90;
+			remoteInfo = TripCard;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -37,6 +53,17 @@
 			files = (
 			);
 			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D4C758E9758C4C33F9B2EBFF /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				BF71DF29C96CB2B9EB962FA0 /* TripCard.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -59,6 +86,18 @@
 		97C146FD1CF9000F007C117D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B3B4E49980FF0A53782E01C8 /* TripCardAttributes.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TripCardAttributes.swift; sourceTree = "<group>"; };
+		D1365F28F3650E23E589D90C /* TripCardLiveActivity.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TripCardLiveActivity.swift; sourceTree = "<group>"; };
+		6365D70E278E96AA87AE050F /* TripCardBundle.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TripCardBundle.swift; sourceTree = "<group>"; };
+		AD44BA9C29521A89BAABF998 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		795C839F748BAB12EACA39AF /* TripCard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TripCard.entitlements; sourceTree = "<group>"; };
+		1311D31C7FB7F4CB23CFD6EE /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		C4D3D6580ADC27788D9CA7D9 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
+		FE8B200489CB23E25165CFBF /* TripCardActivities.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TripCardActivities.swift; sourceTree = "<group>"; };
+		00DF0EB9619CC240ECC57BCB /* TripCard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TripCard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		3C62AAF3BF37695A14200ABE /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		38CFAF2E053B9DED0FC37BC6 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		D8E7DC44ED02E51EB1D54089 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -67,6 +106,16 @@
 			buildActionMask = 2147483647;
 			files = (
 				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
+				1167948EDF800575C5C128C1 /* ActivityKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A9B88A03F926064004C60B51 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D7ABC8F1699B5ECF0CAEA470 /* WidgetKit.framework in Frameworks */,
+				2034A4C63E1F5A94792B68B9 /* SwiftUI.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -100,6 +149,8 @@
 				97C146F01CF9000F007C117D /* Runner */,
 				97C146EF1CF9000F007C117D /* Products */,
 				331C8082294A63A400263BE5 /* RunnerTests */,
+				68E7A24F531CE3CD0EDFC53F /* TripCard */,
+				AE641A823816C05D5BB1B3B1 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -108,6 +159,7 @@
 			children = (
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
+				00DF0EB9619CC240ECC57BCB /* TripCard.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -123,9 +175,34 @@
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
+				FE8B200489CB23E25165CFBF /* TripCardActivities.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
+			sourceTree = "<group>";
+		};
+		68E7A24F531CE3CD0EDFC53F /* TripCard */ = {
+			isa = PBXGroup;
+			children = (
+				B3B4E49980FF0A53782E01C8 /* TripCardAttributes.swift */,
+				D1365F28F3650E23E589D90C /* TripCardLiveActivity.swift */,
+				6365D70E278E96AA87AE050F /* TripCardBundle.swift */,
+				AD44BA9C29521A89BAABF998 /* Info.plist */,
+				795C839F748BAB12EACA39AF /* TripCard.entitlements */,
+				1311D31C7FB7F4CB23CFD6EE /* Debug.xcconfig */,
+				C4D3D6580ADC27788D9CA7D9 /* Release.xcconfig */,
+			);
+			path = TripCard;
+			sourceTree = "<group>";
+		};
+		AE641A823816C05D5BB1B3B1 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				D8E7DC44ED02E51EB1D54089 /* ActivityKit.framework */,
+				38CFAF2E053B9DED0FC37BC6 /* SwiftUI.framework */,
+				3C62AAF3BF37695A14200ABE /* WidgetKit.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -157,11 +234,13 @@
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
+				D4C758E9758C4C33F9B2EBFF /* Embed Foundation Extensions */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				7F39E1F0B5B224959545FFAB /* PBXTargetDependency */,
 			);
 			name = Runner;
 			packageProductDependencies = (
@@ -170,6 +249,23 @@
 			productName = Runner;
 			productReference = 97C146EE1CF9000F007C117D /* Runner.app */;
 			productType = "com.apple.product-type.application";
+		};
+		8CFCBCEBC15132F99B2F9C90 /* TripCard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1B5D0FC2FB17F629FDDE6202 /* Build configuration list for PBXNativeTarget "TripCard" */;
+			buildPhases = (
+				FF9ADD5867674539B38FDC76 /* Sources */,
+				A9B88A03F926064004C60B51 /* Frameworks */,
+				E08B59C5A6802A64C5788D75 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TripCard;
+			productName = TripCard;
+			productReference = 00DF0EB9619CC240ECC57BCB /* TripCard.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -188,6 +284,9 @@
 					97C146ED1CF9000F007C117D = {
 						CreatedOnToolsVersion = 7.3.1;
 						LastSwiftMigration = 1100;
+					};
+					8CFCBCEBC15132F99B2F9C90 = {
+						CreatedOnToolsVersion = 15.0;
 					};
 				};
 			};
@@ -209,6 +308,7 @@
 			targets = (
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
+				8CFCBCEBC15132F99B2F9C90 /* TripCard */,
 			);
 		};
 /* End PBXProject section */
@@ -229,6 +329,13 @@
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
 				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E08B59C5A6802A64C5788D75 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -284,6 +391,18 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				D88224E89A8E69922BD4028D /* TripCardActivities.swift in Sources */,
+				99D66AD0B877CC7D5608E3C5 /* TripCardAttributes.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FF9ADD5867674539B38FDC76 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				626503DC5FA9A036808F0355 /* TripCardAttributes.swift in Sources */,
+				19C54CFA0B4811AE7F110B22 /* TripCardLiveActivity.swift in Sources */,
+				1CDC1251BCA55F73C2D04EE4 /* TripCardBundle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -294,6 +413,11 @@
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
+		};
+		7F39E1F0B5B224959545FFAB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8CFCBCEBC15132F99B2F9C90 /* TripCard */;
+			targetProxy = 289882A18DEE7A3D57984AA3 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -600,6 +724,97 @@
 			};
 			name = Release;
 		};
+		8CF657591A4EE1F9A6D12566 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 1311D31C7FB7F4CB23CFD6EE /* Debug.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = TripCard/TripCard.entitlements;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_BITCODE = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TripCard/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.taxxee.teksi.TripCard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Debug;
+		};
+		DC2F247EB944094A61B8B077 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = C4D3D6580ADC27788D9CA7D9 /* Release.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = TripCard/TripCard.entitlements;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				ENABLE_BITCODE = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TripCard/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.taxxee.teksi.TripCard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		166900193617111446F8CD9C /* Profile */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = C4D3D6580ADC27788D9CA7D9 /* Release.xcconfig */;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = TripCard/TripCard.entitlements;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				ENABLE_BITCODE = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TripCard/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = "$(FLUTTER_BUILD_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.taxxee.teksi.TripCard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Profile;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -629,6 +844,16 @@
 				97C147061CF9000F007C117D /* Debug */,
 				97C147071CF9000F007C117D /* Release */,
 				249021D4217E4FDB00AE95B9 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		1B5D0FC2FB17F629FDDE6202 /* Build configuration list for PBXNativeTarget "TripCard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8CF657591A4EE1F9A6D12566 /* Debug */,
+				DC2F247EB944094A61B8B077 /* Release */,
+				166900193617111446F8CD9C /* Profile */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
