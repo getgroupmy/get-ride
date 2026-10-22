@@ -112,6 +112,12 @@ object TripCardNotifier {
      * card the app started for [rideId] on; [ended] takes it down. A push
      * for a ride with no card on this phone is ignored, so the admin's
      * switches and colours (applied when the app started it) still hold.
+     *
+     * The server (supabase/functions/trip-card-push) sends every key, a
+     * null for one the new stage leaves empty, and `pushedAtMs`: a push
+     * older than the last one applied is dropped (FCM does not promise
+     * order), and within a stage the bar only moves forward, as the app's
+     * own card does (monotonicProgress).
      */
     fun fromPush(context: Context, rideId: String, ended: Boolean, patch: String?) {
         if (prefs(context).getString(KEY_RIDE, null) != rideId) return
@@ -123,12 +129,17 @@ object TripCardNotifier {
         try {
             val card = JSONObject(stored)
             val next = JSONObject(patch ?: return)
+            val pushedAt = next.optLong("pushedAtMs", 0L)
+            if (pushedAt > 0L && pushedAt <= card.optLong("pushedAtMs", 0L)) return
+            val sameStage = card.str("stage") != null && card.str("stage") == next.str("stage")
+            val before = card.optDouble("progress", 0.0)
             val keys = next.keys()
             while (keys.hasNext()) {
                 val key = keys.next()
                 if (key == "rideId" || key == "role" || key == "colors") continue
                 card.put(key, next.get(key))
             }
+            if (sameStage && card.optDouble("progress", 0.0) < before) card.put("progress", before)
             show(context, card)
         } catch (e: Exception) {
             // A malformed push leaves the card as it was.
