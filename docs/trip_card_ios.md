@@ -7,20 +7,18 @@ bar to the drop pin), and done ("How was your ride?"). Buttons: Call, Chat,
 Share trip, SOS (and Rate when done). Drivers get their own card.
 
 Android has it already (a pinned notification, `TripCardNotifier.kt`). The
-iPhone needs a small extra part of the app, a **Widget Extension**, which
-Apple signs separately. Until it exists the app's `getride/trip_card` channel
-answers "no card" (`TripCardStubPlugin` in `ios/Runner/AppDelegate.swift`)
-and nothing else changes.
+iPhone draws it in a small extra part of the app, the **TripCard Widget
+Extension** (`com.taxxee.teksi.TripCard`, iOS 16.2+), which Apple signs
+separately. On iOS below 16.2 the app's `getride/trip_card` channel answers
+"no card" and nothing else changes.
 
-The code is written and waiting in `ios/TripCard/` (not in the Xcode project,
-so today's builds are unaffected):
-
-| File | Goes into |
+| File | Target |
 | --- | --- |
-| `TripCardAttributes.swift` | both the TripCard extension and Runner |
-| `TripCardLiveActivity.swift`, `TripCardBundle.swift` | TripCard extension |
-| `Info.plist`, `TripCard.entitlements` | TripCard extension |
-| `Runner/TripCardActivities.swift` | Runner (replaces `TripCardStubPlugin`) |
+| `ios/TripCard/TripCardAttributes.swift` | both TripCard and Runner |
+| `ios/TripCard/TripCardLiveActivity.swift`, `TripCardBundle.swift` | TripCard |
+| `ios/TripCard/Info.plist`, `TripCard.entitlements` | TripCard (settings) |
+| `ios/TripCard/Debug.xcconfig`, `Release.xcconfig` | TripCard's base configurations |
+| `ios/Runner/TripCardActivities.swift` (`TripCardPlugin`) | Runner |
 
 ## What the owner does (Apple Developer, about 20 minutes)
 
@@ -54,50 +52,87 @@ The app's bundle id is `com.taxxee.teksi` (Team as in the
    Notifications service (APNs) → download the .p8 once, then
    `supabase secrets set APNS_AUTH_KEY="$(cat AuthKey_XXXX.p8)" APNS_KEY_ID=XXXX APNS_TEAM_ID=YYYY`.
 
-Then tell Claude "the trip card profiles are in" and the changes below are made.
+All of the above is done (App Group, both App IDs, App Store profiles in
+`IOS_PROVISIONING_PROFILE` and `IOS_TRIPCARD_PROVISIONING_PROFILE`; the Ad Hoc
+pair `IOS_ADHOC_PROVISIONING_PROFILE` / `IOS_TRIPCARD_ADHOC_PROVISIONING_PROFILE`
+if Ad Hoc builds are wanted).
 
-## What changes in the repo once they exist
+## What is in the repo
 
-1. **Xcode target** — a Widget Extension target `TripCard` (Live Activity),
-   bundle id `com.taxxee.teksi.TripCard`, iOS 16.2+, Swift 5, embedded in
-   Runner ("Embed Foundation Extensions"), with the files in the table above,
+1. **Xcode target** `TripCard` in `ios/Runner.xcodeproj` (product type
+   app-extension, `TripCard.appex`): bundle id `com.taxxee.teksi.TripCard`,
+   iOS 16.2, Swift 5, `INFOPLIST_FILE = TripCard/Info.plist`,
    `CODE_SIGN_ENTITLEMENTS = TripCard/TripCard.entitlements`,
-   `INFOPLIST_FILE = TripCard/Info.plist`. `TripCardAttributes.swift` and
-   `Runner/TripCardActivities.swift` join the Runner target.
-2. **Runner** — `Runner.entitlements` gets the same App Group;
-   `Info.plist` gets `NSSupportsLiveActivities = YES` and
-   `NSSupportsLiveActivitiesFrequentUpdates = YES`; `AppDelegate.swift`
-   registers `TripCardPlugin` in place of `TripCardStubPlugin` (and the stub
-   is deleted).
+   `SKIP_INSTALL = YES`, `APPLICATION_EXTENSION_API_ONLY = YES`, links
+   WidgetKit and SwiftUI. Its base configurations `ios/TripCard/*.xcconfig`
+   include Flutter's `Generated.xcconfig`, so the card's version and build
+   number are always the app's (App Store Connect refuses a mismatch).
+   Runner depends on it and copies it in an **Embed Foundation Extensions**
+   phase placed right after "Embed Frameworks" and before "Thin Binary"
+   (later than "Thin Binary" Xcode reports "Cycle inside Runner"). The
+   Runner target stays at iOS 15.0 and links ActivityKit *optional* (weak),
+   so iPhones on 15.x still start the app.
+   The app's Swift packages (Flutter's generated plugin package) stay on
+   Runner only; there is no Podfile.
+2. **Runner** — `Runner.entitlements` has the App Group
+   `group.com.taxxee.teksi` beside push and Associated Domains; `Info.plist`
+   has `NSSupportsLiveActivities` and `NSSupportsLiveActivitiesFrequentUpdates`;
+   `AppDelegate.swift` registers `TripCardPlugin`, whose calls answer false
+   below iOS 16.2. The old stub plugin is gone.
 3. **`.github/workflows/ios-release.yml`**
-   - install `IOS_TRIPCARD_PROVISIONING_PROFILE` beside the app's profile,
-     check it names `com.taxxee.teksi.TripCard`, export `TRIPCARD_UUID`;
-   - the build-only xcconfig lines (today appended to
-     `ios/Flutter/Release.xcconfig`, Runner only) get a TripCard twin,
-     `ios/TripCard/Release.xcconfig`, with
-     `PROVISIONING_PROFILE_SPECIFIER = $TRIPCARD_UUID` and the same team and
-     identity, set as the TripCard target's base configuration;
-   - `export.plist`'s `provisioningProfiles` gets
-     `com.taxxee.teksi.TripCard` → `$TRIPCARD_UUID` (and the Ad Hoc one
-     its Ad Hoc UUID);
-   - the Associated Domains check stays Runner-only.
-4. **Updates while the app is closed** (optional, after 1–3 work):
-   `TripCardActivities` already hands each activity's push token to the app
-   (`pushToken` on the channel). A small migration stores it
-   (`trip_card_tokens`: ride id, profile id, token, platform), and a trigger
-   on `ride_requests` (status change, and the driver's live position at most
-   every 30 s) calls an Edge Function that sends
-   `apns-push-type: liveactivity`, topic
-   `com.taxxee.teksi.push-type.liveactivity`, body
-   `{"aps":{"timestamp":…,"event":"update"|"end","content-state":{…}}}` where
-   `content-state` has the keys of `TripCardAttributes.ContentState`.
-   Android already has this part (migration 0274): the trigger
-   `trg_ride_requests_trip_card_push` calls the Edge Function
-   `trip-card-push`, which builds the card (`_shared/trip_card.ts`) and
-   sends each Android phone an FCM data message
-   `{type: "trip_card", ride_id, card: "<json>"}` or `{…, end: "1"}`
-   (`TripCardPushReceiver.kt`). The iPhone's Live Activity push goes into
-   the same function, beside the FCM send, built from the same card.
+   - stops with an error when `IOS_TRIPCARD_PROVISIONING_PROFILE` is
+     missing, when it is not for `<team>.com.taxxee.teksi.TripCard`, or when
+     either App Store profile lacks the App Group; exports `TRIPCARD_UUID`;
+   - appends the extension's manual signing (team, `TRIPCARD_UUID`, Apple
+     Distribution) to `ios/TripCard/Release.xcconfig`, as it does for Runner
+     in `ios/Flutter/Release.xcconfig`;
+   - `export.plist` maps `com.taxxee.teksi.TripCard` to `TRIPCARD_UUID`;
+   - Ad Hoc: needs both Ad Hoc profiles (with the App Group). If the app's is
+     there but the card's is missing or wrong, the Ad Hoc IPA is skipped with
+     a warning and the App Store IPA is published instead; the release goes
+     on;
+   - the Associated Domains step still edits Runner's entitlements only.
+   The CI build (`flutter build ios --release --no-codesign` in
+   `flutter.yml`) builds the extension unsigned.
+
+### Still to do
+
+- **A first signed build.** No Xcode here: the project file was written by
+  hand and checked with two parsers, but only a real build proves it. Run
+  `gh workflow run ios-release.yml -R getgroupmy/get-ride --ref <branch> -f lane=testflight -f notes="trip card iOS"`
+  (it also uploads to App Store Connect and republishes `ios-latest`).
+- **Updates while the app is closed** (optional): `TripCardActivities`
+  already hands each activity's push token to the app (`pushToken` on the
+  channel). A small migration stores it (`trip_card_tokens`: ride id,
+  profile id, token, platform), and the Edge Function `trip-card-push`
+  (migration 0274, already sending Android's FCM data message
+  `{type: "trip_card", ride_id, card: "<json>"}` built by
+  `_shared/trip_card.ts`) also sends `apns-push-type: liveactivity`, topic
+  `com.taxxee.teksi.push-type.liveactivity`, body
+  `{"aps":{"timestamp":…,"event":"update"|"end","content-state":{…}}}` where
+  `content-state` has the keys of `TripCardAttributes.ContentState`. The
+  APNs secrets (`APNS_AUTH_KEY`, `APNS_KEY_ID`, `APNS_TEAM_ID`,
+  `supabase/functions/_shared/apns.ts`) serve it; no new key is needed.
+
+## How to test on an iPhone
+
+1. iPhone on iOS 16.2 or later (Dynamic Island: iPhone 14 Pro or later;
+   other models show the lock-screen card only). Settings → GET.ride → Live
+   Activities on (it is on by default).
+2. Install the TestFlight build (or the Ad Hoc IPA from Admin → App
+   Release on a registered phone).
+3. Book a ride (or take one as a driver) with Admin → Display Settings →
+   Trip card on for that service. Lock the phone: the card shows "Finding a
+   driver", then the driver on the way with car and plate, arrived, on the
+   trip with the car moving along the bar, and done ("How was your ride?").
+4. Tap Call / Chat / Share trip / SOS on the card: the app opens on the trip
+   and runs that button. Tap the card itself: the trip opens.
+5. Cancel a ride: the card goes at once. Finish one: the done card stays the
+   admin's minutes.
+6. On iOS 15 the app runs as before, with no card.
+7. If nothing shows: Xcode → Devices → the phone's console, filter
+   `[trip card]` from the app's log (`start: false` means Live Activities are
+   off or the request was refused).
 
 ## How it behaves
 
