@@ -36,6 +36,28 @@ const myQrMenuItemId = 'my-qr';
 /// ones; shown only while scheduled rides are on.
 const scheduledRidesMenuItemId = 'scheduled-rides';
 
+/// The built-in service rows of the rider menu (Courier, Grocery, Food…).
+const serviceMenuItemIds = <String>{
+  'courier',
+  'buy-sell',
+  'grocery',
+  'city-to-city',
+  'food',
+  'pharmacy',
+  'shopping',
+  'mall',
+  'finance',
+  'bills-prepaid',
+  'dine-out',
+  'mart',
+  'express',
+  'hotel',
+  'gift',
+  'loan',
+  'pay-later',
+  'insurance',
+};
+
 /// The driver's My Ride code (QR and the riders who added them); shown only
 /// where the database has My Ride (migration 0160).
 const myRideCodeMenuItemId = 'my-ride-code';
@@ -44,10 +66,31 @@ const defaultUserMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
   ('city', 'City'),
   ('request-history', 'Request history'),
-  (scheduledRidesMenuItemId, 'Scheduled Request'), // this app's own; the Expo menu skips it
+  (scheduledRidesMenuItemId, 'Ride Later'), // this app's own; the Expo menu skips it
   (myRideMenuItemId, 'My Ride'), // favourite drivers (0160); this app's own, the Expo menu skips it
   (myQrMenuItemId, 'My QR'), // personal QR codes (0161); this app's own, the Expo menu skips it
   ('freight', 'Freight'),
+  // The services listed in the menu (owner, 2026-10-22). Built in, so they
+  // can be hidden or relinked but not deleted; Courier opens its page, the
+  // rest say "coming soon" until the admin links a page.
+  ('courier', 'Courier'),
+  ('buy-sell', 'Buy & Sell'),
+  ('grocery', 'Grocery'),
+  ('city-to-city', 'City to City'),
+  ('food', 'Food'),
+  ('pharmacy', 'Pharmacy'),
+  ('shopping', 'Shopping'),
+  ('mall', 'Mall'),
+  ('finance', 'Finance'),
+  ('bills-prepaid', 'Bills & Prepaid'),
+  ('dine-out', 'Dine Out'),
+  ('mart', 'Mart'),
+  ('express', 'Express'),
+  ('hotel', 'Hotel'),
+  ('gift', 'Gift'),
+  ('loan', 'Loan'),
+  ('pay-later', 'Pay Later'),
+  ('insurance', 'Insurance'),
   ('wallet', 'Wallet'),
   ('notifications', 'Notifications'),
   ('safety', 'Safety'),
@@ -122,10 +165,13 @@ const defaultMenuRoutes = <String, Map<String, String>>{
   },
 };
 
-/// Icon names the Expo app understands for custom menu items.
+/// Icon names for custom menu items (the Expo app knows the first 18).
 const sideMenuIcons = [
   'Bell', 'BookOpen', 'Car', 'Clock', 'FileText', 'Gift', 'HelpCircle', 'Heart', 'Mail', 'MapPin',
   'MessageCircle', 'Phone', 'Settings', 'Shield', 'Star', 'Tag', 'User', 'Wallet',
+  // Services listed in the menu (Courier, Grocery, Food, Pharmacy, Finance, Hotel…).
+  'Package', 'ShoppingCart', 'Navigation', 'Utensils', 'Pill', 'ShoppingBag', 'Building2', 'Landmark',
+  'Receipt', 'Coffee', 'Store', 'Zap', 'Hotel', 'Banknote', 'CreditCard',
 ];
 
 /// Icon names for the home service boxes (Expo `SERVICE_BOX_ICONS`).

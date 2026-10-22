@@ -29,6 +29,8 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
     'scheduled-rides': '/trips/scheduled',
     'my-ride': '/account/my-ride',
     'my-qr': '/account/my-qr',
+    'freight': '/freight',
+    'courier': '/courier',
     'wallet': '/wallet',
     'notifications': '/account/notifications',
     'safety': '/account/safety',
@@ -56,7 +58,7 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
   return true;
 }
 
-/// Whether a rider menu row shows now: Scheduled Request only while
+/// Whether a rider menu row shows now: Ride Later (scheduled) only while
 /// scheduled rides are on.
 bool riderMenuRowShows(String id, {bool scheduledRides = false}) => id != scheduledRidesMenuItemId || scheduledRides;
 
