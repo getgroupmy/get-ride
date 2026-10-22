@@ -9,6 +9,12 @@
 //
 // Pure: everything here is built from the ride row, the driver's live
 // position and the road route the trip map already fetched.
+//
+// While the app is closed the server moves an Android phone's card with the
+// same card built in TypeScript (supabase/functions/_shared/trip_card.ts,
+// migration 0274). Both are held to supabase/functions/_shared/
+// trip_card_cases.json (test/trip_card_cases_test.dart, trip_card_test.ts):
+// a change to the wording here goes there too.
 import 'dart:math' as math;
 
 import 'package:intl/intl.dart';

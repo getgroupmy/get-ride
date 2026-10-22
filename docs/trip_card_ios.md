@@ -90,10 +90,14 @@ Then tell Claude "the trip card profiles are in" and the changes below are made.
    `apns-push-type: liveactivity`, topic
    `com.taxxee.teksi.push-type.liveactivity`, body
    `{"aps":{"timestamp":…,"event":"update"|"end","content-state":{…}}}` where
-   `content-state` has the keys of `TripCardAttributes.ContentState`. The
-   same trigger sends Android an FCM data message
+   `content-state` has the keys of `TripCardAttributes.ContentState`.
+   Android already has this part (migration 0274): the trigger
+   `trg_ride_requests_trip_card_push` calls the Edge Function
+   `trip-card-push`, which builds the card (`_shared/trip_card.ts`) and
+   sends each Android phone an FCM data message
    `{type: "trip_card", ride_id, card: "<json>"}` or `{…, end: "1"}`
-   (`TripCardPushReceiver.kt`).
+   (`TripCardPushReceiver.kt`). The iPhone's Live Activity push goes into
+   the same function, beside the FCM send, built from the same card.
 
 ## How it behaves
 
@@ -101,6 +105,10 @@ Then tell Claude "the trip card profiles are in" and the changes below are made.
   updated on each new stage at once and within a stage at most every 15 s,
   ended on cancel; the done card stays Admin → Display Settings → Trip card's
   minutes (default 5, 0 = clears at once).
+- While the app is closed (Android), the server moves the card: at once on a
+  new status, and with the driver's position at most every 30 s per ride
+  (migration 0274, Edge Function `trip-card-push`). The minutes there are
+  counted in a straight line (the server has no road route).
 - Admin → Display Settings → Trip card switches it per service (Ride, Courier,
   Freight) and for drivers. Colours: App Page Settings, "Trip card · Preview".
 - A courier delivery code and the trip code are never on the card.

@@ -1,0 +1,1519 @@
+{
+  "about": "The trip card's cases, read by both builders' tests: lib/src/core/trip_card.dart (test/trip_card_cases_test.dart) and supabase/functions/_shared/trip_card.ts (trip_card_test.ts). Each case is the base ride with its extra columns, at now, for the rider or (asDriver) the driver; expect is the card's keys as TripCard.toPlatform sends them (without colours), or null for no card. Times are in UTC. Change the wording in both builders and here together.",
+  "now": "2026-10-22T07:48:00Z",
+  "base": {
+    "id": "ride-1",
+    "rider_id": "rider",
+    "rider_name": "Aina Rahman",
+    "partner_id": "driver",
+    "partner_name": "Ali Hassan",
+    "partner_vehicle": "Perodua Bezza · Silver",
+    "partner_plate": "WXY 4821",
+    "pickup_name": "Mid Valley",
+    "pickup_lat": 3.118,
+    "pickup_lng": 101.677,
+    "drop_name": "KLCC",
+    "drop_lat": 3.1579,
+    "drop_lng": 101.7116,
+    "distance_km": 7.5,
+    "duration_min": 18,
+    "fare": 18.5,
+    "total_due": 18.5,
+    "currency": "MYR",
+    "payment_mode": "Cash",
+    "partner_accept_lat": 3.091,
+    "partner_accept_lng": 101.677,
+    "partner_live_lat": 3.1045,
+    "partner_live_lng": 101.677,
+    "timezone": "UTC",
+    "otp": "4719",
+    "delivery_code": "4719"
+  },
+  "cases": [
+    {
+      "name": "ride, finding a driver",
+      "extra": {
+        "status": "open",
+        "partner_id": null,
+        "partner_name": null,
+        "partner_vehicle": null,
+        "partner_plate": null,
+        "partner_live_lat": null,
+        "partner_live_lng": null,
+        "partner_accept_lat": null,
+        "partner_accept_lng": null,
+        "service": "Economy"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "finding",
+        "brand": "GET.ride",
+        "chip": "Finding",
+        "compact": "Finding",
+        "headline": "Looking for a driver",
+        "subline": "Economy",
+        "footTitle": "Mid Valley to KLCC",
+        "footText": "Offers will show here",
+        "progress": 0.04,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "cancel",
+            "label": "Cancel",
+            "uri": "getride://trip/ride-1?do=cancel"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "ride, driver on the way",
+      "extra": {
+        "status": "accepted"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "toPickup",
+        "brand": "GET.ride",
+        "chip": "4 min",
+        "compact": "4 min",
+        "headline": "Ali is 4 min away",
+        "emphasis": "4 min",
+        "subline": "Perodua Bezza · Silver",
+        "driverName": "Ali",
+        "car": "Perodua Bezza · Silver",
+        "plate": "WXY 4821",
+        "progress": 0.25,
+        "etaMs": 1792655520000,
+        "minutesLeft": 4,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "ride, driver on the way, position unknown",
+      "extra": {
+        "status": "accepted",
+        "partner_live_lat": null,
+        "partner_live_lng": null,
+        "partner_accept_lat": null,
+        "partner_accept_lng": null
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "toPickup",
+        "brand": "GET.ride",
+        "chip": "On the way",
+        "compact": "On the way",
+        "headline": "Ali is on the way",
+        "subline": "Perodua Bezza · Silver",
+        "driverName": "Ali",
+        "car": "Perodua Bezza · Silver",
+        "plate": "WXY 4821",
+        "progress": 0.05,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "ride, on the way from where they accepted",
+      "extra": {
+        "status": "accepted",
+        "partner_live_lat": null,
+        "partner_live_lng": null
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "toPickup",
+        "brand": "GET.ride",
+        "chip": "8 min",
+        "compact": "8 min",
+        "headline": "Ali is 8 min away",
+        "emphasis": "8 min",
+        "subline": "Perodua Bezza · Silver",
+        "driverName": "Ali",
+        "car": "Perodua Bezza · Silver",
+        "plate": "WXY 4821",
+        "progress": 0.05,
+        "etaMs": 1792655760000,
+        "minutesLeft": 8,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "ride, arrived at a door",
+      "extra": {
+        "status": "arrived",
+        "pickup_door_name": "Level 1, Door 5"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "arrived",
+        "brand": "GET.ride",
+        "chip": "Arrived",
+        "compact": "Here",
+        "headline": "Ali has arrived",
+        "emphasis": "arrived",
+        "subline": "Meet at Level 1, Door 5",
+        "driverName": "Ali",
+        "car": "Perodua Bezza · Silver",
+        "plate": "WXY 4821",
+        "progress": 0.45,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "ride, arrived",
+      "extra": {
+        "status": "arrived"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "arrived",
+        "brand": "GET.ride",
+        "chip": "Arrived",
+        "compact": "Here",
+        "headline": "Ali has arrived",
+        "emphasis": "arrived",
+        "subline": "Meet at Mid Valley",
+        "driverName": "Ali",
+        "car": "Perodua Bezza · Silver",
+        "plate": "WXY 4821",
+        "progress": 0.45,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "ride, on the trip",
+      "extra": {
+        "status": "on_trip",
+        "partner_live_lat": 3.13,
+        "partner_live_lng": 101.69
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "onTrip",
+        "brand": "GET.ride",
+        "chip": "On trip",
+        "compact": "8:01",
+        "headline": "You will arrive at 8:01 AM",
+        "emphasis": "8:01 AM",
+        "subline": "13 min · 5.0 km left",
+        "footTitle": "Share your trip",
+        "footText": "Family can follow you live",
+        "progress": 0.6660686827268067,
+        "etaMs": 1792656060000,
+        "minutesLeft": 13,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "ride, on the trip, position unknown",
+      "extra": {
+        "status": "on_trip",
+        "partner_live_lat": null,
+        "partner_live_lng": null
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "onTrip",
+        "brand": "GET.ride",
+        "chip": "On trip",
+        "compact": "On trip",
+        "headline": "You are on your way",
+        "subline": "",
+        "footTitle": "Share your trip",
+        "footText": "Family can follow you live",
+        "progress": 0.5,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "ride, done, tolls and taxes in the amount due",
+      "extra": {
+        "status": "completed",
+        "completed_at": "2026-10-22T07:40:00Z",
+        "toll_charges": 2,
+        "total_due": 21.61,
+        "tax_name": "SST",
+        "tax_kind": "percent",
+        "tax_value": 6
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "done",
+        "brand": "GET.ride",
+        "chip": "Done",
+        "compact": "Done",
+        "headline": "You have arrived",
+        "subline": "RM21.61 · Cash",
+        "footTitle": "How was your ride?",
+        "footText": "Tap to rate Ali",
+        "progress": 1.0,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "rate",
+            "label": "Rate",
+            "uri": "getride://trip/ride-1?do=rate"
+          }
+        ],
+        "ongoing": false
+      }
+    },
+    {
+      "name": "ride, done, US dollars",
+      "extra": {
+        "status": "completed",
+        "currency": "USD",
+        "fare": 1234.5,
+        "total_due": 1234.5,
+        "payment_mode": "Card"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "done",
+        "brand": "GET.ride",
+        "chip": "Done",
+        "compact": "Done",
+        "headline": "You have arrived",
+        "subline": "$1,234.50 · Card",
+        "footTitle": "How was your ride?",
+        "footText": "Tap to rate Ali",
+        "progress": 1.0,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "rate",
+            "label": "Rate",
+            "uri": "getride://trip/ride-1?do=rate"
+          }
+        ],
+        "ongoing": false
+      }
+    },
+    {
+      "name": "ride, done, dong after the amount",
+      "extra": {
+        "status": "completed",
+        "currency": "VND",
+        "fare": 85000,
+        "total_due": 85000
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "done",
+        "brand": "GET.ride",
+        "chip": "Done",
+        "compact": "Done",
+        "headline": "You have arrived",
+        "subline": "85,000₫ · Cash",
+        "footTitle": "How was your ride?",
+        "footText": "Tap to rate Ali",
+        "progress": 1.0,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "rate",
+            "label": "Rate",
+            "uri": "getride://trip/ride-1?do=rate"
+          }
+        ],
+        "ongoing": false
+      }
+    },
+    {
+      "name": "ride, cancelled",
+      "extra": {
+        "status": "cancelled"
+      },
+      "expect": null
+    },
+    {
+      "name": "ride, expired",
+      "extra": {
+        "status": "expired"
+      },
+      "expect": null
+    },
+    {
+      "name": "courier, finding",
+      "extra": {
+        "status": "open",
+        "parcel_size": "S",
+        "cargo_description": "Documents",
+        "service": "Courier"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "courier",
+        "stage": "finding",
+        "brand": "GET.ride",
+        "chip": "Finding",
+        "compact": "Finding",
+        "headline": "Looking for a courier",
+        "subline": "Small parcel · Courier",
+        "footTitle": "Mid Valley to KLCC",
+        "footText": "Offers will show here",
+        "progress": 0.04,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "cancel",
+            "label": "Cancel",
+            "uri": "getride://trip/ride-1?do=cancel"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "courier, on the way",
+      "extra": {
+        "status": "accepted",
+        "parcel_size": "M",
+        "cargo_description": "Documents"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "courier",
+        "stage": "toPickup",
+        "brand": "GET.ride",
+        "chip": "4 min",
+        "compact": "4 min",
+        "headline": "Ali picks up in 4 min",
+        "emphasis": "4 min",
+        "subline": "Perodua Bezza · Silver",
+        "driverName": "Ali",
+        "car": "Perodua Bezza · Silver",
+        "plate": "WXY 4821",
+        "progress": 0.25,
+        "etaMs": 1792655520000,
+        "minutesLeft": 4,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "courier, at the pickup",
+      "extra": {
+        "status": "arrived",
+        "parcel_size": "L",
+        "cargo_description": "Documents"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "courier",
+        "stage": "arrived",
+        "brand": "GET.ride",
+        "chip": "Arrived",
+        "compact": "Here",
+        "headline": "Ali is at the pickup",
+        "emphasis": "at the pickup",
+        "subline": "Hand over the parcel",
+        "driverName": "Ali",
+        "car": "Perodua Bezza · Silver",
+        "plate": "WXY 4821",
+        "progress": 0.45,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "courier, on the way to deliver",
+      "extra": {
+        "status": "on_trip",
+        "parcel_size": "S",
+        "cargo_description": "Documents",
+        "started_at": "2026-10-22T07:31:00Z"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "courier",
+        "stage": "onTrip",
+        "brand": "GET.ride",
+        "chip": "On the way",
+        "compact": "8:10",
+        "headline": "Delivers at 8:10 AM",
+        "emphasis": "8:10 AM",
+        "subline": "Parcel picked up at 7:31 AM",
+        "progress": 0.5,
+        "etaMs": 1792656600000,
+        "minutesLeft": 22,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "courier, delivered",
+      "extra": {
+        "status": "completed",
+        "parcel_size": "S",
+        "cargo_description": "Documents",
+        "recipient_name": "Aminah",
+        "completed_at": "2026-10-22T07:45:00Z"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "courier",
+        "stage": "done",
+        "brand": "GET.ride",
+        "chip": "Done",
+        "compact": "Done",
+        "headline": "Parcel delivered",
+        "subline": "Received by Aminah · 7:45 AM",
+        "footTitle": "How was the delivery?",
+        "footText": "Tap to rate Ali",
+        "progress": 1.0,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "rate",
+            "label": "Rate",
+            "uri": "getride://trip/ride-1?do=rate"
+          }
+        ],
+        "ongoing": false
+      }
+    },
+    {
+      "name": "freight, finding",
+      "extra": {
+        "status": "open",
+        "cargo_description": "Sofa and boxes",
+        "service": "Van (S)"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "freight",
+        "stage": "finding",
+        "brand": "GET.ride",
+        "chip": "Finding",
+        "compact": "Finding",
+        "headline": "Looking for a van or lorry",
+        "subline": "Van (S)",
+        "footTitle": "Mid Valley to KLCC",
+        "footText": "Offers will show here",
+        "progress": 0.04,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "cancel",
+            "label": "Cancel",
+            "uri": "getride://trip/ride-1?do=cancel"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "freight, finding, no service",
+      "extra": {
+        "status": "open",
+        "cargo_description": "Sofa and boxes"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "freight",
+        "stage": "finding",
+        "brand": "GET.ride",
+        "chip": "Finding",
+        "compact": "Finding",
+        "headline": "Looking for a van or lorry",
+        "subline": "Freight",
+        "footTitle": "Mid Valley to KLCC",
+        "footText": "Offers will show here",
+        "progress": 0.04,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "cancel",
+            "label": "Cancel",
+            "uri": "getride://trip/ride-1?do=cancel"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "freight, on the way",
+      "extra": {
+        "status": "accepted",
+        "cargo_description": "Sofa and boxes"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "freight",
+        "stage": "toPickup",
+        "brand": "GET.ride",
+        "chip": "4 min",
+        "compact": "4 min",
+        "headline": "Ali loads in 4 min",
+        "emphasis": "4 min",
+        "subline": "Perodua Bezza · Silver",
+        "driverName": "Ali",
+        "car": "Perodua Bezza · Silver",
+        "plate": "WXY 4821",
+        "progress": 0.25,
+        "etaMs": 1792655520000,
+        "minutesLeft": 4,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "freight, loading",
+      "extra": {
+        "status": "arrived",
+        "cargo_description": "Sofa and boxes"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "freight",
+        "stage": "arrived",
+        "brand": "GET.ride",
+        "chip": "Loading",
+        "compact": "Load",
+        "headline": "Loading your cargo",
+        "subline": "Ali is at the loading point",
+        "driverName": "Ali",
+        "car": "Perodua Bezza · Silver",
+        "plate": "WXY 4821",
+        "progress": 0.45,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "freight, on the way to the drop",
+      "extra": {
+        "status": "on_trip",
+        "cargo_description": "Sofa and boxes"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "freight",
+        "stage": "onTrip",
+        "brand": "GET.ride",
+        "chip": "On the way",
+        "compact": "8:10",
+        "headline": "Arrives at 8:10 AM",
+        "emphasis": "8:10 AM",
+        "subline": "9.0 km left",
+        "progress": 0.5,
+        "etaMs": 1792656600000,
+        "minutesLeft": 22,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "freight, delivered",
+      "extra": {
+        "status": "completed",
+        "cargo_description": "Sofa and boxes"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "freight",
+        "stage": "done",
+        "brand": "GET.ride",
+        "chip": "Done",
+        "compact": "Done",
+        "headline": "Cargo delivered",
+        "subline": "RM18.50 · Cash",
+        "footTitle": "How was the move?",
+        "footText": "Tap to rate Ali",
+        "progress": 1.0,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "rate",
+            "label": "Rate",
+            "uri": "getride://trip/ride-1?do=rate"
+          }
+        ],
+        "ongoing": false
+      }
+    },
+    {
+      "name": "driver, open request",
+      "asDriver": true,
+      "extra": {
+        "status": "open"
+      },
+      "expect": null
+    },
+    {
+      "name": "driver, to the pickup",
+      "asDriver": true,
+      "extra": {
+        "status": "accepted"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "ride",
+        "stage": "toPickup",
+        "brand": "GET.ride",
+        "chip": "4 min",
+        "compact": "4 min",
+        "headline": "Pick up Aina in 4 min",
+        "emphasis": "4 min",
+        "subline": "Mid Valley · 1.5 km",
+        "progress": 0.25,
+        "etaMs": 1792655520000,
+        "minutesLeft": 4,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, to the pickup for someone booked for",
+      "asDriver": true,
+      "extra": {
+        "status": "accepted",
+        "booked_for_name": "Mei Ling Tan"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "ride",
+        "stage": "toPickup",
+        "brand": "GET.ride",
+        "chip": "4 min",
+        "compact": "4 min",
+        "headline": "Pick up Mei in 4 min",
+        "emphasis": "4 min",
+        "subline": "Mid Valley · 1.5 km",
+        "progress": 0.25,
+        "etaMs": 1792655520000,
+        "minutesLeft": 4,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, waiting",
+      "asDriver": true,
+      "extra": {
+        "status": "arrived",
+        "pickup_door_name": "Level 1, Door 5"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "ride",
+        "stage": "arrived",
+        "brand": "GET.ride",
+        "chip": "Waiting",
+        "compact": "Waiting",
+        "headline": "Waiting for Aina",
+        "emphasis": "Aina",
+        "subline": "At Level 1, Door 5",
+        "progress": 0.45,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, to the drop-off",
+      "asDriver": true,
+      "extra": {
+        "status": "on_trip"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "ride",
+        "stage": "onTrip",
+        "brand": "GET.ride",
+        "chip": "8:10 AM",
+        "compact": "8:10",
+        "headline": "Drop-off at 8:10 AM",
+        "emphasis": "8:10 AM",
+        "subline": "22 min · 9.0 km left · KLCC",
+        "progress": 0.5,
+        "etaMs": 1792656600000,
+        "minutesLeft": 22,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, to the drop-off, position unknown",
+      "asDriver": true,
+      "extra": {
+        "status": "on_trip",
+        "partner_live_lat": null,
+        "partner_live_lng": null
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "ride",
+        "stage": "onTrip",
+        "brand": "GET.ride",
+        "chip": "On trip",
+        "compact": "On trip",
+        "headline": "On the way to the drop-off",
+        "subline": "KLCC",
+        "progress": 0.5,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, trip complete",
+      "asDriver": true,
+      "extra": {
+        "status": "completed"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "ride",
+        "stage": "done",
+        "brand": "GET.ride",
+        "chip": "Done",
+        "compact": "Done",
+        "headline": "Trip complete",
+        "subline": "RM18.50 · Cash",
+        "progress": 1.0,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [],
+        "ongoing": false
+      }
+    },
+    {
+      "name": "driver, collect the parcel",
+      "asDriver": true,
+      "extra": {
+        "status": "accepted",
+        "parcel_size": "S",
+        "cargo_description": "Documents"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "courier",
+        "stage": "toPickup",
+        "brand": "GET.ride",
+        "chip": "4 min",
+        "compact": "4 min",
+        "headline": "Collect the parcel in 4 min",
+        "emphasis": "4 min",
+        "subline": "Mid Valley · 1.5 km",
+        "progress": 0.25,
+        "etaMs": 1792655520000,
+        "minutesLeft": 4,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, collect the parcel from the sender",
+      "asDriver": true,
+      "extra": {
+        "status": "arrived",
+        "parcel_size": "S",
+        "cargo_description": "Documents"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "courier",
+        "stage": "arrived",
+        "brand": "GET.ride",
+        "chip": "Waiting",
+        "compact": "Waiting",
+        "headline": "Collect the parcel from Aina",
+        "emphasis": "Aina",
+        "subline": "At Mid Valley",
+        "progress": 0.45,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, delivery",
+      "asDriver": true,
+      "extra": {
+        "status": "on_trip",
+        "parcel_size": "S",
+        "cargo_description": "Documents"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "courier",
+        "stage": "onTrip",
+        "brand": "GET.ride",
+        "chip": "8:10 AM",
+        "compact": "8:10",
+        "headline": "Delivery at 8:10 AM",
+        "emphasis": "8:10 AM",
+        "subline": "22 min · 9.0 km left · KLCC",
+        "progress": 0.5,
+        "etaMs": 1792656600000,
+        "minutesLeft": 22,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, to the loading point",
+      "asDriver": true,
+      "extra": {
+        "status": "accepted",
+        "cargo_description": "Sofa and boxes"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "freight",
+        "stage": "toPickup",
+        "brand": "GET.ride",
+        "chip": "4 min",
+        "compact": "4 min",
+        "headline": "Loading point in 4 min",
+        "emphasis": "4 min",
+        "subline": "Mid Valley · 1.5 km",
+        "progress": 0.25,
+        "etaMs": 1792655520000,
+        "minutesLeft": 4,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, loading",
+      "asDriver": true,
+      "extra": {
+        "status": "arrived",
+        "cargo_description": "Sofa and boxes"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "freight",
+        "stage": "arrived",
+        "brand": "GET.ride",
+        "chip": "Waiting",
+        "compact": "Waiting",
+        "headline": "Loading the cargo",
+        "subline": "At Mid Valley",
+        "progress": 0.45,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, freight to the drop-off, position unknown",
+      "asDriver": true,
+      "extra": {
+        "status": "on_trip",
+        "cargo_description": "Sofa and boxes",
+        "partner_live_lat": null
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "freight",
+        "stage": "onTrip",
+        "brand": "GET.ride",
+        "chip": "On trip",
+        "compact": "On trip",
+        "headline": "On the way to deliver",
+        "subline": "KLCC",
+        "progress": 0.5,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, cargo delivered",
+      "asDriver": true,
+      "extra": {
+        "status": "completed",
+        "cargo_description": "Sofa and boxes"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "freight",
+        "stage": "done",
+        "brand": "GET.ride",
+        "chip": "Done",
+        "compact": "Done",
+        "headline": "Cargo delivered",
+        "subline": "RM18.50 · Cash",
+        "progress": 1.0,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [],
+        "ongoing": false
+      }
+    },
+    {
+      "name": "ride, nameless driver and rider",
+      "extra": {
+        "status": "arrived",
+        "partner_name": " ",
+        "rider_name": null
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "arrived",
+        "brand": "GET.ride",
+        "chip": "Arrived",
+        "compact": "Here",
+        "headline": "Your driver has arrived",
+        "emphasis": "arrived",
+        "subline": "Meet at Mid Valley",
+        "driverName": "Your driver",
+        "car": "Perodua Bezza · Silver",
+        "plate": "WXY 4821",
+        "progress": 0.45,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat"
+          },
+          {
+            "id": "share",
+            "label": "Share trip",
+            "uri": "getride://trip/ride-1?do=share"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "driver, nameless rider",
+      "asDriver": true,
+      "extra": {
+        "status": "arrived",
+        "rider_name": null
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "driver",
+        "service": "ride",
+        "stage": "arrived",
+        "brand": "GET.ride",
+        "chip": "Waiting",
+        "compact": "Waiting",
+        "headline": "Waiting for Passenger",
+        "emphasis": "Passenger",
+        "subline": "At Mid Valley",
+        "progress": 0.45,
+        "openUri": "getride://trip/ride-1?as=driver",
+        "actions": [
+          {
+            "id": "call",
+            "label": "Call",
+            "uri": "getride://trip/ride-1?do=call&as=driver"
+          },
+          {
+            "id": "chat",
+            "label": "Chat",
+            "uri": "getride://trip/ride-1?do=chat&as=driver"
+          },
+          {
+            "id": "sos",
+            "label": "SOS",
+            "uri": "getride://trip/ride-1?do=sos&as=driver"
+          }
+        ],
+        "ongoing": true
+      }
+    },
+    {
+      "name": "ride, no names for the places",
+      "extra": {
+        "status": "open",
+        "pickup_name": null,
+        "drop_name": null,
+        "drop_address": "Jalan Ampang"
+      },
+      "expect": {
+        "rideId": "ride-1",
+        "role": "rider",
+        "service": "ride",
+        "stage": "finding",
+        "brand": "GET.ride",
+        "chip": "Finding",
+        "compact": "Finding",
+        "headline": "Looking for a driver",
+        "subline": "Ride",
+        "footTitle": "Pickup to Jalan Ampang",
+        "footText": "Offers will show here",
+        "progress": 0.04,
+        "openUri": "getride://trip/ride-1",
+        "actions": [
+          {
+            "id": "cancel",
+            "label": "Cancel",
+            "uri": "getride://trip/ride-1?do=cancel"
+          }
+        ],
+        "ongoing": true
+      }
+    }
+  ]
+}
