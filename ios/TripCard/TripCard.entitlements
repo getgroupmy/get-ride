@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- The TripCard extension's App Group, shared with the app (Runner gets the
+     same entry). Its App ID needs App Groups on, and its profile must be
+     made after that (docs/trip_card_ios.md). -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.taxxee.teksi</string>
+	</array>
+</dict>
+</plist>
