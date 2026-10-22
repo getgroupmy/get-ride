@@ -14,6 +14,8 @@ import 'partner_type_rules_editor.dart';
 import 'partner_type_services_screen.dart' show partnerTypeServicesPath;
 import '../../../core/partner_type_rules.dart';
 import '../../../widgets/page_style_host.dart';
+import '../../../core/media_assets.dart' show MediaKind;
+import '../meterapp/media_picker_sheet.dart' show MediaStore, showMediaPicker;
 
 const _page = 'admin-settings-partner-type';
 
@@ -242,7 +244,6 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
   late PartnerTypeRules _rules = PartnerTypeRules.fromValues(v);
   bool _rulesTouched = false;
   bool _tried = false;
-  bool _uploading = false;
   String? _error;
 
   @override
@@ -252,18 +253,20 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
     super.dispose();
   }
 
+  /// From the Media Gallery (or uploaded there). Kept as the file's web
+  /// address: driver apps already installed load `iconUrl` as it is.
   Future<void> _pickIcon() async {
-    try {
-      final f = await pickImageFile();
-      if (f == null) return;
-      setState(() => _uploading = true);
-      final url = await ref.read(catalogueRepositoryProvider).uploadPartnerTypeIcon(f.bytes, f.name);
-      if (mounted) setState(() => _icon = url);
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _uploading = false);
-    }
+    final v = await showMediaPicker(
+      context,
+      kind: MediaKind.icon,
+      alsoKinds: const {MediaKind.image, MediaKind.logo},
+      current: _icon,
+      title: 'Partner type icon',
+      offerDefault: false,
+      builtIns: false,
+      store: MediaStore.url,
+    );
+    if (v != null && v.isNotEmpty && mounted) setState(() => _icon = v);
   }
 
   Future<String?> _askName(String title, [String initial = '']) {
@@ -357,7 +360,7 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
   Widget build(BuildContext context) => EditorBody(
         error: _error,
         saveLabel: widget.entry == null ? 'Add partner type' : 'Save changes',
-        onSave: widget.canEdit && !_uploading ? _save : null,
+        onSave: widget.canEdit ? _save : null,
         children: [
           if (jsBool(v['isDefault']))
             const Padding(
@@ -379,20 +382,18 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
           ),
           const SectionLabel('Icon (optional)', hint: 'Square image. Shown globally in the "Select your service" popup.'),
           Row(children: [
-            _uploading
-                ? const SizedBox(width: 56, height: 56, child: Center(child: CircularProgressIndicator()))
-                : StoredImage(_icon, size: 56, fallback: Icons.add_photo_alternate_outlined),
+            StoredImage(_icon, size: 56, fallback: Icons.add_photo_alternate_outlined),
             const SizedBox(width: 12),
             BusyButton.tonal(
               style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
-              onPressed: _uploading ? null : _pickIcon,
-              icon: const Icon(Icons.upload),
-              child: Text(_icon.isEmpty ? 'Upload' : 'Replace'),
+              onPressed: _pickIcon,
+              icon: const Icon(Icons.photo_library_outlined),
+              child: Text(_icon.isEmpty ? 'Choose' : 'Replace'),
 
             ),
             const SizedBox(width: 8),
             if (_icon.isNotEmpty)
-              OutlinedButton(onPressed: _uploading ? null : () => setState(() => _icon = ''), child: const Text('Remove')),
+              OutlinedButton(onPressed: () => setState(() => _icon = ''), child: const Text('Remove')),
           ]),
           const SectionLabel('Document Types', hint: 'Choose "All" or pick multiple'),
           AllTokenChips(

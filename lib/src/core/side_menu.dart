@@ -22,8 +22,9 @@ class MenuEntry {
   final String label;
   final bool custom;
 
-  /// A custom item's icon, or the icon the admin picked for a built-in one
-  /// (an Expo icon name); null keeps the built-in item's own icon.
+  /// The item's icon: a custom item's, or the one the admin gave a built-in
+  /// item; an Expo icon name or a Media Gallery upload (`media:<id>`). Null
+  /// for a built-in item that keeps its icon in code.
   final String? iconName;
 
   /// Where the item goes in this app: the admin's link when they set one,

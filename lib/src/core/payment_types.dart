@@ -8,7 +8,7 @@ library;
 enum PaymentKind { cash, wallet, card, other }
 
 class PaymentChoice {
-  const PaymentChoice(this.value, this.label, this.kind);
+  const PaymentChoice(this.value, this.label, this.kind, {this.icon});
 
   /// Stored on the ride as `payment_mode`.
   final String value;
@@ -17,12 +17,16 @@ class PaymentChoice {
   final String label;
   final PaymentKind kind;
 
-  @override
-  bool operator ==(Object other) =>
-      other is PaymentChoice && other.value == value && other.label == label && other.kind == kind;
+  /// The admin's icon for it (Admin → Payment Type): a built-in icon name
+  /// or a Media Gallery upload (`media:<id>`); null for its kind's icon.
+  final String? icon;
 
   @override
-  int get hashCode => Object.hash(value, label, kind);
+  bool operator ==(Object other) =>
+      other is PaymentChoice && other.value == value && other.label == label && other.kind == kind && other.icon == icon;
+
+  @override
+  int get hashCode => Object.hash(value, label, kind, icon);
 
   @override
   String toString() => 'PaymentChoice($value, $label, ${kind.name})';
@@ -65,7 +69,12 @@ List<PaymentChoice> paymentChoicesFrom(Iterable<Map<String, dynamic>> rows) {
     for (final v in rows)
       if (_enabled(v['enabled']))
         if ('${v['name'] ?? ''}'.trim() case final name when name.isNotEmpty && seen.add(name.toLowerCase()))
-          PaymentChoice(name, name, paymentKindOf(name, v['code'] is String ? v['code'] as String : null)),
+          PaymentChoice(
+            name,
+            name,
+            paymentKindOf(name, v['code'] is String ? v['code'] as String : null),
+            icon: v['icon'] is String && (v['icon'] as String).trim().isNotEmpty ? (v['icon'] as String).trim() : null,
+          ),
   ];
 }
 

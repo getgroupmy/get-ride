@@ -22,6 +22,7 @@ import '../../core/ride_pets.dart' show PetConfig, petSummary;
 import '../../data/geo_service.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show mutedTextColor;
+import '../../widgets/media_image.dart' show MediaIcon, MediaImage;
 import '../../widgets/map_sheet_layout.dart' show MapSheetReveal;
 import '../../widgets/shake.dart';
 import 'fare_offer_controls.dart';
@@ -1236,7 +1237,7 @@ Future<String?> showPaymentSheet(
               ],
             ),
           ),
-          for (final PaymentChoice(:value, :label, :kind) in payments.isEmpty ? builtInPayments : payments)
+          for (final PaymentChoice(:value, :label, :kind, :icon) in payments.isEmpty ? builtInPayments : payments)
             Material(
               // The chosen one on a pale blue band with a tick.
               color: value == current
@@ -1245,7 +1246,7 @@ Future<String?> showPaymentSheet(
               child: ListTile(
                 key: ValueKey('payment-$value'),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                leading: Icon(paymentLook(kind).$1, color: paymentLook(kind).$2),
+                leading: MediaIcon(icon, fallback: paymentLook(kind).$1, color: paymentLook(kind).$2),
                 title: Text(label, style: t.textTheme.bodyLarge?.copyWith(fontSize: 17)),
                 trailing: value == current ? const Icon(Icons.check, color: Color(0xFF3B6CF6)) : null,
                 onTap: () => Navigator.pop(c, value),
@@ -1586,7 +1587,19 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
 
   Widget _option(BuildContext context, RideOptionKind k) {
     final c = widget.config;
-    final title = Text(c.labelOf(k));
+    final image = c.images[k];
+    // The admin's picture beside it (Display Settings → Ride Options).
+    final title = image == null
+        ? Text(c.labelOf(k))
+        : Row(children: [
+            SizedBox.square(
+              key: ValueKey('option-image-${k.id}'),
+              dimension: 32,
+              child: MediaImage(image, width: 32, height: 32),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(c.labelOf(k))),
+          ]);
     switch (k) {
       case RideOptionKind.childSeat:
         if (c.childSeatMax <= 1) {

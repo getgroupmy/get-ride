@@ -1,6 +1,4 @@
-import 'dart:convert';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +15,8 @@ import 'countries.dart';
 import '../geo/geo_data.dart';
 import '../geo/geo_logic.dart';
 import '../../../widgets/search_select.dart';
+import '../../../core/media_assets.dart' show MediaKind;
+import '../meterapp/media_picker_sheet.dart' show showMediaPicker;
 
 final _decimal = [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))];
 
@@ -521,22 +521,18 @@ class _FinanceFormState extends State<_FinanceForm> {
 // Vehicle details (ev_vehicle_details)
 // ===========================================================================
 
-/// Picks an image and returns it as a `data:` URL, the format the Expo app
-/// stores in `imageUri` / gallery lists.
+/// Picks a picture from the Media Gallery (or uploads one there) and returns
+/// its reference (`media:<id>`); older `data:` and http(s) values still
+/// show. Null when closed.
 Future<String?> _pickImageDataUrl(BuildContext context) async {
-  try {
-    final files = await FilePicker.pickFiles(type: FileType.image);
-    final file = files.firstOrNull;
-    if (file == null) return null;
-    final bytes = await file.readAsBytes();
-    final dot = file.name.lastIndexOf('.');
-    final ext = dot < 0 ? 'jpeg' : file.name.substring(dot + 1).toLowerCase();
-    final mime = switch (ext) { 'png' => 'image/png', 'webp' => 'image/webp', 'gif' => 'image/gif', _ => 'image/jpeg' };
-    return 'data:$mime;base64,${base64Encode(bytes)}';
-  } catch (e) {
-    if (context.mounted) showError(context, 'Could not pick image.');
-    return null;
-  }
+  final v = await showMediaPicker(
+    context,
+    kind: MediaKind.image,
+    alsoKinds: const {MediaKind.logo},
+    title: 'Choose a picture',
+    offerDefault: false,
+  );
+  return v == null || v.isEmpty ? null : v;
 }
 
 class EvVehicleDetailsScreen extends ConsumerWidget {

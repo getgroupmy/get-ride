@@ -29,11 +29,16 @@ class AssistanceItem {
     this.choices = const [],
     this.hidden = false,
     this.charge = OptionCharge.none,
+    this.icon = '',
   });
 
   final String id;
   final String name;
   final String emoji;
+
+  /// An icon shown instead of [emoji] on the rider's sheet: a built-in icon
+  /// name or a Media Gallery upload (`media:<id>`); '' for the emoji.
+  final String icon;
   final String description;
   final String group;
 
@@ -59,6 +64,7 @@ class AssistanceItem {
     List<String>? choices,
     bool? hidden,
     OptionCharge? charge,
+    String? icon,
   }) => AssistanceItem(
     id: id,
     name: name ?? this.name,
@@ -68,6 +74,7 @@ class AssistanceItem {
     choices: choices ?? this.choices,
     hidden: hidden ?? this.hidden,
     charge: charge ?? this.charge,
+    icon: icon ?? this.icon,
   );
 
   Map<String, Object> toJson() => {
@@ -79,6 +86,7 @@ class AssistanceItem {
     'choices': choices,
     if (hidden) 'hidden': true,
     if (!effectiveCharge.isZero) 'charge': effectiveCharge.toJson(),
+    if (icon.isNotEmpty) 'icon': icon,
   };
 
   static String _text(Object? v, int max) {
@@ -108,6 +116,7 @@ class AssistanceItem {
       choices: List.unmodifiable(choices),
       hidden: v['hidden'] == true,
       charge: id == guideDogAssistanceId ? OptionCharge.none : OptionCharge.fromJson(v['charge']),
+      icon: _text(v['icon'], 120),
     );
   }
 
@@ -121,10 +130,11 @@ class AssistanceItem {
       other.group == group &&
       _sameStrings(other.choices, choices) &&
       other.hidden == hidden &&
-      other.charge == charge;
+      other.charge == charge &&
+      other.icon == icon;
 
   @override
-  int get hashCode => Object.hash(id, name, emoji, description, group, Object.hashAll(choices), hidden, charge);
+  int get hashCode => Object.hash(id, name, emoji, description, group, Object.hashAll(choices), hidden, charge, icon);
 }
 
 bool _sameStrings(List<String> a, List<String> b) {

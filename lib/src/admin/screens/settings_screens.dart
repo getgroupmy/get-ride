@@ -14,6 +14,8 @@ import '../admin_settings_models.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
+import '../../core/media_assets.dart' show MediaKind;
+import 'meterapp/media_picker_sheet.dart' show MediaStore, showMediaPicker;
 
 /// Looks up a category; unknown keys become a raw `settings_entries` editor.
 SettingsCategory categoryFor(String key) =>
@@ -343,6 +345,13 @@ class _FieldEditorState extends State<_FieldEditor> {
   };
   String? _error;
 
+  /// Moves when a picture is picked, so its field shows the new value.
+  int _picked = 0;
+
+  /// A field that holds a picture's address (Advertisement Banners' "Image
+  /// URL"): it gets the Media Gallery picker.
+  static bool _isPicture(SettingsField f) => RegExp(r'\b(image|icon|logo)\b', caseSensitive: false).hasMatch(f.label);
+
   @override
   Widget build(BuildContext context) => AlertDialog(
         title: Text('${widget.entry == null ? 'Add' : 'Edit'} ${widget.category.title}'),
@@ -362,12 +371,41 @@ class _FieldEditorState extends State<_FieldEditor> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
                     child: TextFormField(
+                      key: ValueKey('field-${f.key}-$_picked'),
                       initialValue: _input[f.key] as String,
                       keyboardType: f.kind == FieldKind.number
                           ? const TextInputType.numberWithOptions(decimal: true, signed: true)
                           : TextInputType.text,
                       maxLines: f.key == 'body' || f.key == 'content' ? 5 : 1,
-                      decoration: InputDecoration(labelText: '${f.label}${f.required ? ' *' : ''}'),
+                      decoration: InputDecoration(
+                        labelText: '${f.label}${f.required ? ' *' : ''}',
+                        // From the Media Gallery, kept as the file's address
+                        // (whatever reads this field takes a web address).
+                        suffixIcon: !_isPicture(f)
+                            ? null
+                            : IconButton(
+                                key: ValueKey('field-${f.key}-gallery'),
+                                tooltip: 'From the Media Gallery',
+                                icon: const Icon(Icons.photo_library_outlined),
+                                onPressed: () async {
+                                  final v = await showMediaPicker(
+                                    context,
+                                    kind: MediaKind.image,
+                                    alsoKinds: const {MediaKind.logo, MediaKind.icon},
+                                    current: _input[f.key] as String?,
+                                    title: f.label,
+                                    offerDefault: false,
+                                    store: MediaStore.url,
+                                  );
+                                  if (v != null && v.isNotEmpty) {
+                                    setState(() {
+                                      _input[f.key] = v;
+                                      _picked++;
+                                    });
+                                  }
+                                },
+                              ),
+                      ),
                       onChanged: (v) => _input[f.key] = v,
                     ),
                   ),

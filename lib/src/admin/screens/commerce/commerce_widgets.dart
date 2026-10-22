@@ -9,6 +9,8 @@ import 'commerce_data.dart';
 import 'commerce_logic.dart';
 import 'countries.dart';
 import '../../../widgets/net_image.dart';
+import '../../../core/media_assets.dart' show isMediaRef;
+import '../../../widgets/media_image.dart' show MediaImage;
 import '../../../widgets/storage_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
@@ -131,6 +133,8 @@ class StoredImage extends StatelessWidget {
       child: Icon(placeholder ?? Icons.electric_car, color: Theme.of(context).colorScheme.onPrimaryContainer),
     );
     if (uri.isEmpty) return fallback;
+    // A Media Gallery upload.
+    if (isMediaRef(uri)) return MediaImage(uri, width: width, height: height, fit: fit, fallback: fallback);
     if (uri.startsWith('data:')) {
       final comma = uri.indexOf(',');
       try {

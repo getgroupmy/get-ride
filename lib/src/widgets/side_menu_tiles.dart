@@ -6,45 +6,9 @@ import '../core/inbox.dart' show inboxBadgeText;
 import '../core/side_menu.dart';
 import '../data/notifications_repository.dart' show unreadNotificationsProvider;
 import 'common.dart' show mutedTextColor;
+import 'media_image.dart';
 import 'side_menu_style.dart';
 import 'page_style_host.dart';
-
-/// Expo icon names (the admin's side menu icon picker) as Material icons.
-const _expoIcons = <String, IconData>{
-  'Bell': Icons.notifications_outlined,
-  'BookOpen': Icons.menu_book_outlined,
-  'Car': Icons.directions_car_outlined,
-  'Clock': Icons.schedule,
-  'FileText': Icons.description_outlined,
-  'Gift': Icons.card_giftcard,
-  'HelpCircle': Icons.help_outline,
-  'Heart': Icons.favorite_border,
-  'Mail': Icons.mail_outline,
-  'MapPin': Icons.place_outlined,
-  'MessageCircle': Icons.chat_bubble_outline,
-  'Phone': Icons.phone_outlined,
-  'Settings': Icons.settings_outlined,
-  'Shield': Icons.shield_outlined,
-  'Star': Icons.star_border,
-  'Tag': Icons.sell_outlined,
-  'User': Icons.person_outline,
-  'Wallet': Icons.account_balance_wallet_outlined,
-  'Package': Icons.inventory_2_outlined,
-  'ShoppingCart': Icons.shopping_cart_outlined,
-  'Navigation': Icons.navigation_outlined,
-  'Utensils': Icons.restaurant_outlined,
-  'Pill': Icons.medication_outlined,
-  'ShoppingBag': Icons.shopping_bag_outlined,
-  'Building2': Icons.apartment,
-  'Landmark': Icons.account_balance_outlined,
-  'Receipt': Icons.receipt_long_outlined,
-  'Coffee': Icons.local_cafe_outlined,
-  'Store': Icons.storefront_outlined,
-  'Zap': Icons.bolt_outlined,
-  'Hotel': Icons.hotel_outlined,
-  'Banknote': Icons.payments_outlined,
-  'CreditCard': Icons.credit_card_outlined,
-};
 
 const _builtInIcons = <String, IconData>{
   'teksi-ev': Icons.electric_car_outlined,
@@ -96,10 +60,19 @@ const _builtInIcons = <String, IconData>{
   'invite-friends': Icons.card_giftcard,
 };
 
-/// The admin's icon when one is set (a custom item's, or one picked for a
-/// built-in item), else the built-in item's own.
+/// The admin's icon when one is set as a built-in name (a custom item's,
+/// or one picked for a built-in item), else the built-in item's own.
 IconData menuIcon(MenuEntry e) =>
-    _expoIcons[e.iconName] ?? (e.custom ? null : _builtInIcons[e.id]) ?? Icons.star_border;
+    builtInIcon(e.iconName) ?? (e.custom ? null : _builtInIcons[e.id]) ?? Icons.star_border;
+
+/// An item's icon as drawn: [menuIcon], or the admin's Media Gallery pick
+/// (an upload or a pack icon) when that is what is set.
+Widget menuIconWidget(MenuEntry e, {Color? color, double? size}) {
+  final own = e.iconName?.trim() ?? '';
+  return own.isEmpty || builtInIcon(own) != null
+      ? Icon(menuIcon(e), color: color, size: size)
+      : MediaIcon(own, fallback: e.custom ? Icons.star_border : (_builtInIcons[e.id] ?? Icons.star_border), color: color, size: size);
+}
 
 /// Opens a Flutter route: tab roots and their pages through the shell, the
 /// rest on top.
@@ -189,6 +162,9 @@ class SideMenuTile extends StatelessWidget {
       return SideMenuRow(
         key: ValueKey('menu-${entry.id}'),
         icon: menuIcon(entry),
+        leading: (entry.iconName ?? '').trim().isEmpty
+            ? null
+            : menuIconWidget(entry, color: color ?? SideMenuColors.of(context).icon, size: 24),
         label: entry.label,
         color: color,
         trailing: entry.comingSoon
@@ -201,7 +177,7 @@ class SideMenuTile extends StatelessWidget {
     }
     return ListTile(
       key: ValueKey('menu-${entry.id}'),
-      leading: Icon(menuIcon(entry), color: color),
+      leading: menuIconWidget(entry, color: color),
       title: Text(entry.label, style: color == null ? null : TextStyle(color: color)),
       trailing: entry.comingSoon
           // On the chip's own fill, so "Soon" reads (4.5:1) on it.

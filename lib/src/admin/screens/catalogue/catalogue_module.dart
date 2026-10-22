@@ -26,8 +26,14 @@ const catalogueOwnedCategories = <String>{
 };
 
 final catalogueRoutes = <RouteBase>[
-  GoRoute(path: '/admin/m/service-settings', builder: (_, _) => const ServiceSettingsScreen()),
-  GoRoute(path: '/admin/m/vehicle-services', builder: (_, _) => const VehicleServicesScreen()),
+  GoRoute(
+    path: '/admin/m/service-settings',
+    builder: (_, s) => ServiceSettingsScreen(openId: s.uri.queryParameters['highlight']),
+  ),
+  GoRoute(
+    path: '/admin/m/vehicle-services',
+    builder: (_, s) => VehicleServicesScreen(openId: s.uri.queryParameters['highlight']),
+  ),
   GoRoute(path: serviceOrderPath, builder: (_, _) => const ServiceOrderScreen()),
   GoRoute(path: '/admin/m/partner-type', builder: (_, _) => const PartnerTypeScreen()),
   GoRoute(path: '/admin/m/partner-type-services', builder: (_, _) => const PartnerTypeServicesScreen()),

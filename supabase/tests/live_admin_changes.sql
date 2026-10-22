@@ -67,7 +67,9 @@ begin
     -- Freight: the recipients' tracking link notices (migration 0267).
     'freight_recipient_notices',
     -- City ride cancel and no-show rules by place (migration 0269).
-    'ride_cancel_places'
+    'ride_cancel_places',
+    -- The Media Gallery's uploads (migration 0273).
+    'media_assets'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

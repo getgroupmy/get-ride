@@ -92,6 +92,8 @@ const liveSettingTables = <String>[
   'trip_handover_candidates',
   // EV profiles for the OBD-II reader (0202; the active ones, or all for an admin).
   'ev_profiles',
+  // The Media Gallery's uploads (0273): the icons and pictures settings point at.
+  'media_assets',
   // The locks get.ride keeps on driver services (0263; a driver reads the
   // ones that apply to them, an admin every one).
   'driver_service_locks',

@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/option_charge.dart';
@@ -24,6 +25,10 @@ import 'demo_accounts.dart';
 import 'display_logic.dart';
 import '../../../core/demo_mode.dart' show demoDriverIdsKey, demoRiderIdsKey;
 import 'display_store.dart';
+import 'media_gallery_screen.dart' show mediaGalleryPath;
+import 'media_picker_sheet.dart';
+import '../../../core/media_assets.dart' show MediaKind, isMediaRef;
+import '../../../widgets/media_image.dart';
 import 'ride_option_places_screen.dart' show RideOptionPlacesScreen;
 import 'freight_settings_screen.dart' show FreightSettingsScreen;
 import 'courier_settings_screen.dart' show CourierSettingsScreen;
@@ -31,7 +36,6 @@ import '../../../core/freight.dart' show DeliveryKind, freightVehiclesFrom;
 import '../../../core/home_sections.dart' show serviceBoxDelivery, serviceBoxOpensText, serviceBoxPresets;
 import '../../../core/ride_option_places.dart' show OptionChargeKey;
 import '../../../data/ride_option_places_repository.dart' show rideOptionPlacesRepositoryProvider;
-import 'pick_image.dart';
 import '../../../core/raise_nudge.dart';
 import '../../../core/sheet_min_height.dart';
 import 'test_accounts.dart';
@@ -84,64 +88,6 @@ const lucideIcons = <String, IconData>{
 
 IconData lucide(String? name) => lucideIcons[name] ?? Icons.star_border;
 
-const _defaultMenuIcons = <String, Map<String, String>>{
-  'user': {
-    'teksi-ev': 'Car',
-    'wallet': 'Wallet',
-    'emergency-contacts': 'Phone',
-    'invite-friends': 'Gift',
-    'city': 'Car',
-    'request-history': 'Clock',
-    'scheduled-rides': 'Clock',
-    'my-ride': 'Heart',
-    'my-qr': 'Tag',
-    'freight': 'Truck',
-    'courier': 'Package',
-    'buy-sell': 'Tag',
-    'grocery': 'ShoppingCart',
-    'city-to-city': 'Navigation',
-    'food': 'Utensils',
-    'pharmacy': 'Pill',
-    'shopping': 'ShoppingBag',
-    'mall': 'Building2',
-    'finance': 'Landmark',
-    'bills-prepaid': 'Receipt',
-    'dine-out': 'Coffee',
-    'mart': 'Store',
-    'express': 'Zap',
-    'hotel': 'Hotel',
-    'gift': 'Gift',
-    'loan': 'Banknote',
-    'pay-later': 'CreditCard',
-    'insurance': 'Shield',
-    'notifications': 'Bell',
-    'safety': 'Shield',
-    'settings': 'Settings',
-    'user-guide': 'BookOpen',
-    'support': 'MessageCircle',
-    'logout': 'User',
-  },
-  'partner': {
-    'teksi-ev': 'Car',
-    'wallet': 'Wallet',
-    'vehicle-information': 'Car',
-    'my-qr': 'Tag',
-    'dashboard': 'Settings',
-    'my-ride-code': 'Star',
-    'earnings': 'Wallet',
-    'telematics': 'Clock',
-    'trip-history': 'Clock',
-    'scheduled-rides': 'Clock',
-    'vehicle': 'Car',
-    'documents': 'FileText',
-    'notifications': 'Bell',
-    'safety': 'Shield',
-    'support': 'HelpCircle',
-    'settings': 'Settings',
-    'sign-out': 'User',
-  },
-};
-
 /// Shared write helper for the display / mock screens.
 Future<void> applyDisplay(BuildContext context, WidgetRef ref, DisplayEdit edit) =>
     runAdminAction(context, () => ref.read(displaySettingsProvider.notifier).apply(edit));
@@ -193,7 +139,11 @@ class _RoutePickerState extends State<_RoutePicker> {
 }
 
 class AdminDisplaySettingsScreen extends ConsumerWidget {
-  const AdminDisplaySettingsScreen({super.key});
+  const AdminDisplaySettingsScreen({super.key, this.highlight});
+
+  /// The item to pick out (`service-box-2`, `ride-option-pet`,
+  /// `sign-in-logo`), from the Media Gallery's "Where used".
+  final String? highlight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -215,16 +165,17 @@ class AdminDisplaySettingsScreen extends ConsumerWidget {
       body: AsyncView(
         value: ref.watch(displaySettingsProvider),
         onRetry: () => ref.invalidate(displaySettingsProvider),
-        data: (s) => _DisplayBody(settings: s, canEdit: canEdit),
+        data: (s) => _DisplayBody(settings: s, canEdit: canEdit, highlight: highlight),
       ),
     );
   }
 }
 
 class _DisplayBody extends ConsumerWidget {
-  const _DisplayBody({required this.settings, required this.canEdit});
+  const _DisplayBody({required this.settings, required this.canEdit, this.highlight});
   final Map<String, dynamic> settings;
   final bool canEdit;
+  final String? highlight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -266,6 +217,17 @@ class _DisplayBody extends ConsumerWidget {
       ResponsiveCenter(
         maxWidth: 820,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const _Section('Media'),
+          Card(
+            child: ListTile(
+              key: const ValueKey('display-media-gallery'),
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Media Gallery'),
+              subtitle: const Text('Every icon, image and logo the app uses, where each is used, and your uploads'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push(mediaGalleryPath),
+            ),
+          ),
           const _Section('Home Screen Sections'),
           Card(
             child: Column(children: [
@@ -276,7 +238,7 @@ class _DisplayBody extends ConsumerWidget {
             ]),
           ),
           const _Section('Sign-in Screen'),
-          Card(
+          Spotlight(id: 'sign-in-logo', highlight: highlight, child: Card(
             child: Column(children: [
               toggle(
                   'Allow new registrations',
@@ -287,7 +249,7 @@ class _DisplayBody extends ConsumerWidget {
               toggle('Show logo', 'Show the GET.ride logo at the top of the sign-in screen',
                   displayBool(s, 'signInLogo'), (v) => set('signInLogo', v)),
             ]),
-          ),
+          )),
           const _Section('Connection Status Popups'),
           Card(
             child: Column(children: [
@@ -357,7 +319,7 @@ class _DisplayBody extends ConsumerWidget {
             ]),
           ),
           const _Section('Ride Options'),
-          RideOptionsCard(settings: s, canEdit: canEdit),
+          RideOptionsCard(settings: s, canEdit: canEdit, highlight: highlight),
           const _Section('Ride Tracking Layout'),
           Card(
             child: Column(children: [
@@ -417,7 +379,12 @@ class _DisplayBody extends ConsumerWidget {
             child: toggle('Show "NEW" badge', 'Toggle the NEW badge on the featured (large) service box',
                 displayBool(s, 'serviceBoxBadge'), (v) => set('serviceBoxBadge', v)),
           ),
-          for (var i = 0; i < serviceBoxCount; i++) ServiceBoxCard(settings: s, index: i, canEdit: canEdit),
+          for (var i = 0; i < serviceBoxCount; i++)
+            Spotlight(
+              id: 'service-box-$i',
+              highlight: highlight,
+              child: ServiceBoxCard(settings: s, index: i, canEdit: canEdit),
+            ),
           const _Section('Vehicle Type Bar'),
           Card(
             child: Column(children: [
@@ -484,6 +451,51 @@ class _Section extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(4, 20, 4, 6),
         child: Text(title, style: Theme.of(context).textTheme.titleMedium),
       );
+}
+
+/// [child], picked out and scrolled into view when [highlight] is [id]
+/// (the Media Gallery's "Where used" opens a page at one item).
+class Spotlight extends StatefulWidget {
+  const Spotlight({super.key, required this.id, required this.highlight, required this.child});
+  final String id;
+  final String? highlight;
+  final Widget child;
+
+  @override
+  State<Spotlight> createState() => _SpotlightState();
+}
+
+class _SpotlightState extends State<Spotlight> {
+  final _key = GlobalKey();
+
+  bool get _on => widget.highlight == widget.id;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_on) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final c = _key.currentContext;
+        if (c != null && c.mounted) {
+          Scrollable.ensureVisible(c, alignment: 0.1, duration: const Duration(milliseconds: 300));
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_on) return widget.child;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      key: _key,
+      decoration: BoxDecoration(
+        border: Border.all(color: cs.primary, width: 2),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: KeyedSubtree(key: ValueKey('spotlight-${widget.id}'), child: widget.child),
+    );
+  }
 }
 
 class _StepperTile extends StatelessWidget {
@@ -655,7 +667,7 @@ class ServiceBoxCard extends ConsumerWidget {
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
-            SizedBox(width: 56, height: 56, child: _BoxPreview(image: image, icon: lucide(iconName))),
+            SizedBox(width: 56, height: 56, child: _BoxPreview(image: image, icon: lucide(iconName), iconValue: iconName)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -697,27 +709,24 @@ class ServiceBoxCard extends ConsumerWidget {
             onFieldSubmitted: (v) => patch({'name': v.trim().isEmpty ? null : v.trim()}),
           ),
           BusyListTile(
+            key: ValueKey('box-icon-$index'),
             contentPadding: EdgeInsets.zero,
-            leading: Icon(lucide(iconName)),
+            leading: MediaIcon(iconName, fallback: lucide(iconName)),
             title: const Text('Icon'),
-            subtitle: Text(iconName),
+            subtitle: Text(isMediaRef(iconName) ? 'From the Media Gallery' : iconName),
             trailing: const Icon(Icons.arrow_drop_down),
             enabled: canEdit,
             onTap: () async {
-              final picked = await showAdminSheet<String>(
+              // The Media Gallery: built-in icons and uploads; Default is
+              // the box's own.
+              final picked = await showMediaPicker(
                 context,
-                title: 'Choose Icon',
-                builder: (ctx) => Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final n in serviceBoxIcons)
-                    ChoiceChip(
-                      avatar: Icon(lucide(n), size: 18),
-                      label: Text(n),
-                      selected: n == iconName,
-                      onSelected: (_) => Navigator.pop(ctx, n),
-                    ),
-                ]),
+                kind: MediaKind.icon,
+                current: iconName,
+                title: 'Icon for box ${index + 1}',
+                defaultLabel: 'Default (${defaultServiceBoxIcons[index]})',
               );
-              if (picked != null) await patch({'iconName': picked});
+              if (picked != null) await patch({'iconName': picked.isEmpty ? defaultServiceBoxIcons[index] : picked});
             },
           ),
           BusyListTile(
@@ -756,12 +765,19 @@ class ServiceBoxCard extends ConsumerWidget {
               icon: const Icon(Icons.upload),
               onPressed: canEdit
                   ? () async {
-                      final f = await pickImage();
-                      if (f == null) return;
-                      await patch({'imageUri': 'data:${f.contentType};base64,${base64Encode(f.bytes)}'});
+                      // Picked from the Media Gallery (or uploaded there).
+                      final v = await showMediaPicker(
+                        context,
+                        kind: MediaKind.image,
+                        alsoKinds: const {MediaKind.icon, MediaKind.logo},
+                        current: image,
+                        title: 'Picture for box ${index + 1}',
+                        offerDefault: false,
+                      );
+                      if (v != null && v.isNotEmpty) await patch({'imageUri': v});
                     }
                   : null,
-              child: Text(image != null ? 'Replace image' : 'Upload image'),
+              child: Text(image != null ? 'Replace image' : 'Choose image'),
             ),
             if (image != null)
               BusyButton.text(
@@ -781,17 +797,22 @@ class ServiceBoxCard extends ConsumerWidget {
 num _prio(Map<String, dynamic> e) => num.tryParse('${(e['values'] as Map?)?['displayPriority'] ?? 9999}') ?? 9999;
 
 class _BoxPreview extends StatelessWidget {
-  const _BoxPreview({this.image, required this.icon});
+  const _BoxPreview({this.image, required this.icon, this.iconValue});
   final String? image;
   final IconData icon;
+
+  /// The stored icon (a built-in name or a Media Gallery upload).
+  final String? iconValue;
 
   @override
   Widget build(BuildContext context) {
     final bg = Theme.of(context).colorScheme.primaryContainer;
-    Widget fallback() => Icon(icon, size: 28);
+    Widget fallback() => MediaIcon(iconValue, fallback: icon, size: 28);
     Widget? img;
     final src = image;
-    if (src != null && src.startsWith('data:') && src.contains(',')) {
+    if (isMediaRef(src)) {
+      img = MediaImage(src, fit: BoxFit.cover, fallback: fallback());
+    } else if (src != null && src.startsWith('data:') && src.contains(',')) {
       try {
         img = Image.memory(base64Decode(src.substring(src.indexOf(',') + 1)), fit: BoxFit.cover);
       } catch (_) {}
@@ -914,8 +935,11 @@ class _VehicleArrangement extends ConsumerWidget {
 // ---------------------------------------------------------------------------
 
 class SideMenuEditorScreen extends ConsumerWidget {
-  const SideMenuEditorScreen({super.key, required this.menu});
+  const SideMenuEditorScreen({super.key, required this.menu, this.highlight});
   final String menu;
+
+  /// The item to pick out (its id), from the Media Gallery.
+  final String? highlight;
 
   /// [icon] is the item's icon now; [defaultIcon] a built-in item's own
   /// (null for a custom item).
@@ -990,12 +1014,29 @@ class SideMenuEditorScreen extends ConsumerWidget {
             required String title,
             required String subtitle,
             Widget? leadingExtra,
+            String? iconValue,
             Future<void> Function()? onEdit,
             Future<void> Function()? onDelete,
           }) =>
-              Card(
+              Spotlight(id: id, highlight: highlight, child: Card(
                 child: ListTile(
-                  leading: Row(mainAxisSize: MainAxisSize.min, children: [?leadingExtra, Icon(icon)]),
+                  leading: Row(mainAxisSize: MainAxisSize.min, children: [
+                    ?leadingExtra,
+                    // The item's icon: tap to pick another from the Media Gallery.
+                    InkWell(
+                      key: ValueKey('menu-row-icon-$id'),
+                      onTap: !canEdit || iconValue == null
+                          ? null
+                          : () async {
+                              final v = await showMediaPicker(context,
+                                  kind: MediaKind.icon, current: iconValue, title: 'Icon for $title');
+                              if (v != null && context.mounted) {
+                                await applyDisplay(context, ref, (x) => setMenuItemIcon(x, menu, id, v));
+                              }
+                            },
+                      child: MediaIcon(iconValue, fallback: icon),
+                    ),
+                  ]),
                   title: Text(title),
                   subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(subtitle),
@@ -1020,7 +1061,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                     ),
                   ]),
                 ),
-              );
+              ));
 
           return ListView(padding: EdgeInsets.fromLTRB(0, 16, 0, addActionListBottomPadding(context)), children: [
             ResponsiveCenter(
@@ -1038,7 +1079,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                     final o = ordered[i];
                     final c = custom[o.id];
                     final label = o.isCustom ? '${c?['label'] ?? 'Item'}' : (renames[o.id] as String?) ?? defaults[o.id] ?? o.id;
-                    final defaultIcon = o.isCustom ? null : (_defaultMenuIcons[menu]![o.id] ?? 'Settings');
+                    final defaultIcon = o.isCustom ? null : (defaultMenuIconNames[menu]![o.id] ?? 'Settings');
                     final iconName = o.isCustom ? ((c?['iconName'] as String?) ?? 'Star') : (icons[o.id] as String?) ?? defaultIcon!;
                     final route = o.isCustom ? (c?['route'] as String?) : (routes[o.id] as String?);
                     final defRoute = o.isCustom ? null : defaultMenuRoutes[menu]![o.id];
@@ -1050,6 +1091,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                     return row(
                       id: o.id,
                       icon: lucide(iconName),
+                      iconValue: o.isCustom ? iconName : '${icons[o.id] ?? ''}',
                       title: label,
                       subtitle: 'Page: ${routeLabelFor(effective)}${tags.isEmpty ? '' : '  ·  ${tags.join('  ·  ')}'}',
                       leadingExtra: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1184,6 +1226,23 @@ class _MenuItemDialogState extends State<_MenuItemDialog> {
                         ),
                   ]),
                 ),
+                const SizedBox(height: 6),
+                // Any icon from the Media Gallery: the icon pack and uploads.
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: ChoiceChip(
+                    key: const ValueKey('menu-icon-gallery'),
+                    avatar: isMediaRef(_icon)
+                        ? MediaIcon(_icon, fallback: Icons.photo_library_outlined, size: 16)
+                        : const Icon(Icons.photo_library_outlined, size: 16),
+                    label: const Text('From gallery'),
+                    selected: isMediaRef(_icon),
+                    onSelected: (_) async {
+                      final v = await showMediaPicker(context, kind: MediaKind.icon, current: _icon, offerDefault: false);
+                      if (v != null && v.isNotEmpty) setState(() => _icon = v);
+                    },
+                  ),
+                ),
               ],
               if (widget.showRoute)
                 ListTile(
@@ -1304,9 +1363,12 @@ Widget _moveArrows({required String key, VoidCallback? up, VoidCallback? down}) 
 /// Options sheet shown or hidden, renamed and moved, with its own settings
 /// under it. With every option hidden the Options button goes.
 class RideOptionsCard extends ConsumerWidget {
-  const RideOptionsCard({super.key, required this.settings, required this.canEdit});
+  const RideOptionsCard({super.key, required this.settings, required this.canEdit, this.highlight});
   final Map<String, dynamic> settings;
   final bool canEdit;
+
+  /// An option to pick out (`ride-option-<id>`), from the Media Gallery.
+  final String? highlight;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1335,7 +1397,7 @@ class RideOptionsCard extends ConsumerWidget {
     Widget optionTile(List<RideOptionKind> kinds, int i) {
       final k = kinds[i];
       final renamed = c.labels.containsKey(k);
-      return ListTile(
+      return Spotlight(id: 'ride-option-${k.id}', highlight: highlight, child: ListTile(
         key: ValueKey('ride-option-${k.id}'),
         leading: _moveArrows(
           key: 'ride-option-${k.id}',
@@ -1345,6 +1407,28 @@ class RideOptionsCard extends ConsumerWidget {
         title: Text(c.labelOf(k), key: ValueKey('ride-option-label-${k.id}')),
         subtitle: renamed ? Text('Built-in name: ${k.defaultLabel}') : null,
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          // The picture beside it on the rider's sheet (not the Freight page's).
+          if (!k.freight)
+            BusyIconButton(
+              key: ValueKey('ride-option-image-${k.id}'),
+              tooltip: 'Picture',
+              icon: c.images[k] == null
+                  ? const Icon(Icons.add_photo_alternate_outlined)
+                  : SizedBox.square(dimension: 24, child: MediaImage(c.images[k], width: 24, height: 24)),
+              onPressed: !canEdit
+                  ? null
+                  : () async {
+                      final v = await showMediaPicker(
+                        context,
+                        kind: MediaKind.image,
+                        alsoKinds: const {MediaKind.icon},
+                        current: c.images[k],
+                        title: 'Picture for ${c.labelOf(k)}',
+                        defaultLabel: 'No picture',
+                      );
+                      if (v != null && context.mounted) await edit((x) => setRideOptionImage(x, k, v));
+                    },
+            ),
           if (canEdit)
             BusyIconButton(
               key: ValueKey('ride-option-rename-${k.id}'),
@@ -1372,7 +1456,7 @@ class RideOptionsCard extends ConsumerWidget {
             onChanged: canEdit ? (v) => edit((x) => setRideOptionShown(x, k, v)) : null,
           ),
         ]),
-      );
+      ));
     }
 
     return Card(
@@ -1796,7 +1880,9 @@ class AssistanceOptionsScreen extends ConsumerWidget {
                             return Card(
                               key: ValueKey('assist-admin-${item.id}'),
                               child: ListTile(
-                                leading: Text(item.emoji, style: const TextStyle(fontSize: 24)),
+                                leading: item.icon.isEmpty
+                                    ? Text(item.emoji, style: const TextStyle(fontSize: 24))
+                                    : MediaIcon(item.icon, fallback: Icons.accessibility_new, size: 28),
                                 title: Text(item.name),
                                 subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   if (item.description.isNotEmpty) Text(item.description),
@@ -1904,6 +1990,7 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
     for (final c in _i?.choices ?? const <String>[]) TextEditingController(text: c),
   ];
   late String? _group = _i?.group ?? assistanceDefaultGroups.first;
+  late String _icon = _i?.icon ?? '';
   String? _error;
 
   bool get _guideDog => _i?.isGuideDog ?? false;
@@ -1940,6 +2027,7 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
       hidden: _i?.hidden ?? false,
       // Kept as it was: charges are set by place now.
       charge: _guideDog ? OptionCharge.none : (_i?.charge ?? OptionCharge.none),
+      icon: _icon,
     );
     final problem = assistanceItemProblem(item);
     if (problem != null) return setState(() => _error = problem);
@@ -1978,6 +2066,20 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
                 ),
               ),
             ]),
+            // An icon from the Media Gallery in place of the emoji.
+            ListTile(
+              key: const ValueKey('assist-icon'),
+              contentPadding: EdgeInsets.zero,
+              leading: _icon.isEmpty ? const Icon(Icons.emoji_emotions_outlined) : MediaIcon(_icon, fallback: Icons.accessibility_new),
+              title: const Text('Icon (optional)'),
+              subtitle: Text(_icon.isEmpty ? 'None: riders see the emoji' : 'Shown instead of the emoji'),
+              trailing: const Icon(Icons.arrow_drop_down),
+              onTap: () async {
+                final v = await showMediaPicker(context,
+                    kind: MediaKind.icon, current: _icon, title: 'Icon', defaultLabel: 'None (use the emoji)');
+                if (v != null) setState(() => _icon = v);
+              },
+            ),
             TextField(
               key: const ValueKey('assist-description'),
               controller: _description,

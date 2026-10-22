@@ -165,6 +165,66 @@ const defaultMenuRoutes = <String, Map<String, String>>{
   },
 };
 
+/// The icon (a [sideMenuIcons] name) each built-in menu item shows in Admin
+/// → Display Settings → Side Menus, and the Media Gallery counts it under.
+const defaultMenuIconNames = <String, Map<String, String>>{
+  'user': {
+    'teksi-ev': 'Car',
+    'wallet': 'Wallet',
+    'emergency-contacts': 'Phone',
+    'invite-friends': 'Gift',
+    'city': 'Car',
+    'request-history': 'Clock',
+    'scheduled-rides': 'Clock',
+    'my-ride': 'Heart',
+    'my-qr': 'Tag',
+    'freight': 'Truck',
+    'courier': 'Package',
+    'buy-sell': 'Tag',
+    'grocery': 'ShoppingCart',
+    'city-to-city': 'Navigation',
+    'food': 'Utensils',
+    'pharmacy': 'Pill',
+    'shopping': 'ShoppingBag',
+    'mall': 'Building2',
+    'finance': 'Landmark',
+    'bills-prepaid': 'Receipt',
+    'dine-out': 'Coffee',
+    'mart': 'Store',
+    'express': 'Zap',
+    'hotel': 'Hotel',
+    'gift': 'Gift',
+    'loan': 'Banknote',
+    'pay-later': 'CreditCard',
+    'insurance': 'Shield',
+    'notifications': 'Bell',
+    'safety': 'Shield',
+    'settings': 'Settings',
+    'user-guide': 'BookOpen',
+    'support': 'MessageCircle',
+    'logout': 'User',
+  },
+  'partner': {
+    'teksi-ev': 'Car',
+    'wallet': 'Wallet',
+    'vehicle-information': 'Car',
+    'my-qr': 'Tag',
+    'dashboard': 'Settings',
+    'my-ride-code': 'Star',
+    'earnings': 'Wallet',
+    'telematics': 'Clock',
+    'trip-history': 'Clock',
+    'scheduled-rides': 'Clock',
+    'vehicle': 'Car',
+    'documents': 'FileText',
+    'notifications': 'Bell',
+    'safety': 'Shield',
+    'support': 'HelpCircle',
+    'settings': 'Settings',
+    'sign-out': 'User',
+  },
+};
+
 /// Icon names for custom menu items (the Expo app knows the first 18).
 const sideMenuIcons = [
   'Bell', 'BookOpen', 'Car', 'Clock', 'FileText', 'Gift', 'HelpCircle', 'Heart', 'Mail', 'MapPin',
@@ -664,8 +724,9 @@ Map<String, dynamic> setMenuItemRoute(Map<String, dynamic> s, String menu, Strin
   return _withMenu(s, menu, {...cfg, 'routes': routes, 'customItems': custom});
 }
 
-/// The icon of a menu item: [iconName] from [sideMenuIcons], or null for the
-/// built-in item's own icon. A custom item keeps its icon on the item itself
+/// The icon of a menu item: [iconName] from [sideMenuIcons] or the Media
+/// Gallery (`media:<id>`, `pack:<name>`), or null (or '') for the built-in
+/// item's own icon. A custom item keeps its icon on the item itself
 /// (null puts back the 'Star' it starts with).
 Map<String, dynamic> setMenuItemIcon(Map<String, dynamic> s, String menu, String itemId, String? iconName) {
   final cfg = menuOf(s, menu);
@@ -816,6 +877,16 @@ Map<String, dynamic> renameRideOption(Map<String, dynamic> s, RideOptionKind k, 
   final labels = {...c.labels}..remove(k);
   if (t.isNotEmpty && t != k.defaultLabel) labels[k] = t;
   return _withRideOptions(s, c.copyWith(labels: labels));
+}
+
+/// The picture beside an option on the rider's sheet (a Media Gallery
+/// reference); null or '' for none.
+Map<String, dynamic> setRideOptionImage(Map<String, dynamic> s, RideOptionKind k, String? image) {
+  final c = rideOptionsOf(s);
+  final images = {...c.images}..remove(k);
+  final v = image?.trim() ?? '';
+  if (v.isNotEmpty) images[k] = v;
+  return _withRideOptions(s, c.copyWith(images: images));
 }
 
 /// Moves an option up (-1) or down (1), past the next one of its own list

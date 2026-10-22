@@ -14,6 +14,9 @@ import 'commerce_data.dart';
 import 'commerce_logic.dart';
 import 'commerce_widgets.dart';
 import '../../../widgets/search_select.dart';
+import '../../../core/media_assets.dart' show MediaKind;
+import '../../../widgets/media_image.dart' show MediaIcon;
+import '../meterapp/media_picker_sheet.dart' show showMediaPicker;
 
 // ===========================================================================
 // Payment Type (settings_entries / payment-type)
@@ -96,7 +99,7 @@ class _PaymentTypeScreenState extends ConsumerState<PaymentTypeScreen> {
     final gwLabel = gw.isEmpty ? 'No gateway' : '$gw${acct.isEmpty ? '' : ' · $acct'}';
     return Card(
       child: BusyListTile(
-        leading: const CircleAvatar(child: Icon(Icons.credit_card)),
+        leading: CircleAvatar(child: MediaIcon('${v['icon'] ?? ''}', fallback: Icons.credit_card)),
         title: Row(children: [
           Flexible(child: Text('${v['name'] ?? 'Untitled'}', overflow: TextOverflow.ellipsis)),
           if (!enabled) ...[const SizedBox(width: 8), const StatusChip('Disabled')],
@@ -135,6 +138,7 @@ class _PaymentTypeFormState extends State<_PaymentTypeForm> {
   late final _code = TextEditingController(text: '${widget.entry?.values['code'] ?? ''}');
   late bool _enabled = widget.entry?.values['enabled'] != false;
   late SelectedGateway? _gateway = widget.entry == null ? null : SelectedGateway.fromReference(widget.entry!.values);
+  late String _icon = '${widget.entry?.values['icon'] ?? ''}';
   String? _error;
 
   @override
@@ -157,10 +161,26 @@ class _PaymentTypeFormState extends State<_PaymentTypeForm> {
             existing: widget.entry?.values,
           );
           if (r.error != null) return setState(() => _error = r.error);
-          Navigator.pop(context, r.values);
+          Navigator.pop(context, {...r.values!, 'icon': _icon.isEmpty ? null : _icon});
         },
         children: [
           TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name *', hintText: 'e.g. Credit Card')),
+          const SizedBox(height: 4),
+          // Its icon on the rider's payment sheet: one from the Media Gallery,
+          // or its kind's (cash, wallet, card).
+          ListTile(
+            key: const ValueKey('payment-type-icon'),
+            contentPadding: EdgeInsets.zero,
+            leading: MediaIcon(_icon, fallback: Icons.credit_card),
+            title: const Text('Icon'),
+            subtitle: Text(_icon.isEmpty ? 'Default for its kind' : 'From the Media Gallery'),
+            trailing: const Icon(Icons.arrow_drop_down),
+            onTap: () async {
+              final v = await showMediaPicker(context,
+                  kind: MediaKind.icon, current: _icon, title: 'Payment type icon', defaultLabel: 'Default for its kind');
+              if (v != null) setState(() => _icon = v);
+            },
+          ),
           const SizedBox(height: 12),
           TextField(controller: _code, decoration: const InputDecoration(labelText: 'Code', hintText: 'e.g. CARD')),
           const SizedBox(height: 12),

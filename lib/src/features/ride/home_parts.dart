@@ -9,6 +9,8 @@ import '../../core/fare.dart';
 import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/common.dart' show inkOn, mutedTextColor;
+import '../../core/media_assets.dart' show isMediaRef;
+import '../../widgets/media_image.dart';
 import '../../widgets/net_image.dart';
 import '../../widgets/scroll_fade.dart';
 import '../../core/page_styles.dart' show homeSurface;
@@ -16,8 +18,9 @@ import '../../core/smart_address.dart' show placeSubtitle;
 import '../../widgets/page_style_host.dart';
 
 /// Whether [uri] is a picture that loads over the network (and so shows a
-/// skeleton first). Pure.
-bool loadsOverNetwork(String? uri) => uri != null && uri.startsWith('http');
+/// skeleton first): an address, or a Media Gallery upload (`media:<id>`).
+/// Pure.
+bool loadsOverNetwork(String? uri) => uri != null && (uri.startsWith('http') || isMediaRef(uri));
 
 /// A stored picture: an http(s) or `data:` URL. [onSettled] runs once the
 /// picture is painted or has fallen back to [fallback], after the frame.
@@ -36,6 +39,18 @@ Widget uriImage(
 
   final none = fallback ?? SizedBox(width: width, height: height);
   if (uri == null) return none;
+  // A Media Gallery upload: looked up, then loaded (a skeleton meanwhile).
+  if (isMediaRef(uri)) {
+    return MediaImage(
+      uri,
+      width: width,
+      height: height,
+      fit: fit,
+      alignment: alignment,
+      fallback: none,
+      onSettled: onSettled,
+    );
+  }
   if (uri.startsWith('data:')) {
     try {
       return Image.memory(
@@ -461,6 +476,8 @@ class ServiceBoxesGrid extends StatelessWidget {
                           borderRadius: BorderRadius.circular(14),
                           child: uriImage(b.imageUri, width: featured ? 84 : 56, height: featured ? 84 : 56),
                         )
+                      : isMediaRef(b.iconName)
+                      ? MediaIcon(b.iconName, fallback: Icons.apps, size: featured ? 72 : 44, color: Color(b.accent))
                       : Icon(_boxIcons[b.iconName] ?? Icons.apps, size: featured ? 72 : 44, color: Color(b.accent)),
                 ),
               ],
