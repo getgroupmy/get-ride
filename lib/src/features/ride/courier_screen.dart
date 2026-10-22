@@ -38,6 +38,7 @@ import '../../widgets/common.dart' show showError, showInfo;
 import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart' show ListSearchFilter, searchSelectMatches;
 import 'confirm_parts.dart' show paymentLook;
+import 'delivery_look.dart';
 import 'freight_parts.dart' show FreightVehicleImage;
 import 'freight_screen.dart';
 
@@ -240,22 +241,22 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     builder: (_) => FreightProhibitedSheet(items: _config.prohibitedItems),
   );
 
+  /// What the form has filled in, as the button and [_create] check it.
+  CourierDraft get _draft => CourierDraft(
+    pickup: _pickup != null,
+    drop: _drop != null,
+    size: _size,
+    vehicle: _vehicle,
+    recipientPhone: _recipient?.phone ?? '',
+    declaredValue: _declared,
+    declaredCap: _placeValues.declaredCap,
+    prohibitedAck: _ack,
+    offer: _offer,
+  );
+
   Future<void> _create() async {
     final a = _pickup, b = _drop, v = _vehicle;
-    final problem = courierDraftProblem(
-      CourierDraft(
-        pickup: a != null,
-        drop: b != null,
-        size: _size,
-        vehicle: v,
-        recipientPhone: _recipient?.phone ?? '',
-        declaredValue: _declared,
-        declaredCap: _placeValues.declaredCap,
-        prohibitedAck: _ack,
-        offer: _offer,
-      ),
-      _config,
-    );
+    final problem = courierDraftProblem(_draft, _config);
     if (problem != null) return showInfo(context, problem);
     setState(() => _booking = true);
     try {
@@ -368,237 +369,232 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
     final config = _config;
+    final problem = courierDraftProblem(_draft, config);
     final vehicles = _vehicles;
     final v = _vehicle;
     final payments = ref.read(paymentChoicesProvider).value ?? builtInPayments;
     final payment = resolvePayment(_payment, payments);
-    Widget label(String text, {Widget? trailing}) => Padding(
-      padding: const EdgeInsets.only(top: 16, bottom: 6),
-      child: Row(children: [
-        Expanded(child: Text(text, style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600))),
-        ?trailing,
-      ]),
-    );
+    final look = DeliveryLook.of(context);
+    Widget label(String text, {Widget? trailing}) => DeliverySectionLabel(text, trailing: trailing);
     Widget details(TextEditingController c, String key) => Padding(
       padding: const EdgeInsets.only(top: 8),
       child: TextField(
         key: ValueKey(key),
         controller: c,
         maxLength: 80,
-        decoration: const InputDecoration(
+        decoration: InputDecoration(
           labelText: 'Address details (floor, unit)',
-          prefixIcon: Icon(Icons.apartment_outlined),
+          prefixIcon: const Icon(Icons.apartment_outlined),
           counterText: '',
           isDense: true,
+          fillColor: look.field,
         ),
       ),
     );
     return Column(children: [
       Expanded(
-        child: ListView(
-          key: const ValueKey('courier-form'),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            label('Where to pick up'),
-            FreightField(
-              key: const ValueKey('courier-pickup'),
-              label: 'Street, building',
-              value: _pickup?.name,
-              leading: Icon(Icons.radio_button_checked, color: t.colorScheme.primary, size: 20),
-              onTap: () => _place(pickup: true),
-            ),
-            details(_pickupDetails, 'courier-pickup-details'),
-            label('Where to deliver'),
-            FreightField(
-              key: const ValueKey('courier-drop'),
-              label: 'Street, building',
-              value: _drop?.name,
-              leading: Icon(Icons.location_on_outlined, color: t.colorScheme.error, size: 20),
-              onTap: () => _place(pickup: false),
-            ),
-            details(_dropDetails, 'courier-drop-details'),
-            const SizedBox(height: 8),
-            FreightField(
-              key: const ValueKey('courier-recipient'),
-              label: 'Recipient',
-              placeholder: "Recipient's phone number",
-              value: _recipient == null
-                  ? null
-                  : [if (_recipient!.name.trim().isNotEmpty) _recipient!.name.trim(), _recipient!.phone.trim()].join(' · '),
-              leading: Icon(Icons.contacts_outlined, color: muted, size: 20),
-              onTap: _chooseRecipient,
-            ),
-            label('What to deliver'),
-            Row(children: [
-              for (final p in ParcelSize.values)
-                Expanded(
-                  child: Padding(
-                    padding: EdgeInsets.only(right: p == ParcelSize.l ? 0 : 8),
-                    child: _SizeTile(
-                      key: ValueKey('courier-size-${p.id}'),
-                      size: p,
-                      kg: config.kgOf(p),
-                      selected: _size == p,
-                      onTap: () => setState(() => _size = p),
-                    ),
-                  ),
-                ),
-            ]),
-            const SizedBox(height: 8),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final i in courierQuickItems)
-                FilterChip(
-                  key: ValueKey('courier-item-$i'),
-                  label: Text(_items.contains(i) ? i : '+ $i'),
-                  selected: _items.contains(i),
-                  showCheckmark: false,
-                  onSelected: (_) => setState(() => _items = toggleCourierItem(_items, i)),
-                ),
-            ]),
-            const SizedBox(height: 8),
-            TextField(
-              key: const ValueKey('courier-note'),
-              controller: _note,
-              maxLength: courierNoteMax,
-              minLines: 1,
-              maxLines: 3,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(labelText: 'Optional', hintText: 'What is inside, how to handle it'),
-            ),
-            label('Vehicle'),
-            if (vehicles.isEmpty)
-              Text(
-                'No vehicle takes a ${_size.id} parcel yet.',
-                key: const ValueKey('courier-no-vehicle'),
-                style: t.textTheme.bodyMedium?.copyWith(color: muted),
-              )
-            else
-              ListSearchFilter(
-                count: vehicles.length,
-                hint: 'Search vehicles',
-                builder: (context, q) => Column(children: [
-                  for (final x in vehicles)
-                    if (q.isEmpty || searchSelectMatches(x.shortName, q))
-                      _VehicleRow(
-                        key: ValueKey('courier-vehicle-${x.id}'),
-                        vehicle: x,
-                        price: switch (_recommendedFor(x)) {
-                          final r? => '~ ${_money(r)}',
-                          null => null,
-                        },
-                        selected: x.id == v?.id,
-                        onTap: () => setState(() => _vehicleId = x.id),
+        child: DeliveryChoiceTheme(
+          child: ListView(
+            key: const ValueKey('courier-form'),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            children: [
+              label('Where to pick up'),
+              FreightField(
+                key: const ValueKey('courier-pickup'),
+                label: 'Street, building',
+                value: _pickup?.name,
+                leading: const Icon(Icons.emoji_people, semanticLabel: 'Pickup'),
+                onTap: () => _place(pickup: true),
+              ),
+              details(_pickupDetails, 'courier-pickup-details'),
+              label('Where to deliver'),
+              FreightField(
+                key: const ValueKey('courier-drop'),
+                label: 'Street, building',
+                value: _drop?.name,
+                leading: const Icon(Icons.flag, semanticLabel: 'Drop-off'),
+                onTap: () => _place(pickup: false),
+              ),
+              details(_dropDetails, 'courier-drop-details'),
+              const SizedBox(height: 8),
+              FreightField(
+                key: const ValueKey('courier-recipient'),
+                label: 'Recipient',
+                placeholder: "Recipient's phone number",
+                value: _recipient == null
+                    ? null
+                    : [if (_recipient!.name.trim().isNotEmpty) _recipient!.name.trim(), _recipient!.phone.trim()].join(' · '),
+                leading: const Icon(Icons.contacts_outlined),
+                onTap: _chooseRecipient,
+              ),
+              label('What to deliver'),
+              Row(children: [
+                for (final p in ParcelSize.values)
+                  Expanded(
+                    child: Padding(
+                      padding: EdgeInsets.only(right: p == ParcelSize.l ? 0 : 8),
+                      child: _SizeTile(
+                        key: ValueKey('courier-size-${p.id}'),
+                        size: p,
+                        kg: config.kgOf(p),
+                        selected: _size == p,
+                        onTap: () => setState(() => _size = p),
                       ),
-                ]),
-              ),
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                'Couriers on this vehicle, or a bigger one, see your offer.',
-                style: t.textTheme.bodySmall?.copyWith(color: muted),
-              ),
-            ),
-            const SizedBox(height: 12),
-            FreightField(
-              key: const ValueKey('courier-declared'),
-              label: 'Value of your items',
-              value: _declared == null ? null : _money(_declared!),
-              onTap: _declare,
-            ),
-            CheckboxListTile(
-              key: const ValueKey('courier-prohibited-ack'),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: _ack,
-              onChanged: (x) => setState(() => _ack = x ?? false),
-              title: const Text('My parcel has none of the prohibited items'),
-              subtitle: Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(
-                  key: const ValueKey('courier-prohibited-list'),
-                  style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
-                  onPressed: _showProhibited,
-                  child: const Text('See the prohibited items'),
-                ),
-              ),
-            ),
-            label('Who pays'),
-            SegmentedButton<CourierPayer>(
-              key: const ValueKey('courier-payer'),
-              segments: [
-                for (final p in CourierPayer.values)
-                  ButtonSegment(
-                    value: p,
-                    label: Text(p.label, key: ValueKey('courier-payer-${p.id}')),
-                    icon: Icon(p == CourierPayer.sender ? Icons.person_outline : Icons.move_down),
-                  ),
-              ],
-              selected: {_payer},
-              onSelectionChanged: (x) => setState(() => _payer = x.first),
-            ),
-            const SizedBox(height: 8),
-            if (_payer == CourierPayer.recipient)
-              Text(
-                'Cash to the courier when the parcel arrives. You pay nothing now.',
-                key: const ValueKey('courier-payer-note'),
-                style: t.textTheme.bodySmall?.copyWith(color: muted),
-              )
-            else
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final p in payments)
-                  ChoiceChip(
-                    key: ValueKey('courier-payment-${p.value}'),
-                    avatar: Icon(paymentLook(p.kind).$1, size: 18),
-                    label: Text(p.label),
-                    selected: payment == p.value,
-                    onSelected: (_) => setState(() => _payment = p.value),
+                    ),
                   ),
               ]),
-            const SizedBox(height: 12),
-            FreightField(
-              key: const ValueKey('courier-offer'),
-              label: 'Your price',
-              value: _offer == null ? null : _money(_offer!),
-              placeholder: switch (_recommendedFor(v)) {
-                final r? => 'Offer your price, from ${_money(freightSuggestedRange(r).low)}',
-                null => 'Offer your price',
-              },
-              onTap: _offerPrice,
-            ),
-            if (config.codeChannels.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Icon(Icons.pin_outlined, size: 20, color: t.colorScheme.primary),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Delivery protection: a confirmation code. ${courierCodeHelp(config)}',
-                      key: const ValueKey('courier-code-help'),
-                      style: t.textTheme.bodySmall?.copyWith(color: muted),
-                    ),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final i in courierQuickItems)
+                  FilterChip(
+                    key: ValueKey('courier-item-$i'),
+                    label: Text(_items.contains(i) ? i : '+ $i'),
+                    selected: _items.contains(i),
+                    showCheckmark: false,
+                    onSelected: (_) => setState(() => _items = toggleCourierItem(_items, i)),
                   ),
-                ]),
+              ]),
+              const SizedBox(height: 8),
+              TextField(
+                key: const ValueKey('courier-note'),
+                controller: _note,
+                maxLength: courierNoteMax,
+                minLines: 1,
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  labelText: 'Optional',
+                  hintText: 'What is inside, how to handle it',
+                  fillColor: look.field,
+                ),
               ),
-          ],
-        ),
-      ),
-      SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: FilledButton(
-              key: const ValueKey('courier-create'),
-              onPressed: _booking ? null : _create,
-              child: _booking
-                  ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Find a courier'),
-            ),
+              label('Vehicle'),
+              if (vehicles.isEmpty)
+                Text(
+                  'No vehicle takes a ${_size.id} parcel yet.',
+                  key: const ValueKey('courier-no-vehicle'),
+                  style: t.textTheme.bodyMedium?.copyWith(color: muted),
+                )
+              else
+                ListSearchFilter(
+                  count: vehicles.length,
+                  hint: 'Search vehicles',
+                  builder: (context, q) => Column(children: [
+                    for (final x in vehicles)
+                      if (q.isEmpty || searchSelectMatches(x.shortName, q))
+                        _VehicleRow(
+                          key: ValueKey('courier-vehicle-${x.id}'),
+                          vehicle: x,
+                          price: switch (_recommendedFor(x)) {
+                            final r? => '~ ${_money(r)}',
+                            null => null,
+                          },
+                          selected: x.id == v?.id,
+                          onTap: () => setState(() => _vehicleId = x.id),
+                        ),
+                  ]),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Couriers on this vehicle, or a bigger one, see your offer.',
+                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ),
+              const SizedBox(height: 12),
+              FreightField(
+                key: const ValueKey('courier-declared'),
+                label: 'Value of your items',
+                value: _declared == null ? null : _money(_declared!),
+                onTap: _declare,
+              ),
+              CheckboxListTile(
+                key: const ValueKey('courier-prohibited-ack'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _ack,
+                onChanged: (x) => setState(() => _ack = x ?? false),
+                title: const Text('My parcel has none of the prohibited items'),
+                subtitle: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    key: const ValueKey('courier-prohibited-list'),
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                    onPressed: _showProhibited,
+                    child: const Text('See the prohibited items'),
+                  ),
+                ),
+              ),
+              label('Who pays'),
+              SegmentedButton<CourierPayer>(
+                key: const ValueKey('courier-payer'),
+                segments: [
+                  for (final p in CourierPayer.values)
+                    ButtonSegment(
+                      value: p,
+                      label: Text(p.label, key: ValueKey('courier-payer-${p.id}')),
+                      icon: Icon(p == CourierPayer.sender ? Icons.person_outline : Icons.move_down),
+                    ),
+                ],
+                selected: {_payer},
+                onSelectionChanged: (x) => setState(() => _payer = x.first),
+              ),
+              const SizedBox(height: 8),
+              if (_payer == CourierPayer.recipient)
+                Text(
+                  'Cash to the courier when the parcel arrives. You pay nothing now.',
+                  key: const ValueKey('courier-payer-note'),
+                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                )
+              else
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final p in payments)
+                    ChoiceChip(
+                      key: ValueKey('courier-payment-${p.value}'),
+                      avatar: Icon(paymentLook(p.kind).$1, size: 18),
+                      label: Text(p.label),
+                      selected: payment == p.value,
+                      onSelected: (_) => setState(() => _payment = p.value),
+                    ),
+                ]),
+              const SizedBox(height: 12),
+              FreightField(
+                key: const ValueKey('courier-offer'),
+                label: 'Your price',
+                value: _offer == null ? null : _money(_offer!),
+                emphasis: true,
+                placeholder: switch (_recommendedFor(v)) {
+                  final r? => 'Offer your price, from ${_money(freightSuggestedRange(r).low)}',
+                  null => 'Offer your price',
+                },
+                onTap: _offerPrice,
+              ),
+              if (config.codeChannels.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Icon(Icons.pin_outlined, size: 20, color: t.colorScheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Delivery protection: a confirmation code. ${courierCodeHelp(config)}',
+                        key: const ValueKey('courier-code-help'),
+                        style: t.textTheme.bodySmall?.copyWith(color: muted),
+                      ),
+                    ),
+                  ]),
+                ),
+            ],
           ),
         ),
+      ),
+      DeliveryFooter(
+        buttonKey: const ValueKey('courier-create'),
+        hintKey: const ValueKey('courier-create-hint'),
+        label: 'Find a courier',
+        busy: _booking,
+        problem: problem,
+        onPressed: _create,
       ),
     ]);
   }
@@ -614,16 +610,16 @@ class _SizeTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The home vehicle bar's chosen card; the others the route sheet's grey.
     final t = Theme.of(context);
-    final fg = selected ? t.colorScheme.onPrimaryContainer : t.colorScheme.onSurface;
+    final look = DeliveryLook.of(context);
+    final fg = selected ? look.onChosen : look.onField;
+    final radius = BorderRadius.circular(look.choiceRadius);
     return Material(
-      color: selected ? t.colorScheme.primaryContainer : t.colorScheme.surfaceContainerHighest,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: selected ? t.colorScheme.primary : Colors.transparent, width: 1.5),
-      ),
+      color: selected ? look.chosen : look.field,
+      shape: RoundedRectangleBorder(borderRadius: radius),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: radius,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -650,37 +646,38 @@ class _VehicleRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The home vehicle bar's chosen card.
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    final look = DeliveryLook.of(context);
+    final ink = look.cardInk(t, selected);
+    final muted = look.cardMuted(t, selected);
     final v = vehicle;
+    final radius = BorderRadius.circular(look.choiceRadius);
     return Material(
-      color: selected ? t.colorScheme.primaryContainer : Colors.transparent,
-      borderRadius: BorderRadius.circular(12),
+      color: look.cardFill(selected),
+      borderRadius: radius,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: radius,
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(children: [
             v.image == null
-                ? SizedBox.square(dimension: 36, child: Icon(courierVehicleIcon(v), color: t.colorScheme.primary))
+                ? SizedBox.square(dimension: 36, child: Icon(courierVehicleIcon(v), color: ink))
                 : FreightVehicleImage(vehicle: v, size: 36),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(v.shortName, style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                Text(v.shortName, style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700, color: ink)),
                 Text(
                   [?v.loadText, ?v.sizeText].join(' · '),
                   style: t.textTheme.bodySmall?.copyWith(color: muted),
                 ),
               ]),
             ),
-            if (price != null) Text(price!, style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+            if (price != null) Text(price!, style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: ink)),
             const SizedBox(width: 8),
-            Icon(
-              selected ? Icons.check_circle : Icons.radio_button_unchecked,
-              color: selected ? t.colorScheme.primary : muted,
-            ),
+            Icon(selected ? Icons.check_circle : Icons.radio_button_unchecked, color: selected ? ink : muted),
           ]),
         ),
       ),

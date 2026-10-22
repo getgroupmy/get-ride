@@ -36,8 +36,13 @@ import 'package:get_ride/src/data/ride_option_places_repository.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/partner/request_sheet.dart';
 import 'package:get_ride/src/features/ride/freight_parts.dart';
+import 'package:get_ride/src/features/ride/confirm_parts.dart' show accentFill;
 import 'package:get_ride/src/features/ride/freight_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/core/page_styles.dart';
+import 'package:get_ride/src/features/ride/delivery_look.dart';
+import 'package:get_ride/src/features/ride/place_search.dart' show routeSheetFill;
+import 'package:get_ride/src/widgets/page_style_host.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'text_contrast.dart';
@@ -134,16 +139,12 @@ RideRequest _request({String status = 'open', bool offer = false}) => RideReques
   if (offer) 'partner_name': 'Ali',
 });
 
-/// The page's places: the city first, then the street, then the pin.
+/// The page's places: the address search gives the place, and its address
+/// the house number and street.
 Future<Place?> _search(BuildContext context, {required String title, LatLng? near, bool onMap = false}) async {
-  if (title.contains('city or town')) {
-    return title.startsWith('From')
-        ? const Place(name: 'Kuala Lumpur', address: 'Kuala Lumpur', point: LatLng(3.139, 101.687))
-        : const Place(name: 'Petaling Jaya', address: 'Petaling Jaya', point: LatLng(3.107, 101.607));
-  }
-  return (near?.latitude ?? 0) > 3.12
-      ? const Place(name: '12, Jalan Ampang', address: '12, Jalan Ampang, Kuala Lumpur', point: LatLng(3.158, 101.712))
-      : const Place(name: '8, Jalan SS2/24', address: '8, Jalan SS2/24, Petaling Jaya', point: LatLng(3.118, 101.623));
+  return title.startsWith('Pickup')
+      ? const Place(name: 'Kuala Lumpur', address: '12, Jalan Ampang, 50450 Kuala Lumpur, Malaysia', point: LatLng(3.158, 101.712))
+      : const Place(name: 'Petaling Jaya', address: '8, Jalan SS2/24, 47300 Petaling Jaya, Malaysia', point: LatLng(3.118, 101.623));
 }
 
 List<Override> _overrides(_Rides rides, {List<RideRequest> mine = const [], List<FreightVehicle> vehicles = const [_van, _lorry]}) => [
@@ -185,9 +186,7 @@ Future<void> _pump(WidgetTester tester, Widget home, List<Override> overrides, B
 Future<void> _address(WidgetTester tester, String field) async {
   await tester.tap(find.byKey(ValueKey(field)));
   await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const ValueKey('freight-address-city')));
-  await tester.pumpAndSettle();
-  await tester.tap(find.byKey(const ValueKey('freight-address-street')));
+  await tester.tap(find.byKey(const ValueKey('freight-address-search')));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('freight-address-next')));
   await tester.pumpAndSettle();
@@ -195,6 +194,19 @@ Future<void> _address(WidgetTester tester, String field) async {
 
 void main() {
   group('pure', () {
+    test('the house number and street: the search\'s address up to the postcode', () {
+      Place at(String name, String address) => Place(name: name, address: address, point: const LatLng(0, 0));
+      expect(freightStreetOf(at('Kuala Lumpur', '12, Jalan Ampang, 50450 Kuala Lumpur, Malaysia')), '12, Jalan Ampang');
+      expect(freightStreetOf(at('Menara KH', 'Menara KH, Jalan Sultan Ismail, 50250 Kuala Lumpur')), 'Jalan Sultan Ismail',
+          reason: 'the place\'s own name is not the street');
+      expect(freightStreetOf(at('Lot 5', 'Lot 5, Kampung Baru, Selangor, Malaysia')), 'Lot 5, Kampung Baru');
+      expect(freightStreetOf(at('Sepang', 'Sepang')), '', reason: 'nothing to fill from a town alone');
+      final a = (details: 'No. 3, Level 2', place: at('Menara KH', 'Jalan Sultan Ismail, 50250 Kuala Lumpur'));
+      expect(freightAddressLabel(a), 'No. 3, Level 2, Menara KH');
+      expect(freightAddressFull(a), 'No. 3, Level 2, Jalan Sultan Ismail, 50250 Kuala Lumpur');
+      expect(freightAddressLabel((details: '', place: a.place)), 'Menara KH');
+    });
+
     test('the sizes: active Vehicle Services under Freight, with their load', () {
       final sizes = freightVehiclesFrom([
         (id: 'a', values: {'name': 'Ride', 'serviceTypes': ['Car']}),
@@ -413,18 +425,85 @@ void main() {
   });
 
   for (final b in Brightness.values) {
+
+    testWidgets('the page in the app\'s look, and the admin\'s App Page Settings (${b.name})', (tester) async {
+      final theme = appTheme(b);
+      Color? fill(Finder f) =>
+          tester.widget<Material>(find.descendant(of: f, matching: find.byType(Material)).first).color;
+      Material boxOf(String key) =>
+          tester.widget<Material>(find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Material)).first);
+
+      // Nothing set: "Find a driver"'s blue button, the route sheet's grey
+      // boxes, the home vehicle bar's chosen colour.
+      await _pump(tester, const FreightScreen(), _overrides(_Rides()), b);
+      final button = find.byKey(const ValueKey('freight-create'));
+      final style = tester.widget<FilledButton>(button).style;
+      expect(style?.backgroundColor?.resolve({}), accentFill, reason: 'the ride flow\'s request blue');
+      expect(style?.foregroundColor?.resolve({}), Colors.white);
+      expect(tester.getSize(button).height, 52, reason: 'the theme\'s button height');
+      final ctx = tester.element(find.byKey(const ValueKey('freight-pickup')));
+      expect(boxOf('freight-pickup').color, routeSheetFill(Theme.of(ctx)));
+      final look = DeliveryLook.of(ctx);
+      expect(look.chosen, b == Brightness.dark ? const Color(0xFF2B2E8C) : const Color(0xFFD8EEFB));
+      expect(Theme.of(ctx).brightness, b);
+      expect(fill(button), isNot(theme.colorScheme.primary), reason: 'greyed out while the form is empty');
+      expect(unreadableTexts(tester, find.byKey(const ValueKey('freight-form'))), isEmpty);
+
+      // The admin's values for the page.
+      const field = Color(0xFF334455), chosen = Color(0xFF225588);
+      await _pump(
+        tester,
+        PageStyleScope(
+          styles: PageStyles({
+            'page:ride.freight': {
+              'fieldColor': styleHex(field),
+              'fieldColor.dark': styleHex(field),
+              'chosenColor': styleHex(chosen),
+              'chosenColor.dark': styleHex(chosen),
+              'buttonHeight': 60,
+              'inputRadius': 20,
+            },
+          }),
+          child: SurfaceFrame(id: 'page:ride.freight', child: const FreightScreen()),
+        ),
+        _overrides(_Rides()),
+        b,
+      );
+      expect(tester.getSize(find.byKey(const ValueKey('freight-create'))).height, 60);
+      expect(boxOf('freight-pickup').color, field);
+      expect(boxOf('freight-pickup').borderRadius, BorderRadius.circular(20));
+      expect(DeliveryLook.of(tester.element(find.byKey(const ValueKey('freight-pickup')))).chosen, chosen);
+    });
+    testWidgets('the address: searched, then the street filled in and the rider\'s to change (${b.name})', (tester) async {
+      await _pump(tester, const FreightScreen(), _overrides(_Rides()), b);
+      await tester.tap(find.byKey(const ValueKey('freight-pickup')));
+      await tester.pumpAndSettle();
+      String typed() => tester.widget<TextField>(find.byKey(const ValueKey('freight-address-details'))).controller!.text;
+      FilledButton next() => tester.widget<FilledButton>(find.byKey(const ValueKey('freight-address-next')));
+      expect(next().onPressed, isNull, reason: 'the address is searched first');
+      await tester.tap(find.byKey(const ValueKey('freight-address-search')));
+      await tester.pumpAndSettle();
+      expect(typed(), '12, Jalan Ampang', reason: 'filled in from the search');
+      await tester.enterText(find.byKey(const ValueKey('freight-address-details')), 'No. 12A, Level 3');
+      await tester.tap(find.byKey(const ValueKey('freight-address-search')));
+      await tester.pumpAndSettle();
+      expect(typed(), 'No. 12A, Level 3', reason: 'a new search keeps what the rider typed');
+      await tester.tap(find.byKey(const ValueKey('freight-address-next')));
+      await tester.pumpAndSettle();
+      expect(find.text('No. 12A, Level 3, Kuala Lumpur'), findsOneWidget);
+    });
+
     testWidgets('the Freight page: fill it in, pick the size and options, offer, create (${b.name})', (tester) async {
       final rides = _Rides();
       await _pump(tester, const FreightScreen(), _overrides(rides), b);
       expect(find.text('Freight'), findsWidgets);
       expect(find.text('Pickup location'), findsOneWidget);
       expect(find.text('Van (S)'), findsOneWidget, reason: 'the first size is chosen');
-      // Create with nothing filled in: what is missing first.
-      await tester.ensureVisible(find.byKey(const ValueKey('freight-create')));
-      await tester.tap(find.byKey(const ValueKey('freight-create')));
-      await tester.pump();
+      // Nothing filled in: the button waits, and says what is missing first.
+      FilledButton create() => tester.widget<FilledButton>(find.byKey(const ValueKey('freight-create')));
+      expect(create().onPressed, isNull);
+      expect(find.byKey(const ValueKey('freight-create-hint')), findsOneWidget);
       expect(find.text('Add the pickup location.'), findsOneWidget);
-      await tester.pumpAndSettle(const Duration(seconds: 5));
 
       await _address(tester, 'freight-pickup');
       expect(find.text('12, Jalan Ampang, Kuala Lumpur'), findsOneWidget);
@@ -541,6 +620,11 @@ void main() {
       expect(find.textContaining('Total RM210'), findsOneWidget);
       expect(unreadableTexts(tester, find.byKey(const ValueKey('freight-form'))), isEmpty);
 
+      // Everything filled in: the button is ready and the hint is gone.
+      expect(create().onPressed, isNotNull);
+      final ready = find.descendant(of: find.byKey(const ValueKey('freight-create')), matching: find.byType(Material));
+      expect(tester.widget<Material>(ready.first).color, accentFill, reason: 'the ride flow\'s request blue');
+      expect(find.byKey(const ValueKey('freight-create-hint')), findsNothing);
       await tester.ensureVisible(find.byKey(const ValueKey('freight-create')));
       await tester.tap(find.byKey(const ValueKey('freight-create')));
       await tester.pumpAndSettle();
