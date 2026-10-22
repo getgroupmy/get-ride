@@ -403,6 +403,15 @@ class RideRequest {
   String? get cargoPhotoPath => _nonEmpty(raw['cargo_photo_path']);
   bool get isFreight => cargoDescription != null;
 
+  /// Courier (migration 0268): a parcel delivery, built on Freight's parts
+  /// (so [isFreight] holds too): its size ('S', 'M', 'L'), whether the
+  /// recipient pays in cash on delivery, and when the courier entered the
+  /// recipient's confirmation code.
+  String? get parcelSize => _nonEmpty(raw['parcel_size']);
+  bool get isCourier => parcelSize != null;
+  bool get recipientPays => raw['payer'] == 'recipient';
+  DateTime? get deliveryCodeOkAt => DateTime.tryParse('${raw['delivery_code_ok_at'] ?? ''}');
+
   /// Proof of delivery (0267): the driver's photos at pickup and at
   /// drop-off, and the sender's signature, in the private `ride-cargo` bucket.
   String? get pickupProofPath => _nonEmpty(raw['pickup_proof_path']);

@@ -19,6 +19,7 @@ import '../../core/commission.dart' show Geo;
 import '../../core/early_end.dart' show serviceTypeIds;
 import '../../core/fare_tariff.dart';
 import '../../core/format.dart';
+import '../../core/courier.dart' show deliveryStatusLabel, recipientPaysText;
 import '../../core/freight.dart';
 import '../../core/option_charge.dart';
 import '../../core/partner_type_rules.dart' show RegionScope;
@@ -47,6 +48,7 @@ import '../../widgets/common.dart' show showError, showInfo, showNotice;
 import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart' show ListSearchFilter, searchSelectMatches;
 import 'confirm_parts.dart' show paymentLook;
+import 'courier_parts.dart' show CourierCodeCard;
 import 'freight_parts.dart';
 import 'map_place_picker.dart';
 import 'pickup_time_sheet.dart';
@@ -382,7 +384,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _OfferSheet(
+      builder: (_) => FreightOfferSheet(
         initial: _offer ?? _recommended?.roundToDouble(),
         recommended: _recommended,
         currencyLabel: (style?.symbol ?? _currency).trim(),
@@ -399,7 +401,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _AmountSheet(
+      builder: (_) => FreightAmountSheet(
         title: 'Value of your items',
         initial: _declared,
         currencyLabel: (style?.symbol ?? _currency).trim(),
@@ -414,7 +416,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
-    builder: (_) => _ProhibitedSheet(items: (ref.read(freightConfigProvider).value ?? const FreightConfig()).prohibitedItems),
+    builder: (_) => FreightProhibitedSheet(items: (ref.read(freightConfigProvider).value ?? const FreightConfig()).prohibitedItems),
   );
 
   Future<void> _chooseRecipient() async {
@@ -422,7 +424,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _RecipientSheet(initial: _recipient),
+      builder: (_) => FreightRecipientSheet(initial: _recipient),
     );
     if (r != null && mounted) setState(() => _recipient = r.phone.trim().isEmpty ? null : r);
   }
@@ -591,14 +593,14 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
           key: const ValueKey('freight-form'),
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
-            _FreightField(
+            FreightField(
               key: const ValueKey('freight-pickup'),
               label: 'Pickup location',
               value: _pickup == null ? null : freightAddressLabel(_pickup!),
               onTap: () => _address(pickup: true),
             ),
             const SizedBox(height: 8),
-            _FreightField(
+            FreightField(
               key: const ValueKey('freight-drop'),
               label: 'Destination',
               value: _drop == null ? null : freightAddressLabel(_drop!),
@@ -626,14 +628,14 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
               ),
             ]),
             const SizedBox(height: 12),
-            _FreightField(
+            FreightField(
               key: const ValueKey('freight-description'),
               label: 'Description of the cargo',
               value: _description.isEmpty ? null : _description,
               onTap: _describe,
             ),
             const SizedBox(height: 8),
-            _FreightField(
+            FreightField(
               key: const ValueKey('freight-vehicle'),
               label: 'Vehicle size',
               value: v?.name,
@@ -664,7 +666,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
               ]),
             ],
             const SizedBox(height: 12),
-            _FreightField(
+            FreightField(
               key: const ValueKey('freight-declared'),
               label: 'Value of your items',
               value: _declared == null ? null : _money(_declared!),
@@ -687,7 +689,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
                 ),
               ),
             ),
-            _FreightField(
+            FreightField(
               key: const ValueKey('freight-recipient'),
               label: 'Recipient (optional)',
               value: _recipient == null
@@ -745,7 +747,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
                 ),
             ]),
             const SizedBox(height: 12),
-            _FreightField(
+            FreightField(
               key: const ValueKey('freight-offer'),
               label: 'Your offer',
               value: _offer == null ? null : _money(_offer!),
@@ -788,8 +790,8 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
 
 /// One row of the form: its label over the value (or the label alone as a
 /// placeholder), and a chevron.
-class _FreightField extends StatelessWidget {
-  const _FreightField({super.key, required this.label, this.value, this.placeholder, this.leading, this.onTap});
+class FreightField extends StatelessWidget {
+  const FreightField({super.key, required this.label, this.value, this.placeholder, this.leading, this.onTap});
   final String label;
   final String? value;
   final String? placeholder;
@@ -827,8 +829,8 @@ class _FreightField extends StatelessWidget {
 }
 
 /// A sheet's title row: the title and a close button.
-class _SheetHead extends StatelessWidget {
-  const _SheetHead(this.title);
+class FreightSheetHead extends StatelessWidget {
+  const FreightSheetHead(this.title, {super.key});
   final String title;
 
   @override
@@ -890,11 +892,11 @@ class _AddressSheetState extends ConsumerState<_AddressSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _SheetHead(widget.pickup ? 'Cargo loading point' : 'Cargo drop-off point'),
+          FreightSheetHead(widget.pickup ? 'Cargo loading point' : 'Cargo drop-off point'),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.only(right: 8),
-            child: _FreightField(
+            child: FreightField(
               key: const ValueKey('freight-address-city'),
               label: widget.pickup ? 'From which city or town?' : 'To which city or town?',
               value: _city?.name,
@@ -904,7 +906,7 @@ class _AddressSheetState extends ConsumerState<_AddressSheet> {
           const SizedBox(height: 8),
           Row(children: [
             Expanded(
-              child: _FreightField(
+              child: FreightField(
                 key: const ValueKey('freight-address-street'),
                 label: 'House number and street',
                 value: street?.name,
@@ -956,7 +958,7 @@ class _DescriptionSheetState extends State<_DescriptionSheet> {
   Widget build(BuildContext context) => Padding(
     padding: EdgeInsets.fromLTRB(16, 8, 8, 16 + MediaQuery.viewInsetsOf(context).bottom),
     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const _SheetHead('Description of the cargo'),
+      const FreightSheetHead('Description of the cargo'),
       const SizedBox(height: 8),
       Padding(
         padding: const EdgeInsets.only(right: 8),
@@ -1002,7 +1004,7 @@ class _VehicleSheet extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const _SheetHead('Which vehicle suits your cargo?'),
+        const FreightSheetHead('Which vehicle suits your cargo?'),
         Flexible(
           child: SingleChildScrollView(
             padding: const EdgeInsets.only(right: 8),
@@ -1089,7 +1091,7 @@ class _OptionsInfoSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _SheetHead('What the options mean'),
+          const FreightSheetHead('What the options mean'),
           for (final k in options)
             ListTile(
               key: ValueKey('freight-option-info-${k.id}'),
@@ -1119,18 +1121,30 @@ class _OptionsInfoSheet extends StatelessWidget {
 
 /// Offer your fare: the amount typed in, the suggested range for the trip
 /// and size, and that the options come on top.
-class _OfferSheet extends StatefulWidget {
-  const _OfferSheet({this.initial, this.recommended, required this.currencyLabel, required this.money});
+class FreightOfferSheet extends StatefulWidget {
+  const FreightOfferSheet({
+    super.key,
+    this.initial,
+    this.recommended,
+    required this.currencyLabel,
+    required this.money,
+    this.title = 'Offer your fare',
+    this.note = 'Helpers and options are added to your offer.',
+  });
   final double? initial;
+
+  /// The sheet's title, and the line under the suggestion (none: no line).
+  final String title;
+  final String? note;
   final double? recommended;
   final String currencyLabel;
   final String Function(double) money;
 
   @override
-  State<_OfferSheet> createState() => _OfferSheetState();
+  State<FreightOfferSheet> createState() => _FreightOfferSheetState();
 }
 
-class _OfferSheetState extends State<_OfferSheet> {
+class _FreightOfferSheetState extends State<FreightOfferSheet> {
   late final _text = TextEditingController(
     text: widget.initial == null || widget.initial! <= 0 ? '' : trimNumber(widget.initial!),
   );
@@ -1157,7 +1171,7 @@ class _OfferSheetState extends State<_OfferSheet> {
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 8, 8, 16 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const _SheetHead('Offer your fare'),
+        FreightSheetHead(widget.title),
         Padding(
           padding: const EdgeInsets.only(right: 8),
           child: TextField(
@@ -1181,14 +1195,15 @@ class _OfferSheetState extends State<_OfferSheet> {
             textAlign: TextAlign.center,
             style: t.textTheme.bodySmall?.copyWith(color: muted),
           ),
-        Padding(
-          padding: const EdgeInsets.only(top: 2, right: 8),
-          child: Text(
-            'Helpers and options are added to your offer.',
-            textAlign: TextAlign.center,
-            style: t.textTheme.bodySmall?.copyWith(color: muted),
+        if (widget.note case final note?)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, right: 8),
+            child: Text(
+              note,
+              textAlign: TextAlign.center,
+              style: t.textTheme.bodySmall?.copyWith(color: muted),
+            ),
           ),
-        ),
         const SizedBox(height: 12),
         Padding(
           padding: const EdgeInsets.only(right: 8),
@@ -1200,8 +1215,9 @@ class _OfferSheetState extends State<_OfferSheet> {
 }
 
 /// An amount typed in, checked by [problem] (the declared value).
-class _AmountSheet extends StatefulWidget {
-  const _AmountSheet({
+class FreightAmountSheet extends StatefulWidget {
+  const FreightAmountSheet({
+    super.key,
     required this.title,
     this.initial,
     required this.currencyLabel,
@@ -1215,10 +1231,10 @@ class _AmountSheet extends StatefulWidget {
   final String? Function(double?) problem;
 
   @override
-  State<_AmountSheet> createState() => _AmountSheetState();
+  State<FreightAmountSheet> createState() => _FreightAmountSheetState();
 }
 
-class _AmountSheetState extends State<_AmountSheet> {
+class _FreightAmountSheetState extends State<FreightAmountSheet> {
   late final _text = TextEditingController(text: widget.initial == null ? '' : trimNumber(widget.initial!));
   String? _problem;
 
@@ -1241,7 +1257,7 @@ class _AmountSheetState extends State<_AmountSheet> {
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 8, 8, 16 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        _SheetHead(widget.title),
+        FreightSheetHead(widget.title),
         Padding(
           padding: const EdgeInsets.only(right: 8),
           child: TextField(
@@ -1276,8 +1292,8 @@ class _AmountSheetState extends State<_AmountSheet> {
 }
 
 /// What may not be sent (Admin > Freight settings), searchable when long.
-class _ProhibitedSheet extends StatelessWidget {
-  const _ProhibitedSheet({required this.items});
+class FreightProhibitedSheet extends StatelessWidget {
+  const FreightProhibitedSheet({super.key, required this.items});
   final List<String> items;
 
   @override
@@ -1290,7 +1306,7 @@ class _ProhibitedSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const _SheetHead('Prohibited items'),
+          const FreightSheetHead('Prohibited items'),
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.only(right: 8),
@@ -1322,15 +1338,26 @@ class _ProhibitedSheet extends StatelessWidget {
 
 /// Who receives the cargo: their name and phone, sent the tracking link
 /// when the trip starts.
-class _RecipientSheet extends StatefulWidget {
-  const _RecipientSheet({this.initial});
+class FreightRecipientSheet extends StatefulWidget {
+  const FreightRecipientSheet({
+    super.key,
+    this.initial,
+    this.note = "We'll send them the tracking link when the trip starts.",
+    this.phoneRequired = false,
+  });
   final FreightRecipient? initial;
 
+  /// What the recipient is sent, under the fields.
+  final String note;
+
+  /// A courier delivery needs the phone (the code and the link go there).
+  final bool phoneRequired;
+
   @override
-  State<_RecipientSheet> createState() => _RecipientSheetState();
+  State<FreightRecipientSheet> createState() => _FreightRecipientSheetState();
 }
 
-class _RecipientSheetState extends State<_RecipientSheet> {
+class _FreightRecipientSheetState extends State<FreightRecipientSheet> {
   late final _name = TextEditingController(text: widget.initial?.name ?? '');
   late final _phone = TextEditingController(text: widget.initial?.phone ?? '');
   String? _problem;
@@ -1344,6 +1371,9 @@ class _RecipientSheetState extends State<_RecipientSheet> {
 
   void _done() {
     final phone = _phone.text.trim();
+    if (phone.isEmpty && widget.phoneRequired) {
+      return setState(() => _problem = "Enter the recipient's phone number.");
+    }
     if (phone.isNotEmpty && !recipientPhoneOk(phone)) {
       return setState(() => _problem = 'Enter a phone number, such as +60 12 345 6789.');
     }
@@ -1356,7 +1386,7 @@ class _RecipientSheetState extends State<_RecipientSheet> {
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 8, 8, 16 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const _SheetHead('Who receives it?'),
+        const FreightSheetHead('Who receives it?'),
         Padding(
           padding: const EdgeInsets.only(right: 8),
           child: TextField(
@@ -1380,7 +1410,7 @@ class _RecipientSheetState extends State<_RecipientSheet> {
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 8, 8, 12),
           child: Text(
-            "We'll send them the tracking link when the trip starts.",
+            widget.note,
             textAlign: TextAlign.center,
             style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
           ),
@@ -1400,48 +1430,56 @@ class _RecipientSheetState extends State<_RecipientSheet> {
 /// standing on it (accept or decline, as a ride's) and Cancel while it is
 /// open; tapping one opens its trip screen.
 class FreightRequestsList extends ConsumerWidget {
-  const FreightRequestsList({super.key});
+  const FreightRequestsList({super.key, this.kind = DeliveryKind.freight});
+
+  /// Freight requests, or with [DeliveryKind.courier] My deliveries (0268).
+  final DeliveryKind kind;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final list = ref.watch(myFreightRequestsProvider);
+    final courier = kind == DeliveryKind.courier;
+    final provider = courier ? myCourierRequestsProvider : myFreightRequestsProvider;
+    final list = ref.watch(provider);
     return list.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Text("Couldn't load your freight requests."),
-            TextButton(onPressed: () => ref.invalidate(myFreightRequestsProvider), child: const Text('Try again')),
+            Text(courier ? "Couldn't load your deliveries." : "Couldn't load your freight requests."),
+            TextButton(onPressed: () => ref.invalidate(provider), child: const Text('Try again')),
           ]),
         ),
       ),
       data: (rows) => rows.isEmpty
           ? Center(
-              key: const ValueKey('freight-requests-empty'),
+              key: ValueKey('${kind.name}-requests-empty'),
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Text(
-                  'No freight requests yet. Create one and drivers will send you their offers.',
+                  courier
+                      ? 'No deliveries yet. Send a parcel and couriers will send you their offers.'
+                      : 'No freight requests yet. Create one and drivers will send you their offers.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
                 ),
               ),
             )
           : ListView.separated(
-              key: const ValueKey('freight-requests'),
+              key: ValueKey('${kind.name}-requests'),
               padding: const EdgeInsets.all(16),
               itemCount: rows.length,
               separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (_, i) => FreightRequestCard(request: rows[i]),
+              itemBuilder: (_, i) => FreightRequestCard(request: rows[i], kind: kind),
             ),
     );
   }
 }
 
 class FreightRequestCard extends ConsumerStatefulWidget {
-  const FreightRequestCard({super.key, required this.request});
+  const FreightRequestCard({super.key, required this.request, this.kind = DeliveryKind.freight});
   final RideRequest request;
+  final DeliveryKind kind;
 
   @override
   ConsumerState<FreightRequestCard> createState() => _FreightRequestCardState();
@@ -1455,7 +1493,7 @@ class _FreightRequestCardState extends ConsumerState<FreightRequestCard> {
     setState(() => _busy = true);
     try {
       await f();
-      ref.invalidate(myFreightRequestsProvider);
+      ref.invalidate(widget.kind == DeliveryKind.courier ? myCourierRequestsProvider : myFreightRequestsProvider);
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
@@ -1470,7 +1508,7 @@ class _FreightRequestCardState extends ConsumerState<FreightRequestCard> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Cancel this request?'),
-        content: const Text('Drivers will no longer see it or send offers.'),
+        content: Text('${widget.kind == DeliveryKind.courier ? 'Couriers' : 'Drivers'} will no longer see it or send offers.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep it')),
           FilledButton(
@@ -1495,9 +1533,13 @@ class _FreightRequestCardState extends ConsumerState<FreightRequestCard> {
     final offer = standingOffer(r);
     final charges = r.optionCharges;
     final fare = r.effectiveFare ?? 0;
-    final vehicle = freightVehicleNamed(ref.watch(freightVehiclesProvider).value ?? const [], r.service);
+    final kind = widget.kind;
+    final courier = kind == DeliveryKind.courier;
+    final p = kind.name;
+    final vehicle = freightVehicleNamed(ref.watch(deliveryVehiclesProvider(kind)).value ?? const [], r.service);
+    final vehicleName = vehicle?.shortName ?? r.service ?? kind.serviceType;
     return Card(
-      key: ValueKey('freight-request-${r.id}'),
+      key: ValueKey('$p-request-${r.id}'),
       margin: EdgeInsets.zero,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1510,8 +1552,8 @@ class _FreightRequestCardState extends ConsumerState<FreightRequestCard> {
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(color: t.colorScheme.primaryContainer, borderRadius: BorderRadius.circular(6)),
                 child: Text(
-                  freightStatusLabel(status),
-                  key: ValueKey('freight-request-status-${r.id}'),
+                  deliveryStatusLabel(kind, status),
+                  key: ValueKey('$p-request-status-${r.id}'),
                   style: t.textTheme.labelSmall?.copyWith(
                     color: t.colorScheme.onPrimaryContainer,
                     fontWeight: FontWeight.w700,
@@ -1536,8 +1578,8 @@ class _FreightRequestCardState extends ConsumerState<FreightRequestCard> {
               Expanded(
                 child: Text(
                   open
-                      ? '${r.service ?? 'Freight'} · your offer ${r.fareText(freightOfferOf(fare, charges))}'
-                      : '${r.service ?? 'Freight'} · ${r.fareText(fare)}',
+                      ? '$vehicleName · your offer ${r.fareText(freightOfferOf(fare, charges))}'
+                      : '$vehicleName · ${r.fareText(fare)}',
                   style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                 ),
               ),
@@ -1552,25 +1594,38 @@ class _FreightRequestCardState extends ConsumerState<FreightRequestCard> {
             Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.bodySmall),
             if (r.cargoDescription case final d?)
               Text(d, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.textTheme.bodySmall?.copyWith(color: muted)),
+            // Courier (0268): the size, who pays and the code to pass on.
+            if (courier) ...[
+              if (r.recipientPays)
+                Text(
+                  recipientPaysText(r.fareText(fare)),
+                  key: ValueKey('courier-request-payer-${r.id}'),
+                  style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              if (r.status != RideStatus.cancelled && r.status != RideStatus.completed && r.raw['status'] != 'expired') ...[
+                const SizedBox(height: 8),
+                CourierCodeCard(request: r),
+              ],
+            ],
             if (open) ...[
               const Divider(height: 16),
               if (offer == null)
                 Text(
-                  'Waiting for driver offers',
-                  key: ValueKey('freight-request-waiting-${r.id}'),
+                  courier ? 'Waiting for courier offers' : 'Waiting for driver offers',
+                  key: ValueKey('$p-request-waiting-${r.id}'),
                   style: t.textTheme.bodySmall?.copyWith(color: muted),
                 ),
               // The ride offer cards, as the trip screen deals them (in from
               // the right, out to the left): one bid stands on a request.
               OfferStack(
-                key: ValueKey('freight-request-offers-${r.id}'),
+                key: ValueKey('$p-request-offers-${r.id}'),
                 offers: [
                   if (offer != null)
                     SearchOfferView(
                       key: offer.key,
-                      cardKey: ValueKey('freight-request-offer-${r.id}'),
-                      acceptKey: ValueKey('freight-request-accept-${r.id}'),
-                      declineKey: ValueKey('freight-request-decline-${r.id}'),
+                      cardKey: ValueKey('$p-request-offer-${r.id}'),
+                      acceptKey: ValueKey('$p-request-accept-${r.id}'),
+                      declineKey: ValueKey('$p-request-decline-${r.id}'),
                       amount: offer.amount,
                       price: r.fareText(offer.amount),
                       yourFare: (offer.amount - fare).abs() < 0.005,
@@ -1600,7 +1655,7 @@ class _FreightRequestCardState extends ConsumerState<FreightRequestCard> {
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
-                  key: ValueKey('freight-request-cancel-${r.id}'),
+                  key: ValueKey('$p-request-cancel-${r.id}'),
                   onPressed: _busy ? null : _cancel,
                   child: const Text('Cancel request'),
                 ),

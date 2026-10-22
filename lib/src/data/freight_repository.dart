@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/courier.dart';
 import '../core/freight.dart';
 import '../core/ride_chat.dart' show RideMessageType, rideChatContentType;
 import '../core/support_media.dart' show fileExt;
@@ -106,29 +107,48 @@ class FreightRepository {
   Future<FreightConfig> saveConfig(FreightConfig c) async =>
       FreightConfig.fromJson(await _db.rpc('set_freight_config', params: {'p_config': c.toJson()}));
 
-  /// The rider's freight requests (those with a cargo), newest first.
-  Future<List<RideRequest>> mine({int limit = 30}) async {
+  /// The Courier settings (app_settings 'courier', migration 0268).
+  Future<CourierConfig> courierConfig() async => CourierConfig.fromJson(await _db.rpc('courier_config'));
+
+  Future<CourierConfig> saveCourierConfig(CourierConfig c) async =>
+      CourierConfig.fromJson(await _db.rpc('set_courier_config', params: {'p_config': c.toJson()}));
+
+  /// A courier delivery's confirmation code, when the sender may see it
+  /// (courier_delivery_code); null otherwise.
+  Future<String?> deliveryCode(String rideId) async {
+    final v = await _db.rpc('courier_delivery_code', params: {'p_ride': rideId});
+    return v is String && v.isNotEmpty ? v : null;
+  }
+
+  /// The courier enters the recipient's code: 'ok', 'wrong_code' or
+  /// `rate_limited:<seconds>` (courier_code_check).
+  Future<String> checkDeliveryCode(String rideId, String code) async =>
+      '${await _db.rpc('courier_code_check', params: {'p_request': rideId, 'p_code': code.trim()})}';
+
+  /// The rider's freight requests (those with a cargo and no parcel size),
+  /// or with [kind] courier their deliveries, newest first.
+  Future<List<RideRequest>> mine({int limit = 30, DeliveryKind kind = DeliveryKind.freight}) async {
     final uid = _db.auth.currentUser?.id;
     if (uid == null) return const [];
-    final rows = await _db
-        .from(_table)
-        .select()
-        .eq('rider_id', uid)
-        .not('cargo_description', 'is', null)
-        .order('created_at', ascending: false)
-        .limit(limit);
-    return rows.map(RideRequest.new).toList();
+    var q = _db.from(_table).select().eq('rider_id', uid).not('cargo_description', 'is', null);
+    if (kind == DeliveryKind.courier) q = q.not('parcel_size', 'is', null);
+    final rows = await q.order('created_at', ascending: false).limit(limit);
+    // Freight: the courier deliveries (with a parcel size) are left out.
+    return [
+      for (final r in rows.map(RideRequest.new))
+        if (kind == DeliveryKind.courier || !r.isCourier) r,
+    ];
   }
 
   /// [mine], again whenever one of the rider's requests changes (a driver's
   /// offer, an accept, the trip moving on).
-  Stream<List<RideRequest>> watchMine() {
+  Stream<List<RideRequest>> watchMine({DeliveryKind kind = DeliveryKind.freight}) {
     final controller = StreamController<List<RideRequest>>();
     RealtimeListen? channel;
     RealtimeBackup? backup;
     Future<void> refresh() async {
       try {
-        final list = await mine();
+        final list = await mine(kind: kind);
         if (!controller.isClosed) controller.add(list);
       } catch (e, st) {
         if (!controller.isClosed) controller.addError(e, st);
@@ -209,4 +229,57 @@ final freightNoticesProvider = FutureProvider.autoDispose.family<List<Map<String
 /// The rider's freight requests, live.
 final myFreightRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
   (ref) => ref.watch(freightRepositoryProvider).watchMine(),
+);
+
+// ---- Courier (migration 0268) -------------------------------------------------------------------
+
+/// The courier vehicles a sender can book, live; none when they can't be
+/// read (the home Couriers box then stays "coming soon").
+final courierVehiclesProvider = FutureProvider<List<FreightVehicle>>((ref) async {
+  ref.watchLive('settings_entries');
+  try {
+    return freightVehiclesFrom(await ref.watch(freightRepositoryProvider).catalogue(), kind: DeliveryKind.courier);
+  } catch (_) {
+    return const [];
+  }
+});
+
+/// Whether the home Couriers box opens the Courier page.
+final courierAvailableProvider = Provider<bool>(
+  (ref) => courierAvailable(ref.watch(courierVehiclesProvider).value ?? const []),
+);
+
+/// The vehicles of [kind]: the freight sizes or the courier vehicles.
+FutureProvider<List<FreightVehicle>> deliveryVehiclesProvider(DeliveryKind kind) =>
+    kind == DeliveryKind.courier ? courierVehiclesProvider : freightVehiclesProvider;
+
+/// The Courier settings, live; the defaults when they can't be read.
+final courierConfigProvider = FutureProvider<CourierConfig>((ref) async {
+  ref.watchLive('app_settings');
+  try {
+    return await ref.watch(freightRepositoryProvider).courierConfig();
+  } catch (_) {
+    return const CourierConfig();
+  }
+});
+
+/// The sender's deliveries, live.
+final myCourierRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
+  (ref) => ref.watch(freightRepositoryProvider).watchMine(kind: DeliveryKind.courier),
+);
+
+/// A delivery's confirmation code for its sender (null when not theirs to
+/// see). Overridden in tests.
+final courierDeliveryCodeProvider = FutureProvider.autoDispose.family<String?, String>((ref, rideId) async {
+  try {
+    return await ref.watch(freightRepositoryProvider).deliveryCode(rideId);
+  } catch (_) {
+    return null;
+  }
+});
+
+/// Checks the recipient's code a courier typed in; the server's answer.
+/// Overridden in tests.
+final courierCodeCheckProvider = Provider<Future<String> Function(String rideId, String code)>(
+  (ref) => ref.watch(freightRepositoryProvider).checkDeliveryCode,
 );

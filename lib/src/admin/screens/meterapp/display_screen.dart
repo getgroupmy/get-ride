@@ -26,6 +26,9 @@ import '../../../core/demo_mode.dart' show demoDriverIdsKey, demoRiderIdsKey;
 import 'display_store.dart';
 import 'ride_option_places_screen.dart' show RideOptionPlacesScreen;
 import 'freight_settings_screen.dart' show FreightSettingsScreen;
+import 'courier_settings_screen.dart' show CourierSettingsScreen;
+import '../../../core/freight.dart' show DeliveryKind, freightVehiclesFrom;
+import '../../../core/home_sections.dart' show serviceBoxDelivery, serviceBoxOpensText, serviceBoxPresets;
 import '../../../core/ride_option_places.dart' show OptionChargeKey;
 import '../../../data/ride_option_places_repository.dart' show rideOptionPlacesRepositoryProvider;
 import 'pick_image.dart';
@@ -385,7 +388,7 @@ class _DisplayBody extends ConsumerWidget {
             child: toggle('Show "NEW" badge', 'Toggle the NEW badge on the featured (large) service box',
                 displayBool(s, 'serviceBoxBadge'), (v) => set('serviceBoxBadge', v)),
           ),
-          for (var i = 0; i < serviceBoxCount; i++) _ServiceBoxCard(settings: s, index: i, canEdit: canEdit),
+          for (var i = 0; i < serviceBoxCount; i++) ServiceBoxCard(settings: s, index: i, canEdit: canEdit),
           const _Section('Vehicle Type Bar'),
           Card(
             child: Column(children: [
@@ -576,8 +579,10 @@ class SheetMinHeightTile extends StatelessWidget {
 // Service boxes
 // ---------------------------------------------------------------------------
 
-class _ServiceBoxCard extends ConsumerWidget {
-  const _ServiceBoxCard({required this.settings, required this.index, required this.canEdit});
+/// One home service box's editor: its service, label, icon, the page it
+/// opens and Coming soon.
+class ServiceBoxCard extends ConsumerWidget {
+  const ServiceBoxCard({super.key, required this.settings, required this.index, required this.canEdit});
   final Map<String, dynamic> settings;
   final int index;
   final bool canEdit;
@@ -598,6 +603,21 @@ class _ServiceBoxCard extends ConsumerWidget {
     final iconName = (cfg['iconName'] as String?) ?? defaultServiceBoxIcons[index];
     final route = cfg['route'] as String?;
     final image = cfg['imageUri'] as String?;
+    // A Freight or Courier box (0267, 0268) opens its page once one of its
+    // Vehicle Services is active, as the home screen reads it.
+    final linkedName = linked == null ? null : '${(linked['values'] as Map?)?['name'] ?? ''}'.trim();
+    final title = (name != null && name.isNotEmpty)
+        ? name
+        : (linkedName != null && linkedName.isNotEmpty ? linkedName : serviceBoxPresets[index % serviceBoxPresets.length].$1);
+    final delivery = serviceBoxDelivery(route: route, title: title, linked: linkedName);
+    final vehicleRows = ref.watch(settingsEntriesProvider('vehicle-services')).value ?? const <Map<String, dynamic>>[];
+    final entries = [
+      for (final e in vehicleRows)
+        (id: '${e['id']}', values: e['values'] is Map ? Map<String, dynamic>.from(e['values'] as Map) : <String, dynamic>{}),
+    ];
+    final active = <DeliveryKind, int>{
+      for (final k in [?delivery]) k: freightVehiclesFrom(entries, kind: k).length,
+    };
 
     Future<void> patch(Map<String, dynamic> p) => applyDisplay(context, ref, (x) => updateServiceBox(x, index, p));
 
@@ -674,13 +694,23 @@ class _ServiceBoxCard extends ConsumerWidget {
           BusyListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Opens'),
-            subtitle: Text(route != null ? routeLabelFor(route) : 'Nothing yet — shows Coming Soon'),
+            subtitle: Text(
+              serviceBoxOpensText(route: route, title: title, linked: linkedName, active: active),
+              key: ValueKey('box-opens-$index'),
+            ),
             trailing: const Icon(Icons.arrow_drop_down),
             enabled: canEdit,
             onTap: () async {
               final picked = await pickRoute(context, current: route, noneLabel: 'None — tapping shows Coming Soon');
               if (picked == null) return;
-              await patch(picked.isEmpty ? {'route': null} : {'route': picked, 'comingSoon': false});
+              // The Freight and Courier pages open by themselves once a
+              // vehicle is active: their coming-soon flag is left alone.
+              final deliveryPage = serviceBoxDelivery(route: picked, title: '') != null;
+              await patch(picked.isEmpty
+                  ? {'route': null}
+                  : deliveryPage
+                      ? {'route': picked}
+                      : {'route': picked, 'comingSoon': false});
             },
           ),
           BusySwitchListTile(
@@ -1346,6 +1376,16 @@ class RideOptionsCard extends ConsumerWidget {
           'Cancel after pickup, the recipient\'s tracking link, prohibited items',
           () => Navigator.of(context).push(AppPageRoute(id: 'display.freight-settings',
             builder: (_) => const FreightSettingsScreen(),
+          )),
+        ),
+        const Divider(height: 1),
+        // Courier (0268): the confirmation code, parcel sizes and the rest.
+        settingsRow(
+          'ride-option-courier-settings',
+          'Courier settings',
+          'Confirmation code, parcel sizes, cancel after pickup, prohibited items',
+          () => Navigator.of(context).push(AppPageRoute(id: 'display.courier-settings',
+            builder: (_) => const CourierSettingsScreen(),
           )),
         ),
         const Divider(height: 1),

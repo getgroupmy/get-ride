@@ -19,6 +19,22 @@ Deno.test("the text carries the share link", () => {
   assertEquals(noticeText({ ...notice, share_token: null }), notice.body.trim());
 });
 
+Deno.test("a courier notice carries the code after the link", () => {
+  const courier = {
+    ...notice,
+    body: "GET.ride: Mei, a parcel from Aisyah is on its way to you. Track it here: ",
+    delivery_code: "4817",
+  };
+  assertEquals(
+    noticeText(courier, "https://getride.my"),
+    "GET.ride: Mei, a parcel from Aisyah is on its way to you. Track it here: " +
+      "https://getride.my/share/11111111-2222-3333-4444-555555555555 " +
+      "Your delivery code is 4817. Give it to the courier only once you have the parcel.",
+  );
+  assertEquals(noticeText({ ...courier, delivery_code: "12; x" }, "https://getride.my").includes("code"), false);
+  assertEquals(noticeText({ ...courier, delivery_code: null }).includes("delivery code"), false);
+});
+
 Deno.test("WhatsApp: digits only, and nothing without the secrets", () => {
   assertEquals(whatsappNumber(notice.to_phone), "60123456789");
   assertEquals(whatsappRequest(notice, "hi", {}), null);

@@ -16,6 +16,7 @@ import '../core/ride_share.dart';
 import '../core/session_telemetry.dart';
 import '../core/fare_coins.dart';
 import '../core/freight.dart' show FreightRecipient, freightRequestColumns;
+import '../core/courier.dart' show CourierPayer, ParcelSize, courierRequestColumns;
 import '../core/my_qr.dart' show QrBookingError, QrBookingFailure;
 import '../core/my_ride.dart' show myRideMaxTargets;
 import '../core/region_pricing.dart';
@@ -111,6 +112,8 @@ class RideRepository {
     double? declaredValue,
     bool prohibitedAck = false,
     FreightRecipient? recipient,
+    ParcelSize? parcelSize,
+    CourierPayer payer = CourierPayer.sender,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -185,6 +188,8 @@ class RideRepository {
           prohibitedAck: prohibitedAck,
           recipient: recipient,
         ),
+      // Courier (0268): the parcel size and who pays, checked by the server.
+      if (cargoDescription != null && parcelSize != null) ...courierRequestColumns(size: parcelSize, payer: payer),
     };
     // Stops, the metadata, the region's pricing and its time zone are
     // extras: a database without one of their columns (stops needs 0098,

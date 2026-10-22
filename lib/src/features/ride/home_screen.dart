@@ -93,8 +93,10 @@ import '../../core/promo_codes.dart' show PromoCheckResult, PromoOffer, promoRea
 import '../../data/promo_repository.dart';
 import 'place_search.dart';
 import 'freight_screen.dart' show openFreightPage;
-import '../../core/freight.dart' show freightPageRoute, isFreightService;
-import '../../data/freight_repository.dart' show freightAvailableProvider;
+import 'courier_screen.dart' show openCourierPage;
+import '../../core/courier.dart' show courierPageRoute;
+import '../../core/freight.dart' show freightPageRoute, isCourierService, isFreightService;
+import '../../data/freight_repository.dart' show courierAvailableProvider, freightAvailableProvider;
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../meter/meter_auto_launch.dart';
 import 'unavailable_sheet.dart';
@@ -274,7 +276,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// would be left the catalogue stands, and booking says why it can't.
   List<RideService> get _services {
     // The freight sizes are booked from the Freight page (0267), not here.
-    final rides = [for (final s in _catalogue) if (!isFreightService(s)) s];
+    // The courier vehicles from the Courier page (0268).
+    final rides = [for (final s in _catalogue) if (!isFreightService(s) && !isCourierService(s)) s];
     final all = rides.isEmpty ? _catalogue : rides;
     final open = [for (final s in all) if (_availableNow(s)) s];
     return open.isEmpty ? all : open;
@@ -2167,6 +2170,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             regionServices: _boxServices(ref.watch(serviceBoxNamesProvider).value ?? const {}),
             // The Freight box opens once a freight size is there to book (0267).
             freightAvailable: ref.watch(freightAvailableProvider),
+            // And the Couriers box once a courier vehicle is (0268).
+            courierAvailable: ref.watch(courierAvailableProvider),
           )
         : const <ServiceBoxView>[];
     void comingSoon(String body) => showAppDialog<void>(id: 'home.coming-soon',
@@ -2249,7 +2254,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ? comingSoon(serviceBoxComingSoon(b.title))
                     : b.route == freightPageRoute
                         ? openFreightPage(context)
-                        : openAppRoute(context, b.route!),
+                        : b.route == courierPageRoute
+                            ? openCourierPage(context)
+                            : openAppRoute(context, b.route!),
               ),
             ],
           ],

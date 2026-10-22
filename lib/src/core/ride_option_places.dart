@@ -29,6 +29,9 @@ abstract final class OptionChargeKey {
   /// The most a freight sender may declare (core/freight.dart): an amount
   /// up to [freightDeclaredCapMax], over an option charge's most.
   static const freightDeclaredCap = 'freight-declared-cap';
+
+  /// The same for a courier sender (migration 0268).
+  static const courierDeclaredCap = 'courier-declared-cap';
   static const freightDeclaredCapMax = 1000000.0;
 }
 
@@ -130,7 +133,7 @@ class OptionPlaceSettings {
         if (charges is Map)
           for (final e in charges.entries)
             if (e.key is String && e.value is Map)
-              e.key as String: e.key == OptionChargeKey.freightDeclaredCap
+              e.key as String: e.key == OptionChargeKey.freightDeclaredCap || e.key == OptionChargeKey.courierDeclaredCap
                   ? PlaceCharge(OptionCharge(value: _amount((e.value as Map)['value'], OptionChargeKey.freightDeclaredCapMax)))
                   : PlaceCharge.fromJson(e.value),
       },
