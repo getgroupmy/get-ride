@@ -261,7 +261,7 @@ String? normalizeServiceBoxRoute(Object? raw) {
 }
 
 Map<String, dynamic> emptyMenu() =>
-    {'renames': <String, dynamic>{}, 'routes': <String, dynamic>{}, 'customItems': <dynamic>[], 'hidden': <dynamic>[], 'comingSoon': <dynamic>[], 'order': <dynamic>[]};
+    {'renames': <String, dynamic>{}, 'routes': <String, dynamic>{}, 'icons': <String, dynamic>{}, 'customItems': <dynamic>[], 'hidden': <dynamic>[], 'comingSoon': <dynamic>[], 'order': <dynamic>[]};
 
 List<Map<String, dynamic>> defaultServiceBoxes() => [
       for (var i = 0; i < serviceBoxCount; i++) {'id': 'box-$i', 'iconName': defaultServiceBoxIcons[i]},
@@ -358,6 +358,7 @@ Map<String, dynamic> normalizeMenu(Object? m) {
   return {
     'renames': _stringMap(m['renames']),
     'routes': _stringMap(m['routes']),
+    'icons': _stringMap(m['icons']),
     'customItems': custom,
     'hidden': _strings(m['hidden']),
     'comingSoon': _strings(m['comingSoon']),
@@ -661,6 +662,25 @@ Map<String, dynamic> setMenuItemRoute(Map<String, dynamic> s, String menu, Strin
     routes.remove(itemId);
   }
   return _withMenu(s, menu, {...cfg, 'routes': routes, 'customItems': custom});
+}
+
+/// The icon of a menu item: [iconName] from [sideMenuIcons], or null for the
+/// built-in item's own icon. A custom item keeps its icon on the item itself
+/// (null puts back the 'Star' it starts with).
+Map<String, dynamic> setMenuItemIcon(Map<String, dynamic> s, String menu, String itemId, String? iconName) {
+  final cfg = menuOf(s, menu);
+  final name = (iconName ?? '').trim();
+  final icons = Map<String, dynamic>.from(cfg['icons'] as Map)..remove(itemId);
+  final list = cfg['customItems'] as List;
+  if (list.any((c) => (c as Map)['id'] == itemId)) {
+    final custom = [
+      for (final c in list)
+        (c as Map)['id'] == itemId ? {...c, 'iconName': name.isEmpty ? 'Star' : name} : c,
+    ];
+    return _withMenu(s, menu, {...cfg, 'icons': icons, 'customItems': custom});
+  }
+  if (name.isNotEmpty) icons[itemId] = name;
+  return _withMenu(s, menu, {...cfg, 'icons': icons});
 }
 
 Map<String, dynamic> _toggleIn(Map<String, dynamic> s, String menu, String listKey, String itemId, bool include) {

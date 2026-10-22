@@ -22,7 +22,8 @@ class MenuEntry {
   final String label;
   final bool custom;
 
-  /// A custom item's icon (an Expo icon name).
+  /// A custom item's icon, or the icon the admin picked for a built-in one
+  /// (an Expo icon name); null keeps the built-in item's own icon.
   final String? iconName;
 
   /// Where the item goes in this app: the admin's link when they set one,
@@ -40,6 +41,7 @@ List<MenuEntry> resolveSideMenu(Map<String, dynamic> settings, String menu) {
   final cfg = normalizeMenu(settings[menu == 'user' ? 'userMenu' : 'partnerMenu']);
   final renames = (cfg['renames'] as Map).cast<String, String>();
   final routes = (cfg['routes'] as Map).cast<String, String>();
+  final icons = (cfg['icons'] as Map).cast<String, String>();
   final hidden = (cfg['hidden'] as List).cast<String>().toSet();
   final soon = (cfg['comingSoon'] as List).cast<String>().toSet();
   final order = (cfg['order'] as List).cast<String>();
@@ -49,6 +51,7 @@ List<MenuEntry> resolveSideMenu(Map<String, dynamic> settings, String menu) {
         id: id,
         label: renames[id] ?? label,
         custom: false,
+        iconName: icons[id],
         route: routes[id] == null ? null : flutterRouteFor(routes[id]),
         overridden: routes[id] != null,
         comingSoon: soon.contains(id),

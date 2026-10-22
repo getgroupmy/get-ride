@@ -9,7 +9,7 @@ import 'common.dart' show mutedTextColor;
 import 'side_menu_style.dart';
 import 'page_style_host.dart';
 
-/// Expo icon names (the admin's custom-item picker) as Material icons.
+/// Expo icon names (the admin's side menu icon picker) as Material icons.
 const _expoIcons = <String, IconData>{
   'Bell': Icons.notifications_outlined,
   'BookOpen': Icons.menu_book_outlined,
@@ -96,7 +96,10 @@ const _builtInIcons = <String, IconData>{
   'invite-friends': Icons.card_giftcard,
 };
 
-IconData menuIcon(MenuEntry e) => (e.custom ? _expoIcons[e.iconName] : _builtInIcons[e.id]) ?? Icons.star_border;
+/// The admin's icon when one is set (a custom item's, or one picked for a
+/// built-in item), else the built-in item's own.
+IconData menuIcon(MenuEntry e) =>
+    _expoIcons[e.iconName] ?? (e.custom ? null : _builtInIcons[e.id]) ?? Icons.star_border;
 
 /// Opens a Flutter route: tab roots and their pages through the shell, the
 /// rest on top.

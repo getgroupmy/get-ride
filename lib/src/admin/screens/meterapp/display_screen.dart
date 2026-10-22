@@ -917,14 +917,29 @@ class SideMenuEditorScreen extends ConsumerWidget {
   const SideMenuEditorScreen({super.key, required this.menu});
   final String menu;
 
-  Future<void> _edit(BuildContext context, WidgetRef ref, String itemId, String label, String? route) async {
-    final res = await showDialog<(String, String?, String)>(
+  /// [icon] is the item's icon now; [defaultIcon] a built-in item's own
+  /// (null for a custom item).
+  Future<void> _edit(BuildContext context, WidgetRef ref, String itemId, String label, String? route,
+      {required String icon, String? defaultIcon}) async {
+    final res = await showAppDialog<_MenuItemResult>(id: 'display.menu-item-edit',
       context: context,
-      builder: (_) => _MenuItemDialog(title: 'Edit item', label: label, route: route, showIcon: false),
+      builder: (_) => _MenuItemDialog(
+        title: 'Edit item',
+        label: label,
+        route: route,
+        showIcon: true,
+        icon: icon,
+        defaultIcon: defaultIcon,
+      ),
     );
     if (res == null || !context.mounted) return;
+    final iconName = res.$3 == defaultIcon ? null : res.$3;
     await applyDisplay(
-        context, ref, (x) => setMenuItemRoute(renameMenuItem(x, menu, itemId, res.$1), menu, itemId, res.$2));
+      context,
+      ref,
+      (x) => setMenuItemIcon(
+          setMenuItemRoute(renameMenuItem(x, menu, itemId, res.$1), menu, itemId, res.$2), menu, itemId, iconName),
+    );
   }
 
   @override
@@ -936,9 +951,9 @@ class SideMenuEditorScreen extends ConsumerWidget {
               icon: const Icon(Icons.add),
               label: const Text('Add new item'),
               onPressed: () async {
-                final res = await showDialog<(String, String?, String)>(
+                final res = await showAppDialog<_MenuItemResult>(id: 'display.menu-item-add',
                   context: context,
-                  builder: (_) => const _MenuItemDialog(title: 'Add Menu Item', label: '', showIcon: true),
+                  builder: (_) => const _MenuItemDialog(title: 'Add Menu Item', label: '', showIcon: true, adding: true),
                 );
                 if (res == null || !context.mounted) return;
                 final id = 'custom-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 5)}';
@@ -962,6 +977,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
           final soon = ((cfg['comingSoon'] as List?) ?? const []).toSet();
           final renames = Map<String, dynamic>.from(cfg['renames'] as Map);
           final routes = Map<String, dynamic>.from(cfg['routes'] as Map);
+          final icons = Map<String, dynamic>.from(cfg['icons'] as Map);
           final custom = {for (final c in cfg['customItems'] as List) (c as Map)['id'] as String: c};
           final defaults = {for (final d in defaultMenuItems(menu)) d.$1: d.$2};
           final footerId = menu == 'user' ? partnerModeMenuItemId : passengerModeMenuItemId;
@@ -1011,7 +1027,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
               maxWidth: 820,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Text(
-                  'Toggle items off to hide them, use the arrows to reorder, and the pencil to rename or link a page. '
+                  'Toggle items off to hide them, use the arrows to reorder, and the pencil to rename, change the icon or link a page. '
                   'Changes apply to every device.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -1022,7 +1038,8 @@ class SideMenuEditorScreen extends ConsumerWidget {
                     final o = ordered[i];
                     final c = custom[o.id];
                     final label = o.isCustom ? '${c?['label'] ?? 'Item'}' : (renames[o.id] as String?) ?? defaults[o.id] ?? o.id;
-                    final iconName = o.isCustom ? ((c?['iconName'] as String?) ?? 'Star') : (_defaultMenuIcons[menu]![o.id] ?? 'Settings');
+                    final defaultIcon = o.isCustom ? null : (_defaultMenuIcons[menu]![o.id] ?? 'Settings');
+                    final iconName = o.isCustom ? ((c?['iconName'] as String?) ?? 'Star') : (icons[o.id] as String?) ?? defaultIcon!;
                     final route = o.isCustom ? (c?['route'] as String?) : (routes[o.id] as String?);
                     final defRoute = o.isCustom ? null : defaultMenuRoutes[menu]![o.id];
                     final effective = route ?? defRoute;
@@ -1047,7 +1064,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                           child: const Icon(Icons.keyboard_arrow_down, size: 18),
                         ),
                       ]),
-                      onEdit: () => _edit(context, ref, o.id, label, route),
+                      onEdit: () => _edit(context, ref, o.id, label, route, icon: iconName, defaultIcon: defaultIcon),
                       onDelete: o.isCustom
                           ? () async {
                               if (!await confirm(context, 'Remove item', 'Remove "$label"?', ok: 'Remove')) return;
@@ -1062,7 +1079,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                   title: footerLabel,
                   subtitle: menu == 'user' ? 'Partner Mode button in the footer' : 'Passenger Mode button in the footer',
                   onEdit: () async {
-                    final res = await showDialog<(String, String?, String)>(
+                    final res = await showAppDialog<_MenuItemResult>(id: 'display.menu-footer-rename',
                       context: context,
                       builder: (_) => _MenuItemDialog(title: 'Rename Item', label: footerLabel, showIcon: false, showRoute: false),
                     );
@@ -1079,13 +1096,34 @@ class SideMenuEditorScreen extends ConsumerWidget {
   }
 }
 
+/// What the menu item dialog gives back: the label, the linked page and the icon.
+typedef _MenuItemResult = (String, String?, String);
+
 class _MenuItemDialog extends StatefulWidget {
-  const _MenuItemDialog({required this.title, required this.label, this.route, required this.showIcon, this.showRoute = true});
+  const _MenuItemDialog({
+    required this.title,
+    required this.label,
+    this.route,
+    required this.showIcon,
+    this.showRoute = true,
+    this.icon = 'Star',
+    this.defaultIcon,
+    this.adding = false,
+  });
   final String title;
   final String label;
   final String? route;
   final bool showIcon;
   final bool showRoute;
+
+  /// The icon picked to start with.
+  final String icon;
+
+  /// A built-in item's own icon: offered as "Default icon".
+  final String? defaultIcon;
+
+  /// Adding a new item: the label is needed and the button says Add.
+  final bool adding;
 
   @override
   State<_MenuItemDialog> createState() => _MenuItemDialogState();
@@ -1094,7 +1132,7 @@ class _MenuItemDialog extends StatefulWidget {
 class _MenuItemDialogState extends State<_MenuItemDialog> {
   late final _label = TextEditingController(text: widget.label);
   late String? _route = widget.route;
-  String _icon = 'Star';
+  late String _icon = widget.icon;
 
   @override
   void dispose() {
@@ -1119,15 +1157,33 @@ class _MenuItemDialogState extends State<_MenuItemDialog> {
                 const SizedBox(height: 12),
                 Text('Icon', style: Theme.of(context).textTheme.labelLarge),
                 const SizedBox(height: 6),
-                Wrap(spacing: 6, runSpacing: 6, children: [
-                  for (final n in sideMenuIcons)
-                    ChoiceChip(
-                      avatar: Icon(lucide(n), size: 16),
-                      label: Text(n),
-                      selected: _icon == n,
-                      onSelected: (_) => setState(() => _icon = n),
+                if (widget.defaultIcon case final d?)
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: ChoiceChip(
+                      key: const ValueKey('menu-icon-default'),
+                      avatar: Icon(lucide(d), size: 16),
+                      label: const Text('Default icon'),
+                      selected: _icon == d,
+                      onSelected: (_) => setState(() => _icon = d),
                     ),
-                ]),
+                  ),
+                ListSearchFilter(
+                  count: sideMenuIcons.length,
+                  hint: 'Search icons',
+                  fieldKey: const ValueKey('menu-icon-search'),
+                  builder: (context, q) => Wrap(spacing: 6, runSpacing: 6, children: [
+                    for (final n in sideMenuIcons)
+                      if (q.isEmpty || n.toLowerCase().contains(q.toLowerCase()))
+                        ChoiceChip(
+                          key: ValueKey('menu-icon-$n'),
+                          avatar: Icon(lucide(n), size: 16),
+                          label: Text(n),
+                          selected: _icon == n,
+                          onSelected: (_) => setState(() => _icon = n),
+                        ),
+                  ]),
+                ),
               ],
               if (widget.showRoute)
                 ListTile(
@@ -1150,10 +1206,10 @@ class _MenuItemDialogState extends State<_MenuItemDialog> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           FilledButton(
-            onPressed: !widget.showIcon || _label.text.trim().isNotEmpty
+            onPressed: !widget.adding || _label.text.trim().isNotEmpty
                 ? () => Navigator.pop(context, (_label.text, _route, _icon))
                 : null,
-            child: Text(widget.showIcon ? 'Add' : 'Save'),
+            child: Text(widget.adding ? 'Add' : 'Save'),
           ),
         ],
       );
