@@ -26,7 +26,7 @@ void main() {
   const pages = [
     '/', '/ev', '/trips', '/wallet', '/account/safety', '/account/settings', '/account/guide', '/account/support', '/account/help',
     '/account/emergency', '/account/referral', '/account/my-ride', '/account/my-qr', '/account/notifications',
-    '/trips/scheduled',
+    '/trips/scheduled', '/freight', '/courier',
   ];
 
   /// Taps [id]'s row as [settings] arrange the menu; the page on top after,
@@ -73,6 +73,8 @@ void main() {
       'help-assistant': '/account/help',
       emergencyContactsMenuItemId: '/account/emergency',
       inviteFriendsMenuItemId: '/account/referral',
+      'freight': '/freight',
+      'courier': '/courier',
     };
     for (final MapEntry(key: id, value: page) in expected.entries) {
       testWidgets('$id opens $page', (tester) async {
@@ -101,9 +103,9 @@ void main() {
       expect(auth.signOuts, 0);
     });
 
-    // City and Freight have no page yet: "coming soon", never a jump to
-    // home (or, on a desktop, to Drive).
-    for (final id in ['city', 'freight']) {
+    // City and the services without a page yet: "coming soon", never a
+    // jump to home (or, on a desktop, to Drive).
+    for (final id in ['city', 'grocery', 'insurance']) {
       testWidgets('$id says coming soon', (tester) async {
         final (_, soon) = await tap(tester, id);
         expect(soon, isTrue);
@@ -111,7 +113,9 @@ void main() {
     }
 
     test('every default user item is covered', () {
-      expect({...expected.keys, 'city', 'freight', 'logout'}, {for (final d in defaultUserMenuItems) d.$1});
+      expect(
+          {...expected.keys, 'city', 'logout', ...serviceMenuItemIds},
+          {for (final d in defaultUserMenuItems) d.$1});
     });
   });
 

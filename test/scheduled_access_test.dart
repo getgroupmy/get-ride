@@ -39,7 +39,7 @@ void main() {
       expect(partner.indexOf(scheduledRidesMenuItemId), partner.indexOf('trip-history') + 1);
       expect(
         resolveSideMenu(const {}, 'user').firstWhere((e) => e.id == scheduledRidesMenuItemId).label,
-        'Scheduled Request',
+        'Ride Later',
       );
     });
 
