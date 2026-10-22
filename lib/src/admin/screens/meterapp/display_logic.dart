@@ -724,8 +724,9 @@ Map<String, dynamic> setMenuItemRoute(Map<String, dynamic> s, String menu, Strin
   return _withMenu(s, menu, {...cfg, 'routes': routes, 'customItems': custom});
 }
 
-/// The icon of a menu item: [iconName] from [sideMenuIcons], or null for the
-/// built-in item's own icon. A custom item keeps its icon on the item itself
+/// The icon of a menu item: [iconName] from [sideMenuIcons] or the Media
+/// Gallery (`media:<id>`, `pack:<name>`), or null (or '') for the built-in
+/// item's own icon. A custom item keeps its icon on the item itself
 /// (null puts back the 'Star' it starts with).
 Map<String, dynamic> setMenuItemIcon(Map<String, dynamic> s, String menu, String itemId, String? iconName) {
   final cfg = menuOf(s, menu);
@@ -876,6 +877,16 @@ Map<String, dynamic> renameRideOption(Map<String, dynamic> s, RideOptionKind k, 
   final labels = {...c.labels}..remove(k);
   if (t.isNotEmpty && t != k.defaultLabel) labels[k] = t;
   return _withRideOptions(s, c.copyWith(labels: labels));
+}
+
+/// The picture beside an option on the rider's sheet (a Media Gallery
+/// reference); null or '' for none.
+Map<String, dynamic> setRideOptionImage(Map<String, dynamic> s, RideOptionKind k, String? image) {
+  final c = rideOptionsOf(s);
+  final images = {...c.images}..remove(k);
+  final v = image?.trim() ?? '';
+  if (v.isNotEmpty) images[k] = v;
+  return _withRideOptions(s, c.copyWith(images: images));
 }
 
 /// Moves an option up (-1) or down (1), past the next one of its own list

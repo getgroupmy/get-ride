@@ -70,6 +70,7 @@ class MediaUsageInput {
     this.appSettings = const [],
     this.branding = const {},
     this.assets = const [],
+    this.catalogue = const [],
   });
 
   /// The `admin_display_settings` blob (`settings`), as stored.
@@ -87,6 +88,11 @@ class MediaUsageInput {
   /// The uploads, so a setting that kept an upload's public address counts
   /// for that upload.
   final List<MediaAsset> assets;
+
+  /// Rows of the catalogue tables that hold pictures: `table`
+  /// (`ev_vehicle_details`, `ev_vehicle_inventory`, `vehicle_make_models`),
+  /// `id`, and `values` (the EV tables) or `make`, `model`, `icon_uri`.
+  final List<Map<String, dynamic>> catalogue;
 }
 
 final _imageExt = RegExp(r'\.(png|jpe?g|webp|gif|svg|bmp|ico)(\?.*)?$', caseSensitive: false);
@@ -157,6 +163,7 @@ Map<String, List<MediaUse>> mediaUsageIndex(MediaUsageInput input) {
   _display(input.display, input.entries, add, keyOf, sweep);
   _entries(input.entries, add, keyOf, sweep);
   _appSettings(input.appSettings, add, sweep);
+  _catalogue(input.catalogue, add, keyOf, sweep);
 
   // App Settings: the splash picture and an uploaded app icon (app_branding).
   const site = '/admin/m/site';
@@ -247,13 +254,25 @@ void _display(
     );
   }
 
+  // Assistance items: an icon in place of the emoji.
+  for (final item in (s['assistanceCatalogue'] is List ? s['assistanceCatalogue'] as List : const [])) {
+    if (item is! Map) continue;
+    final icon = _text(item['icon']);
+    if (icon.isEmpty) continue;
+    add(
+      keyOf(icon) ?? iconKey(icon),
+      MediaUse('Ride Options › Assistance › ${_text(item['name'])}', _displayRoute,
+          highlightId: 'ride-option-assistance', slot: MediaKind.icon),
+    );
+  }
+
   // The GET.ride wordmark on the sign-in screen.
   if (displayBool(s, 'signInLogo')) {
     add(wordmarkKey, const MediaUse('Sign-in screen › Logo', _displayRoute, highlightId: 'sign-in-logo', slot: MediaKind.logo));
   }
 
   // Anything else in the blob that holds a picture.
-  const covered = {'userMenu', 'partnerMenu', 'serviceBoxes'};
+  const covered = {'userMenu', 'partnerMenu', 'serviceBoxes', 'assistanceCatalogue'};
   for (final e in s.entries) {
     if (covered.contains(e.key)) continue;
     if (e.key == RideOptionsConfig.key) {
@@ -273,6 +292,7 @@ const _categoryPages = <String, (String, String)>{
   'service-settings': ('Service Settings', '/admin/m/service-settings'),
   'partner-type': ('Partner Type', '/admin/m/partner-type'),
   'advertisement-banners': ('Advertisement Banners', '/admin/settings/advertisement-banners'),
+  'payment-type': ('Payment Type', '/admin/m/payment-type'),
 };
 
 /// The picture fields of a vehicle service, as its editor names them.
@@ -310,12 +330,43 @@ void _entries(List<Map<String, dynamic>> entries, _Add add, _KeyOf keyOf, _Sweep
       case 'service-settings':
         add(keyOf(v['iconUri']), MediaUse('$title › $name', route, highlightId: id, slot: MediaKind.icon));
         sweep({...v}..remove('iconUri'), (_) => '$title › $name', route, highlight: id);
+      case 'payment-type':
+        final icon = _text(v['icon']);
+        if (icon.isNotEmpty) {
+          add(keyOf(icon) ?? iconKey(icon), MediaUse('$title › $name', route, highlightId: id, slot: MediaKind.icon));
+        }
+        sweep({...v}..remove('icon'), (_) => '$title › $name', route, highlight: id);
       case 'partner-type':
         add(keyOf(v['iconUrl']), MediaUse('$title › $name', route, highlightId: id, slot: MediaKind.icon));
         sweep({...v}..remove('iconUrl'), (_) => '$title › $name', route, highlight: id);
       default:
         sweep(v, (_) => '$title › $name', route, highlight: id);
     }
+  }
+}
+
+/// The catalogue tables' pictures: EV vehicles and makes and models.
+const _cataloguePages = <String, (String, String)>{
+  'ev_vehicle_details': ('EV Vehicle Details', '/admin/m/ev-vehicle-details'),
+  'ev_vehicle_inventory': ('EV Vehicle Inventory', '/admin/m/ev-vehicle-inventory'),
+  'vehicle_make_models': ('Vehicle Make & Model', '/admin/m/vehicle-make-model'),
+};
+
+void _catalogue(List<Map<String, dynamic>> rows, _Add add, _KeyOf keyOf, _Sweep sweep) {
+  for (final r in rows) {
+    final page = _cataloguePages['${r['table']}'];
+    if (page == null) continue;
+    final id = '${r['id'] ?? ''}';
+    if (r['table'] == 'vehicle_make_models') {
+      final name = '${_text(r['make'])} ${_text(r['model'])}'.trim();
+      add(keyOf(r['icon_uri']), MediaUse('${page.$1} › ${name.isEmpty ? 'Untitled' : name}', page.$2, highlightId: id));
+      continue;
+    }
+    final v = _map(r['values']);
+    final name = [v['name'], v['model'], v['title'], v['vin']]
+        .map(_text)
+        .firstWhere((t) => t.isNotEmpty, orElse: () => 'Untitled');
+    sweep(v, (_) => '${page.$1} › $name', page.$2, highlight: id);
   }
 }
 

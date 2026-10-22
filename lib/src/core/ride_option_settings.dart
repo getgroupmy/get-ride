@@ -47,6 +47,7 @@ class RideOptionsConfig {
     this.hidden = const {},
     this.labels = const {},
     this.childSeatMax = 1,
+    this.images = const {},
   });
 
   static const key = 'rideOptions';
@@ -66,6 +67,10 @@ class RideOptionsConfig {
 
   /// Above 1 the rider picks a number of seats instead of a switch.
   final int childSeatMax;
+
+  /// A picture beside an option on the rider's sheet: a Media Gallery
+  /// upload (`media:<id>`) or a picture's address. None by default.
+  final Map<RideOptionKind, String> images;
 
   static RideOptionsConfig fromSettings(Map<String, dynamic> s) {
     final raw = s[key];
@@ -88,6 +93,14 @@ class RideOptionsConfig {
         if (k != null && v.isNotEmpty && v.length <= labelMax && v != k.defaultLabel) labels[k] = v;
       }
     }
+    final images = <RideOptionKind, String>{};
+    if (raw['images'] is Map) {
+      for (final e in (raw['images'] as Map).entries) {
+        final k = RideOptionKind.byId(e.key);
+        final v = e.value is String ? (e.value as String).trim() : '';
+        if (k != null && v.isNotEmpty) images[k] = v;
+      }
+    }
     final m = raw['childSeatMax'];
     final max = m is num ? m.toInt() : (m is String ? int.tryParse(m.trim()) : null);
     return RideOptionsConfig(
@@ -98,6 +111,7 @@ class RideOptionsConfig {
       },
       labels: labels,
       childSeatMax: (max ?? 1).clamp(1, childSeatLimit),
+      images: images,
     );
   }
 
@@ -106,6 +120,7 @@ class RideOptionsConfig {
     'hidden': [for (final k in order) if (hidden.contains(k)) k.id],
     'labels': {for (final e in labels.entries) e.key.id: e.value},
     'childSeatMax': childSeatMax,
+    if (images.isNotEmpty) 'images': {for (final e in images.entries) e.key.id: e.value},
   };
 
   Map<String, Object> toSettings() => {key: toJson()};
@@ -176,11 +191,13 @@ class RideOptionsConfig {
     Set<RideOptionKind>? hidden,
     Map<RideOptionKind, String>? labels,
     int? childSeatMax,
+    Map<RideOptionKind, String>? images,
   }) => RideOptionsConfig(
     order: order ?? this.order,
     hidden: hidden ?? this.hidden,
     labels: labels ?? this.labels,
     childSeatMax: childSeatMax ?? this.childSeatMax,
+    images: images ?? this.images,
   );
 }
 

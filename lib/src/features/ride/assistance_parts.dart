@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../core/ride_assistance.dart';
 import '../../core/ride_option_charges.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/media_image.dart' show MediaIcon;
 import '../../widgets/search_select.dart' show ListSearchFilter;
 
 /// The "What help do you need?" sheet: the help when Done is pressed, null
@@ -227,6 +228,7 @@ class _RideAssistanceSheetState extends State<RideAssistanceSheet> {
           context,
           key: 'assist-item-${item.id}',
           emoji: item.emoji,
+          icon: item.icon,
           name: item.name,
           description: item.description.isEmpty ? null : item.description,
           selected: on,
@@ -253,6 +255,7 @@ class _RideAssistanceSheetState extends State<RideAssistanceSheet> {
     BuildContext context, {
     required String key,
     required String emoji,
+    String icon = '',
     required String name,
     required String? description,
     required bool selected,
@@ -268,7 +271,10 @@ class _RideAssistanceSheetState extends State<RideAssistanceSheet> {
         child: Row(children: [
           SizedBox(
             width: 40,
-            child: Text(emoji, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24)),
+            // The admin's icon when it has one, else the emoji.
+            child: icon.isEmpty
+                ? Text(emoji, textAlign: TextAlign.center, style: const TextStyle(fontSize: 24))
+                : Center(child: MediaIcon(icon, fallback: Icons.accessibility_new, size: 26)),
           ),
           const SizedBox(width: 8),
           Expanded(

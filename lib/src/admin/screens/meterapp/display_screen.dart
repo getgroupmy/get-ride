@@ -26,6 +26,9 @@ import 'display_logic.dart';
 import '../../../core/demo_mode.dart' show demoDriverIdsKey, demoRiderIdsKey;
 import 'display_store.dart';
 import 'media_gallery_screen.dart' show mediaGalleryPath;
+import 'media_picker_sheet.dart';
+import '../../../core/media_assets.dart' show MediaKind, isMediaRef;
+import '../../../widgets/media_image.dart';
 import 'ride_option_places_screen.dart' show RideOptionPlacesScreen;
 import 'freight_settings_screen.dart' show FreightSettingsScreen;
 import 'courier_settings_screen.dart' show CourierSettingsScreen;
@@ -33,7 +36,6 @@ import '../../../core/freight.dart' show DeliveryKind, freightVehiclesFrom;
 import '../../../core/home_sections.dart' show serviceBoxDelivery, serviceBoxOpensText, serviceBoxPresets;
 import '../../../core/ride_option_places.dart' show OptionChargeKey;
 import '../../../data/ride_option_places_repository.dart' show rideOptionPlacesRepositoryProvider;
-import 'pick_image.dart';
 import '../../../core/raise_nudge.dart';
 import '../../../core/sheet_min_height.dart';
 import 'test_accounts.dart';
@@ -665,7 +667,7 @@ class ServiceBoxCard extends ConsumerWidget {
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
-            SizedBox(width: 56, height: 56, child: _BoxPreview(image: image, icon: lucide(iconName))),
+            SizedBox(width: 56, height: 56, child: _BoxPreview(image: image, icon: lucide(iconName), iconValue: iconName)),
             const SizedBox(width: 12),
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -707,27 +709,24 @@ class ServiceBoxCard extends ConsumerWidget {
             onFieldSubmitted: (v) => patch({'name': v.trim().isEmpty ? null : v.trim()}),
           ),
           BusyListTile(
+            key: ValueKey('box-icon-$index'),
             contentPadding: EdgeInsets.zero,
-            leading: Icon(lucide(iconName)),
+            leading: MediaIcon(iconName, fallback: lucide(iconName)),
             title: const Text('Icon'),
-            subtitle: Text(iconName),
+            subtitle: Text(isMediaRef(iconName) ? 'From the Media Gallery' : iconName),
             trailing: const Icon(Icons.arrow_drop_down),
             enabled: canEdit,
             onTap: () async {
-              final picked = await showAdminSheet<String>(
+              // The Media Gallery: built-in icons and uploads; Default is
+              // the box's own.
+              final picked = await showMediaPicker(
                 context,
-                title: 'Choose Icon',
-                builder: (ctx) => Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final n in serviceBoxIcons)
-                    ChoiceChip(
-                      avatar: Icon(lucide(n), size: 18),
-                      label: Text(n),
-                      selected: n == iconName,
-                      onSelected: (_) => Navigator.pop(ctx, n),
-                    ),
-                ]),
+                kind: MediaKind.icon,
+                current: iconName,
+                title: 'Icon for box ${index + 1}',
+                defaultLabel: 'Default (${defaultServiceBoxIcons[index]})',
               );
-              if (picked != null) await patch({'iconName': picked});
+              if (picked != null) await patch({'iconName': picked.isEmpty ? defaultServiceBoxIcons[index] : picked});
             },
           ),
           BusyListTile(
@@ -766,12 +765,19 @@ class ServiceBoxCard extends ConsumerWidget {
               icon: const Icon(Icons.upload),
               onPressed: canEdit
                   ? () async {
-                      final f = await pickImage();
-                      if (f == null) return;
-                      await patch({'imageUri': 'data:${f.contentType};base64,${base64Encode(f.bytes)}'});
+                      // Picked from the Media Gallery (or uploaded there).
+                      final v = await showMediaPicker(
+                        context,
+                        kind: MediaKind.image,
+                        alsoKinds: const {MediaKind.icon, MediaKind.logo},
+                        current: image,
+                        title: 'Picture for box ${index + 1}',
+                        offerDefault: false,
+                      );
+                      if (v != null && v.isNotEmpty) await patch({'imageUri': v});
                     }
                   : null,
-              child: Text(image != null ? 'Replace image' : 'Upload image'),
+              child: Text(image != null ? 'Replace image' : 'Choose image'),
             ),
             if (image != null)
               BusyButton.text(
@@ -791,17 +797,22 @@ class ServiceBoxCard extends ConsumerWidget {
 num _prio(Map<String, dynamic> e) => num.tryParse('${(e['values'] as Map?)?['displayPriority'] ?? 9999}') ?? 9999;
 
 class _BoxPreview extends StatelessWidget {
-  const _BoxPreview({this.image, required this.icon});
+  const _BoxPreview({this.image, required this.icon, this.iconValue});
   final String? image;
   final IconData icon;
+
+  /// The stored icon (a built-in name or a Media Gallery upload).
+  final String? iconValue;
 
   @override
   Widget build(BuildContext context) {
     final bg = Theme.of(context).colorScheme.primaryContainer;
-    Widget fallback() => Icon(icon, size: 28);
+    Widget fallback() => MediaIcon(iconValue, fallback: icon, size: 28);
     Widget? img;
     final src = image;
-    if (src != null && src.startsWith('data:') && src.contains(',')) {
+    if (isMediaRef(src)) {
+      img = MediaImage(src, fit: BoxFit.cover, fallback: fallback());
+    } else if (src != null && src.startsWith('data:') && src.contains(',')) {
       try {
         img = Image.memory(base64Decode(src.substring(src.indexOf(',') + 1)), fit: BoxFit.cover);
       } catch (_) {}
@@ -1003,12 +1014,29 @@ class SideMenuEditorScreen extends ConsumerWidget {
             required String title,
             required String subtitle,
             Widget? leadingExtra,
+            String? iconValue,
             Future<void> Function()? onEdit,
             Future<void> Function()? onDelete,
           }) =>
               Spotlight(id: id, highlight: highlight, child: Card(
                 child: ListTile(
-                  leading: Row(mainAxisSize: MainAxisSize.min, children: [?leadingExtra, Icon(icon)]),
+                  leading: Row(mainAxisSize: MainAxisSize.min, children: [
+                    ?leadingExtra,
+                    // The item's icon: tap to pick another from the Media Gallery.
+                    InkWell(
+                      key: ValueKey('menu-row-icon-$id'),
+                      onTap: !canEdit || iconValue == null
+                          ? null
+                          : () async {
+                              final v = await showMediaPicker(context,
+                                  kind: MediaKind.icon, current: iconValue, title: 'Icon for $title');
+                              if (v != null && context.mounted) {
+                                await applyDisplay(context, ref, (x) => setMenuItemIcon(x, menu, id, v));
+                              }
+                            },
+                      child: MediaIcon(iconValue, fallback: icon),
+                    ),
+                  ]),
                   title: Text(title),
                   subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(subtitle),
@@ -1063,6 +1091,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                     return row(
                       id: o.id,
                       icon: lucide(iconName),
+                      iconValue: o.isCustom ? iconName : '${icons[o.id] ?? ''}',
                       title: label,
                       subtitle: 'Page: ${routeLabelFor(effective)}${tags.isEmpty ? '' : '  ·  ${tags.join('  ·  ')}'}',
                       leadingExtra: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -1196,6 +1225,23 @@ class _MenuItemDialogState extends State<_MenuItemDialog> {
                           onSelected: (_) => setState(() => _icon = n),
                         ),
                   ]),
+                ),
+                const SizedBox(height: 6),
+                // Any icon from the Media Gallery: the icon pack and uploads.
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: ChoiceChip(
+                    key: const ValueKey('menu-icon-gallery'),
+                    avatar: isMediaRef(_icon)
+                        ? MediaIcon(_icon, fallback: Icons.photo_library_outlined, size: 16)
+                        : const Icon(Icons.photo_library_outlined, size: 16),
+                    label: const Text('From gallery'),
+                    selected: isMediaRef(_icon),
+                    onSelected: (_) async {
+                      final v = await showMediaPicker(context, kind: MediaKind.icon, current: _icon, offerDefault: false);
+                      if (v != null && v.isNotEmpty) setState(() => _icon = v);
+                    },
+                  ),
                 ),
               ],
               if (widget.showRoute)
@@ -1361,6 +1407,28 @@ class RideOptionsCard extends ConsumerWidget {
         title: Text(c.labelOf(k), key: ValueKey('ride-option-label-${k.id}')),
         subtitle: renamed ? Text('Built-in name: ${k.defaultLabel}') : null,
         trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          // The picture beside it on the rider's sheet (not the Freight page's).
+          if (!k.freight)
+            BusyIconButton(
+              key: ValueKey('ride-option-image-${k.id}'),
+              tooltip: 'Picture',
+              icon: c.images[k] == null
+                  ? const Icon(Icons.add_photo_alternate_outlined)
+                  : SizedBox.square(dimension: 24, child: MediaImage(c.images[k], width: 24, height: 24)),
+              onPressed: !canEdit
+                  ? null
+                  : () async {
+                      final v = await showMediaPicker(
+                        context,
+                        kind: MediaKind.image,
+                        alsoKinds: const {MediaKind.icon},
+                        current: c.images[k],
+                        title: 'Picture for ${c.labelOf(k)}',
+                        defaultLabel: 'No picture',
+                      );
+                      if (v != null && context.mounted) await edit((x) => setRideOptionImage(x, k, v));
+                    },
+            ),
           if (canEdit)
             BusyIconButton(
               key: ValueKey('ride-option-rename-${k.id}'),
@@ -1812,7 +1880,9 @@ class AssistanceOptionsScreen extends ConsumerWidget {
                             return Card(
                               key: ValueKey('assist-admin-${item.id}'),
                               child: ListTile(
-                                leading: Text(item.emoji, style: const TextStyle(fontSize: 24)),
+                                leading: item.icon.isEmpty
+                                    ? Text(item.emoji, style: const TextStyle(fontSize: 24))
+                                    : MediaIcon(item.icon, fallback: Icons.accessibility_new, size: 28),
                                 title: Text(item.name),
                                 subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                                   if (item.description.isNotEmpty) Text(item.description),
@@ -1920,6 +1990,7 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
     for (final c in _i?.choices ?? const <String>[]) TextEditingController(text: c),
   ];
   late String? _group = _i?.group ?? assistanceDefaultGroups.first;
+  late String _icon = _i?.icon ?? '';
   String? _error;
 
   bool get _guideDog => _i?.isGuideDog ?? false;
@@ -1956,6 +2027,7 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
       hidden: _i?.hidden ?? false,
       // Kept as it was: charges are set by place now.
       charge: _guideDog ? OptionCharge.none : (_i?.charge ?? OptionCharge.none),
+      icon: _icon,
     );
     final problem = assistanceItemProblem(item);
     if (problem != null) return setState(() => _error = problem);
@@ -1994,6 +2066,20 @@ class _AssistanceItemDialogState extends State<_AssistanceItemDialog> {
                 ),
               ),
             ]),
+            // An icon from the Media Gallery in place of the emoji.
+            ListTile(
+              key: const ValueKey('assist-icon'),
+              contentPadding: EdgeInsets.zero,
+              leading: _icon.isEmpty ? const Icon(Icons.emoji_emotions_outlined) : MediaIcon(_icon, fallback: Icons.accessibility_new),
+              title: const Text('Icon (optional)'),
+              subtitle: Text(_icon.isEmpty ? 'None: riders see the emoji' : 'Shown instead of the emoji'),
+              trailing: const Icon(Icons.arrow_drop_down),
+              onTap: () async {
+                final v = await showMediaPicker(context,
+                    kind: MediaKind.icon, current: _icon, title: 'Icon', defaultLabel: 'None (use the emoji)');
+                if (v != null) setState(() => _icon = v);
+              },
+            ),
             TextField(
               key: const ValueKey('assist-description'),
               controller: _description,

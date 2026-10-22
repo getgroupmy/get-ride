@@ -29,9 +29,10 @@
 -- 3. media_asset_delete(id): deletes an upload only when no setting points
 --    at it. The gallery checks first; this checks again on the server: a
 --    text search of the display settings blob, every settings_entries
---    value and every app_settings value (App Page Settings, the home-screen
---    icon) and the app_branding row for the id (which every reference,
---    `media:<id>` or the file's address, contains). Refused with
+--    value, every app_settings value (App Page Settings, the home-screen
+--    icon), the app_branding row, the EV catalogue (ev_vehicle_details,
+--    ev_vehicle_inventory) and vehicle_make_models.icon_uri for the id
+--    (which every reference, `media:<id>` or the file's address, contains). Refused with
 --    'media_in_use' while any is found. The client then removes the files.
 -- 4. media_assets joins supabase_realtime, so a new upload shows on every
 --    open app.
@@ -184,6 +185,18 @@ as $$
     select 'App Settings (app_branding)'
       from public.app_branding b
      where strpos(to_jsonb(b)::text, p_id::text) > 0
+    union
+    select 'EV Vehicle Details'
+      from public.ev_vehicle_details v
+     where strpos(v.values::text, p_id::text) > 0
+    union
+    select 'EV Vehicle Inventory'
+      from public.ev_vehicle_inventory v
+     where strpos(v.values::text, p_id::text) > 0
+    union
+    select 'Vehicle Make & Model'
+      from public.vehicle_make_models m
+     where strpos(m.icon_uri, p_id::text) > 0
   ) found;
 $$;
 revoke execute on function public.media_asset_references(uuid) from public, anon, authenticated;

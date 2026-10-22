@@ -98,6 +98,9 @@ class MediaRepository {
           .order('position', ascending: true),
       _db.from('app_settings').select('key, value').order('key', ascending: true),
       _db.from('app_branding').select().eq('id', 'global').maybeSingle(),
+      _db.from('ev_vehicle_details').select('id, values').order('position', ascending: true),
+      _db.from('ev_vehicle_inventory').select('id, values').order('position', ascending: true),
+      _db.from('vehicle_make_models').select('id, make, model, icon_uri').neq('icon_uri', '').order('make', ascending: true),
     ]);
     Map<String, dynamic> map(Object? v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
     List<Map<String, dynamic>> rows(Object? v) => [if (v is List) for (final r in v) map(r)];
@@ -107,6 +110,10 @@ class MediaRepository {
       appSettings: rows(results[2]),
       branding: map(results[3]),
       assets: assets,
+      catalogue: [
+        for (final (i, table) in const ['ev_vehicle_details', 'ev_vehicle_inventory', 'vehicle_make_models'].indexed)
+          for (final r in rows(results[4 + i])) {...r, 'table': table},
+      ],
     );
   }
 }

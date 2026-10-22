@@ -23,6 +23,7 @@ import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import 'display_screen.dart' show displayPage, lucide, lucideIcons;
+import 'media_branding_tabs.dart';
 import 'media_upload_dialog.dart';
 
 /// The gallery's address (under Display Settings).
@@ -60,7 +61,7 @@ class AdminMediaGalleryScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminMediaGalleryScreenState extends ConsumerState<AdminMediaGalleryScreen> with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: MediaKind.values.length, vsync: this)
+  late final TabController _tabs = TabController(length: MediaKind.values.length + 2, vsync: this)
     ..addListener(() {
       if (!_tabs.indexIsChanging) setState(() => _selected = null);
     });
@@ -68,7 +69,11 @@ class _AdminMediaGalleryScreenState extends ConsumerState<AdminMediaGalleryScree
   GalleryFilter _filter = GalleryFilter.all;
   String? _selected;
 
-  MediaKind get _kind => MediaKind.values[_tabs.index];
+  /// The Icons, Images or Logos tab; the App icon and Splash tabs follow.
+  MediaKind get _kind => _tabs.index < MediaKind.values.length ? MediaKind.values[_tabs.index] : MediaKind.logo;
+
+  bool get _appIconTab => _tabs.index == MediaKind.values.length;
+  bool get _splashTab => _tabs.index == MediaKind.values.length + 1;
 
   @override
   void dispose() {
@@ -78,7 +83,7 @@ class _AdminMediaGalleryScreenState extends ConsumerState<AdminMediaGalleryScree
   }
 
   Future<void> _upload() async {
-    final asset = await showMediaUploadDialog(context, kind: _kind);
+    final asset = await showMediaUploadDialog(context, kind: _splashTab ? MediaKind.image : _kind);
     if (asset == null || !mounted) return;
     ref.invalidate(mediaGalleryProvider);
     setState(() {
@@ -138,12 +143,22 @@ class _AdminMediaGalleryScreenState extends ConsumerState<AdminMediaGalleryScree
       ],
       bottom: TabBar(
         controller: _tabs,
-        tabs: [for (final k in MediaKind.values) Tab(key: ValueKey('media-tab-${k.id}'), text: k.plural)],
+        isScrollable: true,
+        tabAlignment: TabAlignment.start,
+        tabs: [
+          for (final k in MediaKind.values) Tab(key: ValueKey('media-tab-${k.id}'), text: k.plural),
+          const Tab(key: ValueKey('media-tab-app-icon'), text: 'App icon'),
+          const Tab(key: ValueKey('media-tab-splash'), text: 'Splash'),
+        ],
       ),
       body: AsyncView(
         value: ref.watch(mediaGalleryProvider),
         onRetry: () => ref.invalidate(mediaGalleryProvider),
-        data: (d) => LayoutBuilder(
+        data: (d) => _appIconTab
+            ? MediaAppIconTab(data: d)
+            : _splashTab
+            ? const MediaSplashTab()
+            : LayoutBuilder(
           builder: (context, box) {
             final wide = box.maxWidth >= _sidePanelFrom;
             final items = _items(d);

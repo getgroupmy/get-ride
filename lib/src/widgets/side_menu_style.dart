@@ -82,9 +82,13 @@ class SideMenuRow extends StatelessWidget {
     this.color,
     this.trailing,
     this.selected = false,
+    this.leading,
   });
 
   final IconData icon;
+
+  /// Drawn in place of [icon] (an admin's own icon, maybe an upload).
+  final Widget? leading;
   final String label;
   final VoidCallback? onTap;
 
@@ -104,7 +108,7 @@ class SideMenuRow extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(19, 8, 16, 8),
         child: Row(
           children: [
-            Icon(icon, size: 24, color: color ?? c.icon),
+            leading ?? Icon(icon, size: 24, color: color ?? c.icon),
             const SizedBox(width: 13),
             Expanded(
               child: Text(

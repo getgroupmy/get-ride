@@ -365,6 +365,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('route:/wallet/trade', SurfaceKind.page, 'Coin trade', 'lib/src/app.dart', path: '/wallet/trade'),
   SurfaceEntry('sheet:admin.form-sheet', SurfaceKind.sheet, 'Admin · Form sheet', 'lib/src/admin/widgets/admin_widgets.dart'),
   SurfaceEntry('sheet:admin.media-details', SurfaceKind.sheet, 'Admin · Media details', 'lib/src/admin/screens/meterapp/media_gallery_screen.dart'),
+  SurfaceEntry('sheet:admin.media-picker', SurfaceKind.sheet, 'Admin · Media picker', 'lib/src/admin/screens/meterapp/media_picker_sheet.dart'),
   SurfaceEntry('sheet:airport-areas.guide-preview', SurfaceKind.sheet, 'Airport areas · Guide preview', 'lib/src/features/ride/airport_door_sheet.dart'),
   SurfaceEntry('sheet:ble-report.trips-card', SurfaceKind.sheet, 'Ble report · Trips card', 'lib/src/admin/screens/security/ble_report_screen.dart'),
   SurfaceEntry('sheet:book-for.show-book-for-sheet', SurfaceKind.sheet, 'Book for · Book for sheet', 'lib/src/features/ride/book_for_sheet.dart'),

@@ -6,6 +6,7 @@ import '../../core/payment_types.dart';
 import '../../widgets/common.dart' show mutedTextColor;
 import 'confirm_parts.dart';
 import '../../widgets/chip_button.dart';
+import '../../widgets/media_image.dart' show MediaIcon;
 
 /// What "Offer your fare" hands back: the fare and the choices made on it,
 /// and whether the rider asked to find a driver from there.
@@ -283,8 +284,9 @@ class _OfferFareScreenState extends State<OfferFareScreen> {
                 ListTile(
                   key: const ValueKey('offer-fare-payment'),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  leading: Icon(
-                    paymentLook(paymentChoiceFor(_payment, widget.payments).kind).$1,
+                  leading: MediaIcon(
+                    paymentChoiceFor(_payment, widget.payments).icon,
+                    fallback: paymentLook(paymentChoiceFor(_payment, widget.payments).kind).$1,
                     color: const Color(0xFF6BBF2A),
                   ),
                   title: Text(

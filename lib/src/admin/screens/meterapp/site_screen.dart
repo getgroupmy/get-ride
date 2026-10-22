@@ -35,6 +35,8 @@ import 'backend_network_card.dart';
 import 'branding_screens.dart';
 import 'pick_image.dart';
 import 'site_logic.dart';
+import 'media_picker_sheet.dart';
+import '../../../core/media_assets.dart' show MediaKind;
 import '../../../data/live_tables.dart';
 import '../../../widgets/page_style_host.dart';
 
@@ -73,8 +75,9 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
   PickedImage? _splashPicked;
   String? _splashUrl;
 
-  /// The icon: one picked and not yet published, or "use the default".
-  PickedImage? _iconPicked;
+  /// The icon: one picked from the Media Gallery (its address) and not yet
+  /// published, or "use the default".
+  String? _iconPicked;
   bool _iconCleared = false;
 
   @override
@@ -156,7 +159,7 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
     }
     final store = ref.read(brandingStoreProvider);
     final ok = await runAdminAction(context, () async {
-      final url = _iconPicked != null ? await store.upload(_iconPicked!, 'icon') : null;
+      final url = _iconPicked;
       await store.update({'app_icon_url': url, 'icon_changed_at': DateTime.now().toUtc().toIso8601String()});
     });
     if (!mounted || !ok) return;
@@ -254,9 +257,9 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
   }
 
   Widget _iconSection(AppBranding stored) {
-    final url = _iconCleared ? null : stored.appIconUrl;
-    final bytes = _iconPicked?.bytes;
-    final hasIcon = bytes != null || url != null;
+    final url = _iconPicked ?? (_iconCleared ? null : stored.appIconUrl);
+    const Uint8List? bytes = null;
+    final hasIcon = url != null;
     final t = Theme.of(context);
     return _section(
       'App Icon',
@@ -279,12 +282,21 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
           Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
             BusyButton.tonal(
               key: const ValueKey('app-icon-upload'),
-              icon: const Icon(Icons.upload),
+              icon: const Icon(Icons.photo_library_outlined),
+              // The Media Gallery: an upload, or a new one uploaded there.
               onPressed: () async {
-                final img = await pickImage();
-                if (img != null) setState(() => _iconPicked = img);
+                final v = await showMediaPicker(
+                  context,
+                  kind: MediaKind.logo,
+                  alsoKinds: const {MediaKind.image, MediaKind.icon},
+                  current: url,
+                  title: 'App icon',
+                  offerDefault: false,
+                  store: MediaStore.url,
+                );
+                if (v != null && v.isNotEmpty) setState(() => _iconPicked = v);
               },
-              child: Text(hasIcon ? 'Replace icon' : 'Upload icon'),
+              child: Text(hasIcon ? 'Replace icon' : 'Choose icon'),
             ),
             if (hasIcon)
               TextButton.icon(
@@ -351,12 +363,27 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
           Wrap(spacing: 8, alignment: WrapAlignment.center, children: [
             BusyButton.tonal(
               key: const ValueKey('splash-upload'),
-              icon: const Icon(Icons.upload),
+              icon: const Icon(Icons.photo_library_outlined),
+              // The Media Gallery: an upload, or a new one uploaded there.
+              // Kept as its address, as the splash has always been.
               onPressed: () async {
-                final img = await pickImage();
-                if (img != null) setState(() => _splashPicked = img);
+                final v = await showMediaPicker(
+                  context,
+                  kind: MediaKind.image,
+                  alsoKinds: const {MediaKind.logo},
+                  current: _splashUrl,
+                  title: 'Splash picture',
+                  offerDefault: false,
+                  store: MediaStore.url,
+                );
+                if (v != null && v.isNotEmpty) {
+                  setState(() {
+                    _splashPicked = null;
+                    _splashUrl = v;
+                  });
+                }
               },
-              child: Text(hasImage ? 'Replace image' : 'Upload image'),
+              child: Text(hasImage ? 'Replace image' : 'Choose image'),
             ),
             if (hasImage)
               TextButton.icon(

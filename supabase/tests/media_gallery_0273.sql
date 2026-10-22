@@ -137,6 +137,21 @@ select pg_temp.refused_with($q$select public.media_asset_delete('00000000-0000-0
 select pg_temp.check((select count(*) from public.media_assets where id::text like '00000000-0000-0000-0000-00000002730%') = 2,
   'both kept');
 reset role;
+-- An EV vehicle's picture and a make's icon count too.
+insert into public.media_assets (id, kind, name, path, mime)
+values ('00000000-0000-0000-0000-000000027304', 'image', 'EV photo',
+        'image/00000000-0000-0000-0000-000000027304.webp', 'image/webp');
+insert into public.ev_vehicle_details (values) values ('{"name":"EV 273","imageUri":"media:00000000-0000-0000-0000-000000027304"}');
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000273a1');
+select pg_temp.refused_with($q$select public.media_asset_delete('00000000-0000-0000-0000-000000027304')$q$,
+  'EV Vehicle Details', 'deleting a picture an EV vehicle shows');
+reset role;
+delete from public.ev_vehicle_details where values->>'name' = 'EV 273';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000273a1');
+select public.media_asset_delete('00000000-0000-0000-0000-000000027304');
+reset role;
 
 -- The places change to something else: now both go.
 update public.admin_display_settings

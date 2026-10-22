@@ -2,19 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../widgets/busy.dart';
-import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
-import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import '../../../widgets/in_app_page.dart';
+import '../../../core/media_assets.dart' show MediaKind, isMediaRef;
+import '../../../widgets/media_image.dart' show MediaImage;
 import '../../../widgets/net_image.dart';
+import '../meterapp/media_picker_sheet.dart' show showMediaPicker;
 import '../../../widgets/search_select.dart';
 
 bool canEditPage(WidgetRef ref, String page) => ref.watch(pageAccessProvider(page)) == AccessLevel.edit;
 
-/// Renders a stored image reference: a `data:` URL or an http(s) URL.
+/// Renders a stored image reference: a Media Gallery upload (`media:<id>`),
+/// a `data:` URL or an http(s) URL.
 class StoredImage extends StatelessWidget {
   const StoredImage(this.uri, {super.key, this.size = 40, this.fallback = Icons.image_outlined, this.aspect = 1});
   final String uri;
@@ -27,7 +29,9 @@ class StoredImage extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     Widget placeholder() => Icon(fallback, color: cs.onSurfaceVariant, size: size * 0.5);
     Widget child;
-    if (uri.startsWith('data:')) {
+    if (isMediaRef(uri)) {
+      child = MediaImage(uri, width: size * aspect, height: size, fit: BoxFit.cover, fallback: placeholder());
+    } else if (uri.startsWith('data:')) {
       try {
         child = Image.memory(UriData.parse(uri).contentAsBytes(), fit: BoxFit.cover,
             errorBuilder: (_, _, _) => placeholder());
@@ -52,8 +56,10 @@ class StoredImage extends StatelessWidget {
   }
 }
 
-/// Image picker row that stores the image as a `data:` URL (how the Expo
-/// screens store service / vehicle images).
+/// Image row of a catalogue editor: Choose opens the Media Gallery picker
+/// (an upload, or a new one uploaded there) and the field keeps its
+/// reference (`media:<id>`). Older values (`data:` and http(s) URLs) still
+/// show and keep working until replaced.
 class DataUrlImageField extends StatelessWidget {
   const DataUrlImageField({
     super.key,
@@ -70,12 +76,15 @@ class DataUrlImageField extends StatelessWidget {
   final bool enabled;
 
   Future<void> _pick(BuildContext context) async {
-    try {
-      final f = await pickImageFile();
-      if (f != null) onChanged(toDataUrl(f.bytes, f.name));
-    } catch (e) {
-      if (context.mounted) showError(context, e);
-    }
+    final v = await showMediaPicker(
+      context,
+      kind: MediaKind.image,
+      alsoKinds: const {MediaKind.icon, MediaKind.logo},
+      current: value,
+      title: label,
+      offerDefault: false,
+    );
+    if (v != null && v.isNotEmpty) onChanged(v);
   }
 
   @override
@@ -91,8 +100,8 @@ class DataUrlImageField extends StatelessWidget {
               child: Wrap(spacing: 8, runSpacing: 8, children: [
                 BusyButton.tonal(
                   onPressed: enabled ? () => _pick(context) : null,
-                  icon: const Icon(Icons.upload),
-                  child: Text(value.isEmpty ? 'Upload' : 'Replace'),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  child: Text(value.isEmpty ? 'Choose' : 'Replace'),
                 ),
                 if (value.isNotEmpty)
                   OutlinedButton.icon(

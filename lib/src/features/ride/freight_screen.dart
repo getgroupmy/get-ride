@@ -46,6 +46,7 @@ import '../../providers.dart';
 import '../../widgets/chat_photo.dart' show choosePhotoSource;
 import '../../widgets/common.dart' show showError, showInfo, showNotice;
 import '../../widgets/page_style_host.dart';
+import '../../widgets/media_image.dart' show MediaIcon;
 import '../../widgets/search_select.dart' show ListSearchFilter, searchSelectMatches;
 import 'confirm_parts.dart' show paymentLook;
 import 'courier_parts.dart' show CourierCodeCard;
@@ -741,7 +742,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
                 for (final p in payments)
                   ChoiceChip(
                     key: ValueKey('freight-payment-${p.value}'),
-                    avatar: Icon(paymentLook(p.kind).$1, size: 18),
+                    avatar: MediaIcon(p.icon, fallback: paymentLook(p.kind).$1, size: 18),
                     label: Text(p.label),
                     selected: payment == p.value,
                     onSelected: (_) => setState(() => _payment = p.value),
