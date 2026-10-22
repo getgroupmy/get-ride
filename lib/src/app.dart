@@ -30,6 +30,8 @@ import 'core/connection_check.dart';
 import 'data/app_connection.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
+import 'core/trip_card.dart' show tripCardLinkLocation;
+import 'data/trip_card_controller.dart' show tripCardControllerProvider;
 import 'core/push_logic.dart';
 import 'core/ride_bidding.dart' show BiddingRegion, pushPlaceAt;
 import 'data/app_icon_service.dart';
@@ -247,6 +249,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       // the whole URI, and the kind is its host, not its path.
       final schemeLink = qrSchemeLinkLocation(state.uri);
       if (schemeLink != null) return schemeLink;
+      // getride://trip/<ride>?do=<button>: a button on the trip card
+      // (core/trip_card.dart) opens the trip, to run it there.
+      final cardLink = tripCardLinkLocation(state.uri);
+      if (cardLink != null) return cardLink;
       final signedIn = db.auth.currentSession != null;
       final loc = state.matchedLocation;
       // The first app page of this run, for the launch-only rules.
@@ -471,7 +477,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/ride/:id',
-            builder: (_, s) => RideTrackingScreen(requestId: s.pathParameters['id']!),
+            builder: (_, s) =>
+                RideTrackingScreen(requestId: s.pathParameters['id']!, cardAction: s.uri.queryParameters['card']),
             routes: [
               GoRoute(
                 path: 'chat',
@@ -513,7 +520,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/drive/trip/:id',
             // Demo jobs play out on /drive/demo, never as a real trip.
             redirect: (_, s) => isDemoRideId(s.pathParameters['id'] ?? '') ? '/drive' : null,
-            builder: (_, s) => PartnerTripScreen(requestId: s.pathParameters['id']!),
+            builder: (_, s) =>
+                PartnerTripScreen(requestId: s.pathParameters['id']!, cardAction: s.uri.queryParameters['card']),
             routes: [
               GoRoute(
                 path: 'chat',
@@ -633,6 +641,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     _startAlwaysOn();
     _startMessagingPresence();
     _startPushLocation();
+    // The trip card on the lock screen (data/trip_card_controller.dart).
+    ref.listenManual(tripCardControllerProvider, (_, _) {}, fireImmediately: true);
     // Admin → Settings → Maps: this user's and device's tiles and lookups.
     // The maps wait for them rather than show the app's own map first (on a
     // first launch at most `mapProfileFirstWait`, then the app's own map).
@@ -651,6 +661,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     if (push == null) return;
     _subs.add(push.taps.listen(_open));
     _subs.add(push.foreground.listen(_showForeground));
+    // A push about a ride (a driver took it, a trip started): the trip card
+    // looks for the trip it may now show.
+    _subs.add(push.received.listen((data) {
+      if (data['request_id'] != null) unawaited(ref.read(tripCardControllerProvider.notifier).refresh());
+    }));
     _startNotificationsWarning(push);
     // Notifications are asked for at launch, as soon as the splash is gone.
     unawaited(
@@ -759,6 +774,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         unawaited(_branding?.resync());
         unawaited(_reportPushLocation());
         unawaited(PushService.instance?.recheckPermission());
+        unawaited(ref.read(tripCardControllerProvider.notifier).refresh());
         ref.invalidate(appIconRegionsProvider);
         unawaited(ref.read(appIconSyncProvider).sync());
       },

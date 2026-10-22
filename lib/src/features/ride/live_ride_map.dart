@@ -6,12 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/live_eta.dart';
+import '../../core/trip_card.dart' show TripRouteFix;
 import '../../core/ride_cancel.dart' show riderLocationForDriver;
 import '../../core/ride_confirm.dart' show tripRecenterOffset;
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
 import '../../providers.dart';
 import '../../data/models.dart';
+import '../../data/trip_card_controller.dart' show tripRouteFeedProvider;
 import '../../widgets/map_brightness.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_type_button.dart';
@@ -273,7 +275,13 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     unawaited(() async {
       try {
         final r = await ref.read(geoServiceProvider).route(from, to);
-        if (mounted && seq == _seq) setState(() => _route = r);
+        if (mounted && seq == _seq) {
+          setState(() => _route = r);
+          // The trip card's minutes follow the same road (core/trip_card.dart).
+          ref
+              .read(tripRouteFeedProvider.notifier)
+              .put(widget.ride.id, TripRouteFix(target: to, points: r.points, minutes: r.durationMin, km: r.distanceKm));
+        }
       } catch (_) {}
     }());
   }

@@ -39,6 +39,8 @@ import '../../../data/ride_option_places_repository.dart' show rideOptionPlacesR
 import '../../../core/raise_nudge.dart';
 import '../../../core/sheet_min_height.dart';
 import 'test_accounts.dart';
+import 'trip_card_settings_card.dart';
+import '../../../core/trip_card.dart' show TripCardSettings, withTripCardSettings;
 import '../../../widgets/net_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
@@ -326,6 +328,11 @@ class _DisplayBody extends ConsumerWidget {
               for (final i in rideTrackingLayoutItems) stepper(i),
               sheetMin(trackingSheetMinAdjustKey),
             ]),
+          ),
+          const _Section('Trip card (lock screen)'),
+          TripCardSettingsCard(
+            value: TripCardSettings.fromDisplay(s),
+            onChanged: canEdit ? (v) => applyDisplay(context, ref, (x) => withTripCardSettings(x, v)) : null,
           ),
           const _Section('Service'),
           Card(

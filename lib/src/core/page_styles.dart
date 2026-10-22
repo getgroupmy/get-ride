@@ -149,6 +149,13 @@ const _deliveryTokens = <StyleToken>[
   StyleToken.color('buttonColor', 'Background', light: 0xFF0C7AB8, dark: 0xFF0C7AB8, group: 'Request button'),
 ];
 
+/// The trip card on the lock screen (core/trip_card.dart), as its preview
+/// in Admin → Display Settings → Trip card shows it. Its colours go to the
+/// phone's own card: the iPhone's Live Activity draws all four; Android's
+/// notification takes the accent (bar, icon and buttons) and draws the
+/// rest in the phone's own notification colours.
+const tripCardSurface = 'sheet:trip-card.preview';
+
 /// Items inside particular surfaces, beyond what every surface of their kind
 /// has. Each is read where the item is drawn.
 const elementTokens = <String, List<StyleToken>>{
@@ -173,6 +180,12 @@ const elementTokens = <String, List<StyleToken>>{
     StyleToken.number('imageHeight', 'Picture height', 80, min: 40, max: 180, group: 'Vehicle picture'),
     StyleToken.number('titleSize', 'Name size', 24, min: 16, max: 36, group: _text),
     StyleToken.number('bodySize', 'Details size', 16, min: 12, max: 24, group: _text),
+  ],
+  tripCardSurface: [
+    StyleToken.color('cardBackground', 'Background', light: 0xFF000000, dark: 0xFF000000, group: 'Trip card'),
+    StyleToken.color('cardAccent', 'Accent and progress', light: 0xFF0C7AB8, dark: 0xFF2DABE2, group: 'Trip card'),
+    StyleToken.color('cardText', 'Text', light: 0xFFFFFFFF, dark: 0xFFFFFFFF, group: 'Trip card'),
+    StyleToken.color('cardMuted', 'Second line', light: 0xFFA9B6C0, dark: 0xFFA9B6C0, group: 'Trip card'),
   ],
   godViewSurface: [
     StyleToken.number('markerSize', 'Marker size', 30, min: 20, max: 48, group: 'Map'),
