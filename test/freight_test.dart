@@ -419,12 +419,11 @@ void main() {
       expect(find.text('Freight'), findsWidgets);
       expect(find.text('Pickup location'), findsOneWidget);
       expect(find.text('Van (S)'), findsOneWidget, reason: 'the first size is chosen');
-      // Create with nothing filled in: what is missing first.
-      await tester.ensureVisible(find.byKey(const ValueKey('freight-create')));
-      await tester.tap(find.byKey(const ValueKey('freight-create')));
-      await tester.pump();
+      // Nothing filled in: the button waits, and says what is missing first.
+      FilledButton create() => tester.widget<FilledButton>(find.byKey(const ValueKey('freight-create')));
+      expect(create().onPressed, isNull);
+      expect(find.byKey(const ValueKey('freight-create-hint')), findsOneWidget);
       expect(find.text('Add the pickup location.'), findsOneWidget);
-      await tester.pumpAndSettle(const Duration(seconds: 5));
 
       await _address(tester, 'freight-pickup');
       expect(find.text('12, Jalan Ampang, Kuala Lumpur'), findsOneWidget);
@@ -541,6 +540,9 @@ void main() {
       expect(find.textContaining('Total RM210'), findsOneWidget);
       expect(unreadableTexts(tester, find.byKey(const ValueKey('freight-form'))), isEmpty);
 
+      // Everything filled in: the button is ready and the hint is gone.
+      expect(create().onPressed, isNotNull);
+      expect(find.byKey(const ValueKey('freight-create-hint')), findsNothing);
       await tester.ensureVisible(find.byKey(const ValueKey('freight-create')));
       await tester.tap(find.byKey(const ValueKey('freight-create')));
       await tester.pumpAndSettle();

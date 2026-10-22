@@ -343,10 +343,11 @@ void main() {
       await _pump(tester, const CourierScreen(), _overrides(rides), b);
       expect(find.text('Courier'), findsWidgets);
       expect(find.text('Send a parcel'), findsOneWidget);
-      // Nothing filled in: what is missing first.
-      await _tap(tester, 'courier-create');
+      // Nothing filled in: the button waits, and says what is missing first.
+      FilledButton create() => tester.widget<FilledButton>(find.byKey(const ValueKey('courier-create')));
+      expect(create().onPressed, isNull);
+      expect(find.byKey(const ValueKey('courier-create-hint')), findsOneWidget);
       expect(find.text('Add where to pick up.'), findsOneWidget);
-      await tester.pumpAndSettle(const Duration(seconds: 5));
 
       await _tap(tester, 'courier-pickup');
       expect(find.text('Eco Majestic'), findsOneWidget);
@@ -405,6 +406,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(unreadableTexts(tester, find.byKey(const ValueKey('courier-form'))), isEmpty);
 
+      // Everything filled in: the button is ready and the hint is gone.
+      expect(create().onPressed, isNotNull);
+      expect(find.byKey(const ValueKey('courier-create-hint')), findsNothing);
       await _tap(tester, 'courier-create');
       final a = rides.call(#createRequest)!.namedArguments;
       expect(a[#service], 'Courier Car');

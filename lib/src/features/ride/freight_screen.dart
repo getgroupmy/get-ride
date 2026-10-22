@@ -429,19 +429,22 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     if (r != null && mounted) setState(() => _recipient = r.phone.trim().isEmpty ? null : r);
   }
 
+  /// What the form has filled in, as the button and [_create] check it.
+  FreightDraft get _draft => FreightDraft(
+    pickup: _pickup != null,
+    drop: _drop != null,
+    description: _description,
+    vehicle: _vehicle,
+    offer: _offer,
+    photoUploading: _uploading,
+    declaredValue: _declared,
+    declaredCap: _placeValues.declaredCap,
+    prohibitedAck: _ack,
+  );
+
   Future<void> _create() async {
     final a = _pickup, b = _drop, v = _vehicle;
-    final problem = freightDraftProblem(FreightDraft(
-      pickup: a != null,
-      drop: b != null,
-      description: _description,
-      vehicle: v,
-      offer: _offer,
-      photoUploading: _uploading,
-      declaredValue: _declared,
-      declaredCap: _placeValues.declaredCap,
-      prohibitedAck: _ack,
-    ));
+    final problem = freightDraftProblem(_draft);
     if (problem != null) return showInfo(context, problem);
     setState(() => _booking = true);
     try {
@@ -573,6 +576,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
   Widget _form(BuildContext context) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
+    final problem = freightDraftProblem(_draft);
     final v = _vehicle;
     final offered = _offered;
     final picked = _picked;
@@ -771,17 +775,29 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: FilledButton(
-              key: const ValueKey('freight-create'),
-              onPressed: _booking ? null : _create,
-              child: _booking
-                  ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Create request'),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                key: const ValueKey('freight-create'),
+                onPressed: _booking || problem != null ? null : _create,
+                child: _booking
+                    ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Create request'),
+              ),
             ),
-          ),
+            if (problem != null && !_booking)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  problem,
+                  key: const ValueKey('freight-create-hint'),
+                  textAlign: TextAlign.center,
+                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ),
+          ]),
         ),
       ),
     ]);

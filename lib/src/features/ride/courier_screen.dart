@@ -240,22 +240,22 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     builder: (_) => FreightProhibitedSheet(items: _config.prohibitedItems),
   );
 
+  /// What the form has filled in, as the button and [_create] check it.
+  CourierDraft get _draft => CourierDraft(
+    pickup: _pickup != null,
+    drop: _drop != null,
+    size: _size,
+    vehicle: _vehicle,
+    recipientPhone: _recipient?.phone ?? '',
+    declaredValue: _declared,
+    declaredCap: _placeValues.declaredCap,
+    prohibitedAck: _ack,
+    offer: _offer,
+  );
+
   Future<void> _create() async {
     final a = _pickup, b = _drop, v = _vehicle;
-    final problem = courierDraftProblem(
-      CourierDraft(
-        pickup: a != null,
-        drop: b != null,
-        size: _size,
-        vehicle: v,
-        recipientPhone: _recipient?.phone ?? '',
-        declaredValue: _declared,
-        declaredCap: _placeValues.declaredCap,
-        prohibitedAck: _ack,
-        offer: _offer,
-      ),
-      _config,
-    );
+    final problem = courierDraftProblem(_draft, _config);
     if (problem != null) return showInfo(context, problem);
     setState(() => _booking = true);
     try {
@@ -368,6 +368,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
     final config = _config;
+    final problem = courierDraftProblem(_draft, config);
     final vehicles = _vehicles;
     final v = _vehicle;
     final payments = ref.read(paymentChoicesProvider).value ?? builtInPayments;
@@ -587,17 +588,29 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: FilledButton(
-              key: const ValueKey('courier-create'),
-              onPressed: _booking ? null : _create,
-              child: _booking
-                  ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Find a courier'),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                key: const ValueKey('courier-create'),
+                onPressed: _booking || problem != null ? null : _create,
+                child: _booking
+                    ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Find a courier'),
+              ),
             ),
-          ),
+            if (problem != null && !_booking)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  problem,
+                  key: const ValueKey('courier-create-hint'),
+                  textAlign: TextAlign.center,
+                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ),
+          ]),
         ),
       ),
     ]);
