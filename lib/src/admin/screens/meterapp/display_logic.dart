@@ -75,7 +75,7 @@ const defaultUserMenuItems = <(String, String)>[
   // rest say "coming soon" until the admin links a page.
   ('courier', 'Courier'),
   ('buy-sell', 'Buy & Sell'),
-  ('grocery', 'Grocery'),
+  ('grocery', 'Groceries'),
   ('city-to-city', 'City to City'),
   ('food', 'Food'),
   ('pharmacy', 'Pharmacy'),
