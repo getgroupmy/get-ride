@@ -68,15 +68,6 @@ class _AppSideMenuHostState extends State<AppSideMenuHost> {
   );
 }
 
-/// The line above Log out (the rider's) and Sign out (the driver's).
-class SideMenuLogoutDivider extends StatelessWidget {
-  const SideMenuLogoutDivider({super.key});
-
-  @override
-  Widget build(BuildContext context) =>
-      const Divider(key: ValueKey('menu-logout-divider'), height: 9, indent: 16, endIndent: 16);
-}
-
 /// The rider side menu (Expo `MenuSideSheet`): the admin's rider menu,
 /// then the driver mode button.
 class RiderSideMenu extends ConsumerWidget {
@@ -98,7 +89,6 @@ class RiderSideMenu extends ConsumerWidget {
         for (final e in resolveSideMenu(blob, 'user'))
           if (riderMenuRowShows(e.id, scheduledRides: scheduled)) ...[
             // Log out set apart from the pages above it.
-            if (e.id == 'logout') const SideMenuLogoutDivider(),
             SideMenuTile(
               entry: e,
               plain: true,
@@ -157,7 +147,6 @@ class PartnerSideMenu extends ConsumerWidget {
             approved: approved,
             servicesPage: ref.watch(servicesPageAvailableProvider),
           )) ...[
-            if (e.id == 'sign-out') const SideMenuLogoutDivider(),
             SideMenuTile(
               entry: e,
               plain: true,

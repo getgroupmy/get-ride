@@ -69,21 +69,32 @@ List<MenuEntry> resolveSideMenu(Map<String, dynamic> settings, String menu) {
   ];
   // An item the saved order doesn't name (one added to the app after the
   // admin arranged the menu) goes after the item it follows by default
-  // when the admin placed that one; otherwise at the end, as before.
+  // when the admin placed that one, or when it was itself placed that way,
+  // so a run of new items stays together; otherwise at the end, as before.
   final placed = [...order];
   final next = <String, int>{};
+  final chained = <String>{};
   for (var i = 0; i < natural.length; i++) {
     final id = natural[i].id;
     if (placed.contains(id)) continue;
     final anchor = i == 0 ? null : natural[i - 1].id;
-    if (anchor == null || !order.contains(anchor)) {
+    if (anchor == null || !(order.contains(anchor) || chained.contains(anchor))) {
       placed.add(id);
       continue;
     }
     final at = next[anchor] ?? placed.indexOf(anchor) + 1;
     placed.insert(at, id);
+    chained.add(id);
     next[anchor] = at + 1;
     next.updateAll((k, v) => k != anchor && v >= at ? v + 1 : v);
+  }
+  // Log out / Sign out stays the last row unless the admin put it elsewhere.
+  for (final id in const ['logout', 'sign-out']) {
+    if (placed.contains(id) && (order.isEmpty || !order.contains(id) || order.last == id)) {
+      placed
+        ..remove(id)
+        ..add(id);
+    }
   }
   int rank(MenuEntry e) => placed.indexOf(e.id);
 

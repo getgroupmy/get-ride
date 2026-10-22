@@ -8,7 +8,6 @@ import 'package:get_ride/src/features/shell/app_shell.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:get_ride/src/features/shell/app_side_menu.dart';
 import 'package:get_ride/src/widgets/side_menu_host.dart';
-import 'package:get_ride/src/widgets/side_menu_tiles.dart' show SideMenuTile;
 import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
@@ -336,15 +335,9 @@ void routerTests() {
     await tester.tap(find.byKey(const ValueKey('side-menu-button')));
     await tester.pumpAndSettle();
     expect(find.byType(RiderSideMenu), findsOneWidget);
-    // Log out is set apart by a line right above it.
-    await tester.dragUntilVisible(
-      find.byKey(const ValueKey('menu-logout-divider')),
-      find.byType(RiderSideMenu),
-      const Offset(0, -200),
-    );
-    final line = tester.getRect(find.byKey(const ValueKey('menu-logout-divider')));
-    final logout = tester.getRect(find.ancestor(of: find.text('Logout'), matching: find.byType(SideMenuTile)).first);
-    expect(logout.top, closeTo(line.bottom, 1));
+    // No line above Log out (the owner took it out).
+    await tester.dragUntilVisible(find.text('Logout'), find.byType(RiderSideMenu), const Offset(0, -200));
+    expect(find.byKey(const ValueKey('menu-logout-divider')), findsNothing);
     await tester.tapAt(const Offset(380, 400));
     await tester.pumpAndSettle();
 
