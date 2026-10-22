@@ -247,11 +247,20 @@ object TripCardNotifier {
         } catch (e: Throwable) {
             return false
         }
+        // Asks to be a Live Update: the extra Android 16 reads (what
+        // NotificationCompat's setRequestPromotedOngoing writes), and the
+        // builder's own call where a later SDK has it.
+        builder.extras.putBoolean("android.requestPromotedOngoing", true)
         try {
             invokeOne(builder, "setRequestPromotedOngoing", true)
+        } catch (e: Throwable) {
+            // Android 16.0: the extra above does it.
+        }
+        try {
+            // The status bar chip: the minutes or the arrival time.
             if (compact != null) invokeOne(builder, "setShortCriticalText", compact)
         } catch (e: Throwable) {
-            // Shown as an ordinary progress card.
+            // Shown without the chip text.
         }
         return true
     }
