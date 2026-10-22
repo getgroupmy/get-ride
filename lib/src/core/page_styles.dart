@@ -133,9 +133,25 @@ const fareInfoSurface = 'sheet:fare-info';
 /// Admin → God View surface id.
 const godViewSurface = 'route:/admin/god-view';
 
+/// The Courier and Freight pages' surface ids.
+const courierSurface = 'page:ride.courier';
+const freightSurface = 'page:ride.freight';
+
+/// What the Courier and Freight pages' items can change. Left unset they
+/// look as the city ride does: the boxes in the route sheet's grey, the
+/// chosen card in the home vehicle bar's colour.
+const _deliveryTokens = <StyleToken>[
+  StyleToken.number('fieldHeight', 'Height', 58, min: 44, max: 80, group: 'Address and detail boxes'),
+  StyleToken.color('fieldColor', 'Background', group: 'Address and detail boxes'),
+  StyleToken.number('choiceRadius', 'Card curve', 12, min: 0, max: 30, group: 'Size and vehicle cards'),
+  StyleToken.color('chosenColor', 'Chosen card', group: 'Size and vehicle cards'),
+];
+
 /// Items inside particular surfaces, beyond what every surface of their kind
 /// has. Each is read where the item is drawn.
 const elementTokens = <String, List<StyleToken>>{
+  courierSurface: _deliveryTokens,
+  freightSurface: _deliveryTokens,
   homeSurface: [
     StyleToken.number('searchFontSize', 'Text size', 16, min: 12, max: 24, group: 'Search bar'),
     StyleToken.number('searchPadding', 'Height (padding)', 14, min: 6, max: 28, group: 'Search bar'),

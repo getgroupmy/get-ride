@@ -36,6 +36,10 @@ import 'package:get_ride/src/features/ride/courier_screen.dart';
 import 'package:get_ride/src/features/ride/freight_parts.dart';
 import 'package:get_ride/src/features/ride/freight_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/core/page_styles.dart';
+import 'package:get_ride/src/features/ride/delivery_look.dart';
+import 'package:get_ride/src/features/ride/place_search.dart' show routeSheetFill;
+import 'package:get_ride/src/widgets/page_style_host.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'text_contrast.dart';
@@ -338,6 +342,57 @@ void main() {
   });
 
   for (final b in Brightness.values) {
+
+    testWidgets('the page in the app\'s look, and the admin\'s App Page Settings (${b.name})', (tester) async {
+      final theme = appTheme(b);
+      Color? fill(Finder f) =>
+          tester.widget<Material>(find.descendant(of: f, matching: find.byType(Material)).first).color;
+      Material boxOf(String key) =>
+          tester.widget<Material>(find.descendant(of: find.byKey(ValueKey(key)), matching: find.byType(Material)).first);
+
+      // Nothing set: the theme's button, the route sheet's grey boxes, the
+      // home vehicle bar's chosen colour.
+      await _pump(tester, const CourierScreen(), _overrides(_Rides()), b);
+      final button = find.byKey(const ValueKey('courier-create'));
+      final style = tester.widget<FilledButton>(button).style;
+      expect(style?.backgroundColor, isNull, reason: 'no colour of its own: the theme\'s');
+      expect(style?.foregroundColor, isNull);
+      expect(tester.getSize(button).height, 52, reason: 'the theme\'s button height');
+      final ctx = tester.element(find.byKey(const ValueKey('courier-pickup')));
+      expect(boxOf('courier-pickup').color, routeSheetFill(Theme.of(ctx)));
+      final look = DeliveryLook.of(ctx);
+      expect(look.chosen, b == Brightness.dark ? const Color(0xFF2B2E8C) : const Color(0xFFD8EEFB));
+      expect(Theme.of(ctx).brightness, b);
+      expect(fill(button), isNot(theme.colorScheme.primary), reason: 'greyed out while the form is empty');
+      // The chosen size: the chosen colour, its words readable on it.
+      expect(boxOf('courier-size-S').color, look.chosen);
+      expect(unreadableTexts(tester, find.byKey(const ValueKey('courier-form'))), isEmpty);
+
+      // The admin's values for the page.
+      const field = Color(0xFF334455), chosen = Color(0xFF225588);
+      await _pump(
+        tester,
+        PageStyleScope(
+          styles: PageStyles({
+            'page:ride.courier': {
+              'fieldColor': styleHex(field),
+              'fieldColor.dark': styleHex(field),
+              'chosenColor': styleHex(chosen),
+              'chosenColor.dark': styleHex(chosen),
+              'buttonHeight': 60,
+              'inputRadius': 20,
+            },
+          }),
+          child: SurfaceFrame(id: 'page:ride.courier', child: const CourierScreen()),
+        ),
+        _overrides(_Rides()),
+        b,
+      );
+      expect(tester.getSize(find.byKey(const ValueKey('courier-create'))).height, 60);
+      expect(boxOf('courier-pickup').color, field);
+      expect(boxOf('courier-pickup').borderRadius, BorderRadius.circular(20));
+      expect(DeliveryLook.of(tester.element(find.byKey(const ValueKey('courier-pickup')))).chosen, chosen);
+    });
     testWidgets('the Courier page: fill it in, size, vehicle, recipient pays, find a courier (${b.name})', (tester) async {
       final rides = _Rides();
       await _pump(tester, const CourierScreen(), _overrides(rides), b);
@@ -408,6 +463,8 @@ void main() {
 
       // Everything filled in: the button is ready and the hint is gone.
       expect(create().onPressed, isNotNull);
+      final ready = find.descendant(of: find.byKey(const ValueKey('courier-create')), matching: find.byType(Material));
+      expect(tester.widget<Material>(ready.first).color, appTheme(b).colorScheme.primary, reason: 'the theme\'s primary');
       expect(find.byKey(const ValueKey('courier-create-hint')), findsNothing);
       await _tap(tester, 'courier-create');
       final a = rides.call(#createRequest)!.namedArguments;

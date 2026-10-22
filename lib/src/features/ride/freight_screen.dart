@@ -49,6 +49,7 @@ import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart' show ListSearchFilter, searchSelectMatches;
 import 'confirm_parts.dart' show paymentLook;
 import 'courier_parts.dart' show CourierCodeCard;
+import 'delivery_look.dart';
 import 'freight_parts.dart';
 import 'map_place_picker.dart';
 import 'pickup_time_sheet.dart';
@@ -584,221 +585,201 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     final payments = ref.read(paymentChoicesProvider).value ?? builtInPayments;
     final payment = resolvePayment(_payment, payments);
     final added = optionChargesTotal(charges);
-    Widget label(String text, {Widget? trailing}) => Padding(
-      padding: const EdgeInsets.only(top: 12, bottom: 6),
-      child: Row(children: [
-        Text(text, style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
-        ?trailing,
-      ]),
-    );
+    final look = DeliveryLook.of(context);
+    Widget label(String text, {Widget? trailing}) => DeliverySectionLabel(text, trailing: trailing);
     return Column(children: [
       Expanded(
-        child: ListView(
-          key: const ValueKey('freight-form'),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            FreightField(
-              key: const ValueKey('freight-pickup'),
-              label: 'Pickup location',
-              value: _pickup == null ? null : freightAddressLabel(_pickup!),
-              onTap: () => _address(pickup: true),
-            ),
-            const SizedBox(height: 8),
-            FreightField(
-              key: const ValueKey('freight-drop'),
-              label: 'Destination',
-              value: _drop == null ? null : freightAddressLabel(_drop!),
-              onTap: () => _address(pickup: false),
-            ),
-            label('Pickup time'),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final k in [FreightPickupTime.soon, FreightPickupTime.withinHour])
-                ChoiceChip(
-                  key: ValueKey('freight-time-${k.name}'),
-                  label: Text(k.label),
-                  selected: _time == k,
-                  onSelected: (_) => setState(() => _time = k),
-                ),
-              ChoiceChip(
-                key: const ValueKey('freight-time-scheduled'),
-                label: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text(_time == FreightPickupTime.scheduled && _scheduleAt != null
-                      ? pickupLabel(_scheduleAt!)
-                      : FreightPickupTime.scheduled.label),
-                  const Icon(Icons.expand_more, size: 18),
-                ]),
-                selected: _time == FreightPickupTime.scheduled,
-                onSelected: (_) => _schedule(),
+        child: DeliveryChoiceTheme(
+          child: ListView(
+            key: const ValueKey('freight-form'),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            children: [
+              // The route sheet's From over To.
+              FreightField(
+                key: const ValueKey('freight-pickup'),
+                label: 'Pickup location',
+                value: _pickup == null ? null : freightAddressLabel(_pickup!),
+                leading: const Icon(Icons.emoji_people, semanticLabel: 'Pickup'),
+                onTap: () => _address(pickup: true),
               ),
-            ]),
-            const SizedBox(height: 12),
-            FreightField(
-              key: const ValueKey('freight-description'),
-              label: 'Description of the cargo',
-              value: _description.isEmpty ? null : _description,
-              onTap: _describe,
-            ),
-            const SizedBox(height: 8),
-            FreightField(
-              key: const ValueKey('freight-vehicle'),
-              label: 'Vehicle size',
-              value: v?.name,
-              placeholder: 'No vehicle sizes yet',
-              leading: v == null ? null : FreightVehicleImage(vehicle: v, size: 32),
-              onTap: _vehicles.isEmpty ? null : _chooseVehicle,
-            ),
-            if (offered.isNotEmpty) ...[
-              label(
-                'Options',
-                trailing: IconButton(
-                  key: const ValueKey('freight-options-info'),
-                  tooltip: 'What the options mean',
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(Icons.info_outline, size: 20, color: t.colorScheme.primary),
-                  onPressed: _explainOptions,
-                ),
+              const SizedBox(height: 12),
+              FreightField(
+                key: const ValueKey('freight-drop'),
+                label: 'Destination',
+                value: _drop == null ? null : freightAddressLabel(_drop!),
+                leading: const Icon(Icons.flag, semanticLabel: 'Destination'),
+                onTap: () => _address(pickup: false),
               ),
+              label('Pickup time'),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final k in offered)
-                  FilterChip(
-                    key: ValueKey('freight-option-${k.id}'),
-                    avatar: Icon(freightOptionIcon(k), size: 18),
-                    label: Text(_config.labelOf(k)),
-                    selected: picked.contains(k),
-                    onSelected: (_) => _toggle(k),
+                for (final k in [FreightPickupTime.soon, FreightPickupTime.withinHour])
+                  ChoiceChip(
+                    key: ValueKey('freight-time-${k.name}'),
+                    label: Text(k.label),
+                    selected: _time == k,
+                    onSelected: (_) => setState(() => _time = k),
+                  ),
+                ChoiceChip(
+                  key: const ValueKey('freight-time-scheduled'),
+                  label: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text(_time == FreightPickupTime.scheduled && _scheduleAt != null
+                        ? pickupLabel(_scheduleAt!)
+                        : FreightPickupTime.scheduled.label),
+                    const Icon(Icons.expand_more, size: 18),
+                  ]),
+                  selected: _time == FreightPickupTime.scheduled,
+                  onSelected: (_) => _schedule(),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              FreightField(
+                key: const ValueKey('freight-description'),
+                label: 'Description of the cargo',
+                value: _description.isEmpty ? null : _description,
+                onTap: _describe,
+              ),
+              const SizedBox(height: 8),
+              FreightField(
+                key: const ValueKey('freight-vehicle'),
+                label: 'Vehicle size',
+                value: v?.name,
+                placeholder: 'No vehicle sizes yet',
+                leading: v == null ? null : FreightVehicleImage(vehicle: v, size: 32),
+                onTap: _vehicles.isEmpty ? null : _chooseVehicle,
+              ),
+              if (offered.isNotEmpty) ...[
+                label(
+                  'Options',
+                  trailing: IconButton(
+                    key: const ValueKey('freight-options-info'),
+                    tooltip: 'What the options mean',
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(Icons.info_outline, size: 20, color: t.colorScheme.primary),
+                    onPressed: _explainOptions,
+                  ),
+                ),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  for (final k in offered)
+                    FilterChip(
+                      key: ValueKey('freight-option-${k.id}'),
+                      avatar: Icon(freightOptionIcon(k), size: 18),
+                      label: Text(_config.labelOf(k)),
+                      selected: picked.contains(k),
+                      onSelected: (_) => _toggle(k),
+                    ),
+                ]),
+              ],
+              const SizedBox(height: 12),
+              FreightField(
+                key: const ValueKey('freight-declared'),
+                label: 'Value of your items',
+                value: _declared == null ? null : _money(_declared!),
+                onTap: _declare,
+              ),
+              CheckboxListTile(
+                key: const ValueKey('freight-prohibited-ack'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _ack,
+                onChanged: (v) => setState(() => _ack = v ?? false),
+                title: const Text('My cargo has none of the prohibited items'),
+                subtitle: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    key: const ValueKey('freight-prohibited-list'),
+                    style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                    onPressed: _showProhibited,
+                    child: const Text('See the prohibited items'),
+                  ),
+                ),
+              ),
+              FreightField(
+                key: const ValueKey('freight-recipient'),
+                label: 'Recipient (optional)',
+                value: _recipient == null
+                    ? null
+                    : [if (_recipient!.name.trim().isNotEmpty) _recipient!.name.trim(), _recipient!.phone.trim()].join(' · '),
+                onTap: _chooseRecipient,
+              ),
+              label('Payment'),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                for (final p in payments)
+                  ChoiceChip(
+                    key: ValueKey('freight-payment-${p.value}'),
+                    avatar: Icon(paymentLook(p.kind).$1, size: 18),
+                    label: Text(p.label),
+                    selected: payment == p.value,
+                    onSelected: (_) => setState(() => _payment = p.value),
                   ),
               ]),
-            ],
-            const SizedBox(height: 12),
-            FreightField(
-              key: const ValueKey('freight-declared'),
-              label: 'Value of your items',
-              value: _declared == null ? null : _money(_declared!),
-              onTap: _declare,
-            ),
-            CheckboxListTile(
-              key: const ValueKey('freight-prohibited-ack'),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: _ack,
-              onChanged: (v) => setState(() => _ack = v ?? false),
-              title: const Text('My cargo has none of the prohibited items'),
-              subtitle: Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(
-                  key: const ValueKey('freight-prohibited-list'),
-                  style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
-                  onPressed: _showProhibited,
-                  child: const Text('See the prohibited items'),
-                ),
-              ),
-            ),
-            FreightField(
-              key: const ValueKey('freight-recipient'),
-              label: 'Recipient (optional)',
-              value: _recipient == null
-                  ? null
-                  : [if (_recipient!.name.trim().isNotEmpty) _recipient!.name.trim(), _recipient!.phone.trim()].join(' · '),
-              onTap: _chooseRecipient,
-            ),
-            label('Payment'),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final p in payments)
-                ChoiceChip(
-                  key: ValueKey('freight-payment-${p.value}'),
-                  avatar: Icon(paymentLook(p.kind).$1, size: 18),
-                  label: Text(p.label),
-                  selected: payment == p.value,
-                  onSelected: (_) => setState(() => _payment = p.value),
-                ),
-            ]),
-            label('Picture of your cargo'),
-            Row(children: [
-              Material(
-                color: t.colorScheme.surfaceContainerHighest,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  key: const ValueKey('freight-photo'),
-                  onTap: _photoPick,
-                  child: SizedBox.square(
-                    dimension: 72,
-                    child: _photo == null
-                        ? Icon(Icons.add_a_photo_outlined, color: muted, size: 28)
-                        : Stack(fit: StackFit.expand, children: [
-                            Image.memory(_photo!, fit: BoxFit.cover),
-                            if (_uploading) const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                          ]),
+              label('Picture of your cargo'),
+              Row(children: [
+                Material(
+                  color: look.field,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(look.fieldRadius)),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    key: const ValueKey('freight-photo'),
+                    onTap: _photoPick,
+                    child: SizedBox.square(
+                      dimension: 72,
+                      child: _photo == null
+                          ? Icon(Icons.add_a_photo_outlined, color: look.mutedOnField, size: 28)
+                          : Stack(fit: StackFit.expand, children: [
+                              Image.memory(_photo!, fit: BoxFit.cover),
+                              if (_uploading) const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                            ]),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _photo == null ? 'Optional. Drivers see it once they accept.' : (_uploading ? 'Uploading...' : 'Added'),
-                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _photo == null ? 'Optional. Drivers see it once they accept.' : (_uploading ? 'Uploading...' : 'Added'),
+                    style: t.textTheme.bodySmall?.copyWith(color: muted),
+                  ),
                 ),
+                if (_photo != null && !_uploading)
+                  IconButton(
+                    key: const ValueKey('freight-photo-remove'),
+                    tooltip: 'Remove the photo',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => setState(() {
+                      _photo = null;
+                      _photoPath = null;
+                    }),
+                  ),
+              ]),
+              const SizedBox(height: 12),
+              FreightField(
+                key: const ValueKey('freight-offer'),
+                label: 'Your offer',
+                value: _offer == null ? null : _money(_offer!),
+                placeholder: 'Offer your fare',
+                emphasis: true,
+                onTap: _offerFare,
               ),
-              if (_photo != null && !_uploading)
-                IconButton(
-                  key: const ValueKey('freight-photo-remove'),
-                  tooltip: 'Remove the photo',
-                  icon: const Icon(Icons.close),
-                  onPressed: () => setState(() {
-                    _photo = null;
-                    _photoPath = null;
-                  }),
+              if (_offer != null && added > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 4),
+                  child: Text(
+                    '${[for (final c in charges) '${c.name} ${_money(c.amount)}'].join(' · ')}. '
+                    'Total ${_money(freightFare(_offer!, charges))}',
+                    key: const ValueKey('freight-total'),
+                    style: t.textTheme.bodySmall?.copyWith(color: muted),
+                  ),
                 ),
-            ]),
-            const SizedBox(height: 12),
-            FreightField(
-              key: const ValueKey('freight-offer'),
-              label: 'Your offer',
-              value: _offer == null ? null : _money(_offer!),
-              placeholder: 'Offer your fare',
-              onTap: _offerFare,
-            ),
-            if (_offer != null && added > 0)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, left: 4),
-                child: Text(
-                  '${[for (final c in charges) '${c.name} ${_money(c.amount)}'].join(' · ')}. '
-                  'Total ${_money(freightFare(_offer!, charges))}',
-                  key: const ValueKey('freight-total'),
-                  style: t.textTheme.bodySmall?.copyWith(color: muted),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
-      SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton(
-                key: const ValueKey('freight-create'),
-                onPressed: _booking || problem != null ? null : _create,
-                child: _booking
-                    ? const SizedBox.square(dimension: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Create request'),
-              ),
-            ),
-            if (problem != null && !_booking)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  problem,
-                  key: const ValueKey('freight-create-hint'),
-                  textAlign: TextAlign.center,
-                  style: t.textTheme.bodySmall?.copyWith(color: muted),
-                ),
-              ),
-          ]),
-        ),
+      DeliveryFooter(
+        buttonKey: const ValueKey('freight-create'),
+        hintKey: const ValueKey('freight-create-hint'),
+        label: 'Create request',
+        busy: _booking,
+        problem: problem,
+        onPressed: _create,
       ),
     ]);
   }
@@ -807,37 +788,66 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
 /// One row of the form: its label over the value (or the label alone as a
 /// placeholder), and a chevron.
 class FreightField extends StatelessWidget {
-  const FreightField({super.key, required this.label, this.value, this.placeholder, this.leading, this.onTap});
+  const FreightField({
+    super.key,
+    required this.label,
+    this.value,
+    this.placeholder,
+    this.leading,
+    this.onTap,
+    this.emphasis = false,
+  });
   final String label;
   final String? value;
   final String? placeholder;
   final Widget? leading;
   final VoidCallback? onTap;
 
+  /// The value large and bold, as the offered fare reads.
+  final bool emphasis;
+
   @override
   Widget build(BuildContext context) {
+    // The route sheet's From / To row: its grey box, a dark icon, the label
+    // small over the value, the label alone (in grey) while empty.
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    final look = DeliveryLook.of(context);
+    final radius = BorderRadius.circular(look.fieldRadius);
+    final big = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400, color: look.onField);
     return Material(
-      color: t.colorScheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(12),
+      color: look.field,
+      borderRadius: radius,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: radius,
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(children: [
-            if (leading != null) ...[leading!, const SizedBox(width: 10)],
-            Expanded(
-              child: value == null
-                  ? Text(placeholder ?? label, style: t.textTheme.bodyLarge?.copyWith(color: muted))
-                  : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(label, style: t.textTheme.bodySmall?.copyWith(color: muted)),
-                      Text(value!, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.textTheme.bodyLarge),
-                    ]),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: look.fieldHeight),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            child: IconTheme.merge(
+              data: IconThemeData(color: look.onField, size: 26),
+              child: Row(children: [
+                if (leading != null) ...[leading!, const SizedBox(width: 12)],
+                Expanded(
+                  child: value == null
+                      ? Text(placeholder ?? label, style: big?.copyWith(color: look.mutedOnField))
+                      : Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                          Text(
+                            label,
+                            style: t.textTheme.bodySmall?.copyWith(fontSize: 13, height: 1.2, color: look.mutedOnField),
+                          ),
+                          Text(
+                            value!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: emphasis ? big?.copyWith(fontSize: 22, fontWeight: FontWeight.w700) : big,
+                          ),
+                        ]),
+                ),
+                Icon(Icons.chevron_right, color: look.mutedOnField, size: 24),
+              ]),
             ),
-            Icon(Icons.chevron_right, color: muted),
-          ]),
+          ),
         ),
       ),
     );
@@ -1016,7 +1026,9 @@ class _VehicleSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final muted = t.colorScheme.onSurfaceVariant;
+    // The home vehicle bar's chosen card.
+    final look = DeliveryLook.of(context);
+    final radius = BorderRadius.circular(look.choiceRadius);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -1032,12 +1044,13 @@ class _VehicleSheet extends StatelessWidget {
                   if (q.isEmpty || searchSelectMatches(v.name, q))
                     () {
                       final off = closedOnly && !v.closedBody;
+                      final on = v.id == selected;
                       return Material(
-                        color: v.id == selected ? t.colorScheme.primaryContainer : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
+                        color: look.cardFill(on),
+                        borderRadius: radius,
                         child: InkWell(
                           key: ValueKey('freight-vehicle-${v.id}'),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: radius,
                           onTap: off ? null : () => Navigator.pop(context, v.id),
                           child: Opacity(
                             opacity: off ? 0.5 : 1,
@@ -1048,9 +1061,16 @@ class _VehicleSheet extends StatelessWidget {
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                    Text(v.name, style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+                                    Text(
+                                      v.name,
+                                      style: t.textTheme.titleSmall
+                                          ?.copyWith(fontWeight: FontWeight.w700, color: look.cardInk(t, on)),
+                                    ),
                                     if (v.subtitle.isNotEmpty)
-                                      Text(v.subtitle, style: t.textTheme.bodySmall?.copyWith(color: muted)),
+                                      Text(
+                                        v.subtitle,
+                                        style: t.textTheme.bodySmall?.copyWith(color: look.cardMuted(t, on)),
+                                      ),
                                     Wrap(spacing: 6, runSpacing: 4, children: [
                                       if (v.sizeText case final size?) _Tag(size),
                                       if (v.closedBody) const _Tag('Closed body'),
