@@ -207,7 +207,22 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
             ),
             const SizedBox(height: 12),
             FormColumns(children: [
-              PeopleField(controller: _nationality, label: 'Nationality', hint: 'Malaysian', icon: Icons.public, enabled: canEdit),
+              // A title over it like Birth date's, so the two line up side by side.
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Text('Nationality',
+                      style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+                  const SizedBox(height: 10),
+                  PeopleField(
+                      key: const ValueKey('user-nationality'),
+                      controller: _nationality,
+                      label: 'Country',
+                      hint: 'Malaysian',
+                      icon: Icons.public,
+                      enabled: canEdit),
+                ]),
+              ),
               DateBoxesField(
                   key: const ValueKey('user-birth-date'),
                   label: 'Birth date',
