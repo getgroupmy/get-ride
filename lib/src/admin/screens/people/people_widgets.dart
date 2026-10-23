@@ -13,6 +13,8 @@ import '../../../widgets/loading_skeleton.dart';
 import '../../widgets/admin_widgets.dart';
 import 'doc_pdf.dart';
 import 'people_data.dart';
+import 'partner_live.dart';
+import 'partner_live_card.dart' show PartnerLivePill;
 import 'people_logic.dart';
 import '../../../widgets/net_image.dart';
 import '../../../data/live_tables.dart';
@@ -448,11 +450,21 @@ class VehicleSelector extends StatefulWidget {
     required this.selected,
     required this.onChanged,
     this.enabled = true,
+    this.isOwn,
+    this.holders,
   });
   final List<Map<String, dynamic>> vehicles;
   final Map<String, dynamic>? selected;
   final ValueChanged<Map<String, dynamic>?> onChanged;
   final bool enabled;
+
+  /// The partner's own vehicles: with no search only these are listed; a
+  /// search finds anyone's. Null lists everything, as before.
+  final bool Function(Map<String, dynamic>)? isOwn;
+
+  /// Who else has each vehicle (by vehicle id) and what they are doing: a
+  /// vehicle whose other driver is online or on a job can't be taken.
+  final Map<String, List<VehicleHolder>>? holders;
 
   @override
   State<VehicleSelector> createState() => _VehicleSelectorState();
@@ -461,14 +473,41 @@ class VehicleSelector extends StatefulWidget {
 class _VehicleSelectorState extends State<VehicleSelector> {
   String _q = '';
 
-  Widget _tile(Map<String, dynamic> v, {Widget? trailing, VoidCallback? onTap}) => ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const CircleAvatar(child: Icon(Icons.directions_car_outlined)),
-        title: Text('${v['make'] ?? ''} ${v['model'] ?? ''}'.trim()),
-        subtitle: Text('${v['plate'] ?? ''} • ${v['owner_name'] ?? ''}'),
-        trailing: trailing,
-        onTap: onTap,
-      );
+  Widget _tile(Map<String, dynamic> v, {Widget? trailing, VoidCallback? onTap}) {
+    final holders = widget.holders?['${v['id']}'];
+    final busy = holders?.where((h) => h.status.busy).firstOrNull;
+    final own = widget.isOwn?.call(v);
+    final sub = '${v['plate'] ?? ''} • ${v['owner_name'] ?? ''}';
+    return ListTile(
+      key: ValueKey('vehicle-${v['id']}'),
+      contentPadding: EdgeInsets.zero,
+      leading: const CircleAvatar(child: Icon(Icons.directions_car_outlined)),
+      title: Text('${v['make'] ?? ''} ${v['model'] ?? ''}'.trim()),
+      subtitle: holders == null && widget.holders == null
+          ? Text(sub)
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(sub),
+              const SizedBox(height: 4),
+              PartnerLivePill(
+                small: true,
+                status: busy?.status ?? (holders?.isNotEmpty == true ? PartnerLive.offline : PartnerLive.online),
+                text: vehicleUseLine(holders ?? const []),
+              ),
+              if (busy != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text("Can't link while ${busy.name} is ${busy.status.label.toLowerCase()}. Ask them to go offline first.",
+                      style: Theme.of(context).textTheme.bodySmall),
+                ),
+            ]),
+      trailing: trailing ??
+          (own == null
+              ? null
+              : Text(own ? 'Own' : 'Other owner', style: Theme.of(context).textTheme.labelSmall)),
+      enabled: onTap == null || busy == null,
+      onTap: busy == null ? onTap : null,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -486,7 +525,8 @@ class _VehicleSelectorState extends State<VehicleSelector> {
         ),
       );
     }
-    final list = searchVehicles(widget.vehicles, _q);
+    final own = widget.isOwn;
+    final list = own == null ? searchVehicles(widget.vehicles, _q) : vehiclesToShow(widget.vehicles, _q, isOwn: own);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       TextField(
         decoration: const InputDecoration(
@@ -494,8 +534,15 @@ class _VehicleSelectorState extends State<VehicleSelector> {
         onChanged: (v) => setState(() => _q = v),
       ),
       const SizedBox(height: 6),
+      if (own != null)
+        Text(_q.trim().isEmpty ? "This partner's own vehicles. Type to search everyone's." : 'Search results across all vehicles',
+            style: Theme.of(context).textTheme.bodySmall),
       if (list.isEmpty)
-        const Padding(padding: EdgeInsets.all(12), child: Text('No matching vehicles. Tap "Add new" to register one.'))
+        Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text(own != null && _q.trim().isEmpty
+                ? 'This partner has no vehicles yet. Search for one, or tap "Add new" to register one.'
+                : 'No matching vehicles. Tap "Add new" to register one.'))
       else
         for (final v in list) _tile(v, onTap: widget.enabled ? () => widget.onChanged(v) : null),
     ]);
