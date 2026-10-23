@@ -231,7 +231,10 @@ select pg_temp.check(pg_temp.refused($q$select public.admin_phone_change_request
 reset role;
 do $$
 declare
-  b text := (select body from public.sms_outbox where to_phone = '+60128209999');
+  -- The queue row is masked (0183); the gateway sends the real text.
+  b text := (select s.body from public.sms_otp_secret s
+               join public.sms_outbox o on o.id = s.outbox_id
+              where o.to_phone = '+60128209999');
   token text := substring(b from 'number/([0-9a-f]+)');
   l jsonb;
   c jsonb;
@@ -240,6 +243,8 @@ begin
   perform pg_temp.check((select channel from public.sms_outbox where to_phone = '+60128209999') = 'otp',
                         'queued as a code, masked for admins');
   perform pg_temp.check(length(token) = 36, 'the token');
+  perform pg_temp.check((select body from public.sms_outbox where to_phone = '+60128209999') !~ '[0-9]',
+                        'the admins'' copy has no digits');
   perform pg_temp.as_anon();
   set local role anon;
   l := public.phone_change_lookup(token);
