@@ -38,7 +38,9 @@ import kotlin.concurrent.thread
  * session and no Flutter engine. Android forgets the request on a reboot or
  * an app update; the receiver asks again then. A "Still there?" ping
  * (LocationPing.kt, migration 0276) takes one fix and sends it whatever the
- * rule says ([fixNow]). Only framework APIs: no new library.
+ * rule says ([fixNow]), then the phone's details (PhoneDetailsReport,
+ * 0282); God View's "Live now" streams through LiveLocation.kt. Only
+ * framework APIs: no new library.
  */
 object BackgroundLocation {
     private const val PREFS = "get_ride_background_location"
@@ -67,6 +69,8 @@ object BackgroundLocation {
                     disarm(context)
                     result.success(null)
                 }
+                // "Live now" (0282), from the open app that found a share on.
+                "live" -> result.success(LiveLocation.start(context, call.argument<Number>("until")?.toLong() ?: 0L))
                 else -> result.notImplemented()
             }
         }
@@ -279,6 +283,36 @@ object BackgroundLocation {
             } finally {
                 done(sent)
             }
+        }
+    }
+
+    /** This install's key, while armed. */
+    fun key(context: Context): String? = prefs(context).getString("key", null)
+
+    /**
+     * Posts [body] to the database function [fn] with the project and the
+     * public key the app armed this with; the answer, or null. Blocks: off
+     * the main thread only.
+     */
+    fun rpc(context: Context, fn: String, body: JSONObject): String? {
+        val p = prefs(context)
+        val url = p.getString("url", null) ?: return null
+        val anonKey = p.getString("anonKey", null) ?: return null
+        val conn = URL(url.trimEnd('/') + "/rest/v1/rpc/" + fn).openConnection() as HttpURLConnection
+        return try {
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 15000
+            conn.readTimeout = 15000
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("apikey", anonKey)
+            if (anonKey.startsWith("eyJ")) conn.setRequestProperty("Authorization", "Bearer $anonKey")
+            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            if (conn.responseCode in 200..299) conn.inputStream.bufferedReader().use { it.readText() } else null
+        } catch (e: Exception) {
+            null
+        } finally {
+            conn.disconnect()
         }
     }
 

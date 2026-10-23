@@ -22,16 +22,24 @@ import android.os.Build
  * only its own type (TripCardPushReceiver reads trip_card). A broadcast has
  * seconds; a fix and a post can take longer, so the receiver only starts
  * [LocationPingJob] (expedited on Android 12+, which a high-priority push
- * allows, so it runs at once also in Doze).
+ * allows, so it runs at once also in Doze). The job also sends the phone's
+ * details (0282). A `location_live` push (God View's "Live now", 0282)
+ * starts LiveLocation's foreground service instead, on screen or not; if
+ * Android refuses it, one fix as for a ping.
  */
 class LocationPingReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val extras = intent.extras ?: return
-        if (extras.getString("type") != "location_ping") return
-        // On screen, the app checks in itself.
-        if (TripCardNotifier.appVisible) return
+        val type = extras.getString("type")
+        if (type != "location_ping" && type != "location_live") return
         val app = context.applicationContext
         if (!BackgroundLocation.ready(app)) return
+        if (type == "location_live") {
+            if (!LiveLocation.start(app, 0L) && !TripCardNotifier.appVisible) LocationPingJob.start(app)
+            return
+        }
+        // On screen, the app checks in itself.
+        if (TripCardNotifier.appVisible) return
         LocationPingJob.start(app)
     }
 }
@@ -72,11 +80,12 @@ class LocationPingJob : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         val app = applicationContext
         if (!BackgroundLocation.ready(app)) return false
+        val finish = { PhoneDetailsReport.send(app) { jobFinished(params, false) } }
         BackgroundLocation.fixNow(app, FIX_WAIT_MS) { fix ->
             if (fix == null) {
-                jobFinished(params, false)
+                finish()
             } else {
-                BackgroundLocation.onFix(app, fix, true) { jobFinished(params, false) }
+                BackgroundLocation.onFix(app, fix, true) { finish() }
             }
         }
         return true

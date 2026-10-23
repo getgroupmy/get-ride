@@ -191,6 +191,13 @@ class SessionTracker {
     await _log(SessionEvent.appRelaunch);
   }
 
+  /// God View asked this phone for fresh details (a `location_ping` or
+  /// `location_live` push reaching the open app, migration 0282).
+  Future<void> pinged() async {
+    if (!_launched || _userId == null) return;
+    await _log(SessionEvent.ping);
+  }
+
   /// The signed-in account changed. A new account logs a `login` row and
   /// starts location tracking; signing out stops it.
   Future<void> userChanged(String? userId, {String? phone}) async {

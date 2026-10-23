@@ -39,6 +39,7 @@ import 'data/app_version_repository.dart' show appUpdateProvider, recordAppVersi
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
 import 'data/branding_cache.dart';
+import 'data/live_share.dart';
 import 'data/live_tables.dart';
 import 'data/messaging_repository.dart';
 import 'data/background_location.dart';
@@ -102,6 +103,7 @@ import 'features/ride/trip_receipt_screen.dart';
 import 'features/ride/trips_screen.dart';
 import 'features/settings/app_icon_screen.dart';
 import 'features/settings/change_phone_screen.dart';
+import 'features/settings/confirm_number_screen.dart';
 import 'features/settings/auth_diagnostics_screen.dart';
 import 'features/settings/change_pin_screen.dart';
 import 'features/settings/delete_account_screen.dart';
@@ -263,6 +265,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loc == '/diagnostics') return null;
       // A shared ride is for whoever was sent the link, account or not.
       if (loc.startsWith('/share/')) return null;
+      // So is confirming a new number support set: the link in the SMS (0282).
+      if (loc.startsWith('/number/')) return null;
       // So is checking a statement's QR code: whoever was handed the statement.
       if (loc.startsWith('/verify/')) return null;
       // So is installing a test build: the tester has no account yet.
@@ -555,6 +559,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, st) => SharedRideScreen(token: st.pathParameters['token']!),
       ),
       GoRoute(
+        path: '/number/:token',
+        builder: (_, st) => ConfirmNumberScreen(token: st.pathParameters['token']!),
+      ),
+      GoRoute(
         path: '/verify/:token',
         builder: (_, st) => StatementVerifyScreen(token: st.pathParameters['token']!),
       ),
@@ -677,6 +685,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     // looks for the trip it may now show.
     _subs.add(push.received.listen((data) {
       if (data['request_id'] != null) unawaited(ref.read(tripCardControllerProvider.notifier).refresh());
+      // God View asked for fresh phone details (0282); the closed app answers natively.
+      if (data['type'] == 'location_ping' || data['type'] == 'location_live') unawaited(_tracker?.pinged());
     }));
     _startNotificationsWarning(push);
     // Notifications are asked for at launch, as soon as the splash is gone.
@@ -1105,7 +1115,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
                                   child: RouteTitle(
                                     location: () => router.routerDelegate.currentConfiguration.uri.path,
                                     listenable: router.routerDelegate,
-                                    child: child ?? const SizedBox.shrink(),
+                                    // "Shared live with support" while God View streams them (0282).
+                                    child: LiveShareNotice(child: child ?? const SizedBox.shrink()),
                                   ),
                                 ),
                               ),

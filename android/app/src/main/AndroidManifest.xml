@@ -391,6 +391,14 @@
             android:name=".LocationPingJob"
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE"/>
+        <!-- God View's "Live now" (LiveLocation.kt, migration 0282): the
+             position every 5 s while support streams it, with the person's
+             notification counting down. Started by a location_live push or
+             the open app; only with location allowed all the time. -->
+        <service
+            android:name=".LiveLocationService"
+            android:exported="false"
+            android:foregroundServiceType="location"/>
         <!-- Google's own map: the key the release build carries (build.gradle.kts). -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"

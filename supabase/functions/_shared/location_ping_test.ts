@@ -11,10 +11,12 @@ import type { PushAuthDeps } from "./push_auth.ts";
 import {
   eachLimited,
   handleLocationPing,
+  LOCATION_LIVE,
   LOCATION_PING,
   type LocationPingDeps,
   locationPingMessage,
   type PingTarget,
+  pingTypeOf,
   tokenIdsOf,
 } from "./location_ping.ts";
 
@@ -45,6 +47,27 @@ Deno.test("Android: data only, high priority, one collapse key", () => {
   assertEquals(android, { priority: "HIGH", ttl: "300s", collapse_key: LOCATION_PING });
   assert(!("notification" in m.message));
   assert(!("apns" in m.message));
+});
+
+Deno.test("Live now (0282): location_live, the same silent push with a minute to live", () => {
+  assertEquals(pingTypeOf("live"), LOCATION_LIVE);
+  assertEquals(pingTypeOf("manual"), LOCATION_PING);
+  assertEquals(pingTypeOf(undefined), LOCATION_PING);
+  const ios = locationPingMessage({ token: "ios-1", platform: "ios" }, now, LOCATION_LIVE)!;
+  assertEquals(ios.message.data, { type: LOCATION_LIVE });
+  const apns = (ios.message as { apns: { headers: Record<string, string>; payload: unknown } }).apns;
+  assertEquals(apns.headers["apns-push-type"], "background");
+  assertEquals(apns.headers["apns-priority"], "5");
+  assertEquals(apns.headers["apns-expiration"], String(Math.floor(now.getTime() / 1000) + 60));
+  assertEquals(apns.headers["apns-collapse-id"], LOCATION_LIVE);
+  assertEquals(apns.payload, { aps: { "content-available": 1 } });
+  const and = locationPingMessage({ token: "and-1", platform: "android" }, now, LOCATION_LIVE)!;
+  assertEquals((and.message as { android: Record<string, string> }).android, {
+    priority: "HIGH",
+    ttl: "60s",
+    collapse_key: LOCATION_LIVE,
+  });
+  assert(!("notification" in and.message));
 });
 
 Deno.test("never a PushKit, Expo, web or empty token", () => {
@@ -141,6 +164,20 @@ Deno.test("sends to the targets the database hands back and prunes the ones FCM 
   assertEquals(asked, [[A, B, C]]);
   assertEquals(sent.sort(), ["and-b", "ios-a"], "never the PushKit token");
   assertEquals(pruned, [["and-b"]]);
+});
+
+Deno.test("reason live sends location_live to each target", async () => {
+  const seen: string[] = [];
+  const d: LocationPingDeps = {
+    ...deps([], [], []),
+    send: (m) => {
+      seen.push(`${m.message.token}:${m.message.data.type}`);
+      return Promise.resolve("sent");
+    },
+  };
+  const res = await handleLocationPing(post({ tokenIds: [A, B], reason: "live" }, { "x-push-secret": SECRET }), d);
+  assertEquals(await res.json(), { sent: 2, failed: 0, pruned: 0 });
+  assertEquals(seen.sort(), ["and-b:location_live", "ios-a:location_live"]);
 });
 
 Deno.test("a bad body sends nothing", async () => {

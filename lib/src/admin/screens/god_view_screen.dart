@@ -7,7 +7,9 @@
 // there too, smaller and greyed, where they last were. A sub-admin sees the
 // people in their own region (the server's rule). "Ping now" asks a quiet
 // phone where it is (0276); Settings holds the ping minutes and how long a
-// quiet Always on phone stays Always on.
+// quiet Always on phone stays Always on. 0282: "Update" asks the phone for
+// fresh details, "Live now" streams one person every 5 s, and the pencil by
+// Phone sets a new sign-in number (confirmed by SMS).
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -19,6 +21,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/app_version.dart' show AppVersionRule;
 import '../../core/god_view.dart';
+import '../../core/god_view_live.dart';
 import '../../core/god_view_trail.dart' show trailWindow;
 import '../../core/page_styles.dart' show godViewSurface;
 import '../../data/app_version_repository.dart' show appVersionRulesProvider;
@@ -35,8 +38,10 @@ import '../../widgets/map_tiles.dart';
 import '../../widgets/page_style_host.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
+import '../phone_details_data.dart' show phoneDetailsProvider;
 import '../widgets/admin_widgets.dart';
 import '../widgets/phone_card.dart';
+import 'god_view_live_panel.dart';
 import 'god_view_movement.dart';
 import 'people/partner_live_card.dart' show PartnerLivePill;
 import 'people/partner_screens.dart' show partnerLiveProvider;
@@ -122,6 +127,24 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   /// "Ping now" on the Details tab: whose, where it stands, and the time the
   /// line names (the answer, or when to try again).
   ({String id, GodViewPingStage stage, DateTime? at})? _ping;
+
+  /// "Update" beside the phone's last report (0282), as [_ping].
+  ({String id, GodViewUpdateStage stage, DateTime? at})? _update;
+  Timer? _updatePoll;
+
+  /// "Live now" (0282): the share of the selected person, its points (by
+  /// realtime, and the poll as a safety net) and the length picked.
+  GodViewLiveView? _live;
+  StreamSubscription<GodViewLivePoint>? _liveSub;
+  Timer? _livePoll;
+  int _liveMinutes = 15;
+  bool _liveBusy = false;
+  String? _liveProblem;
+
+  /// A new number waiting for its SMS confirm (0282), by person, and when
+  /// it was last read.
+  final _phoneChange = <String, PhoneChangeStatus?>{};
+  final _phoneChangeAt = <String, DateTime>{};
   bool _mapReady = false, _fitted = false, _inFlight = false, _again = false, _resumed = true;
 
   DateTime _now() => ref.read(godViewClockProvider)();
@@ -170,9 +193,10 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    for (final t in [_poll, _tick, _searchWait, _pingPoll]) {
+    for (final t in [_poll, _tick, _searchWait, _pingPoll, _updatePoll, _livePoll]) {
       t?.cancel();
     }
+    _liveSub?.cancel();
     _tabs.dispose();
     _pulse.dispose();
     _search.dispose();
@@ -206,6 +230,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
         final sel = _selectedId == null ? null : s.people.where((p) => p.id == _selectedId).firstOrNull;
         if (sel != null) _selectedLast = sel;
       });
+      _recheckPhoneChange();
       _afterLoad(s);
     } catch (e) {
       if (mounted) setState(() => _error = e);
@@ -272,8 +297,9 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   }
 
   void _select(GodViewPerson p, {bool move = true}) {
+    final other = _selectedId != p.id;
     setState(() {
-      if (_selectedId != p.id) {
+      if (other) {
         _move = null;
         _addrFor = null;
         _addr = null;
@@ -284,6 +310,10 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     });
     _tabs.animateTo(1);
     if (move && _mapReady) _map.move(LatLng(p.lat, p.lng), math.max(_map.camera.zoom, 14));
+    if (other) {
+      unawaited(_openLive(p.id));
+      unawaited(_loadPhoneChange(p.id));
+    }
   }
 
   Future<void> _showAddress(GodViewPerson p) async {
@@ -516,6 +546,199 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     });
   }
 
+  /// "Update" (0282): a ping, which the phone answers with its details too,
+  /// then up to [godViewUpdateWait] for them; the Phone facts re-read then.
+  Future<void> _updateNow(GodViewPerson p) async {
+    _updatePoll?.cancel();
+    setState(() => _update = (id: p.id, stage: GodViewUpdateStage.sending, at: null));
+    try {
+      final r = await ref.read(godViewRepositoryProvider).ping(p.id);
+      if (!mounted) return;
+      final stage = switch (godViewPingStageOf(r)) {
+        GodViewPingStage.noPhone => GodViewUpdateStage.noPhone,
+        GodViewPingStage.recent => GodViewUpdateStage.recent,
+        GodViewPingStage.failed => GodViewUpdateStage.failed,
+        _ => GodViewUpdateStage.waiting,
+      };
+      setState(() => _update = (id: p.id, stage: stage, at: stage == GodViewUpdateStage.recent ? r.retryAt : null));
+      if (stage == GodViewUpdateStage.waiting) _waitForDetails(p.id, r.sentAt ?? _now());
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _update = null);
+      showError(context, e);
+    }
+  }
+
+  void _waitForDetails(String id, DateTime since) {
+    final every = ref.read(godViewPingPollProvider);
+    final tries = (godViewUpdateWait.inMilliseconds / every.inMilliseconds).ceil();
+    var asked = 0;
+    var busy = false;
+    void noAnswer(Timer t) {
+      t.cancel();
+      if (mounted && _update?.id == id) setState(() => _update = (id: id, stage: GodViewUpdateStage.noAnswer, at: null));
+    }
+
+    _updatePoll = Timer.periodic(every, (t) async {
+      if (busy) return;
+      busy = true;
+      asked++;
+      try {
+        final a = await ref.read(godViewRepositoryProvider).detailsAnswer(id, since);
+        if (!mounted || _update?.id != id) {
+          t.cancel();
+          return;
+        }
+        if (a.details) {
+          t.cancel();
+          setState(() => _update = (id: id, stage: GodViewUpdateStage.updated, at: a.at ?? _now()));
+          ref.invalidate(phoneDetailsProvider(id));
+          unawaited(_load());
+        } else if (asked >= tries) {
+          noAnswer(t);
+        }
+      } catch (_) {
+        if (asked >= tries) noAnswer(t);
+      } finally {
+        busy = false;
+      }
+    });
+  }
+
+  // ---- Live now (0282) ----
+
+  void _stopWatchingLive() {
+    _livePoll?.cancel();
+    _livePoll = null;
+    unawaited(_liveSub?.cancel());
+    _liveSub = null;
+  }
+
+  /// The selected person's share, if one is on (another admin's too).
+  Future<void> _openLive(String personId) async {
+    _stopWatchingLive();
+    setState(() {
+      _live = GodViewLiveView(personId: personId);
+      _liveProblem = null;
+    });
+    await _readLive();
+    if (mounted && _live?.personId == personId && _live!.stageAt(_now()) != GodViewLiveStage.off) _watchLive();
+  }
+
+  Future<void> _readLive() async {
+    final v = _live;
+    if (v == null) return;
+    try {
+      final r = await ref.read(godViewRepositoryProvider).liveStatus(v.personId, after: v.session == null ? 0 : v.lastId);
+      if (!mounted || _live?.personId != v.personId) return;
+      final fresh = r.session?.id != v.session?.id;
+      final base = fresh ? GodViewLiveView(personId: v.personId) : _live!;
+      setState(() => _live = base.withPoints(
+        r.points,
+        session: r.session,
+        skew: r.serverNow?.difference(_now()),
+      ));
+      if (_live!.stageAt(_now()) == GodViewLiveStage.off) _stopWatchingLive();
+    } catch (e) {
+      debugPrint('[god-view] live status: $e');
+    }
+  }
+
+  void _watchLive() {
+    final v = _live;
+    final session = v?.session;
+    if (v == null || session == null) return;
+    _stopWatchingLive();
+    try {
+      _liveSub = ref.read(godViewRepositoryProvider).livePoints(session.id).listen((point) {
+        if (!mounted || _live?.session?.id != session.id) return;
+        setState(() => _live = _live!.withPoints([point]));
+      }, onError: (Object e) => debugPrint('[god-view] live points: $e'));
+    } catch (e) {
+      debugPrint('[god-view] live points: $e');
+    }
+    _livePoll = Timer.periodic(ref.read(godViewLivePollProvider), (_) {
+      if (_visible) unawaited(_readLive());
+    });
+  }
+
+  Future<void> _startLive(GodViewPerson p) async {
+    setState(() {
+      _liveBusy = true;
+      _liveProblem = null;
+    });
+    try {
+      final r = await ref.read(godViewRepositoryProvider).liveStart(p.id, _liveMinutes);
+      if (!mounted) return;
+      setState(() {
+        _liveProblem = r.problem;
+        if (r.session != null) _live = GodViewLiveView(personId: p.id, session: r.session, skew: _live?.skew ?? Duration.zero);
+      });
+      if (r.session != null) _watchLive();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _liveBusy = false);
+    }
+  }
+
+  Future<void> _stopLive() async {
+    final session = _live?.session;
+    if (session == null) return;
+    setState(() => _liveBusy = true);
+    try {
+      final stopped = await ref.read(godViewRepositoryProvider).liveStop(session.id);
+      if (!mounted) return;
+      _stopWatchingLive();
+      setState(() => _live = GodViewLiveView(personId: _live!.personId, session: stopped, skew: _live!.skew));
+    } catch (e) {
+      if (mounted) showError(context, e);
+    } finally {
+      if (mounted) setState(() => _liveBusy = false);
+    }
+  }
+
+  // ---- A new phone number (0282) ----
+
+  bool get _canSeeUsers => ref.read(adminAccessProvider).value?.canRead(const ['admin-users', 'admin-user-edit']) ?? false;
+
+  /// Quiet on failure (no Users grant, a database without 0282).
+  Future<void> _loadPhoneChange(String id) async {
+    if (!_canSeeUsers) return;
+    _phoneChangeAt[id] = _now();
+    try {
+      final s = await ref.read(godViewRepositoryProvider).phoneChangeStatus(id);
+      if (mounted) setState(() => _phoneChange[id] = s);
+    } catch (e) {
+      debugPrint('[god-view] phone change: $e');
+    }
+  }
+
+  /// While a new number waits for its confirm, read it again with the map
+  /// now and then.
+  void _recheckPhoneChange() {
+    final id = _selectedId;
+    if (id == null || _phoneChange[id]?.waiting != true) return;
+    final at = _phoneChangeAt[id];
+    if (at != null && _now().difference(at) < const Duration(seconds: 15)) return;
+    unawaited(_loadPhoneChange(id));
+  }
+
+  Future<void> _editPhone(GodViewPerson p) async {
+    final repo = ref.read(godViewRepositoryProvider);
+    final s = await showAppDialog<PhoneChangeStatus>(
+      id: 'god-view.edit-phone',
+      context: context,
+      builder: (_) => GodViewEditPhoneDialog(person: p, send: (phone) => repo.phoneChange(p.id, phone)),
+    );
+    if (s == null || !mounted) return;
+    setState(() {
+      _phoneChange[p.id] = s;
+      _phoneChangeAt[p.id] = _now();
+    });
+    showInfo(context, 'A text with a link went to the new number. It counts once they open it.');
+  }
+
   void _openProfile(GodViewPerson p) {
     final path = p.isPartner
         ? '/admin/m/partner-edit?id=${Uri.encodeQueryComponent(p.partnerRowId ?? '')}'
@@ -631,6 +854,10 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     final selected = _selectedId;
     final card = Theme.of(context).colorScheme.surface;
     final look = TrailLook.of(context);
+    // Live now: the person red at their newest point, with the trail so far.
+    final live = _live;
+    final liveOn = live != null && live.stageAt(_now()) != GodViewLiveStage.off;
+    final liveColor = godViewLiveColor(b);
     if (look.followRoads && _move != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _maybeLoadRoads(look);
@@ -667,17 +894,30 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           ]),
           if (_move case final m? when m.personId == selected)
             ...godViewTrailLayers(m.shown, look, card, roads: look.followRoads && _roadsFor == _roadsKey(m) ? _roads : const []),
+          if (liveOn && live.points.length > 1)
+            PolylineLayer(polylines: [
+              Polyline(
+                points: [for (final t in live.trail) LatLng(t.lat, t.lng)],
+                color: liveColor.withValues(alpha: 0.9),
+                strokeWidth: 4,
+                borderColor: card,
+                borderStrokeWidth: 1.5,
+              ),
+            ]),
           MarkerLayer(markers: [
             for (final p in markers)
               Marker(
                 key: ValueKey('god-view-marker-${p.id}'),
-                point: LatLng(p.lat, p.lng),
+                point: liveOn && p.id == live.personId && live.latest != null
+                    ? LatLng(live.latest!.lat, live.latest!.lng)
+                    : LatLng(p.lat, p.lng),
                 width: size * 2.4,
                 height: size * 2.4,
                 child: _GodViewMarker(
                   person: p,
                   size: size,
-                  color: godViewStatusColor(p.status, b),
+                  live: liveOn && p.id == live.personId,
+                  color: liveOn && p.id == live.personId ? liveColor : godViewStatusColor(p.status, b),
                   ring: card,
                   selected: p.id == selected,
                   dim: selected != null && p.id != selected,
@@ -701,6 +941,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
             lastKnown: _filters.lastKnown,
           ))
             _StatChip(label: s.label, value: s.value, alarm: s.alarm),
+          if (liveOn) GodViewLiveBadge(key: const ValueKey('god-view-live-badge'), color: liveColor),
           if ((snap?.omitted ?? 0) > 0)
             _Note(key: const ValueKey('god-view-omitted'), text: godViewOmittedNote(snap!)),
           if (snap?.scopeMissing == true)
@@ -874,17 +1115,71 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
               onPressed: () => _reveal(p),
               child: const Text('Show'),
             ),
+          if (ref.watch(adminAccessProvider).value?.canEdit(const ['admin-users', 'admin-user-edit']) ?? false)
+            IconButton(
+              key: const ValueKey('god-view-edit-phone'),
+              tooltip: 'Change phone number',
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              onPressed: () => _editPhone(p),
+            ),
         ]),
         if (revealed)
           Text('Recorded in the admin log.', style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
-        // The newest phone at its last report: model, app, battery, network.
-        PhoneFacts(profileId: p.id, now: now),
+        if (phoneChangeLine(_phoneChange[p.id], now) case final line?)
+          Padding(
+            padding: const EdgeInsets.only(left: 80, top: 2),
+            child: Row(children: [
+              Icon(
+                _phoneChange[p.id]!.waiting ? Icons.sms_outlined : Icons.info_outline,
+                size: 16,
+                color: t.colorScheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  line,
+                  key: const ValueKey('god-view-phone-change'),
+                  style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                ),
+              ),
+            ]),
+          ),
+        // The newest phone at its last report: model, app, battery, network,
+        // and Update, which asks the phone for them afresh.
+        PhoneFacts(
+          profileId: p.id,
+          now: now,
+          update: GodViewUpdateButton(
+            busy: _update?.id == p.id &&
+                (_update!.stage == GodViewUpdateStage.sending || _update!.stage == GodViewUpdateStage.waiting),
+            blocked: godViewPingBlocked(p),
+            onUpdate: () => _updateNow(p),
+          ),
+          updateNote: GodViewUpdateNote(
+            stage: _update?.id == p.id ? _update!.stage : null,
+            at: _update?.id == p.id ? _update!.at : null,
+            blocked: godViewPingBlocked(p),
+            now: now,
+          ),
+        ),
         const SizedBox(height: 10),
         _PingRow(
           stage: _ping?.id == p.id ? _ping!.stage : null,
           at: _ping?.id == p.id ? _ping!.at : null,
           blocked: godViewPingBlocked(p),
           onPing: () => _pingNow(p),
+        ),
+        const SizedBox(height: 10),
+        GodViewLiveRow(
+          live: _live?.personId == p.id ? _live : null,
+          now: now,
+          minutes: _liveMinutes,
+          busy: _liveBusy,
+          problem: _live?.personId == p.id ? _liveProblem : null,
+          onMinutes: (m) => setState(() => _liveMinutes = m),
+          onStart: () => _startLive(p),
+          onStop: _stopLive,
         ),
         const SizedBox(height: 10),
         OutlinedButton.icon(
@@ -1094,6 +1389,7 @@ class _GodViewMarker extends StatelessWidget {
   const _GodViewMarker({
     required this.person,
     required this.size,
+    this.live = false,
     required this.color,
     required this.ring,
     required this.selected,
@@ -1104,6 +1400,10 @@ class _GodViewMarker extends StatelessWidget {
 
   final GodViewPerson person;
   final double size;
+
+  /// Streaming "Live now": a glowing double pulse (still rings when motion
+  /// is reduced).
+  final bool live;
   final Color color;
   final Color ring;
   final bool selected;
@@ -1119,7 +1419,21 @@ class _GodViewMarker extends StatelessWidget {
     final fg = _on(color);
     final outline = godViewStatusOutline(person.status, Theme.of(context).brightness);
     final border = Border.all(color: outline ?? ring, width: old ? 2 : (outline != null ? 2.5 : 3));
-    final shadow = old ? const <BoxShadow>[] : const [BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 1))];
+    final shadow = old
+        ? const <BoxShadow>[]
+        : [
+            const BoxShadow(color: Color(0x33000000), blurRadius: 4, offset: Offset(0, 1)),
+            if (live) BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 12, spreadRadius: 2),
+          ];
+    final still = MediaQuery.disableAnimationsOf(context);
+    Widget ringAt(double t) => Opacity(
+      opacity: (0.55 * (1 - t)).clamp(0.0, 1.0),
+      child: Container(
+        width: s * (1 + 1.3 * t),
+        height: s * (1 + 1.3 * t),
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+    );
     final shape = person.isPartner
         ? Container(
             width: s,
@@ -1140,13 +1454,25 @@ class _GodViewMarker extends StatelessWidget {
           );
     return Semantics(
       button: true,
-      label: '${person.displayName}, ${person.isPartner ? 'partner' : 'user'}, ${person.status.label}',
+      label: '${person.displayName}, ${person.isPartner ? 'partner' : 'user'}, ${person.status.label}${live ? ', live' : ''}',
       child: GestureDetector(
         onTap: onTap,
         child: Opacity(
           opacity: (dim ? 0.45 : 1) * (old ? 0.8 : 1),
           child: Stack(alignment: Alignment.center, children: [
-            if (person.status.pulses)
+            if (live && still) ...[
+              ringAt(0.55),
+              ringAt(0.25),
+            ] else if (live)
+              AnimatedBuilder(
+                key: const ValueKey('god-view-live-pulse'),
+                animation: pulse,
+                builder: (_, _) => Stack(alignment: Alignment.center, children: [
+                  ringAt(pulse.value),
+                  ringAt((pulse.value + 0.5) % 1),
+                ]),
+              )
+            else if (person.status.pulses)
               AnimatedBuilder(
                 animation: pulse,
                 builder: (_, _) => Opacity(
