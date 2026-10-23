@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/dispatch.dart';
+import '../core/signin_checks.dart' show SignInAsks;
 import '../providers.dart';
 import 'realtime_backup.dart';
 import 'realtime_hub.dart';
@@ -241,7 +242,9 @@ class DispatchRepository {
   /// Gives someone a dispatch role by phone: straight away when the number
   /// has an account, else through the dispatch-account function, which makes
   /// the account (they set their PIN on first sign-in). Returns true when an
-  /// account was made.
+  /// account was made. [asks] is what they do when they sign in (0281): it
+  /// travels with the access, as dispatch_grant reads it; null leaves an
+  /// existing grant's as they were.
   Future<bool> grant({
     required String kind,
     required String name,
@@ -249,6 +252,7 @@ class DispatchRepository {
     List<String> standIds = const [],
     String? groupId,
     StandPerms perms = const StandPerms(),
+    SignInAsks? asks,
   }) async {
     final done = _map(
       await _db.rpc(
@@ -259,7 +263,7 @@ class DispatchRepository {
           'p_phone': phone.trim(),
           'p_stand_ids': standIds,
           'p_group': groupId,
-          'p_perms': perms.toJson(),
+          'p_perms': {...perms.toJson(), ...?asks?.toJson()},
         },
       ),
     );
@@ -274,6 +278,7 @@ class DispatchRepository {
           'stand_ids': standIds,
           'group_id': groupId,
           'perms': perms.toJson(),
+          'verify': ?asks?.toJson(),
         },
       );
       return _map(res.data)['created'] == true;

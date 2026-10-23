@@ -7,6 +7,8 @@ import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/image_crop.dart';
 import 'package:get_ride/src/features/auth/signup_photo_screen.dart';
 import 'package:get_ride/src/features/partner/partner_onboarding_screen.dart';
+import 'package:get_ride/src/features/profile/edit_profile_screen.dart';
+import 'package:get_ride/src/widgets/live_selfie.dart' show takeLiveAvatar;
 import 'package:image/image.dart' as img;
 
 void main() {
@@ -84,9 +86,10 @@ void main() {
       expect(await squarePickedImage(original, crop: (b) async => throw StateError('decode')), same(original));
     });
 
-    test('the partner and sign-up avatar pickers cut square', () {
-      expect(identical(const PartnerOnboardingScreen().pickAvatar, pickAvatarImage), isTrue);
-      expect(identical(const SignupPhotoScreen(next: '/').pickPhoto, pickAvatarImage), isTrue);
+    test('the partner, sign-up and profile photos are live selfies, cut square', () {
+      expect(identical(const PartnerOnboardingScreen().takeSelfie, takeLiveAvatar), isTrue);
+      expect(identical(const SignupPhotoScreen(next: '/').takeSelfie, takeLiveAvatar), isTrue);
+      expect(identical(const EditProfileScreen().takeSelfie, takeLiveAvatar), isTrue);
       expect(identical(const PartnerOnboardingScreen().pickPhoto, pickDocumentImage), isTrue,
           reason: 'the ID is not squared, but is scaled down');
     });

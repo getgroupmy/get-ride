@@ -17,6 +17,10 @@ import '../../../data/live_tables.dart';
 import '../../../widgets/storage_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/date_boxes.dart';
+import '../../../core/signin_checks.dart' show RejectChoice;
+import '../../../data/identity_repository.dart';
+import '../../widgets/reject_reason.dart';
+import '../dispatch/dispatch_roles_card.dart';
 
 void _leave(BuildContext context) => context.canPop() ? context.pop(true) : context.go('/admin/users');
 
@@ -260,6 +264,8 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
             ),
             const SizedBox(height: 8),
             PhoneCard(profileId: '${r['id']}'),
+            const SizedBox(height: 8),
+            DispatchRolesCard(userId: '${r['id']}'),
             const SizedBox(height: 16),
             if (canEdit)
               BusyButton.filled(
@@ -434,10 +440,28 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
     }
   }
 
+  /// Verified, or rejected with a reason from the list (0281); the user is
+  /// told either way (profile_id_review).
   Future<void> _decide(String decision) async {
-    final err = validateIdDecision(decision, _notes.text);
-    if (err != null) return showError(context, err);
-    await _update({'id_verified': decision}, decision == 'Verified' ? 'ID verified' : 'ID rejected', close: true);
+    RejectChoice? choice;
+    if (decision == 'Failed') {
+      choice = await pickRejectReason(context, note: _notes.text);
+      if (choice == null || !mounted) return;
+    }
+    setState(() => _busy = true);
+    final ok = await runAdminAction(
+      context,
+      () => ref
+          .read(identityRepositoryProvider)
+          .reviewProfileId(_id, verified: decision == 'Verified', reason: choice?.reason, note: choice?.note),
+      success: decision == 'Verified' ? 'ID verified' : 'ID rejected',
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (ok) {
+      widget.onChanged();
+      Navigator.pop(context);
+    }
   }
 
   Future<void> _removeImage() async {
@@ -563,7 +587,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
           controller: _notes,
           minLines: 2,
           maxLines: 4,
-          decoration: const InputDecoration(labelText: 'Reason / notes (required when rejecting)'),
+          decoration: const InputDecoration(labelText: 'Note (sent with a rejection)'),
         ),
         const SizedBox(height: 12),
         Row(children: [

@@ -6,6 +6,7 @@ import '../../admin/admin_providers.dart';
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/dispatch_repository.dart' show dispatchRolesProvider;
+import '../../data/identity_repository.dart' show dispatchChecksProvider;
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
 import '../../data/obd/obd_session.dart';
 import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
@@ -218,7 +219,9 @@ class SideMenuPanel extends ConsumerWidget {
     final isAdmin = ref.watch(adminAccessProvider).value?.isAdmin ?? false;
     // A stand's admin or staff, or a fleet owner (0251); admins have it in
     // the admin panel.
-    final dispatch = !isAdmin && (ref.watch(dispatchRolesProvider).value?.any ?? false);
+    // Also while the role is shut for its sign-in checks (0281): the steps are there.
+    final dispatch = !isAdmin &&
+        ((ref.watch(dispatchRolesProvider).value?.any ?? false) || (ref.watch(dispatchChecksProvider).value?.holds ?? false));
     final outline = SideMenuStyle.outlineOn(Theme.of(context).brightness);
     return SideMenuFrame(
       header: showProfile

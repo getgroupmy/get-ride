@@ -15,6 +15,8 @@
  * (Google's JavaScript map) and are never asked of the function.
  */
 
+import { parseAwsKey, signedJsonPost } from "./aws_sigv4.ts";
+
 export const APP_ID = "com.taxxee.teksi";
 export const SITE = "https://getride.my/";
 
@@ -42,8 +44,9 @@ export interface KeyTest {
   browser?: boolean;
   /** Free test from Google's own key check: the key exists, whatever the API restriction says. */
   keyCheck?: boolean;
-  /** The request, given the key and map_config's Amazon region. */
-  request?(key: string, region: string): HttpRequest;
+  /** The request, given the key and map_config's Amazon region (a signed
+   * one, AWS's, is made asynchronously). */
+  request?(key: string, region: string): HttpRequest | Promise<HttpRequest>;
   /** An image is the answer (status alone says). */
   image?: boolean;
 }
@@ -463,6 +466,21 @@ export const TESTS: KeyTest[] = [
     services: ["resend"],
     request: (k) => ({ url: "https://api.resend.com/domains", headers: { Authorization: `Bearer ${k}` } }),
   },
+  // ---- AWS (face compare, 0281) ---------------------------------------------------------------
+  {
+    id: "aws_rekognition",
+    provider: "aws",
+    label: "Rekognition · list collections",
+    about: "A free signed call with the key: AWS knows it and lets it use Rekognition in its region.",
+    services: ["rekognition"],
+    request: async (k) => {
+      const key = parseAwsKey(k);
+      if (!key) throw new Error("not an AWS key");
+      const body = JSON.stringify({ MaxResults: 1 });
+      const signed = await signedJsonPost(key, "rekognition", "RekognitionService.ListCollections", body);
+      return { url: signed.url, method: "POST", headers: signed.headers, body };
+    },
+  },
 ];
 
 /** A self-hosted server's address saved as a key: https only, no trailing slash. */
@@ -679,11 +697,13 @@ export async function runKeyTest(input: unknown, deps: KeyTestDeps): Promise<Tes
   const region = regionRaw === "ap-southeast-1" ? "ap-southeast-1" : "ap-southeast-5";
   let req: HttpRequest;
   try {
-    req = test.request(key, region);
+    req = await test.request(key, region);
   } catch {
     return {
       status: 200,
-      body: { result: "fail", title: "Not a server address", detail: "Save the server's https:// address as this key.", http: 0, ms: 0 },
+      body: test.provider === "aws"
+        ? { result: "fail", title: "Not an AWS key", detail: "Save it as ACCESS_KEY_ID:SECRET_ACCESS_KEY, or add :region.", http: 0, ms: 0 }
+        : { result: "fail", title: "Not a server address", detail: "Save the server's https:// address as this key.", http: 0, ms: 0 },
     };
   }
   req = { ...req, headers: { ...(req.headers ?? {}), ...restrictionHeaders(as, certOf(b.cert)) } };

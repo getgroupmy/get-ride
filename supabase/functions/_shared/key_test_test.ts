@@ -3,6 +3,8 @@ import { assert, assertEquals } from "jsr:@std/assert@1.0.19";
 import {
   certOf,
   defaultAs,
+  type HttpRequest,
+  type KeyTestDeps,
   keyValue,
   restrictionHeaders,
   runKeyTest,
@@ -156,7 +158,7 @@ Deno.test("a self-hosted server key must be an https address; Amazon uses the se
   const out = await runKeyTest({ provider: "openstreetmap", service: "nominatim", key: "n1", test: "nominatim_search" },
     deps({ status: 200, text: "[]" }));
   assertEquals((out.body as Record<string, string>).title, "Not a server address");
-  const req = test("amazon_places").request!(KEY, "ap-southeast-1");
+  const req = await test("amazon_places").request!(KEY, "ap-southeast-1");
   assert(req.url.startsWith("https://places.geo.ap-southeast-1.amazonaws.com/"));
 });
 
@@ -171,4 +173,33 @@ Deno.test("Resend (the Reports emails): checks the key, sends nothing", () => {
   assertEquals(verdictOf(t, 200, { data: [{ name: "getride.my", status: "verified" }] }, "").result, "ok");
   assertEquals(verdictOf(t, 200, { data: [] }, "").result, "warn");
   assertEquals(verdictOf(t, 401, { name: "validation_error", message: "API key is invalid" }, "").result, "fail");
+});
+
+Deno.test("AWS: a signed Rekognition call, and a key that isn't one", async () => {
+  const aws = [{
+    id: "aws",
+    services: [{
+      id: "rekognition",
+      keys: [
+        { id: "a1", value: "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY:ap-southeast-1" },
+        { id: "a2", value: "not-an-aws-key" },
+      ],
+    }],
+  }];
+  const sent: HttpRequest[] = [];
+  const d: KeyTestDeps = {
+    settings: () => Promise.resolve({ apiProviders: aws, config: null }),
+    fetch: (r) => {
+      sent.push(r);
+      return Promise.resolve({ status: 200, text: '{"CollectionIds":[]}' });
+    },
+    now: () => 0,
+  };
+  const ok = await runKeyTest({ provider: "aws", service: "rekognition", key: "a1", test: "aws_rekognition" }, d);
+  assertEquals((ok.body as { result: string }).result, "ok");
+  assertEquals(sent[0].url, "https://rekognition.ap-southeast-1.amazonaws.com/");
+  assertEquals(sent[0].headers?.["X-Amz-Target"], "RekognitionService.ListCollections");
+  assert(!JSON.stringify(sent[0]).includes("wJalrXUtnFEMI"), "the secret signs, it is never sent");
+  const bad = await runKeyTest({ provider: "aws", service: "rekognition", key: "a2", test: "aws_rekognition" }, d);
+  assertEquals((bad.body as { title: string }).title, "Not an AWS key");
 });

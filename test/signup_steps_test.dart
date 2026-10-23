@@ -10,6 +10,7 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/auth/set_pin_screen.dart';
 import 'package:get_ride/src/features/auth/signup_photo_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/live_selfie.dart' show LiveSelfie;
 import 'package:go_router/go_router.dart';
 
 class _FakeAuth implements AuthRepository {
@@ -205,9 +206,9 @@ void main() {
               '/signup/photo',
               photo: SignupPhotoScreen(
                 next: '/drive',
-                pickPhoto: (_) async {
+                takeSelfie: (_) async {
                   profile = {...profile, 'avatar_url': 'https://example.com/a.png'};
-                  return (bytes: Uint8List(10), name: 'me.png', ext: 'png', contentType: 'image/png');
+                  return LiveSelfie(bytes: Uint8List(10), name: 'me.png', liveness: 'passed', detail: 'turn');
                 },
               ),
             ),
@@ -219,11 +220,11 @@ void main() {
       expect(cont().onPressed, isNull);
       expect(find.text('A'), findsOneWidget);
 
-      await tester.tap(find.text('Choose photo'));
+      await tester.tap(find.text('Take a selfie'));
       await tester.pump();
       await tester.pump();
       expect(account.uploads, ['png']);
-      expect(find.text('Change photo'), findsOneWidget);
+      expect(find.text('Take a new selfie'), findsOneWidget);
       expect(cont().onPressed, isNotNull);
       await tester.tap(find.text('Continue'));
       await tester.pumpAndSettle();

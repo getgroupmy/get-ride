@@ -12,6 +12,9 @@ import '../../widgets/in_app_page.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/date_boxes.dart';
+import '../../core/signin_checks.dart' show rejectNotes;
+import '../widgets/reject_reason.dart';
+import 'signin_checks_review.dart';
 
 final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
   (ref, table) async {
@@ -108,15 +111,19 @@ const _docFilters = {
 };
 
 class AdminDocumentsScreen extends ConsumerStatefulWidget {
-  const AdminDocumentsScreen({super.key, this.vehicle = false});
+  const AdminDocumentsScreen({super.key, this.vehicle = false, this.signIn = false});
   final bool vehicle;
+
+  /// Opens on the dispatch IDs' selfies and IDs (0281).
+  final bool signIn;
 
   @override
   ConsumerState<AdminDocumentsScreen> createState() => _AdminDocumentsScreenState();
 }
 
 class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
-  late bool _vehicle = widget.vehicle;
+  late String _tab = widget.signIn ? 'signin' : (widget.vehicle ? 'vehicle' : 'partner');
+  bool get _vehicle => _tab == 'vehicle';
   String _filter = 'Pending Review';
   String _query = '';
 
@@ -324,9 +331,11 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
   }
 
   Future<void> _review(BuildContext ctx, Map<String, dynamic> d, String status, String notes) async {
-    if (status == 'Rejected' && notes.trim().isEmpty) {
-      showInfo(ctx, 'Add a note telling the partner why the document was rejected.');
-      return;
+    // A rejection says why, from the list (0281); the partner sees it.
+    if (status == 'Rejected') {
+      final choice = await pickRejectReason(ctx, note: notes);
+      if (choice == null || !ctx.mounted) return;
+      notes = rejectNotes(choice.reason, choice.note);
     }
     final ok = await runAdminAction(
       ctx,
@@ -352,15 +361,31 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: SegmentedButton<bool>(
-            segments: const [
-              ButtonSegment(value: false, label: Text('Partner documents'), icon: Icon(Icons.badge_outlined)),
-              ButtonSegment(value: true, label: Text('Vehicle documents'), icon: Icon(Icons.directions_car_outlined)),
-            ],
-            selected: {_vehicle},
-            onSelectionChanged: (v) => setState(() => _vehicle = v.first),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SegmentedButton<String>(
+              segments: [
+                const ButtonSegment(value: 'partner', label: Text('Partner documents'), icon: Icon(Icons.badge_outlined)),
+                const ButtonSegment(
+                  value: 'vehicle',
+                  label: Text('Vehicle documents'),
+                  icon: Icon(Icons.directions_car_outlined),
+                ),
+                ButtonSegment(
+                  value: 'signin',
+                  label: Text(switch (ref.watch(signInChecksWaitingProvider).value) {
+                    final n? when n > 0 => 'Sign-in checks ($n)',
+                    _ => 'Sign-in checks',
+                  }),
+                  icon: const Icon(Icons.verified_user_outlined),
+                ),
+              ],
+              selected: {_tab},
+              onSelectionChanged: (v) => setState(() => _tab = v.first),
+            ),
           ),
         ),
+        if (_tab == 'signin') const Expanded(child: SignInChecksReview()) else ...[
         FilterBar(
           filters: _docFilters,
           selected: _filter,
@@ -403,6 +428,7 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
             },
           ),
         ),
+        ],
       ]),
     );
   }

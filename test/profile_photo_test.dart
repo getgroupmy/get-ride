@@ -9,6 +9,7 @@ import 'package:get_ride/src/data/account_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/profile/edit_profile_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/live_selfie.dart' show LiveSelfie;
 
 class _FakeAccount implements AccountRepository {
   final uploads = <({int bytes, String ext, String type})>[];
@@ -50,14 +51,19 @@ void main() {
           accountRepositoryProvider.overrideWithValue(account),
           profileProvider.overrideWith((ref) async => Profile({'id': 'me', 'name': 'Ali', 'phone': '60123456789'})),
         ],
-        child: MaterialApp(home: EditProfileScreen(pickPhoto: (_) async => photo)),
+        child: MaterialApp(
+          home: EditProfileScreen(
+            takeSelfie: (_) async =>
+                photo == null ? null : LiveSelfie(bytes: photo.bytes, name: photo.name, liveness: 'passed'),
+          ),
+        ),
       ),
     );
     await tester.pumpAndSettle();
     return account;
   }
 
-  testWidgets('a picked photo is uploaded straight away', (tester) async {
+  testWidgets('a live selfie is uploaded straight away', (tester) async {
     final account = await pump(tester, _photo(2048));
     expect(find.text('Add photo'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('profile-photo-change')));
@@ -74,7 +80,7 @@ void main() {
     expect(find.text('Choose a photo under 5 MB.'), findsOneWidget);
   });
 
-  testWidgets('cancelling the picker does nothing', (tester) async {
+  testWidgets('backing out of the camera does nothing', (tester) async {
     final account = await pump(tester, null);
     await tester.tap(find.byKey(const ValueKey('profile-photo-change')));
     await tester.pumpAndSettle();

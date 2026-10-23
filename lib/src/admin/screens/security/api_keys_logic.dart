@@ -252,6 +252,12 @@ final defaultApiProviders = <ApiProviderDef>[
   ApiProviderDef(id: 'email', name: 'Email', description: 'Sending email', category: 'Email', services: [
     _svc('resend', 'Resend', 'API key for the Reports emails (sender set on Admin > Reports)'),
   ]),
+  // The face-compare function (0281): a selfie against the ID photo, as a
+  // score for the admin reviewing a dispatch ID.
+  ApiProviderDef(id: 'aws', name: 'Amazon Web Services', description: 'AWS services used by the server', category: 'Identity', services: [
+    _svc('rekognition', 'Rekognition (face compare)',
+        'Compares a selfie with the ID photo. Save as ACCESS_KEY_ID:SECRET_ACCESS_KEY, or add :region (ap-southeast-1 if not)'),
+  ]),
 ];
 
 /// Adds missing default providers/services without touching edits; defaults
