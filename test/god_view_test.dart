@@ -14,10 +14,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/god_view_screen.dart';
+import 'package:get_ride/src/admin/screens/people/partner_live.dart';
+import 'package:get_ride/src/admin/screens/people/partner_screens.dart' show partnerLiveProvider;
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/app_version.dart';
 import 'package:get_ride/src/core/date_order.dart';
 import 'package:get_ride/src/core/god_view.dart';
+import 'package:get_ride/src/core/god_view_trail.dart';
 import 'package:get_ride/src/data/app_version_repository.dart';
 import 'package:get_ride/src/data/god_view_repository.dart';
 import 'package:get_ride/src/providers.dart';
@@ -131,6 +134,20 @@ class _FakeRepo extends GodViewRepository {
     return (answered: yes, at: yes ? _now : null);
   }
 
+  final trails = <(String, DateTime, DateTime)>[];
+
+  @override
+  Future<GodViewTrail> trail(String profileId, DateTime from, DateTime to) async {
+    trails.add((profileId, from, to));
+    final base = _now.subtract(const Duration(hours: 3));
+    return GodViewTrail(from: from, to: to, total: 4, points: [
+      TrailPoint(3.0, 101.0, base),
+      TrailPoint(3.0, 101.0, base.add(const Duration(minutes: 10))),
+      TrailPoint(3.01, 101.0, base.add(const Duration(minutes: 15))),
+      TrailPoint(3.02, 101.01, base.add(const Duration(hours: 2))),
+    ]);
+  }
+
   @override
   Future<GodViewSettings> saveSettings(GodViewSettings s) async {
     saved.add(s);
@@ -203,6 +220,8 @@ Future<_FakeRepo> _pump(
         godViewPollProvider.overrideWithValue(null),
         godViewPingPollProvider.overrideWithValue(const Duration(seconds: 5)),
         godViewClockProvider.overrideWithValue(() => _now),
+        partnerLiveProvider.overrideWith(
+            (ref, k) async => (status: PartnerLive.trip, detail: 'Ongoing, to KLCC', ride: null)),
         appVersionRulesProvider.overrideWith((_) async => _rules),
       ],
       child: MaterialApp(theme: appTheme(b), home: const GodViewScreen()),
@@ -697,9 +716,48 @@ void main() {
       expect(find.byKey(const ValueKey('god-view-push')), findsOneWidget);
     });
 
+    for (final b in Brightness.values) {
+      testWidgets('Movement: the trail, the hours and a past day (${b.name})', (tester) async {
+        final repo = await _pump(tester, b: b, size: const Size(1400, 2400));
+        await _openDetails(tester, 'd2');
+        expect(find.byKey(const ValueKey('god-view-show-address')), findsOneWidget);
+        await tester.ensureVisible(find.byKey(const ValueKey('god-view-movement-button')));
+        await tester.tap(find.byKey(const ValueKey('god-view-movement-button')));
+        await tester.pump();
+        await tester.pump();
+        expect(repo.trails.single.$1, 'd2');
+        expect(repo.trails.single.$3.difference(repo.trails.single.$2), const Duration(hours: 24));
+        expect(find.byKey(const ValueKey('god-view-movement')), findsOneWidget);
+        expect(find.byKey(const ValueKey('god-view-trail')), findsOneWidget);
+        expect(find.descendant(of: find.byKey(const ValueKey('god-view-trail-points')), matching: find.text('4')),
+            findsOneWidget);
+        expect(find.descendant(of: find.byKey(const ValueKey('god-view-trail-stops')), matching: find.text('1')),
+            findsOneWidget, reason: 'ten minutes in one place');
+        // Only the latest hour: one point.
+        final last = trailHour(_now.subtract(const Duration(hours: 1)));
+        await tester.ensureVisible(find.byKey(ValueKey('god-view-trail-hour-$last')));
+        await tester.tap(find.byKey(ValueKey('god-view-trail-hour-$last')));
+        await tester.pump();
+        expect(find.descendant(of: find.byKey(const ValueKey('god-view-trail-points')), matching: find.text('1')),
+            findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('god-view-trail-all-hours')));
+        await tester.pump();
+        expect(find.descendant(of: find.byKey(const ValueKey('god-view-trail-points')), matching: find.text('4')),
+            findsOneWidget);
+        expect(tester.takeException(), isNull);
+        // Hide it again: the trail leaves the map.
+        await tester.tap(find.byKey(const ValueKey('god-view-movement-button')));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('god-view-trail')), findsNothing);
+      });
+    }
+
     testWidgets('Suspend asks for a reason and warns about the trip', (tester) async {
       final repo = await _pump(tester);
       await _openDetails(tester, 'd2');
+      // The details got taller (Status, Address, Movement): scroll to it.
+      await tester.ensureVisible(find.byKey(const ValueKey('god-view-suspend')));
+      await tester.pump();
       await tester.tap(find.byKey(const ValueKey('god-view-suspend')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('god-view-suspend-dialog')), findsOneWidget);
