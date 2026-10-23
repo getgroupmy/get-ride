@@ -10,9 +10,10 @@
 -- photo still showed the old one as a partner (and to riders), and an admin
 -- edit on the Partner page never reached the User page.
 --
--- 1. partners BEFORE INSERT, and BEFORE UPDATE when auth_user_id is set
---    (claim_partner_by_phone): the partner takes the profile's values, where
---    the profile has one. The profile is the master.
+-- 1. partners BEFORE INSERT: the blanks take the profile's values (the app
+--    already copies the profile into a new row). BEFORE UPDATE when
+--    auth_user_id is set (claim_partner_by_phone, an admin-added row): the
+--    profile's values win, where it has one. The profile is the master.
 -- 2. profiles AFTER UPDATE of the six columns: the same values go onto the
 --    user's partner row(s). name and phone, required on partners, are never
 --    blanked there.
@@ -50,6 +51,15 @@ begin
   end if;
   select * into p from public.profiles where id = new.auth_user_id;
   if not found then
+    return new;
+  end if;
+  if tg_op = 'INSERT' then
+    new.name := coalesce(nullif(btrim(new.name), ''), nullif(btrim(p.name), ''), new.name);
+    new.phone := coalesce(nullif(btrim(new.phone), ''), nullif(btrim(p.phone), ''), new.phone);
+    new.email := coalesce(new.email, p.email);
+    new.ic := coalesce(new.ic, p.ic);
+    new.address := coalesce(new.address, p.address);
+    new.avatar_url := coalesce(new.avatar_url, p.avatar_url);
     return new;
   end if;
   new.name := coalesce(nullif(btrim(p.name), ''), new.name);

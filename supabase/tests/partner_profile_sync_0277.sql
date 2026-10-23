@@ -25,9 +25,9 @@ insert into public.profiles (id, name, phone, email, ic, address, avatar_url) va
 on conflict (id) do update set name = excluded.name, phone = excluded.phone, email = excluded.email,
   ic = excluded.ic, address = excluded.address, avatar_url = excluded.avatar_url;
 
--- 1. A new partner row takes the profile's details ---------------------------------
+-- 1. A new partner row fills its blanks from the profile --------------------------
 insert into public.partners (id, auth_user_id, name, phone, status) values
-  ('00000000-0000-0000-0000-0000000277b1', '00000000-0000-0000-0000-0000000277a1', 'old name', '+60110000277',
+  ('00000000-0000-0000-0000-0000000277b1', '00000000-0000-0000-0000-0000000277a1', '', '+60110000277',
    'unapproved'),
   ('00000000-0000-0000-0000-0000000277b2', '00000000-0000-0000-0000-0000000277a2', 'Badrul', '+60110000278',
    'approved');
@@ -41,7 +41,7 @@ begin
   select * into r from public.partners where id = '00000000-0000-0000-0000-0000000277b1';
   if r.name <> 'Aina' or r.email is distinct from 'aina@example.test' or r.ic is distinct from 'A277'
      or r.address is distinct from 'Jalan 1' or r.avatar_url is distinct from 'https://cdn.example/aina.jpg' then
-    raise exception 'FAILED: the new partner row did not take the profile (%)', row_to_json(r);
+    raise exception 'FAILED: the new partner row did not fill its blanks from the profile (%)', row_to_json(r);
   end if;
 end $$;
 
