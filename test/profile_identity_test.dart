@@ -9,6 +9,7 @@ import 'package:get_ride/src/data/account_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/profile/edit_profile_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/busy.dart';
 import 'package:go_router/go_router.dart';
 
 class _FakeAccount implements AccountRepository {
@@ -56,7 +57,7 @@ void main() {
     expect(searchCountries('a').first, 'Malaysia');
   });
 
-  Future<_FakeAccount> pump(WidgetTester tester, Map<String, dynamic> profile) async {
+  Future<_FakeAccount> pump(WidgetTester tester, Map<String, dynamic> profile, {String? partnerStatus}) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(600, 1600);
     addTearDown(tester.view.reset);
@@ -79,6 +80,8 @@ void main() {
         overrides: [
           accountRepositoryProvider.overrideWithValue(account),
           profileProvider.overrideWith((ref) async => Profile(profile)),
+          if (partnerStatus != null)
+            partnerProvider.overrideWith((ref) async => Partner({'id': 'pa', 'status': partnerStatus})),
         ],
         child: MaterialApp.router(routerConfig: router),
       ),
@@ -121,6 +124,38 @@ void main() {
       'ic': 'E1234567X',
       'address': null,
     });
+  });
+
+  for (final b in Brightness.values) {
+    testWidgets('an approved partner\'s name, ID number and photo are locked (${b.name})', (tester) async {
+      tester.platformDispatcher.platformBrightnessTestValue = b;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+      final account = await pump(tester, {
+        'id': 'me',
+        'name': 'Ali',
+        'phone': '60123456789',
+        'nationality': 'Malaysia',
+        'ic': '900101145555',
+        'address': 'Jalan 1',
+      }, partnerStatus: b == Brightness.light ? 'approved' : 'permit-verified');
+      expect(find.byKey(const ValueKey('profile-identity-locked')), findsOneWidget);
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('profile-name'))).enabled, isFalse);
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('profile-id-number'))).enabled, isFalse);
+      expect(tester.widget<BusyButton>(find.byKey(const ValueKey('profile-photo-change'))).onPressed, isNull);
+      await tester.enterText(find.byKey(const ValueKey('profile-address')), 'Jalan 2');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      // Name and ID are not sent; the rest saves (and reaches the partner record).
+      expect(account.saved.single, {'name': null, 'email': null, 'nationality': 'Malaysia', 'address': 'Jalan 2'});
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('a partner still applying edits their own name and ID', (tester) async {
+    await pump(tester, {'id': 'me', 'name': 'Ali', 'phone': '60123456789'}, partnerStatus: 'unapproved');
+    expect(find.byKey(const ValueKey('profile-identity-locked')), findsNothing);
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('profile-name'))).enabled, isTrue);
+    expect(tester.widget<TextField>(find.byKey(const ValueKey('profile-id-number'))).enabled, isTrue);
   });
 
   testWidgets('the ID photo is uploaded straight away', (tester) async {

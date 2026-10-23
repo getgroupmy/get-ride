@@ -52,15 +52,18 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     // is fine; the reason sits under its field.
     setState(() {
       _emailError = profileEmailProblem(email);
-      _idError = idNumberProblem(_idNumber.text);
+      _idError = _identityLocked ? null : idNumberProblem(_idNumber.text);
     });
     if (_emailError != null || _idError != null) return;
     setState(() => _busy = true);
+    // An approved partner's name and ID are support's to change (0277): not sent.
+    final locked = _identityLocked;
     try {
       await ref.read(accountRepositoryProvider).updateProfile(
-            name: _name.text.trim(),
+            name: locked ? null : _name.text.trim(),
             email: email.isEmpty ? null : email,
-            identity: identityPatch(country: _country, idNumber: _idNumber.text, address: _address.text),
+            identity: identityPatch(country: _country, idNumber: _idNumber.text, address: _address.text)
+              ..removeWhere((k, _) => locked && k == 'ic'),
           );
       ref.invalidate(profileProvider);
       if (mounted) context.pop();
@@ -125,6 +128,11 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     }
   }
 
+  /// An approved partner's name, ID number and photo are the person riders
+  /// were shown; support changes them, and the change shows on both the
+  /// profile and the partner record (0277).
+  bool get _identityLocked => ref.read(partnerProvider).value?.approved ?? false;
+
   Future<void> _chooseCountry() async {
     final picked = await showAppSheet<String>(id: 'edit-profile.choose-country',
       context: context,
@@ -148,6 +156,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     }
     final t = Theme.of(context);
     final idImage = p?.idImage;
+    final locked = ref.watch(partnerProvider).value?.approved ?? false;
     return Scaffold(
       appBar: AppBar(leading: sideMenuLeading(context), title: const Text('Edit profile')),
       body: ListView(children: [
@@ -171,13 +180,28 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             Center(
               child: BusyButton.text(
                 key: const ValueKey('profile-photo-change'),
-                onPressed: _uploading || _busy ? null : _changePhoto,
+                onPressed: _uploading || _busy || locked ? null : _changePhoto,
                 icon: const Icon(Icons.photo_camera_outlined),
                 child: Text(p?.avatarUrl == null ? 'Add photo' : 'Change photo'),
               ),
             ),
             const SizedBox(height: 8),
+            if (locked) ...[
+              Card(
+                key: const ValueKey('profile-identity-locked'),
+                margin: EdgeInsets.zero,
+                color: t.colorScheme.surfaceContainerHighest,
+                child: const ListTile(
+                  leading: Icon(Icons.lock_outline),
+                  title: Text('Name, ID number and photo are locked'),
+                  subtitle: Text('You are an approved partner. Contact support to change them.'),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             TextField(
+              key: const ValueKey('profile-name'),
+              enabled: !locked,
               textInputAction: TextInputAction.next,
               controller: _name,
               textCapitalization: TextCapitalization.words,
@@ -262,6 +286,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
             const SizedBox(height: 12),
             TextField(
               key: const ValueKey('profile-id-number'),
+              enabled: !locked,
               textInputAction: TextInputAction.next,
               controller: _idNumber,
               textCapitalization: TextCapitalization.characters,
