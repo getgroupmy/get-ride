@@ -195,14 +195,19 @@ create policy push_schedules_read on public.push_schedules
 drop policy if exists push_schedules_insert on public.push_schedules;
 create policy push_schedules_insert on public.push_schedules
   for insert to authenticated
-  with check ((select public.caller_is_admin()) and (select public.caller_push_admin(true))
+  with check ((select public.caller_admin_can_write('push_schedules'))
               and created_by is not distinct from (select auth.uid()));
 
 drop policy if exists push_schedules_update on public.push_schedules;
 create policy push_schedules_update on public.push_schedules
   for update to authenticated
-  using ((select public.caller_is_admin()) and (select public.caller_push_admin(true)))
-  with check ((select public.caller_is_admin()) and (select public.caller_push_admin(true)));
+  using ((select public.caller_admin_can_write('push_schedules')))
+  with check ((select public.caller_admin_can_write('push_schedules')));
+
+-- Push Notification edits the schedules (Edit on 'admin-settings' covers it too).
+insert into public.admin_table_pages (target, page) values
+  ('push_schedules', 'admin-settings-push-notification')
+on conflict do nothing;
 
 -- The next time after [p_prev] for [p_repeat], in Malaysia time: a day or a
 -- week on, or the next month on [p_anchor]'s day (the last day of a shorter
