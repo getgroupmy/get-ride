@@ -7,12 +7,14 @@
 // Show, Suspend asking for a reason (and warning about a trip), Send push
 // sending to one person; the "No location" section (0275) with its reasons;
 // 0276: a quiet Always on phone's "Not moved since", "Ping now" and its
-// answer, and the God View settings sheet.
+// answer, and the God View settings sheet; the newest phone's report in the
+// details (admin/widgets/phone_card.dart PhoneFacts).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
+import 'package:get_ride/src/admin/phone_details_data.dart';
 import 'package:get_ride/src/admin/screens/god_view_screen.dart';
 import 'package:get_ride/src/admin/screens/people/partner_live.dart';
 import 'package:get_ride/src/admin/screens/people/partner_screens.dart' show partnerLiveProvider;
@@ -200,12 +202,45 @@ class _FakeRepo extends GodViewRepository {
   Future<void> sendPush(String profileId, String title, String body) async => pushed.add((profileId, title, body));
 }
 
+class _FakePhones extends PhoneDetailsRepository {
+  _FakePhones() : super(null);
+  final asked = <String>[];
+
+  @override
+  Future<({List<Map<String, dynamic>> sessions, List<Map<String, dynamic>> tokens})> load(String profileId) async {
+    asked.add(profileId);
+    return (
+      sessions: [
+        {
+          'captured_at': _now.subtract(const Duration(minutes: 2)).toIso8601String(),
+          'device_id': 'dev-1',
+          'os_name': 'android',
+          'os_version': 'Android 15 (SDK 35)',
+          'device_brand': 'samsung',
+          'device_model_name': 'SM-A546E',
+          'app_version': '1.4.2',
+          'app_build_version': '98',
+          'network_type': 'cellular',
+          'cellular_generation': '4G',
+          'network_operator': 'CelcomDigi',
+          'raw': {'battery_pct': 14, 'battery_charging': true, 'perm_location': 'while_in_use', 'perm_notifications': false},
+        },
+        {'captured_at': '2026-09-01T00:00:00Z', 'device_id': 'dev-old', 'os_name': 'ios', 'device_model_name': 'iPhone 12'},
+      ],
+      tokens: [
+        {'platform': 'android', 'location_always': false, 'updated_at': '2026-10-20T00:00:00Z'},
+      ],
+    );
+  }
+}
+
 Future<_FakeRepo> _pump(
   WidgetTester tester, {
   Brightness b = Brightness.light,
   Size size = const Size(1400, 900),
   List<AdminGrant> grants = const [AdminGrant(page: '*', edit: true)],
   _FakeRepo? fake,
+  PhoneDetailsRepository? phones,
 }) async {
   final repo = fake ?? _FakeRepo();
   await tester.binding.setSurfaceSize(size);
@@ -223,6 +258,7 @@ Future<_FakeRepo> _pump(
         partnerLiveProvider.overrideWith(
             (ref, k) async => (status: PartnerLive.trip, detail: 'Ongoing, to KLCC', ride: null)),
         appVersionRulesProvider.overrideWith((_) async => _rules),
+        if (phones != null) phoneDetailsRepositoryProvider.overrideWithValue(phones),
       ],
       child: MaterialApp(theme: appTheme(b), home: const GodViewScreen()),
     ),
@@ -678,6 +714,32 @@ void main() {
       expect(find.text('+60 12-345 6789'), findsOneWidget);
       expect(find.text('Recorded in the admin log.'), findsOneWidget);
     });
+
+    for (final b in Brightness.values) {
+      testWidgets("the newest phone's last report in the details in ${b.name}", (tester) async {
+        final phones = _FakePhones();
+        await _pump(tester, b: b, phones: phones);
+        await _openDetails(tester, 'd1');
+        await tester.pump();
+        expect(phones.asked, contains('d1'));
+        final facts = find.byKey(const ValueKey('god-view-phone-facts'));
+        await tester.ensureVisible(facts);
+        await tester.pump();
+        Finder inFacts(Finder f) => find.descendant(of: facts, matching: f);
+        expect(inFacts(find.text('Samsung SM-A546E · Android 15 (SDK 35)')), findsOneWidget);
+        expect(inFacts(find.text('1.4.2 (98)')), findsOneWidget);
+        expect(inFacts(find.byKey(const ValueKey('phone-pill-Old'))), findsOneWidget, reason: 'latest is 1.4.10');
+        expect(inFacts(find.text('14% · charging')), findsOneWidget);
+        expect(inFacts(find.byKey(const ValueKey('phone-pill-Low'))), findsOneWidget);
+        expect(inFacts(find.text('Mobile data · 4G · CelcomDigi')), findsOneWidget);
+        expect(inFacts(find.text('While using the app')), findsOneWidget);
+        expect(inFacts(find.byKey(const ValueKey('phone-pill-No background'))), findsOneWidget);
+        expect(inFacts(find.byKey(const ValueKey('phone-pill-Blocked'))), findsOneWidget);
+        expect(find.text("From the phone's last report, 2 min ago."), findsOneWidget);
+        expect(find.textContaining('iPhone 12'), findsNothing, reason: 'the newest phone only');
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testWidgets('a full admin sees every action; SOS adds Open incident', (tester) async {
       await _pump(tester);

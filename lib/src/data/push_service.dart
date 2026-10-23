@@ -417,6 +417,10 @@ class PushService {
 
   String? _deviceKeyCache;
 
+  /// This phone's device key ([_deviceKey]), for its session rows: the admin
+  /// Phone card ties them to this phone's token with it.
+  Future<String?> deviceKey() => _deviceKey();
+
   /// What identifies this phone to the push server (pushDeviceKey): on an
   /// iPhone its APNs token, which a reinstall usually keeps, so the old
   /// install's token is replaced; on Android an id made once per install

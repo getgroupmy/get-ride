@@ -38,14 +38,18 @@ String _fmt(Object? iso) {
 String? _s(Object? v) => v == null || '$v'.isEmpty ? null : '$v';
 
 class AdminSessionHistoryScreen extends ConsumerStatefulWidget {
-  const AdminSessionHistoryScreen({super.key});
+  const AdminSessionHistoryScreen({super.key, this.query = ''});
+
+  /// The search to open with: an account's id, from its Phone card.
+  final String query;
 
   @override
   ConsumerState<AdminSessionHistoryScreen> createState() => _SessionHistoryState();
 }
 
 class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
-  String _query = '';
+  late String _query = widget.query;
+  late final _search = TextEditingController(text: widget.query);
   bool _flaggedOnly = false;
   bool _showGuard = false;
   bool _showDates = false;
@@ -60,6 +64,12 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
     ref.read(securityRepositoryProvider).deviceGuardConfig().then((c) {
       if (mounted) setState(() => _guard = c);
     });
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
   }
 
   void _refresh() {
@@ -195,6 +205,7 @@ class _SessionHistoryState extends ConsumerState<AdminSessionHistoryScreen> {
               const SizedBox(height: 8),
               if (_showDates) _dateRow(),
               TextField(
+                controller: _search,
                 decoration: const InputDecoration(
                     prefixIcon: Icon(Icons.search), hintText: 'Search phone, user id, device…', isDense: true),
                 onChanged: (v) => setState(() => _query = v),

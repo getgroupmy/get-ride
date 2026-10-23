@@ -740,7 +740,10 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       location: GeolocatorTelemetryLocation(),
       deviceId: ref.read(authRepositoryProvider).deviceIdentifier,
       device: currentDevice(),
-      details: DeviceDetailsReader().read,
+      details: DeviceDetailsReader(
+        permissions: ref.read(permissionProbeProvider),
+        pushKey: () async => PushService.instance?.deviceKey(),
+      ).read,
     );
     _tracker = tracker;
     unawaited(tracker.launched(userId: db.auth.currentUser?.id, phone: db.auth.currentUser?.phone));

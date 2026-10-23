@@ -35,6 +35,7 @@ import '../../widgets/page_style_host.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
+import '../widgets/phone_card.dart';
 import 'god_view_movement.dart';
 import 'people/partner_live_card.dart' show PartnerLivePill;
 import 'people/partner_screens.dart' show partnerLiveProvider;
@@ -832,6 +833,8 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
         ]),
         if (revealed)
           Text('Recorded in the admin log.', style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+        // The newest phone at its last report: model, app, battery, network.
+        PhoneFacts(profileId: p.id, now: now),
         if (godViewCanPing(p)) ...[
           const SizedBox(height: 10),
           _PingRow(

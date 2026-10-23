@@ -7,6 +7,7 @@ import '../../../widgets/common.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../widgets/phone_card.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
@@ -242,6 +243,8 @@ class _UserEditFormState extends ConsumerState<_UserEditForm> {
               value: _docsOk,
               onChanged: canEdit ? (v) => setState(() => _docsOk = v ?? false) : null,
             ),
+            const SizedBox(height: 8),
+            PhoneCard(profileId: '${r['id']}'),
             const SizedBox(height: 16),
             if (canEdit)
               BusyButton.filled(
