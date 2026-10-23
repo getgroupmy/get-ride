@@ -1,6 +1,6 @@
-// Admin → God View (migrations 0270, 0272): the snapshot the page polls, a phone
-// shown on request (logged by the server), suspend and a push to one
-// person. Who may do what is the server's; this only asks.
+// Admin → God View (migrations 0270, 0272, 0275): the snapshot the page
+// polls, the people with no location, a phone shown on request (logged by
+// the server), suspend and a push to one person. Who may do what is the server's; this only asks.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,11 +14,11 @@ class GodViewRepository {
 
   /// Everyone inside [box] (the map's visible area; null for everywhere),
   /// or everyone matching [query] wherever they are. [showOffline]: the
-  /// page's "Last known" toggle, also everyone else at their last known
-  /// position, up to 7 days old (migration 0272).
+  /// page's "Last known" toggle (on by default), also everyone else at
+  /// their last known position, up to 7 days old (migration 0272).
   Future<GodViewSnapshot> snapshot({
     ({double minLat, double minLng, double maxLat, double maxLng})? box,
-    bool showOffline = false,
+    bool showOffline = true,
     String query = '',
     int limit = 1500,
   }) async {
@@ -36,6 +36,21 @@ class GodViewRepository {
       },
     );
     return GodViewSnapshot.fromJson(res is Map ? Map<String, dynamic>.from(res) : const {}, query: q);
+  }
+
+  /// Everyone God View cannot put on the map, with why (migration 0275),
+  /// by name; a sub-admin gets only those the server can place in their
+  /// region. Never a phone number.
+  Future<List<GodViewUnlocated>> unlocated({String query = '', int limit = 500}) async {
+    final q = query.trim();
+    final rows = await _db!
+        .rpc('god_view_unlocated', params: {'p_query': q.isEmpty ? null : q, 'p_limit': limit})
+        .order('name', ascending: true)
+        .limit(limit);
+    return [
+      for (final r in rows as List)
+        if (r is Map) GodViewUnlocated.fromJson(Map<String, dynamic>.from(r)),
+    ];
   }
 
   /// The person's phone; the server records that this admin looked.
