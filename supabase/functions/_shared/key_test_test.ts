@@ -162,10 +162,10 @@ Deno.test("a self-hosted server key must be an https address; Amazon uses the se
   assert(req.url.startsWith("https://places.geo.ap-southeast-1.amazonaws.com/"));
 });
 
-Deno.test("Resend (the Reports emails): checks the key, sends nothing", () => {
+Deno.test("Resend (the Reports emails): checks the key, sends nothing", async () => {
   const t = test("resend_key");
   assertEquals(t.provider, "email");
-  const r = t.request!("re_123", "");
+  const r = await t.request!("re_123", "");
   assertEquals(r.url, "https://api.resend.com/domains");
   assertEquals(r.method ?? "GET", "GET");
   assertEquals(r.headers?.Authorization, "Bearer re_123");
