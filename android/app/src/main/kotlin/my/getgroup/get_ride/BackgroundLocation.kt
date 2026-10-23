@@ -8,9 +8,14 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.location.LocationRequest
 import android.os.Build
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.Handler
+import android.os.Looper
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.net.HttpURLConnection
@@ -28,10 +33,12 @@ import kotlin.concurrent.thread
  * through a PendingIntent the system keeps after the app is closed (Android
  * throttles background apps to a few fixes an hour, which is all this needs).
  * The receiver sends one about every 15 minutes, or sooner after a move of
- * 500 m (backgroundReportDue in lib/src/core/push_logic.dart), to
- * push_background_location with the install's random key: no session and
- * no Flutter engine. Android forgets the request on a reboot or an app
- * update; the receiver asks again then. Only framework APIs: no new library.
+ * 200 m (backgroundReportDue in lib/src/core/push_logic.dart; 500 m before
+ * 0276), to push_background_location with the install's random key: no
+ * session and no Flutter engine. Android forgets the request on a reboot or
+ * an app update; the receiver asks again then. A "Still there?" ping
+ * (LocationPing.kt, migration 0276) takes one fix and sends it whatever the
+ * rule says ([fixNow]). Only framework APIs: no new library.
  */
 object BackgroundLocation {
     private const val PREFS = "get_ride_background_location"
@@ -40,7 +47,7 @@ object BackgroundLocation {
 
     // As backgroundReportDue (lib/src/core/push_logic.dart).
     private const val EVERY_MS = 15 * 60 * 1000L
-    private const val MOVE_METRES = 500f
+    private const val MOVE_METRES = 200f
 
     // How often Android is asked for a fix; the rule above picks what is sent.
     private const val ASK_EVERY_MS = 5 * 60 * 1000L
@@ -148,17 +155,92 @@ object BackgroundLocation {
         return PendingIntent.getBroadcast(context, REQUEST_CODE, intent, flags)
     }
 
-    /** A fix arrived: sent when it is due, then [done]. */
-    fun onFix(context: Context, fix: Location, done: () -> Unit) {
+    /** Armed, and location still allowed all the time. */
+    fun ready(context: Context): Boolean = prefs(context).getBoolean("armed", false) && allowedAlways(context)
+
+    /**
+     * One fix now, for a ping: Android's current location (Android 11+), else
+     * a single update, given [waitMs]; without one, the last fix Android
+     * has if it is under 5 minutes old. [done] once, on the main thread, with
+     * the fix or null.
+     */
+    fun fixNow(context: Context, waitMs: Long, done: (Location?) -> Unit) {
+        val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        if (manager == null || !allowedAlways(context)) {
+            done(null)
+            return
+        }
+        val main = Handler(Looper.getMainLooper())
+        var answered = false
+        fun answer(fix: Location?) {
+            if (answered) return
+            answered = true
+            done(fix)
+        }
+        fun lastKnown(): Location? = try {
+            listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER, LocationManager.PASSIVE_PROVIDER)
+                .filter { manager.allProviders.contains(it) }
+                .mapNotNull { manager.getLastKnownLocation(it) }
+                .maxByOrNull { it.time }
+                ?.takeIf { System.currentTimeMillis() - it.time < 5 * 60 * 1000L }
+        } catch (e: SecurityException) {
+            null
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val provider = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    manager.hasProvider(LocationManager.FUSED_PROVIDER)
+                ) {
+                    LocationManager.FUSED_PROVIDER
+                } else {
+                    legacyProvider(manager)
+                }
+                val cancel = CancellationSignal()
+                main.postDelayed({
+                    cancel.cancel()
+                    answer(lastKnown())
+                }, waitMs)
+                manager.getCurrentLocation(provider, cancel, context.mainExecutor) { fix -> answer(fix ?: lastKnown()) }
+            } else {
+                val listener = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        answer(location)
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+
+                    override fun onProviderEnabled(provider: String) {}
+
+                    override fun onProviderDisabled(provider: String) {}
+                }
+                main.postDelayed({
+                    manager.removeUpdates(listener)
+                    answer(lastKnown())
+                }, waitMs)
+                @Suppress("DEPRECATION")
+                manager.requestSingleUpdate(legacyProvider(manager), listener, Looper.getMainLooper())
+            }
+        } catch (e: SecurityException) {
+            answer(null)
+        } catch (e: IllegalArgumentException) {
+            answer(lastKnown())
+        }
+    }
+
+    /** A fix arrived: sent when it is due (or [force]d, a ping), then [done]. */
+    fun onFix(context: Context, fix: Location, done: () -> Unit) = onFix(context, fix, false) { done() }
+
+    fun onFix(context: Context, fix: Location, force: Boolean, done: (Boolean) -> Unit) {
         val p = prefs(context)
         if (!p.getBoolean("armed", false)) {
-            done()
+            done(false)
             return
         }
         if (!allowedAlways(context)) {
             // No longer allowed all the time: stop until the app sees it again.
             disarm(context)
-            done()
+            done(false)
             return
         }
         val now = System.currentTimeMillis()
@@ -173,17 +255,19 @@ object BackgroundLocation {
         } else {
             null
         }
-        val due = lastAt == 0L || now - lastAt >= EVERY_MS || (moved ?: 0f) >= MOVE_METRES
+        val due = force || lastAt == 0L || now - lastAt >= EVERY_MS || (moved ?: 0f) >= MOVE_METRES
         val url = p.getString("url", null)
         val anonKey = p.getString("anonKey", null)
         val key = p.getString("key", null)
         if (!due || url == null || anonKey == null || key == null) {
-            done()
+            done(false)
             return
         }
         thread(name = "background-location") {
+            var sent = false
             try {
                 if (post(url, anonKey, key, fix.latitude, fix.longitude)) {
+                    sent = true
                     p.edit()
                         .putLong("lastAt", now)
                         .putFloat("lastLat", fix.latitude.toFloat())
@@ -193,7 +277,7 @@ object BackgroundLocation {
             } catch (e: Exception) {
                 // Best effort: the next fix tries again.
             } finally {
-                done()
+                done(sent)
             }
         }
     }
