@@ -574,6 +574,21 @@ void main() {
       expect(find.byKey(const ValueKey('god-view-row-d8')), findsOneWidget, reason: 'not responding stays');
     });
 
+    testWidgets('tapping a name zooms in but keeps everyone in the list', (tester) async {
+      final repo = await _pump(tester, size: const Size(1400, 2400));
+      await _openDetails(tester, 'd8');
+      // The map moved; let the camera settle and the next poll come in.
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pump();
+      expect(repo.asked.every((a) => !a.box), isTrue, reason: 'never narrowed to the map view');
+      await tester.tap(find.byKey(const ValueKey('god-view-tab-people')));
+      await tester.pump(const Duration(milliseconds: 400));
+      for (final id in ['d7', 'd1', 'd8', 'u5']) {
+        expect(find.byKey(ValueKey('god-view-row-$id')), findsOneWidget, reason: id);
+      }
+      expect(tester.takeException(), isNull);
+    });
+
     for (final b in Brightness.values) {
       testWidgets('not responding and last known details in ${b.name}', (tester) async {
         await _pump(tester, b: b, size: const Size(1400, 2400));

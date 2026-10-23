@@ -1,7 +1,9 @@
 // Admin → God View (migrations 0270, 0272, 0276): everyone's live position
 // and status on one map, with a People list and a Details card. Polls
-// god_view_snapshot every 5 s while the page is on screen, for the map's
-// visible box only. With "Last known" (on by default) everyone else is
+// god_view_snapshot every 5 s while the page is on screen, for everyone the
+// admin may see, not only the map's view: tapping a name zooms in, and the
+// list must not shrink to that one person (the server puts SOS and live
+// people first when it caps the count). With "Last known" (on by default) everyone else is
 // there too, smaller and greyed, where they last were. A sub-admin sees the
 // people in their own region (the server's rule). "Ping now" asks a quiet
 // phone where it is (0276); Settings holds the ping minutes and how long a
@@ -87,14 +89,13 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   bool _noLocationOpen = false;
   Object? _error;
   DateTime? _fetchedAt;
-  ({double minLat, double minLng, double maxLat, double maxLng})? _box;
 
   String? _selectedId;
   GodViewPerson? _selectedLast;
   bool _follow = false;
   final _phones = <String, String?>{};
 
-  Timer? _poll, _tick, _boxWait, _searchWait, _pingPoll;
+  Timer? _poll, _tick, _searchWait, _pingPoll;
 
   /// "Ping now" on the Details tab: whose, where it stands, and the time the
   /// line names (the answer, or when to try again).
@@ -147,7 +148,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    for (final t in [_poll, _tick, _boxWait, _searchWait, _pingPoll]) {
+    for (final t in [_poll, _tick, _searchWait, _pingPoll]) {
       t?.cancel();
     }
     _tabs.dispose();
@@ -172,7 +173,6 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     _inFlight = true;
     try {
       final s = await ref.read(godViewRepositoryProvider).snapshot(
-        box: _box,
         showOffline: _filters.lastKnown,
         query: _filters.query,
       );
@@ -216,7 +216,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     if (!_mapReady) return;
     if (_follow && _selectedLast != null) {
       _map.move(LatLng(_selectedLast!.lat, _selectedLast!.lng), _map.camera.zoom);
-    } else if (!_fitted && _box == null && s.people.isNotEmpty) {
+    } else if (!_fitted && s.people.isNotEmpty) {
       _fitted = true;
       // The live people when there are any; else everyone's last position.
       final live = s.people.where((p) => !p.status.isLastKnown).toList();
@@ -236,12 +236,6 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
 
   void _onCamera(MapCamera camera, bool gesture) {
     if (gesture && _follow) setState(() => _follow = false);
-    _boxWait?.cancel();
-    _boxWait = Timer(const Duration(milliseconds: 450), () {
-      final b = camera.visibleBounds;
-      _box = godViewPaddedBox(b.south, b.west, b.north, b.east);
-      _load();
-    });
   }
 
   void _setFilters(GodViewFilters f, {bool reload = false}) {
