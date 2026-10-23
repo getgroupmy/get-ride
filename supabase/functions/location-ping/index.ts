@@ -7,7 +7,9 @@
 // (location_ping_due every 5 minutes, God View's "Ping now" through
 // god_view_ping) and calls this with the rows it claimed; this sends each
 // one an FCM message (an iPhone a background push, Android a data-only high
-// priority message). See _shared/location_ping.ts.
+// priority message). God View's "Live now" (0282, god_view_live_start)
+// calls it with reason "live", which sends `location_live` instead. See
+// _shared/location_ping.ts.
 //
 //   POST { tokenIds, reason }  ->  { sent, failed, pruned }
 //

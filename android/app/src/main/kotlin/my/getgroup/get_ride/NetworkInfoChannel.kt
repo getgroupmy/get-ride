@@ -19,14 +19,18 @@ import io.flutter.plugin.common.MethodChannel
 /// operator names and codes need no phone-state access. Nothing asks the
 /// user anything. The battery (the sticky ACTION_BATTERY_CHANGED, no
 /// receiver kept) and the free space on the app's storage ride along.
-class NetworkInfoChannel(private val context: Context, messenger: BinaryMessenger) {
+/// Without a [messenger] (the app closed: a ping's details, 0282) it is
+/// only read, through [info].
+class NetworkInfoChannel(private val context: Context, messenger: BinaryMessenger?) {
     init {
-        MethodChannel(messenger, "get_ride/network").setMethodCallHandler { call, result ->
-            if (call.method == "info") result.success(info()) else result.notImplemented()
+        messenger?.let {
+            MethodChannel(it, "get_ride/network").setMethodCallHandler { call, result ->
+                if (call.method == "info") result.success(info()) else result.notImplemented()
+            }
         }
     }
 
-    private fun info(): Map<String, Any?> {
+    fun info(): Map<String, Any?> {
         val out = mutableMapOf<String, Any?>()
         try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager

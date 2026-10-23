@@ -11,7 +11,9 @@ library;
 enum SessionEvent {
   appLaunch('app_launch'),
   login('login'),
-  appRelaunch('app_relaunch');
+  appRelaunch('app_relaunch'),
+  // God View asked the open app for fresh details (a ping or a live share, 0282).
+  ping('ping');
 
   const SessionEvent(this.value);
   final String value;

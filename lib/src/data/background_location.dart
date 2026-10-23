@@ -68,6 +68,21 @@ class BackgroundLocation {
     }
   }
 
+  /// God View's "Live now" (migration 0282): the native half streams the
+  /// position every 5 s until [until] or until the server says the share is
+  /// over (LiveLocation.kt's foreground service; on an iPhone the reporter's
+  /// continuous updates). Already streaming: nothing changes. False without
+  /// the native half or the reporter armed.
+  Future<bool> goLive(DateTime until) async {
+    if (!supported) return false;
+    try {
+      return await channel.invokeMethod<bool>('live', {'until': until.millisecondsSinceEpoch}) ?? false;
+    } catch (e) {
+      debugPrint('[background location] live not started: $e');
+      return false;
+    }
+  }
+
   /// Stops the native reporter. [forgetKey] (signing out): the next account
   /// on this phone gets a new key.
   Future<void> disarm({bool forgetKey = false}) async {

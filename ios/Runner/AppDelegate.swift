@@ -8,6 +8,7 @@ import MapKit
 import Network
 import PushKit
 import UIKit
+import UserNotifications
 import flutter_callkit_incoming
 
 @main
@@ -142,15 +143,19 @@ import flutter_callkit_incoming
   /// GoogleUtilities' app delegate proxy hands it to the plugin first and
   /// calls iOS's completion once both have answered, so this one only says
   /// it had nothing to do (calling super would hand it to the plugin twice).
+  /// A `location_live` push (God View's "Live now", 0282) starts the stream
+  /// and is answered as a ping too.
   override func application(
     _ application: UIApplication,
     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) {
-    guard userInfo["type"] as? String == "location_ping" else {
+    let type = userInfo["type"] as? String
+    guard type == "location_ping" || type == "location_live" else {
       completionHandler(.noData)
       return
     }
+    if type == "location_live" { _ = BackgroundLocationReporter.shared.startLive(until: nil) }
     BackgroundLocationReporter.shared.answerPing { sent in completionHandler(sent ? .newData : .noData) }
   }
 }
@@ -303,7 +308,12 @@ final class AppIconPlugin: NSObject, FlutterPlugin {
 ///   * a 200 m geofence (region monitoring, on exit) around where the phone
 ///     last reported, moved there after every report (0276), and visits
 ///     (arriving at and leaving a place), both sent at once;
-///   * a "Still there?" ping, a silent push (answerPing, 0276): one fix.
+///   * a "Still there?" ping, a silent push (answerPing, 0276): one fix,
+///     then the phone's details (sendDetails, 0282);
+///   * God View's "Live now" (startLive, 0282): continuous updates, one sent
+///     every 5 s to push_live_location until the share ends or the server
+///     says it is over; in the background too (allowsBackgroundLocationUpdates,
+///     the blue indicator showing), with Always.
 /// A change is sent when due, about every 15 minutes or after a move of
 /// 200 m (backgroundReportDue in lib/src/core/push_logic.dart); a geofence
 /// exit, a visit and a ping are sent whatever the rule says (the server
@@ -360,6 +370,7 @@ final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
   }
 
   func disarm() {
+    stopLive()
     manager.stopMonitoringSignificantLocationChanges()
     manager.stopMonitoringVisits()
     unfence()
@@ -452,8 +463,163 @@ final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
       once(true)
       return
     }
+    // Started now, so the network is known by the time the details go.
+    _ = NetworkInfoPlugin.background
     DispatchQueue.main.asyncAfter(deadline: .now() + Self.pingDeadline) { once(false) }
-    askForFix(once)
+    askForFix { [weak self] sent in
+      guard let self = self else { return once(sent) }
+      self.sendDetails { once(sent) }
+    }
+  }
+
+  // MARK: The phone's details (0282)
+
+  /// Admin's Phone card keys (lib/src/core/phone_details.dart): battery,
+  /// network, storage, app version and permissions, read without asking,
+  /// sent with the install's key to push_background_details. [done] once.
+  func sendDetails(_ done: @escaping () -> Void) {
+    guard armed, let url = defaults.string(forKey: Self.k("url")),
+      let anonKey = defaults.string(forKey: Self.k("anonKey")), let key = defaults.string(forKey: Self.k("key"))
+    else {
+      done()
+      return
+    }
+    let net = NetworkInfoPlugin.info(path: NetworkInfoPlugin.background.currentPath)
+    var out: [String: Any] = [:]
+    for (to, from) in [
+      ("network_type", "type"), ("network_is_connected", "connected"), ("network_is_internet_reachable", "internet"),
+      ("battery_pct", "batteryPct"), ("battery_charging", "batteryCharging"),
+      ("storage_free_bytes", "storageFree"), ("storage_total_bytes", "storageTotal"),
+    ] {
+      if let v = net[from] { out[to] = v }
+    }
+    if let carrier = net["carrierName"] as? String, !["", "--", "unknown"].contains(carrier) {
+      out["network_operator"] = carrier
+      out["mobile_operator_name"] = carrier
+    }
+    if let radio = net["radio"] as? String, let g = Self.generation(radio) { out["cellular_generation"] = g }
+    out["os_version"] = "\(UIDevice.current.systemName) \(UIDevice.current.systemVersion)"
+    if let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String { out["app_version"] = v }
+    if let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String { out["app_build_version"] = b }
+    // Only sent with location Always.
+    out["perm_location"] = "always"
+    UNUserNotificationCenter.current().getNotificationSettings { settings in
+      let s = settings.authorizationStatus
+      out["perm_notifications"] = s == .authorized || s == .provisional || s == .ephemeral
+      out["location_service_on"] = CLLocationManager.locationServicesEnabled()
+      self.rpc(url: url, anonKey: anonKey, fn: "push_background_details", body: ["p_key": key, "p_details": out]) { _ in
+        DispatchQueue.main.async { done() }
+      }
+    }
+  }
+
+  /// "5G", "4G"… from CoreTelephony's radio, as cellularGenerationOf (lib/src/core/session_telemetry.dart).
+  private static func generation(_ radio: String) -> String? {
+    let r = radio.replacingOccurrences(of: "CTRadioAccessTechnology", with: "")
+    if r.hasPrefix("NR") { return "5G" }
+    if r == "LTE" { return "4G" }
+    if ["WCDMA", "HSDPA", "HSUPA", "eHRPD", "CDMAEVDORev0", "CDMAEVDORevA", "CDMAEVDORevB"].contains(r) { return "3G" }
+    if ["GPRS", "Edge", "CDMA1x"].contains(r) { return "2G" }
+    return nil
+  }
+
+  // MARK: Live now (0282)
+
+  /// When the share ends; nil while not live.
+  private var liveUntil: Date?
+  private var liveTimer: Timer?
+  private var livePosting = false
+  private var liveLastSent = Date.distantPast
+  private static let liveEvery: TimeInterval = 5
+  private static let liveMost: TimeInterval = 61 * 60
+
+  /// Streams until [until] (nil: not known yet, an hour at most until the
+  /// server says). Already streaming: only the end may change. False
+  /// without Always or the reporter armed.
+  func startLive(until: Date?) -> Bool {
+    guard armed, allowedAlways else { return false }
+    let most = Date().addingTimeInterval(Self.liveMost)
+    if let u = until, u > Date() {
+      liveUntil = min(u, most)
+    } else if liveUntil == nil {
+      liveUntil = most
+    }
+    if liveTimer != nil { return true }
+    manager.allowsBackgroundLocationUpdates = true
+    manager.pausesLocationUpdatesAutomatically = false
+    manager.showsBackgroundLocationIndicator = true
+    manager.desiredAccuracy = kCLLocationAccuracyBest
+    manager.distanceFilter = kCLDistanceFilterNone
+    manager.startUpdatingLocation()
+    liveTimer = Timer.scheduledTimer(withTimeInterval: Self.liveEvery, repeats: true) { [weak self] _ in self?.liveTick() }
+    if UIApplication.shared.applicationState == .active { sendDetails {} }
+    return true
+  }
+
+  func stopLive() {
+    liveTimer?.invalidate()
+    liveTimer = nil
+    liveUntil = nil
+    manager.stopUpdatingLocation()
+    manager.allowsBackgroundLocationUpdates = false
+    manager.showsBackgroundLocationIndicator = false
+    manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+  }
+
+  /// The end, or the last fix again for a phone standing still.
+  private func liveTick() {
+    guard let until = liveUntil, Date() < until, armed, allowedAlways else {
+      stopLive()
+      return
+    }
+    if let fix = manager.location, Date().timeIntervalSince(liveLastSent) >= Self.liveEvery + 2 { postLive(fix) }
+  }
+
+  private func postLive(_ fix: CLLocation) {
+    guard !livePosting, let url = defaults.string(forKey: Self.k("url")),
+      let anonKey = defaults.string(forKey: Self.k("anonKey")), let key = defaults.string(forKey: Self.k("key"))
+    else { return }
+    livePosting = true
+    var body: [String: Any] = ["p_key": key, "p_lat": fix.coordinate.latitude, "p_lng": fix.coordinate.longitude]
+    if fix.speed >= 0 { body["p_speed"] = fix.speed }
+    if fix.horizontalAccuracy >= 0 { body["p_accuracy"] = fix.horizontalAccuracy }
+    rpc(url: url, anonKey: anonKey, fn: "push_live_location", body: body) { data in
+      let answer = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+      DispatchQueue.main.async {
+        self.livePosting = false
+        self.liveLastSent = Date()
+        // No answer (no signal): keep trying until the end.
+        guard let answer = answer else { return }
+        if answer["live"] as? Bool != true {
+          self.stopLive()
+          return
+        }
+        if let left = answer["ends_in"] as? Double ?? (answer["ends_in"] as? Int).map(Double.init) {
+          self.liveUntil = Date().addingTimeInterval(left)
+        }
+      }
+    }
+  }
+
+  /// POSTs [body] to the database function [fn]; the answer's body, or nil.
+  private func rpc(url: String, anonKey: String, fn: String, body: [String: Any], done: @escaping (Foundation.Data?) -> Void) {
+    let base = url.hasSuffix("/") ? String(url.dropLast()) : url
+    guard let endpoint = URL(string: base + "/rest/v1/rpc/" + fn),
+      let payload = try? JSONSerialization.data(withJSONObject: body)
+    else {
+      done(nil)
+      return
+    }
+    var request = URLRequest(url: endpoint, timeoutInterval: 10)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue(anonKey, forHTTPHeaderField: "apikey")
+    if anonKey.hasPrefix("eyJ") { request.setValue("Bearer \(anonKey)", forHTTPHeaderField: "Authorization") }
+    request.httpBody = payload
+    URLSession.shared.dataTask(with: request) { data, response, error in
+      let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+      done(error == nil && (200..<300).contains(code) ? data : nil)
+    }.resume()
   }
 
   /// One fix now (requestLocation), sent whatever the rule says; [done]
@@ -507,6 +673,7 @@ final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
 
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
     guard let fix = locations.last else { return }
+    if liveTimer != nil, Date().timeIntervalSince(liveLastSent) >= Self.liveEvery - 0.5 { postLive(fix) }
     let force = forceNext
     if force {
       forceNext = false
@@ -623,6 +790,10 @@ final class BackgroundLocationPlugin: NSObject, FlutterPlugin {
     case "disarm":
       BackgroundLocationReporter.shared.disarm()
       result(nil)
+    case "live":
+      // "Live now" (0282), from the open app that found a share on.
+      let ms = ((call.arguments as? [String: Any])?["until"] as? NSNumber)?.doubleValue ?? 0
+      result(BackgroundLocationReporter.shared.startLive(until: ms > 0 ? Date(timeIntervalSince1970: ms / 1000) : nil))
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -781,13 +952,23 @@ final class NetworkInfoPlugin: NSObject, FlutterPlugin {
     registrar.addMethodCallDelegate(NetworkInfoPlugin(), channel: channel)
   }
 
+  /// A monitor of its own for the closed app (a ping's details, 0282).
+  static let background: NWPathMonitor = {
+    let m = NWPathMonitor()
+    m.start(queue: DispatchQueue(label: "get_ride.network.background"))
+    return m
+  }()
+
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     guard call.method == "info" else {
       result(FlutterMethodNotImplemented)
       return
     }
+    result(Self.info(path: path ?? monitor.currentPath))
+  }
+
+  static func info(path p: NWPath) -> [String: Any] {
     var out: [String: Any] = [:]
-    let p = path ?? monitor.currentPath
     let up = p.status == .satisfied
     out["connected"] = up
     out["internet"] = up
@@ -829,6 +1010,6 @@ final class NetworkInfoPlugin: NSObject, FlutterPlugin {
         out["storageTotal"] = NSNumber(value: total)
       }
     }
-    result(out)
+    return out
   }
 }

@@ -742,7 +742,8 @@ void main() {
     }
 
     testWidgets('a full admin sees every action; SOS adds Open incident', (tester) async {
-      await _pump(tester);
+      // The details got taller (Update, Live now, 0282): a tall window shows them all.
+      await _pump(tester, size: const Size(1400, 2400));
       await _openDetails(tester, 'd7');
       for (final k in ['follow', 'open-ride', 'profile', 'message', 'call', 'push', 'suspend', 'incident']) {
         expect(find.byKey(ValueKey('god-view-$k')), findsOneWidget, reason: k);
@@ -751,7 +752,7 @@ void main() {
     });
 
     testWidgets('a God View-only sub-admin: no Suspend, no Send push, no ride or profile', (tester) async {
-      await _pump(tester, grants: const [AdminGrant(page: godViewPage, edit: false)]);
+      await _pump(tester, size: const Size(1400, 2400), grants: const [AdminGrant(page: godViewPage, edit: false)]);
       await _openDetails(tester, 'd2');
       for (final k in ['follow', 'message', 'call']) {
         expect(find.byKey(ValueKey('god-view-$k')), findsOneWidget, reason: k);
@@ -762,7 +763,7 @@ void main() {
     });
 
     testWidgets('Partners edit shows Suspend on partners only; Push edit shows Send push', (tester) async {
-      await _pump(tester, grants: const [
+      await _pump(tester, size: const Size(1400, 2400), grants: const [
         AdminGrant(page: godViewPage, edit: false),
         AdminGrant(page: 'admin-partners', edit: true),
         AdminGrant(page: 'admin-settings-push-notification', edit: true),
@@ -815,7 +816,7 @@ void main() {
     }
 
     testWidgets('Suspend asks for a reason and warns about the trip', (tester) async {
-      final repo = await _pump(tester);
+      final repo = await _pump(tester, size: const Size(1400, 2400));
       await _openDetails(tester, 'd2');
       // The details got taller (Status, Address, Movement): scroll to it.
       await tester.ensureVisible(find.byKey(const ValueKey('god-view-suspend')));
@@ -838,7 +839,7 @@ void main() {
     });
 
     testWidgets('Send push goes to that one person', (tester) async {
-      final repo = await _pump(tester);
+      final repo = await _pump(tester, size: const Size(1400, 2400));
       await _openDetails(tester, 'u3');
       await tester.tap(find.byKey(const ValueKey('god-view-push')));
       await tester.pumpAndSettle();

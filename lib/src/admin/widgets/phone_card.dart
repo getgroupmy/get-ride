@@ -222,11 +222,22 @@ class _PhoneBody extends StatelessWidget {
 
 /// God View's details: the newest phone in a few rows, labelled as the
 /// panel's own facts ([labelWidth]). Nothing while loading or unreadable.
+/// [update] sits beside the last report's age (God View's Update, 0282),
+/// [updateNote] under it.
 class PhoneFacts extends ConsumerWidget {
-  const PhoneFacts({super.key, required this.profileId, required this.now, this.labelWidth = 80});
+  const PhoneFacts({
+    super.key,
+    required this.profileId,
+    required this.now,
+    this.labelWidth = 80,
+    this.update,
+    this.updateNote,
+  });
   final String profileId;
   final DateTime now;
   final double labelWidth;
+  final Widget? update;
+  final Widget? updateNote;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -237,7 +248,15 @@ class PhoneFacts extends ConsumerWidget {
     if (v.phones.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Text('No phone details yet', key: const ValueKey('god-view-phone-none'), style: TextStyle(color: muted)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+              child: Text('No phone details yet', key: const ValueKey('god-view-phone-none'), style: TextStyle(color: muted)),
+            ),
+            ?update,
+          ]),
+          ?updateNote,
+        ]),
       );
     }
     final p = v.phones.first;
@@ -255,15 +274,21 @@ class PhoneFacts extends ConsumerWidget {
           if (p.backgroundTracking == false) const _Pill('No background', _Tone.warn),
         ])),
         row('Alerts', _yesNo(p.notifications, 'Allowed', 'Blocked')),
-        if (p.reportedAt != null)
+        if (p.reportedAt != null || update != null)
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Text(
-              "From the phone's last report, ${godViewAge(p.reportedAt, now)}.",
-              key: const ValueKey('god-view-phone-report'),
-              style: t.textTheme.bodySmall?.copyWith(color: muted),
-            ),
+            child: Row(children: [
+              Expanded(
+                child: Text(
+                  p.reportedAt == null ? 'No report from the phone yet.' : "From the phone's last report, ${godViewAge(p.reportedAt, now)}.",
+                  key: const ValueKey('god-view-phone-report'),
+                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                ),
+              ),
+              ?update,
+            ]),
           ),
+        ?updateNote,
       ],
     );
   }

@@ -11,9 +11,14 @@
  *   * Android: a data-only, high-priority FCM message, handled by
  *     LocationPingReceiver.kt.
  *
- * Both carry `{ type: "location_ping" }` and nothing else.
+ * Both carry `{ type: "location_ping" }` and nothing else. The phone answers
+ * with its details too (battery, network, app; push_background_details,
+ * migration 0282). God View's "Live now" (reason "live", 0282) sends
+ * `{ type: "location_live" }` the same way, with a shorter life: the phone
+ * answers it as a ping, then sends its position every 5 seconds
+ * (push_live_location) until the share ends.
  *
- *   POST { tokenIds: uuid[], reason?: "scheduled" | "manual" }  ->  { sent, failed, pruned }
+ *   POST { tokenIds: uuid[], reason?: "scheduled" | "manual" | "live" }  ->  { sent, failed, pruned }
  *
  * The database decides who is due and claims the rows (location_ping_due,
  * god_view_ping: the admin's minutes, the 2-minute limit, God View's access
@@ -32,8 +37,14 @@ import { isExpoToken } from "./push.ts";
 
 export const LOCATION_PING = "location_ping";
 
+/** "Live now" (0282): stream the position until the share ends. */
+export const LOCATION_LIVE = "location_live";
+
 /** A ping older than this is worth nothing: the next one is on its way. */
 export const PING_TTL_SECONDS = 300;
+
+/** A live share that has not started in a minute is shown as not answered. */
+export const LIVE_TTL_SECONDS = 60;
 
 /** At most this many tokens a call (location_ping_due claims 500 a run). */
 export const MAX_TOKENS = 1000;
@@ -60,10 +71,20 @@ export function tokenIdsOf(raw: unknown): string[] {
   return [...out];
 }
 
+/** The push type for the body's reason: a live share, else a ping. */
+export function pingTypeOf(reason: unknown): typeof LOCATION_PING | typeof LOCATION_LIVE {
+  return reason === "live" ? LOCATION_LIVE : LOCATION_PING;
+}
+
 /** The FCM v1 message for one phone; null for a token FCM cannot reach this way. */
-export function locationPingMessage(t: PingTarget, now: Date) {
+export function locationPingMessage(
+  t: PingTarget,
+  now: Date,
+  type: typeof LOCATION_PING | typeof LOCATION_LIVE = LOCATION_PING,
+) {
   if (typeof t.token !== "string" || t.token === "" || isExpoToken(t.token)) return null;
-  const data = { type: LOCATION_PING };
+  const data = { type };
+  const ttl = type === LOCATION_LIVE ? LIVE_TTL_SECONDS : PING_TTL_SECONDS;
   if (t.platform === "ios") {
     return {
       message: {
@@ -74,8 +95,8 @@ export function locationPingMessage(t: PingTarget, now: Date) {
             "apns-push-type": "background",
             // Background pushes must be priority 5; iOS rations them.
             "apns-priority": "5",
-            "apns-expiration": String(Math.floor(now.getTime() / 1000) + PING_TTL_SECONDS),
-            "apns-collapse-id": LOCATION_PING,
+            "apns-expiration": String(Math.floor(now.getTime() / 1000) + ttl),
+            "apns-collapse-id": type,
           },
           payload: { aps: { "content-available": 1 } },
         },
@@ -87,7 +108,7 @@ export function locationPingMessage(t: PingTarget, now: Date) {
       message: {
         token: t.token,
         data,
-        android: { priority: "HIGH", ttl: `${PING_TTL_SECONDS}s`, collapse_key: LOCATION_PING },
+        android: { priority: "HIGH", ttl: `${ttl}s`, collapse_key: type },
       },
     };
   }
@@ -128,7 +149,7 @@ export async function handleLocationPing(req: Request, deps: LocationPingDeps): 
   const auth = await authorizePush(req, { ...deps.auth, callerCanPush: () => Promise.resolve(null) });
   if (!auth.ok) return reply({ error: auth.error }, auth.status);
 
-  let body: { tokenIds?: unknown };
+  let body: { tokenIds?: unknown; reason?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -137,13 +158,14 @@ export async function handleLocationPing(req: Request, deps: LocationPingDeps): 
   const ids = tokenIdsOf(body?.tokenIds);
   if (ids.length === 0) return reply({ error: "tokenIds is required" }, 400);
 
+  const type = pingTypeOf(body?.reason);
   const targets = await deps.targets(ids);
   const now = deps.now();
   const seen = new Set<string>();
   const messages: LocationPingMessage[] = [];
   for (const t of targets) {
     if (seen.has(t.token)) continue;
-    const m = locationPingMessage(t, now);
+    const m = locationPingMessage(t, now, type);
     if (!m) continue;
     seen.add(t.token);
     messages.push(m);
