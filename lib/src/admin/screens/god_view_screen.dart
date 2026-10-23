@@ -1,9 +1,11 @@
-// Admin → God View (migrations 0270, 0272): everyone's live position and
-// status on one map, with a People list and a Details card. Polls
+// Admin → God View (migrations 0270, 0272, 0276): everyone's live position
+// and status on one map, with a People list and a Details card. Polls
 // god_view_snapshot every 5 s while the page is on screen, for the map's
 // visible box only. With "Last known" (on by default) everyone else is
 // there too, smaller and greyed, where they last were. A sub-admin sees the
-// people in their own region (the server's rule).
+// people in their own region (the server's rule). "Ping now" asks a quiet
+// phone where it is (0276); Settings holds the ping minutes and how long a
+// quiet Always on phone stays Always on.
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -92,7 +94,11 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   bool _follow = false;
   final _phones = <String, String?>{};
 
-  Timer? _poll, _tick, _boxWait, _searchWait;
+  Timer? _poll, _tick, _boxWait, _searchWait, _pingPoll;
+
+  /// "Ping now" on the Details tab: whose, where it stands, and the time the
+  /// line names (the answer, or when to try again).
+  ({String id, GodViewPingStage stage, DateTime? at})? _ping;
   bool _mapReady = false, _fitted = false, _inFlight = false, _again = false, _resumed = true;
 
   DateTime _now() => ref.read(godViewClockProvider)();
@@ -141,7 +147,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    for (final t in [_poll, _tick, _boxWait, _searchWait]) {
+    for (final t in [_poll, _tick, _boxWait, _searchWait, _pingPoll]) {
       t?.cancel();
     }
     _tabs.dispose();
@@ -324,6 +330,69 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     builder: (_) => _PushSheet(person: p),
   );
 
+  Future<void> _openSettings() async {
+    final saved = await showAppSheet<GodViewSettings>(
+      id: 'god-view.settings',
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (_) => _SettingsSheet(settings: _snap?.settings ?? const GodViewSettings()),
+    );
+    if (saved != null && mounted) unawaited(_load());
+  }
+
+  /// "Ping now": the silent push, then up to [godViewPingWait] for the phone
+  /// to answer; the map refreshes once it has.
+  Future<void> _pingNow(GodViewPerson p) async {
+    _pingPoll?.cancel();
+    setState(() => _ping = (id: p.id, stage: GodViewPingStage.sending, at: null));
+    try {
+      final r = await ref.read(godViewRepositoryProvider).ping(p.id);
+      if (!mounted) return;
+      final stage = godViewPingStageOf(r);
+      setState(() => _ping = (id: p.id, stage: stage, at: stage == GodViewPingStage.recent ? r.retryAt : null));
+      if (stage == GodViewPingStage.waiting) _waitForAnswer(p.id, r.sentAt ?? _now());
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _ping = null);
+      showError(context, e);
+    }
+  }
+
+  void _waitForAnswer(String id, DateTime since) {
+    final every = ref.read(godViewPingPollProvider);
+    final tries = (godViewPingWait.inMilliseconds / every.inMilliseconds).ceil();
+    var asked = 0;
+    var busy = false;
+    _pingPoll = Timer.periodic(every, (t) async {
+      if (busy) return;
+      busy = true;
+      asked++;
+      try {
+        final a = await ref.read(godViewRepositoryProvider).pingAnswer(id, since);
+        if (!mounted || _ping?.id != id) {
+          t.cancel();
+          return;
+        }
+        if (a.answered) {
+          t.cancel();
+          setState(() => _ping = (id: id, stage: GodViewPingStage.answered, at: a.at));
+          unawaited(_load());
+        } else if (asked >= tries) {
+          t.cancel();
+          setState(() => _ping = (id: id, stage: GodViewPingStage.noAnswer, at: null));
+        }
+      } catch (_) {
+        if (asked >= tries) {
+          t.cancel();
+          if (mounted && _ping?.id == id) setState(() => _ping = (id: id, stage: GodViewPingStage.noAnswer, at: null));
+        }
+      } finally {
+        busy = false;
+      }
+    });
+  }
+
   void _openProfile(GodViewPerson p) {
     final path = p.isPartner
         ? '/admin/m/partner-edit?id=${Uri.encodeQueryComponent(p.partnerRowId ?? '')}'
@@ -357,6 +426,12 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
       module: 'god-view',
       actions: [
         IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refresh),
+        IconButton(
+          key: const ValueKey('god-view-settings'),
+          tooltip: 'Settings',
+          icon: const Icon(Icons.settings_outlined),
+          onPressed: _openSettings,
+        ),
       ],
       body: LayoutBuilder(
         builder: (context, c) {
@@ -564,6 +639,14 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
               Text(p.displayName, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 4),
               _StatusPill(status: p.status),
+              if (godViewNotMovedSince(p, now) case final still?) ...[
+                const SizedBox(height: 4),
+                Text(
+                  still,
+                  key: const ValueKey('god-view-not-moved'),
+                  style: TextStyle(color: t.colorScheme.onSurfaceVariant),
+                ),
+              ],
             ]),
           ),
         ]),
@@ -631,6 +714,14 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
         ]),
         if (revealed)
           Text('Recorded in the admin log.', style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+        if (godViewCanPing(p)) ...[
+          const SizedBox(height: 10),
+          _PingRow(
+            stage: _ping?.id == p.id ? _ping!.stage : null,
+            at: _ping?.id == p.id ? _ping!.at : null,
+            onPing: () => _pingNow(p),
+          ),
+        ],
         const SizedBox(height: 12),
         Wrap(spacing: 6, runSpacing: 6, children: [
           if (actions.contains(GodViewAction.follow))
@@ -1124,7 +1215,10 @@ class _PersonRow extends StatelessWidget {
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 _StatusPill(status: p.status),
                 const SizedBox(height: 2),
-                Text(godViewAge(p.updatedAt, now), style: TextStyle(fontSize: 11, color: t.colorScheme.onSurfaceVariant)),
+                Text(
+                  godViewNotMovedSince(p, now) ?? godViewAge(p.updatedAt, now),
+                  style: TextStyle(fontSize: 11, color: t.colorScheme.onSurfaceVariant),
+                ),
               ]),
             ]),
           ),
@@ -1453,6 +1547,135 @@ class _PushSheetState extends ConsumerState<_PushSheet> {
                 },
           child: const Text('Send'),
         ),
+      ]),
+    );
+  }
+}
+
+// ---- "Still there?" and the settings (migration 0276) -------------------------------------------
+
+/// "Ping now" and the line saying how it went.
+class _PingRow extends StatelessWidget {
+  const _PingRow({required this.stage, required this.at, required this.onPing});
+  final GodViewPingStage? stage;
+  final DateTime? at;
+  final VoidCallback onPing;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final busy = stage == GodViewPingStage.sending || stage == GodViewPingStage.waiting;
+    final s = stage;
+    final color = switch (s) {
+      GodViewPingStage.answered => godViewStatusColor(GodViewStatus.free, t.brightness),
+      GodViewPingStage.failed => t.colorScheme.error,
+      _ => t.colorScheme.onSurfaceVariant,
+    };
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        OutlinedButton.icon(
+          key: const ValueKey('god-view-ping'),
+          onPressed: busy ? null : onPing,
+          icon: busy
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.my_location_outlined, size: 18),
+          label: const Text('Ping now'),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            'Asks their phone where it is.',
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+        ),
+      ]),
+      if (s != null) ...[
+        const SizedBox(height: 6),
+        Text(godViewPingLine(s, at: at), key: const ValueKey('god-view-ping-line'), style: TextStyle(color: color)),
+      ],
+    ]);
+  }
+}
+
+/// Admin → God View → Settings: the "Still there?" pings and how long a
+/// quiet Always on phone stays Always on. A full admin changes them; anyone
+/// else with God View sees them.
+class _SettingsSheet extends ConsumerStatefulWidget {
+  const _SettingsSheet({required this.settings});
+  final GodViewSettings settings;
+
+  @override
+  ConsumerState<_SettingsSheet> createState() => _SettingsSheetState();
+}
+
+class _SettingsSheetState extends ConsumerState<_SettingsSheet> {
+  late GodViewSettings _s = widget.settings;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = TextStyle(color: t.colorScheme.onSurfaceVariant);
+    final edit = widget.settings.editable;
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('God View settings', style: t.textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text('For phones with location set to always. They report when they move; these keep them on the map while they stay put.', style: muted),
+        if (!edit) ...[
+          const SizedBox(height: 8),
+          Text('Only a full admin can change these.', key: const ValueKey('god-view-settings-readonly'), style: muted),
+        ],
+        const SizedBox(height: 8),
+        SwitchListTile(
+          key: const ValueKey('god-view-settings-pings'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('"Still there?" pings'),
+          subtitle: const Text('A silent push asks a quiet phone where it is.'),
+          value: _s.pings,
+          onChanged: edit ? (v) => setState(() => _s = _s.copyWith(pings: v)) : null,
+        ),
+        const SizedBox(height: 4),
+        Text('Ping a phone quiet for ${godViewMinutesLabel(_s.pingMinutes)}', style: t.textTheme.titleSmall),
+        Slider(
+          key: const ValueKey('god-view-settings-minutes'),
+          value: _s.pingMinutes.toDouble(),
+          min: GodViewSettings.minPingMinutes.toDouble(),
+          max: GodViewSettings.maxPingMinutes.toDouble(),
+          divisions: (GodViewSettings.maxPingMinutes - GodViewSettings.minPingMinutes) ~/ 5,
+          label: godViewMinutesLabel(_s.pingMinutes),
+          onChanged: edit && _s.pings ? (v) => setState(() => _s = _s.copyWith(pingMinutes: v.round())) : null,
+        ),
+        Text('Each phone at most this often. iPhones limit silent pushes, so a short time may be skipped.', style: muted),
+        const SizedBox(height: 12),
+        Text('Always on for ${_s.alwaysOnHours} h after the last report', style: t.textTheme.titleSmall),
+        Slider(
+          key: const ValueKey('god-view-settings-hours'),
+          value: _s.alwaysOnHours.toDouble(),
+          min: GodViewSettings.minAlwaysOnHours.toDouble(),
+          max: GodViewSettings.maxAlwaysOnHours.toDouble(),
+          divisions: GodViewSettings.maxAlwaysOnHours - GodViewSettings.minAlwaysOnHours,
+          label: '${_s.alwaysOnHours} h',
+          onChanged: edit ? (v) => setState(() => _s = _s.copyWith(alwaysOnHours: v.round())) : null,
+        ),
+        Text('After that the phone shows as Last known.', style: muted),
+        const SizedBox(height: 16),
+        if (edit)
+          BusyButton.filled(
+            key: const ValueKey('god-view-settings-save'),
+            onPressed: () async {
+              GodViewSettings? saved;
+              final ok = await runAdminAction(
+                context,
+                () async => saved = await ref.read(godViewRepositoryProvider).saveSettings(_s),
+                success: 'God View settings saved',
+              );
+              if (ok && context.mounted) Navigator.pop(context, saved);
+            },
+            child: const Text('Save'),
+          )
+        else
+          OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
       ]),
     );
   }

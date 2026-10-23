@@ -132,6 +132,27 @@ import flutter_callkit_incoming
     GeneratedPluginRegistrant.register(with: engine)
     voipEngine = engine
   }
+
+  // MARK: Silent pushes
+
+  /// "Still there?" (migration 0276): a `location_ping` background push asks
+  /// an "Always on" phone for one fix, sent through the same report as the
+  /// significant location changes, with no Flutter engine needed. Every
+  /// other push is firebase_messaging's: with an implementation here,
+  /// GoogleUtilities' app delegate proxy hands it to the plugin first and
+  /// calls iOS's completion once both have answered, so this one only says
+  /// it had nothing to do (calling super would hand it to the plugin twice).
+  override func application(
+    _ application: UIApplication,
+    didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+  ) {
+    guard userInfo["type"] as? String == "location_ping" else {
+      completionHandler(.noData)
+      return
+    }
+    BackgroundLocationReporter.shared.answerPing { sent in completionHandler(sent ? .newData : .noData) }
+  }
 }
 
 /// The microphone permission as iOS keeps it (lib/src/features/support/call/
@@ -276,13 +297,20 @@ final class AppIconPlugin: NSObject, FlutterPlugin {
 /// "Always on" (migration 0272, lib/src/data/background_location.dart): a
 /// phone whose location is already "Always" keeps telling the server where
 /// it is while the app is in the background or closed. Never asks for the
-/// permission; without it, it does nothing. Significant location changes
-/// (about 500 m; iOS relaunches the app in the background for them, and
-/// needs no extra background mode) are sent when due, about every 15
-/// minutes or after a move of 500 m (backgroundReportDue in
-/// lib/src/core/push_logic.dart), to push_background_location with the
-/// install's random key: no session and no Flutter engine. Kept in this
-/// file so it needs no change to the Xcode project.
+/// permission; without it, it does nothing. Fixes come from:
+///   * significant location changes (about 500 m; iOS relaunches the app in
+///     the background for them, and needs no extra background mode);
+///   * a 200 m geofence (region monitoring, on exit) around where the phone
+///     last reported, moved there after every report (0276), and visits
+///     (arriving at and leaving a place), both sent at once;
+///   * a "Still there?" ping, a silent push (answerPing, 0276): one fix.
+/// A change is sent when due, about every 15 minutes or after a move of
+/// 200 m (backgroundReportDue in lib/src/core/push_logic.dart); a geofence
+/// exit, a visit and a ping are sent whatever the rule says (the server
+/// still takes one background report a minute, and the open app's check-in
+/// first). Each goes to push_background_location with the install's random
+/// key: no session and no Flutter engine. Kept in this file so it needs no
+/// change to the Xcode project.
 final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
   static let shared = BackgroundLocationReporter()
 
@@ -291,16 +319,36 @@ final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
 
   // As backgroundReportDue (lib/src/core/push_logic.dart).
   private static let every: TimeInterval = 15 * 60
-  private static let moveMetres: CLLocationDistance = 500
+  private static let moveMetres: CLLocationDistance = 200
+
+  /// The geofence around the last report.
+  private static let fenceMetres: CLLocationDistance = 200
+  private static let fenceId = "get_ride.background_location.here"
+
+  /// How long a ping or a geofence exit waits for its fix, and how long a
+  /// ping may take in all (iOS allows a silent push 30 seconds).
+  private static let fixWait: TimeInterval = 15
+  private static let pingDeadline: TimeInterval = 27
+
+  /// The fix asked for (requestLocation) is sent whatever the rule says.
+  private var forceNext = false
+  /// Who waits for that fix: told whether it was sent.
+  private var waiting: [(Bool) -> Void] = []
+  private var waitTimer: DispatchWorkItem?
+  private var waitTask = UIBackgroundTaskIdentifier.invalid
 
   private static func k(_ name: String) -> String { "get_ride.background_location.\(name)" }
 
   override init() {
     super.init()
     manager.delegate = self
+    // One fix for a ping or a geofence exit: a street is enough, and quicker
+    // than the GPS's best. Significant changes and visits ignore it.
+    manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
   }
 
   private var allowedAlways: Bool { manager.authorizationStatus == .authorizedAlways }
+  private var armed: Bool { defaults.bool(forKey: Self.k("armed")) }
 
   func arm(url: String, anonKey: String, key: String) -> Bool {
     guard !url.isEmpty, !anonKey.isEmpty, key.count >= 32 else { return false }
@@ -313,44 +361,201 @@ final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
 
   func disarm() {
     manager.stopMonitoringSignificantLocationChanges()
+    manager.stopMonitoringVisits()
+    unfence()
     for name in ["url", "anonKey", "key", "armed", "lastAt", "lastLat", "lastLng"] {
       defaults.removeObject(forKey: Self.k(name))
     }
+    finishWaiting(false)
   }
 
   func resumeIfArmed() {
-    if defaults.bool(forKey: Self.k("armed")) { _ = start() }
+    if armed { _ = start() }
   }
 
   private func start() -> Bool {
     guard allowedAlways, CLLocationManager.significantLocationChangeMonitoringAvailable() else { return false }
     manager.startMonitoringSignificantLocationChanges()
+    manager.startMonitoringVisits()
+    // A relaunch for a geofence exit keeps that region until its event is in.
+    if !manager.monitoredRegions.contains(where: { $0.identifier == Self.fenceId }),
+      let here = lastReported() ?? manager.location?.coordinate
+    {
+      fence(at: here)
+    }
     return true
   }
 
+  private func lastReported() -> CLLocationCoordinate2D? {
+    guard defaults.object(forKey: Self.k("lastLat")) != nil, defaults.object(forKey: Self.k("lastLng")) != nil else {
+      return nil
+    }
+    return CLLocationCoordinate2D(
+      latitude: defaults.double(forKey: Self.k("lastLat")), longitude: defaults.double(forKey: Self.k("lastLng")))
+  }
+
+  // MARK: The geofence
+
+  /// The 200 m geofence, centred on [center]; one region, replaced each time
+  /// (same identifier).
+  private func fence(at center: CLLocationCoordinate2D) {
+    guard CLLocationCoordinate2DIsValid(center), CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self)
+    else { return }
+    let most = manager.maximumRegionMonitoringDistance
+    let radius = most > 0 ? min(Self.fenceMetres, most) : Self.fenceMetres
+    let region = CLCircularRegion(center: center, radius: radius, identifier: Self.fenceId)
+    region.notifyOnEntry = false
+    region.notifyOnExit = true
+    manager.startMonitoring(for: region)
+  }
+
+  private func unfence() {
+    for region in manager.monitoredRegions where region.identifier == Self.fenceId {
+      manager.stopMonitoring(for: region)
+    }
+  }
+
+  func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
+    guard region.identifier == Self.fenceId, armed else { return }
+    askForFix { _ in }
+  }
+
+  func locationManager(_ manager: CLLocationManager, monitoringDidFailFor region: CLRegion?, withError error: Error) {}
+
+  // MARK: Visits
+
+  func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
+    guard armed, CLLocationCoordinate2DIsValid(visit.coordinate) else { return }
+    let fix = CLLocation(
+      coordinate: visit.coordinate, altitude: 0, horizontalAccuracy: visit.horizontalAccuracy,
+      verticalAccuracy: -1, timestamp: Date())
+    report(fix, force: true) { _ in }
+  }
+
+  // MARK: "Still there?"
+
+  /// A `location_ping` push (AppDelegate): one fix, sent. [done] exactly
+  /// once, within iOS's 30 seconds, with whether a report went out. On
+  /// screen the app checks in itself.
+  func answerPing(_ done: @escaping (Bool) -> Void) {
+    var answered = false
+    let once: (Bool) -> Void = { sent in
+      if answered { return }
+      answered = true
+      done(sent)
+    }
+    guard armed, allowedAlways else {
+      once(false)
+      return
+    }
+    if UIApplication.shared.applicationState == .active {
+      once(true)
+      return
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.pingDeadline) { once(false) }
+    askForFix(once)
+  }
+
+  /// One fix now (requestLocation), sent whatever the rule says; [done]
+  /// with whether it was. Without one in [fixWait], the last fix iOS has if
+  /// it is under 5 minutes old, else nothing.
+  private func askForFix(_ done: @escaping (Bool) -> Void) {
+    guard armed, allowedAlways else {
+      done(false)
+      return
+    }
+    waiting.append(done)
+    forceNext = true
+    if waitTask == .invalid {
+      waitTask = UIApplication.shared.beginBackgroundTask(withName: "location-ping") { [weak self] in
+        self?.finishWaiting(false)
+      }
+    }
+    guard waitTimer == nil else { return }
+    let timer = DispatchWorkItem { [weak self] in self?.giveUp() }
+    waitTimer = timer
+    DispatchQueue.main.asyncAfter(deadline: .now() + Self.fixWait, execute: timer)
+    manager.requestLocation()
+  }
+
+  private func giveUp() {
+    waitTimer?.cancel()
+    waitTimer = nil
+    guard forceNext else { return }
+    forceNext = false
+    if let fix = manager.location, -fix.timestamp.timeIntervalSinceNow < 5 * 60 {
+      report(fix, force: true) { [weak self] sent in self?.finishWaiting(sent) }
+    } else {
+      finishWaiting(false)
+    }
+  }
+
+  private func finishWaiting(_ sent: Bool) {
+    let callbacks = waiting
+    waiting = []
+    forceNext = false
+    waitTimer?.cancel()
+    waitTimer = nil
+    for callback in callbacks { callback(sent) }
+    if waitTask != .invalid {
+      UIApplication.shared.endBackgroundTask(waitTask)
+      waitTask = .invalid
+    }
+  }
+
+  // MARK: Fixes
+
   func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-    guard let fix = locations.last, defaults.bool(forKey: Self.k("armed")) else { return }
+    guard let fix = locations.last else { return }
+    let force = forceNext
+    if force {
+      forceNext = false
+      waitTimer?.cancel()
+      waitTimer = nil
+    }
+    report(fix, force: force) { [weak self] sent in
+      if force { self?.finishWaiting(sent) }
+    }
+  }
+
+  func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+    // The fix asked for did not come: what iOS last had, or nothing.
+    if forceNext { giveUp() }
+  }
+
+  /// Sends [fix] when due (or [force]d), then moves the geofence there;
+  /// [done] with whether it was sent.
+  private func report(_ fix: CLLocation, force: Bool, done: @escaping (Bool) -> Void) {
+    guard armed else {
+      done(false)
+      return
+    }
     guard allowedAlways else {
       // No longer Always: stop until the app sees it again.
       disarm()
+      done(false)
       return
     }
     // On screen, the app checks in itself.
-    if UIApplication.shared.applicationState == .active { return }
+    if UIApplication.shared.applicationState == .active {
+      done(true)
+      return
+    }
     let now = Date().timeIntervalSince1970
     let lastAt = defaults.double(forKey: Self.k("lastAt"))
     var moved: CLLocationDistance = 0
-    if defaults.object(forKey: Self.k("lastLat")) != nil {
-      let last = CLLocation(
-        latitude: defaults.double(forKey: Self.k("lastLat")), longitude: defaults.double(forKey: Self.k("lastLng")))
-      moved = fix.distance(from: last)
+    if let last = lastReported() {
+      moved = fix.distance(from: CLLocation(latitude: last.latitude, longitude: last.longitude))
     }
-    let due = lastAt == 0 || now - lastAt >= Self.every || moved >= Self.moveMetres
+    let due = force || lastAt == 0 || now - lastAt >= Self.every || moved >= Self.moveMetres
     guard due,
       let url = defaults.string(forKey: Self.k("url")),
       let anonKey = defaults.string(forKey: Self.k("anonKey")),
       let key = defaults.string(forKey: Self.k("key"))
-    else { return }
+    else {
+      done(false)
+      return
+    }
     var task = UIBackgroundTaskIdentifier.invalid
     task = UIApplication.shared.beginBackgroundTask(withName: "background-location") {
       UIApplication.shared.endBackgroundTask(task)
@@ -363,7 +568,9 @@ final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
           self.defaults.set(now, forKey: Self.k("lastAt"))
           self.defaults.set(lat, forKey: Self.k("lastLat"))
           self.defaults.set(lng, forKey: Self.k("lastLng"))
+          self.fence(at: fix.coordinate)
         }
+        done(ok)
         if task != .invalid {
           UIApplication.shared.endBackgroundTask(task)
           task = .invalid
@@ -371,8 +578,6 @@ final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
       }
     }
   }
-
-  func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
 
   private func post(
     url: String, anonKey: String, key: String, lat: Double, lng: Double, done: @escaping (Bool) -> Void
@@ -384,7 +589,7 @@ final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
       done(false)
       return
     }
-    var request = URLRequest(url: endpoint, timeoutInterval: 20)
+    var request = URLRequest(url: endpoint, timeoutInterval: 10)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.setValue(anonKey, forHTTPHeaderField: "apikey")

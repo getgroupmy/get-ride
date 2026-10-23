@@ -1,7 +1,7 @@
 // "Always on" (migration 0272): a phone whose location is already set to
 // "Allow all the time" (Android) or "Always" (iPhone) keeps telling the
 // server where it is while the app is in the background or closed, about
-// every 15 minutes or after a move of about 500 m (backgroundReportDue), so
+// every 15 minutes or after a move of about 200 m (backgroundReportDue), so
 // Admin -> God View shows it as Always on. Never asks for the permission.
 //
 // The work is native, because a closed app runs no Dart:

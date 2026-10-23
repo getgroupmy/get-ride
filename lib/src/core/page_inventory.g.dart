@@ -390,6 +390,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:fare-info', SurfaceKind.sheet, 'Fare info', 'lib/src/features/ride/confirm_parts.dart'),
   SurfaceEntry('sheet:fare-offer-controls.edit-fare-offer', SurfaceKind.sheet, 'Fare offer controls · Edit fare offer', 'lib/src/features/ride/fare_offer_controls.dart'),
   SurfaceEntry('sheet:god-view.send-push', SurfaceKind.sheet, 'God view · Send push', 'lib/src/admin/screens/god_view_screen.dart'),
+  SurfaceEntry('sheet:god-view.settings', SurfaceKind.sheet, 'God view · Settings', 'lib/src/admin/screens/god_view_screen.dart'),
   SurfaceEntry('sheet:home.vehicle-description', SurfaceKind.sheet, 'Home · Vehicle description', 'lib/src/features/ride/home_parts.dart'),
   SurfaceEntry('sheet:location-share-button.show-location-share-sheet', SurfaceKind.sheet, 'Location share button · Location share sheet', 'lib/src/features/ride/location_share_button.dart'),
   SurfaceEntry('sheet:location-share-button.show-location-share-sheet-2', SurfaceKind.sheet, 'Location share button · Location share sheet', 'lib/src/features/ride/location_share_button.dart'),

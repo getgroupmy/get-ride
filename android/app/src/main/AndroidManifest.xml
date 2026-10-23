@@ -19,7 +19,7 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
     <!-- "Always on" (BackgroundLocation.kt, migration 0272): with location
          already allowed all the time (never asked for by it), the phone
-         reports where it is about every 15 minutes or after ~500 m while
+         reports where it is about every 15 minutes or after ~200 m while
          the app is closed. Android forgets that request on a reboot or an
          update; this normal (install-time) permission lets it be renewed. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
@@ -374,6 +374,23 @@
                 <action android:name="com.google.android.c2dm.intent.RECEIVE"/>
             </intent-filter>
         </receiver>
+        <!-- "Still there?" (LocationPing.kt, migration 0276): a location_ping
+             data push asks an "Always on" phone for one fix. The receiver
+             starts the job that takes it; Firebase's own receiver takes the
+             same broadcast. Only Google Play services may send it; only the
+             system binds the job. -->
+        <receiver
+            android:name=".LocationPingReceiver"
+            android:exported="true"
+            android:permission="com.google.android.c2dm.permission.SEND">
+            <intent-filter>
+                <action android:name="com.google.android.c2dm.intent.RECEIVE"/>
+            </intent-filter>
+        </receiver>
+        <service
+            android:name=".LocationPingJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE"/>
         <!-- Google's own map: the key the release build carries (build.gradle.kts). -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"

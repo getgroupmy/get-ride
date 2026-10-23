@@ -1,7 +1,7 @@
 // The phone's presence for Admin -> God View (migration 0272): the open
 // app's check-in every 2 minutes, moved or not, with the area work only
 // after ~200 m or 30 minutes; the closed app's report about every 15
-// minutes or after ~500 m, only with location already set to always; and
+// minutes or after ~200 m, only with location already set to always; and
 // the bridge to the native reporter.
 import 'dart:math';
 
@@ -53,14 +53,14 @@ void main() {
   });
 
   group('the closed app\'s report', () {
-    test('about every 15 minutes, or after ~500 m', () {
+    test('about every 15 minutes, or after ~200 m (0276)', () {
       expect(backgroundReportDue(), isTrue, reason: 'nothing sent yet');
       expect(backgroundReportDue(sinceLast: const Duration(minutes: 5), movedMetres: 120), isFalse);
       expect(backgroundReportDue(sinceLast: const Duration(minutes: 5)), isFalse, reason: 'no fix to compare');
       expect(backgroundReportDue(sinceLast: const Duration(minutes: 15), movedMetres: 0), isTrue);
-      expect(backgroundReportDue(sinceLast: const Duration(minutes: 3), movedMetres: 500), isTrue);
-      expect(backgroundReportDue(sinceLast: const Duration(minutes: 3), movedMetres: 499), isFalse);
-      expect((backgroundReportEvery, backgroundReportMoveMeters), (const Duration(minutes: 15), 500.0));
+      expect(backgroundReportDue(sinceLast: const Duration(minutes: 3), movedMetres: 200), isTrue);
+      expect(backgroundReportDue(sinceLast: const Duration(minutes: 3), movedMetres: 199), isFalse);
+      expect((backgroundReportEvery, backgroundReportMoveMeters), (const Duration(minutes: 15), 200.0));
     });
 
     test('only signed in, with tokens, and location already set to always', () {

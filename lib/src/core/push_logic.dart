@@ -298,13 +298,13 @@ bool pushCheckinDue({
   return now.difference(lastAt) >= pushCheckinEvery - const Duration(seconds: 5);
 }
 
-/// The closed app's report (`push_background_location`, migration 0272):
+/// The closed app's report (`push_background_location`, migrations 0272, 0276):
 /// about every [backgroundReportEvery], or sooner after a move of
 /// [backgroundReportMoveMeters]. The native reporters apply this same rule
 /// (android BackgroundLocationReceiver.kt, ios AppDelegate.swift
 /// BackgroundLocationPlugin); it is kept and tested here.
 const backgroundReportEvery = Duration(minutes: 15);
-const backgroundReportMoveMeters = 500.0;
+const backgroundReportMoveMeters = 200.0;
 
 /// Whether a background fix is worth sending: nothing sent yet, the last
 /// one [backgroundReportEvery] ago, or a move of [backgroundReportMoveMeters]

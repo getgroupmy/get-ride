@@ -5,7 +5,9 @@
 // their ages, which actions an admin's grants show; and the page with a fake
 // repository in light and dark, wide and on a phone, the phone hidden until
 // Show, Suspend asking for a reason (and warning about a trip), Send push
-// sending to one person; the "No location" section (0275) with its reasons.
+// sending to one person; the "No location" section (0275) with its reasons;
+// 0276: a quiet Always on phone's "Not moved since", "Ping now" and its
+// answer, and the God View settings sheet.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -40,6 +42,7 @@ GodViewPerson _p(
   String? incident,
   String? partnerRow,
   double? nextLat,
+  Duration? movedAgo,
 }) => GodViewPerson(
   kind: kind,
   id: id,
@@ -59,6 +62,7 @@ GodViewPerson _p(
   partnerRowId: partnerRow ?? (kind == GodViewKind.partner ? 'row-$id' : null),
   nextLat: nextLat,
   nextLng: nextLat == null ? null : 101.7,
+  movedAt: movedAgo == null ? null : _now.subtract(movedAgo),
 );
 
 final _people = [
@@ -74,7 +78,8 @@ final _people = [
   _p('u3', GodViewStatus.appOpen, kind: GodViewKind.user, name: 'Priya K.'),
   _p('u4', GodViewStatus.ride, kind: GodViewKind.user, name: 'Farah Z.', ride: '9f1d'),
   _p('u5', GodViewStatus.lastKnown, kind: GodViewKind.user, name: 'Tan B. H.', ageSeconds: 3 * 86400 + 60),
-  _p('u6', GodViewStatus.alwaysOn, kind: GodViewKind.user, name: 'Siti A.', ageSeconds: 300),
+  _p('u6', GodViewStatus.alwaysOn, kind: GodViewKind.user, name: 'Siti A.', ageSeconds: 300,
+      movedAgo: const Duration(hours: 2, minutes: 30)),
 ];
 
 final _unlocated = [
@@ -104,6 +109,34 @@ class _FakeRepo extends GodViewRepository {
   final pushed = <(String, String, String)>[];
   bool onTrip = true;
 
+  GodViewSettings settings = const GodViewSettings(editable: true);
+  final saved = <GodViewSettings>[];
+  final pinged = <String>[];
+  GodViewPingResult pingResult = GodViewPingResult(phones: 1, sent: 1, posted: true, sentAt: _now);
+
+  /// The answers to come, one per ask; then "not yet".
+  final answers = <bool>[];
+  int answerAsks = 0;
+
+  @override
+  Future<GodViewPingResult> ping(String profileId) async {
+    pinged.add(profileId);
+    return pingResult;
+  }
+
+  @override
+  Future<({bool answered, DateTime? at})> pingAnswer(String profileId, DateTime since) async {
+    answerAsks++;
+    final yes = answers.isNotEmpty && answers.removeAt(0);
+    return (answered: yes, at: yes ? _now : null);
+  }
+
+  @override
+  Future<GodViewSettings> saveSettings(GodViewSettings s) async {
+    saved.add(s);
+    return s;
+  }
+
   @override
   Future<GodViewSnapshot> snapshot({
     ({double minLat, double minLng, double maxLat, double maxLng})? box,
@@ -130,6 +163,7 @@ class _FakeRepo extends GodViewRepository {
       ),
       total: _people.length,
       query: query,
+      settings: settings,
     );
   }
 
@@ -154,8 +188,9 @@ Future<_FakeRepo> _pump(
   Brightness b = Brightness.light,
   Size size = const Size(1400, 900),
   List<AdminGrant> grants = const [AdminGrant(page: '*', edit: true)],
+  _FakeRepo? fake,
 }) async {
-  final repo = _FakeRepo();
+  final repo = fake ?? _FakeRepo();
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
@@ -166,6 +201,7 @@ Future<_FakeRepo> _pump(
         adminAccessProvider.overrideWith((_) async => AdminAccess(grants)),
         godViewRepositoryProvider.overrideWithValue(repo),
         godViewPollProvider.overrideWithValue(null),
+        godViewPingPollProvider.overrideWithValue(const Duration(seconds: 5)),
         godViewClockProvider.overrideWithValue(() => _now),
         appVersionRulesProvider.overrideWith((_) async => _rules),
       ],
@@ -185,6 +221,85 @@ Future<void> _openDetails(WidgetTester tester, String id) async {
 }
 
 void main() {
+  group('0276 logic', () {
+    test('the settings: defaults, clamped, editable only when the server says', () {
+      const d = GodViewSettings();
+      expect((d.pings, d.pingMinutes, d.alwaysOnHours, d.editable), (true, 30, 12, false));
+      final s = GodViewSettings.fromJson(const {'pings': false, 'pingMinutes': 5, 'alwaysOnHours': 99, 'editable': true});
+      expect((s.pings, s.pingMinutes, s.alwaysOnHours, s.editable), (false, 10, 48, true));
+      final odd = GodViewSettings.fromJson(const {'pings': 'yes', 'pingMinutes': '45', 'alwaysOnHours': 6.4});
+      expect((odd.pings, odd.pingMinutes, odd.alwaysOnHours), (true, 30, 6));
+      final snap = GodViewSnapshot.fromJson(const {
+        'settings': {'pings': true, 'pingMinutes': 60, 'alwaysOnHours': 24, 'editable': false},
+        'people': [
+          {'id': 'x', 'kind': 'user', 'status': 'always_on', 'lat': 3, 'lng': 101, 'moved_at': '2026-10-21T05:00:00Z'},
+        ],
+      });
+      expect((snap.settings.pingMinutes, snap.settings.alwaysOnHours), (60, 24));
+      expect(snap.people.single.movedAt, DateTime.utc(2026, 10, 21, 5));
+      expect(GodViewSnapshot.fromJson(const {}).settings.pingMinutes, 30, reason: 'a server before 0276');
+      expect([for (final m in [10, 60, 90, 240]) godViewMinutesLabel(m)], ['10 min', '1 h', '1 h 30 min', '4 h']);
+    });
+
+    test('the clock and the date when not today', () {
+      expect(godViewClock(DateTime(2026, 10, 21, 16, 31)), '4:31 PM');
+      expect(godViewClock(DateTime(2026, 10, 21, 0, 5)), '12:05 AM');
+      expect(godViewClock(DateTime(2026, 10, 21, 12)), '12:00 PM');
+      final now = DateTime(2026, 10, 21, 18);
+      expect(godViewWhen(DateTime(2026, 10, 21, 16, 31), now), '4:31 PM');
+      expect(godViewWhen(DateTime(2026, 10, 20, 16, 31), now, order: DateOrder.dmy), '20/10/2026, 4:31 PM');
+      expect(godViewWhen(DateTime(2026, 10, 20, 16, 31), now, order: DateOrder.mdy), '10/20/2026, 4:31 PM');
+    });
+
+    test('Not moved since: a quiet Always on phone only', () {
+      final now = DateTime(2026, 10, 21, 18);
+      GodViewPerson p(GodViewStatus s, {Duration? moved, Duration updated = const Duration(hours: 2)}) => GodViewPerson(
+        kind: GodViewKind.user,
+        id: 'q',
+        status: s,
+        lat: 3,
+        lng: 101,
+        updatedAt: now.subtract(updated),
+        movedAt: moved == null ? null : now.subtract(moved),
+      );
+      expect(godViewNotMovedSince(p(GodViewStatus.alwaysOn, moved: const Duration(hours: 1, minutes: 29)), now),
+          'Not moved since 4:31 PM');
+      expect(godViewNotMovedSince(p(GodViewStatus.alwaysOn), now), 'Not moved since 4:00 PM',
+          reason: 'no move known: the last report');
+      expect(godViewNotMovedSince(p(GodViewStatus.alwaysOn, moved: const Duration(hours: 25)), now, order: DateOrder.dmy),
+          'Not moved since 20/10/2026, 5:00 PM');
+      expect(godViewNotMovedSince(p(GodViewStatus.alwaysOn, moved: const Duration(minutes: 10)), now), isNull,
+          reason: 'moved in the last 30 minutes');
+      expect(godViewNotMovedSince(p(GodViewStatus.lastKnown, moved: const Duration(hours: 13)), now), isNull);
+      expect(godViewNotMovedSince(p(GodViewStatus.appOpen, moved: const Duration(hours: 3)), now), isNull);
+    });
+
+    test('Ping now: who, and what each answer says', () {
+      GodViewPerson p(GodViewStatus s) => GodViewPerson(kind: GodViewKind.partner, id: 'p', status: s, lat: 0, lng: 0);
+      expect([for (final s in GodViewStatus.values) if (godViewCanPing(p(s))) s],
+          [GodViewStatus.notResponding, GodViewStatus.alwaysOn, GodViewStatus.lastKnown]);
+      expect(godViewPingStageOf(const GodViewPingResult()), GodViewPingStage.noPhone);
+      expect(godViewPingStageOf(const GodViewPingResult(phones: 2, recent: 2)), GodViewPingStage.recent);
+      expect(godViewPingStageOf(const GodViewPingResult(phones: 1, sent: 1)), GodViewPingStage.failed,
+          reason: 'not queued: no function configured');
+      expect(godViewPingStageOf(const GodViewPingResult(phones: 2, sent: 1, recent: 1, posted: true)),
+          GodViewPingStage.waiting);
+      final r = GodViewPingResult.fromJson(const {
+        'phones': 1, 'sent': 0, 'recent': 1, 'posted': false, 'retry_at': '2026-10-21T08:02:00Z',
+      });
+      expect((r.phones, r.sent, r.recent, r.retryAt), (1, 0, 1, DateTime.utc(2026, 10, 21, 8, 2)));
+      expect(godViewPingLine(GodViewPingStage.waiting), startsWith('Ping sent…'));
+      expect(godViewPingLine(GodViewPingStage.answered, at: DateTime(2026, 10, 21, 16, 35)),
+          'The phone answered at 4:35 PM. Position updated.');
+      expect(godViewPingLine(GodViewPingStage.recent, at: DateTime(2026, 10, 21, 16, 37)),
+          'Pinged in the last 2 minutes. Try again after 4:37 PM.');
+      expect(godViewPingLine(GodViewPingStage.noAnswer), startsWith('No answer yet.'));
+      for (final s in GodViewPingStage.values) {
+        expect(godViewPingLine(s), isNot(contains('→')));
+      }
+    });
+  });
+
   group('logic', () {
     test('no location: the reasons', () {
       const dmy = DateOrder.dmy;
@@ -589,6 +704,109 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(repo.pushed, [('u3', 'Hello', 'Your driver is near')]);
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('a quiet Always on phone: "Not moved since" in the row and the details in ${b.name}', (tester) async {
+        await _pump(tester, b: b, size: const Size(1400, 2400));
+        final since = godViewNotMovedSince(_people.firstWhere((p) => p.id == 'u6'), _now)!;
+        expect(since, startsWith('Not moved since '));
+        expect(find.descendant(of: find.byKey(const ValueKey('god-view-row-u6')), matching: find.text(since)),
+            findsOneWidget);
+        await _openDetails(tester, 'u6');
+        expect(find.byKey(const ValueKey('god-view-not-moved')), findsOneWidget);
+        expect(find.byKey(const ValueKey('god-view-ping')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('Ping now: sent, waiting, then the answer and a refresh in ${b.name}', (tester) async {
+        final fake = _FakeRepo()..answers.addAll([false, true]);
+        final repo = await _pump(tester, b: b, size: const Size(1400, 2400), fake: fake);
+        await _openDetails(tester, 'u6');
+        final asked = repo.asked.length;
+        await tester.tap(find.byKey(const ValueKey('god-view-ping')));
+        await tester.pump();
+        await tester.pump();
+        expect(repo.pinged, ['u6']);
+        expect(find.textContaining('Ping sent…'), findsOneWidget);
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pump();
+        expect(find.textContaining('Ping sent…'), findsOneWidget, reason: 'not yet');
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pump();
+        expect(find.text(godViewPingLine(GodViewPingStage.answered, at: _now)), findsOneWidget);
+        expect(repo.asked.length, greaterThan(asked), reason: 'the map is asked again');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('Ping now: no answer after a minute', (tester) async {
+      final repo = await _pump(tester, size: const Size(1400, 2400));
+      await _openDetails(tester, 'd6');
+      await tester.tap(find.byKey(const ValueKey('god-view-ping')));
+      await tester.pump();
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(seconds: 5));
+      }
+      await tester.pump();
+      expect(repo.answerAsks, 12);
+      expect(find.textContaining('No answer yet.'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 30));
+      expect(repo.answerAsks, 12, reason: 'stops asking');
+    });
+
+    testWidgets('Ping now: pinged in the last 2 minutes, or no phone to ping', (tester) async {
+      final fake = _FakeRepo()..pingResult = GodViewPingResult(phones: 1, recent: 1, retryAt: _now);
+      await _pump(tester, size: const Size(1400, 2400), fake: fake);
+      await _openDetails(tester, 'd8');
+      await tester.tap(find.byKey(const ValueKey('god-view-ping')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text(godViewPingLine(GodViewPingStage.recent, at: _now)), findsOneWidget);
+      fake.pingResult = const GodViewPingResult();
+      await tester.tap(find.byKey(const ValueKey('god-view-ping')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('No phone to ping'), findsOneWidget);
+      expect(fake.answerAsks, 0);
+    });
+
+    testWidgets('no Ping now for someone already reporting', (tester) async {
+      await _pump(tester, size: const Size(1400, 2400));
+      await _openDetails(tester, 'd1');
+      expect(find.byKey(const ValueKey('god-view-ping')), findsNothing);
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('Settings: a full admin changes the pings and the hours in ${b.name}', (tester) async {
+        final repo = await _pump(tester, b: b);
+        await tester.tap(find.byKey(const ValueKey('god-view-settings')));
+        await tester.pumpAndSettle();
+        expect(find.text('God View settings'), findsOneWidget);
+        expect(find.text('Ping a phone quiet for 30 min'), findsOneWidget);
+        expect(find.text('Always on for 12 h after the last report'), findsOneWidget);
+        expect(find.byKey(const ValueKey('god-view-settings-readonly')), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('god-view-settings-pings')));
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey('god-view-settings-save')));
+        await tester.pumpAndSettle();
+        expect(repo.saved.single.pings, isFalse);
+        expect((repo.saved.single.pingMinutes, repo.saved.single.alwaysOnHours), (30, 12));
+        expect(find.text('God View settings'), findsNothing, reason: 'closed');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('Settings: read only for anyone but a full admin', (tester) async {
+      final fake = _FakeRepo()..settings = const GodViewSettings(pingMinutes: 45);
+      await _pump(tester, fake: fake, grants: const [AdminGrant(page: godViewPage, edit: false)]);
+      await tester.tap(find.byKey(const ValueKey('god-view-settings')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('god-view-settings-readonly')), findsOneWidget);
+      expect(find.text('Ping a phone quiet for 45 min'), findsOneWidget);
+      expect(find.byKey(const ValueKey('god-view-settings-save')), findsNothing);
+      expect(tester.widget<Slider>(find.byKey(const ValueKey('god-view-settings-hours'))).onChanged, isNull);
+      expect(fake.saved, isEmpty);
     });
   });
 }
