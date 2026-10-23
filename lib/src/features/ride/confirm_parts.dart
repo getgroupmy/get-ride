@@ -29,7 +29,7 @@ import 'fare_offer_controls.dart';
 import 'home_parts.dart' show uriImage;
 import 'assistance_parts.dart' show showRideAssistanceSheet;
 import 'pet_parts.dart' show showRidePetsSheet;
-import '../../core/page_styles.dart' show fareInfoSurface;
+import '../../core/page_styles.dart' show fareInfoSurface, homeSurface;
 import '../../widgets/page_style_host.dart';
 
 /// Expo's accent: the "Find a driver" bar, the add-stop button, the
@@ -654,6 +654,16 @@ class ConfirmCardColors {
 /// white card raised in a grey tray, with a pencil in place of the price and
 /// the fare below it; a [fixed] fare is inDrive's outlined row keeping its
 /// price, the arrows after the name and what it is priced on behind the (i).
+/// The chosen vehicle's picture on the confirm page: [sizePct] of the
+/// usual 72 × 45, with [hiddenPct] of its width (the back) cut off by the
+/// card's left edge. [shown] is the width it takes in the row.
+({double width, double height, double shown}) chosenPictureBox(double sizePct, double hiddenPct) {
+  final scale = sizePct.clamp(100, 220) / 100;
+  final hidden = hiddenPct.clamp(0, 50) / 100;
+  final w = 72 * scale;
+  return (width: w, height: 45 * scale, shown: w * (1 - hidden));
+}
+
 class ConfirmServiceCard extends StatelessWidget {
   const ConfirmServiceCard({
     super.key,
@@ -736,26 +746,40 @@ class ConfirmServiceCard extends StatelessWidget {
     bool info = false,
     VoidCallback? onInfo,
     bool nameArrows = false,
+    ({double width, double height, double shown})? chosen,
   }) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
     final ink = t.colorScheme.onSurface;
+    final fallback = Icon(service.name == 'Teksi' ? Icons.local_taxi : Icons.directions_car, size: 36, color: muted);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: SizedBox(
-            width: 72,
-            height: 45,
-            child: uriImage(
-              service.image,
+        if (chosen == null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: SizedBox(
               width: 72,
               height: 45,
-              fallback: Icon(service.name == 'Teksi' ? Icons.local_taxi : Icons.directions_car, size: 36, color: muted),
+              child: uriImage(service.image, width: 72, height: 45, fallback: fallback),
+            ),
+          )
+        else
+          // Larger, its back past the row's start: the card's edge cuts it.
+          Padding(
+            padding: EdgeInsets.only(top: math.max(0, 6 - (chosen.height - 45) / 2)),
+            child: SizedBox(
+              key: ValueKey('service-picture-chosen-${service.name}'),
+              width: chosen.shown,
+              height: chosen.height,
+              child: OverflowBox(
+                alignment: Alignment.centerRight,
+                minWidth: chosen.width,
+                maxWidth: chosen.width,
+                child: uriImage(service.image, width: chosen.width, height: chosen.height, fallback: fallback),
+              ),
             ),
           ),
-        ),
         const SizedBox(width: 14),
         Expanded(
           child: Column(
@@ -866,6 +890,10 @@ class ConfirmServiceCard extends StatelessWidget {
     }
     final c = ConfirmCardColors.of(context);
     final priceStyle = t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600);
+    final look = SurfaceStyle.of(context, homeSurface);
+    final pic = chosenPictureBox(look.number('chosenPictureSize'), look.number('chosenPictureHidden'));
+    // Cut by the edge, the picture starts at it; whole, it keeps the gap.
+    final cut = pic.shown < pic.width;
     // A fixed fare (no bidding): inDrive's outlined row with its price, and
     // nothing to raise or lower; the fare's details are behind the (i).
     if (fixed) {
@@ -873,6 +901,7 @@ class ConfirmServiceCard extends StatelessWidget {
         child: Material(
           key: ValueKey('service-${service.name}'),
           color: c.card,
+          clipBehavior: Clip.antiAlias,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
             side: BorderSide(color: t.colorScheme.outlineVariant, width: 2),
@@ -881,12 +910,13 @@ class ConfirmServiceCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(22),
             onTap: onInfo,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+              padding: EdgeInsets.fromLTRB(cut ? 0 : 16, 12, 16, 12),
               child: _row(
                 context,
                 info: true,
                 nameArrows: true,
                 onInfo: onInfo,
+                chosen: pic,
                 trailing: Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: _withUplift(context, Text(price, style: priceStyle)),
@@ -919,15 +949,17 @@ class ConfirmServiceCard extends StatelessWidget {
                 color: c.card,
                 elevation: 1.5,
                 shadowColor: Colors.black26,
+                clipBehavior: Clip.antiAlias,
                 borderRadius: BorderRadius.circular(22),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(22),
                   onTap: onEdit,
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 12, 8, 14),
+                    padding: EdgeInsets.fromLTRB(cut ? 0 : 12, 12, 8, 14),
                     child: _row(
                       context,
                       info: true,
+                      chosen: pic,
                       trailing: onEdit == null
                           ? Padding(
                               padding: const EdgeInsets.only(top: 4, right: 6),

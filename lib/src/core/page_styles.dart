@@ -193,6 +193,10 @@ const elementTokens = <String, List<StyleToken>>{
     StyleToken.number('infoIconSize', '(i) size', 22, min: 14, max: 34, group: 'Vehicle bar'),
     StyleToken.color('vehicleSelected', 'Chosen card', light: 0xFFD8EEFB, dark: 0xFF2B2E8C, group: 'Vehicle bar'),
     StyleToken.color('infoIcon', '(i) colour', light: 0xFF5468FF, dark: 0xFF5468FF, group: 'Vehicle bar'),
+    // The chosen vehicle on the confirm page (ConfirmServiceCard): a larger
+    // picture whose back is cut off by the card's left edge.
+    StyleToken.number('chosenPictureSize', 'Chosen picture size', 170, min: 100, max: 220, step: 10, unit: '%', group: _chosen),
+    StyleToken.number('chosenPictureHidden', 'Hidden behind the edge', 30, min: 0, max: 50, step: 5, unit: '%', group: _chosen),
   ],
   fareInfoSurface: [
     StyleToken.number('imageWidth', 'Picture width', 132, min: 60, max: 260, group: 'Vehicle picture'),
@@ -220,6 +224,7 @@ const elementTokens = <String, List<StyleToken>>{
 };
 
 const _trail = 'Movement trail';
+const _chosen = 'Confirm ride: chosen vehicle';
 
 /// God View → Movement: how the line is drawn, and whether it follows the
 /// roads between the reported points or goes straight from one to the next.
