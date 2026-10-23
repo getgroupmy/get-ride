@@ -9,6 +9,7 @@ import '../../admin_filters.dart' show RowsPage, adminPeoplePageSize, rowsPage, 
 import '../../../data/doc_photos.dart';
 import '../../../providers.dart';
 import '../meterapp/pick_image.dart';
+import 'partner_live.dart';
 import 'people_logic.dart';
 
 /// Data access for the People add/edit forms. Every call runs as the signed-in
@@ -111,6 +112,103 @@ class PeopleRepository {
   }
 
   Future<void> deletePartner(String id) => _db.from('partners').delete().eq('id', id);
+
+  // ---- Live status (Edit Partner) ---------------------------------------------
+
+  /// What [userIds] (profile ids) are doing now, for [partnerLiveOf]: their
+  /// presence, the active ride and those ended in the last 12 hours, open
+  /// offers and open SOS incidents. Four reads, whatever the count.
+  Future<Map<String, PartnerLiveRows>> liveRows(Iterable<String> userIds) async {
+    final ids = {...userIds}.where((s) => s.isNotEmpty).toList();
+    if (ids.isEmpty) return const {};
+    final since = DateTime.now().toUtc().subtract(partnerUnpaidWindow).toIso8601String();
+    final results = await Future.wait<List<Map<String, dynamic>>>([
+      _rows(_db.from('driver_presence').select('profile_id, online, updated_at').inFilter('profile_id', ids)),
+      _rows(_db
+          .from('ride_requests')
+          .select('id, status, partner_id, arrived_at, completed_at, payment_status, drop_name, created_at')
+          .inFilter('partner_id', ids)
+          .or('status.in.(accepted,arrived,on_trip),and(status.eq.completed,completed_at.gt.$since)')
+          .order('created_at', ascending: false)
+          .limit(50)),
+      _rows(_db
+          .from('ride_offers')
+          .select('partner_id, status, amount, expires_at')
+          .inFilter('partner_id', ids)
+          .eq('status', 'pending')),
+      _rows(_db
+          .from('safety_incidents')
+          .select('partner_id, status, created_at')
+          .inFilter('partner_id', ids)
+          .inFilter('status', ['open', 'acknowledged'])
+          .order('created_at', ascending: false)),
+    ]);
+    List<Map<String, dynamic>> of(List<Map<String, dynamic>> rows, String key, String id) =>
+        [for (final r in rows) if ('${r[key]}' == id) r];
+    return {
+      for (final id in ids)
+        id: PartnerLiveRows(
+          presence: of(results[0], 'profile_id', id).firstOrNull,
+          rides: of(results[1], 'partner_id', id),
+          offers: of(results[2], 'partner_id', id),
+          incidents: of(results[3], 'partner_id', id),
+        ),
+    };
+  }
+
+  /// A read the admin may not have (an older database): empty, not an error.
+  Future<List<Map<String, dynamic>>> _rows(Future<List<Map<String, dynamic>>> q) async {
+    try {
+      return List<Map<String, dynamic>>.from(await q);
+    } on PostgrestException catch (e) {
+      debugPrint('[partner-live] $e');
+      return const [];
+    }
+  }
+
+  /// Who else has each vehicle: partners with its plate and drivers with a
+  /// session on it (vehicle_active_session), as profile id to name, by
+  /// vehicle id. [exceptUserId], the partner being edited, is left out.
+  Future<Map<String, Map<String, String>>> vehicleHolders(
+    List<Map<String, dynamic>> vehicles, {
+    String? exceptUserId,
+  }) async {
+    final plates = {
+      for (final v in vehicles)
+        if ('${v['plate'] ?? ''}'.trim().isNotEmpty) '${v['plate']}'.trim().toUpperCase(): '${v['id']}',
+    };
+    final vehicleIds = [for (final v in vehicles) '${v['id']}'];
+    if (vehicleIds.isEmpty) return const {};
+    final results = await Future.wait<List<Map<String, dynamic>>>([
+      _rows(_db.from('partners').select('auth_user_id, name, plate').not('plate', 'is', null)),
+      _rows(_db.from('vehicle_active_session').select('vehicle_id, user_id').inFilter('vehicle_id', vehicleIds)),
+    ]);
+    final out = <String, Map<String, String>>{};
+    final names = <String, String>{};
+    for (final p in results[0]) {
+      final uid = '${p['auth_user_id'] ?? ''}';
+      final vid = plates['${p['plate'] ?? ''}'.trim().toUpperCase()];
+      if (uid.isEmpty || vid == null || uid == exceptUserId) continue;
+      names[uid] = '${p['name'] ?? ''}';
+      (out[vid] ??= {})[uid] = names[uid]!;
+    }
+    for (final s in results[1]) {
+      final uid = '${s['user_id'] ?? ''}';
+      if (uid.isEmpty || uid == exceptUserId) continue;
+      (out['${s['vehicle_id']}'] ??= {})[uid] = names[uid] ?? '';
+    }
+    final unnamed = {for (final m in out.values) ...m.entries.where((e) => e.value.isEmpty).map((e) => e.key)};
+    if (unnamed.isNotEmpty) {
+      final rows = await _rows(_db.from('profiles').select('id, name').inFilter('id', unnamed.toList()));
+      final byId = {for (final r in rows) '${r['id']}': '${r['name'] ?? ''}'};
+      for (final m in out.values) {
+        for (final k in m.keys.toList()) {
+          if (m[k]!.isEmpty) m[k] = byId[k]?.trim().isNotEmpty == true ? byId[k]! : 'another driver';
+        }
+      }
+    }
+    return out;
+  }
 
   // ---- Vehicles ------------------------------------------------------------
 

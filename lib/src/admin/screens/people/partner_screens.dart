@@ -12,6 +12,8 @@ import '../../admin_filters.dart' show RowsPage, adminPeoplePageSizeFor, pagedCo
 import '../../people_paging.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import 'partner_live.dart';
+import 'partner_live_card.dart';
 import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
@@ -46,6 +48,38 @@ final partnerFormDataProvider = FutureProvider.autoDispose<PartnerFormData>((ref
   );
 });
 
+/// Who else has each vehicle and what they are doing, by vehicle id, for the
+/// picker (the partner being edited, [uid], left out). Refreshed with
+/// ride_requests and every 20 s by [PartnerLiveCard]'s timer.
+final partnerVehicleHoldersProvider =
+    FutureProvider.autoDispose.family<Map<String, List<VehicleHolder>>, String>((ref, uid) async {
+  ref.watchAdminLive('ride_requests');
+  ref.watchAdminLive('partners');
+  final repo = ref.watch(peopleRepositoryProvider);
+  final data = await ref.watch(partnerFormDataProvider.future);
+  final holders = await repo.vehicleHolders(data.vehicles, exceptUserId: uid.isEmpty ? null : uid);
+  final live = await repo.liveRows({for (final m in holders.values) ...m.keys});
+  final now = DateTime.now().toUtc();
+  return {
+    for (final e in holders.entries)
+      e.key: [
+        for (final h in e.value.entries)
+          () {
+            final st = partnerLiveOf(live[h.key] ?? const PartnerLiveRows(), hasVehicle: true, now: now);
+            return (userId: h.key, name: h.value, status: st.status, detail: st.detail);
+          }(),
+      ],
+  };
+});
+
+/// The driver's real status now (Edit Partner), from [PeopleRepository.liveRows].
+final partnerLiveProvider =
+    FutureProvider.autoDispose.family<PartnerLiveStatus, ({String uid, bool hasVehicle})>((ref, k) async {
+  ref.watchAdminLive('ride_requests');
+  final rows = await ref.watch(peopleRepositoryProvider).liveRows([k.uid]);
+  return partnerLiveOf(rows[k.uid] ?? const PartnerLiveRows(), hasVehicle: k.hasVehicle, now: DateTime.now().toUtc());
+});
+
 /// Service area + partner types + vehicle (+ docs) block shared by the add
 /// and edit forms, gated the same way the Expo forms are.
 class _PartnerDetailsForm extends ConsumerWidget {
@@ -59,7 +93,14 @@ class _PartnerDetailsForm extends ConsumerWidget {
     required this.onVehicle,
     required this.enabled,
     required this.docsBuilder,
+    this.userId,
+    this.partnerId,
   });
+
+  /// The partner's login (profile id) and partner row id: their own
+  /// vehicles are listed first, and other drivers' are checked against them.
+  final String? userId;
+  final String? partnerId;
   final PartnerFormData data;
   final ServiceArea area;
   final List<String> types;
@@ -112,7 +153,14 @@ class _PartnerDetailsForm extends ConsumerWidget {
                 : null),
         Text('Select from registered vehicles', style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 6),
-        VehicleSelector(vehicles: data.vehicles, selected: vehicle, onChanged: onVehicle, enabled: enabled),
+        VehicleSelector(
+          vehicles: data.vehicles,
+          selected: vehicle,
+          onChanged: onVehicle,
+          enabled: enabled,
+          isOwn: (v) => vehicleIsOwn(v, userId: userId, partnerId: partnerId),
+          holders: ref.watch(partnerVehicleHoldersProvider(userId ?? '')).value,
+        ),
       ],
       if (area.complete && types.isNotEmpty && (!vehicleRequired || vehicle != null)) docsBuilder(docs, docTypeIds),
     ]);
@@ -347,6 +395,7 @@ class _PartnerAddScreenState extends ConsumerState<PartnerAddScreen> {
               types: _types,
               vehicle: _vehicle,
               enabled: canEdit,
+              userId: '${u['id'] ?? ''}',
               onArea: (a) => setState(() => _area = a),
               onTypes: (t) => setState(() => _types = t),
               onVehicle: (v) => setState(() => _vehicle = v),
@@ -556,12 +605,16 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
                 ]),
               ),
             ),
+            if (p['auth_user_id'] case final String uid when uid.isNotEmpty)
+              PartnerLiveCard(userId: uid, hasVehicle: '${p['plate'] ?? ''}'.trim().isNotEmpty),
             _PartnerDetailsForm(
               data: widget.data,
               area: _area,
               types: _types,
               vehicle: _vehicle,
               enabled: canEdit,
+              userId: '${p['auth_user_id'] ?? ''}',
+              partnerId: '${p['id'] ?? ''}',
               onArea: (a) => setState(() => _area = a),
               onTypes: (t) => setState(() => _types = t),
               onVehicle: (v) => setState(() => _vehicle = v),
