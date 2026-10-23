@@ -22,7 +22,8 @@ import '../../core/god_view.dart';
 import '../../core/god_view_trail.dart' show trailWindow;
 import '../../core/page_styles.dart' show godViewSurface;
 import '../../data/app_version_repository.dart' show appVersionRulesProvider;
-import '../../data/geo_service.dart' show defaultCenter;
+import '../../data/geo_service.dart' show Place, defaultCenter;
+import '../../core/smart_address.dart' show placeAreaLine, placeIcon, shortArea;
 import '../../data/god_view_repository.dart';
 import '../../providers.dart' show geoServiceProvider;
 import '../../widgets/busy.dart';
@@ -107,6 +108,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   /// "Show address": the street address of [_addrFor]'s position.
   String? _addrFor;
   String? _addr;
+  Place? _addrPlace;
   bool _addrBusy = false;
   final _phones = <String, String?>{};
 
@@ -286,16 +288,21 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
       _addrBusy = true;
     });
     String text;
+    Place? place;
     try {
-      final place = await ref.read(geoServiceProvider).reverse(LatLng(p.lat, p.lng));
+      place = await ref.read(geoServiceProvider).reverse(LatLng(p.lat, p.lng));
       text = [place.name, place.address].where((s) => s.trim().isNotEmpty).toSet().join(', ');
-      if (text.isEmpty) text = 'No address found for this spot.';
+      if (text.isEmpty) {
+        text = 'No address found for this spot.';
+        place = null;
+      }
     } catch (e) {
       text = 'Address not found: $e';
     }
     if (!mounted || _addrFor != p.id) return;
     setState(() {
       _addr = text;
+      _addrPlace = place;
       _addrBusy = false;
     });
   }
@@ -804,7 +811,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           SizedBox(width: 80, child: Text('Address', style: TextStyle(color: t.colorScheme.onSurfaceVariant))),
           Expanded(
             child: _addrFor == p.id && !_addrBusy && _addr != null
-                ? Text(_addr!, key: const ValueKey('god-view-address'))
+                ? _SmartAddressText(place: _addrPlace, fallback: _addr!)
                 : Align(
                     alignment: AlignmentDirectional.centerStart,
                     child: BusyButton.text(
@@ -835,14 +842,13 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           Text('Recorded in the admin log.', style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
         // The newest phone at its last report: model, app, battery, network.
         PhoneFacts(profileId: p.id, now: now),
-        if (godViewCanPing(p)) ...[
-          const SizedBox(height: 10),
-          _PingRow(
-            stage: _ping?.id == p.id ? _ping!.stage : null,
-            at: _ping?.id == p.id ? _ping!.at : null,
-            onPing: () => _pingNow(p),
-          ),
-        ],
+        const SizedBox(height: 10),
+        _PingRow(
+          stage: _ping?.id == p.id ? _ping!.stage : null,
+          at: _ping?.id == p.id ? _ping!.at : null,
+          blocked: godViewPingBlocked(p),
+          onPing: () => _pingNow(p),
+        ),
         const SizedBox(height: 10),
         OutlinedButton.icon(
           key: const ValueKey('god-view-movement-button'),
@@ -1730,9 +1736,43 @@ class _PushSheetState extends ConsumerState<_PushSheet> {
 // ---- "Still there?" and the settings (migration 0276) -------------------------------------------
 
 /// "Ping now" and the line saying how it went.
+/// "Show address" as the rider app shows a place (smart address A): its
+/// name, and under it only its area; the full address on hover or a long
+/// press.
+class _SmartAddressText extends StatelessWidget {
+  const _SmartAddressText({required this.place, required this.fallback});
+  final Place? place;
+  final String fallback;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = place;
+    if (p == null) return Text(fallback, key: const ValueKey('god-view-address'));
+    final t = Theme.of(context);
+    final name = p.name.trim().isEmpty ? shortArea(p) : p.name.trim();
+    final area = placeAreaLine(p, clean: true);
+    return Tooltip(
+      message: p.address,
+      child: Row(key: const ValueKey('god-view-address'), crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(placeIcon(p), size: 18, color: t.colorScheme.onSurfaceVariant),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+            if (area != null) Text(area, style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
 class _PingRow extends StatelessWidget {
-  const _PingRow({required this.stage, required this.at, required this.onPing});
+  const _PingRow({required this.stage, required this.at, required this.onPing, this.blocked});
   final GodViewPingStage? stage;
+
+  /// Why the ping can't be sent now (the phone reports live); null when it can.
+  final String? blocked;
   final DateTime? at;
   final VoidCallback onPing;
 
@@ -1750,7 +1790,7 @@ class _PingRow extends StatelessWidget {
       Row(children: [
         OutlinedButton.icon(
           key: const ValueKey('god-view-ping'),
-          onPressed: busy ? null : onPing,
+          onPressed: busy || blocked != null ? null : onPing,
           icon: busy
               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
               : const Icon(Icons.my_location_outlined, size: 18),
@@ -1759,7 +1799,8 @@ class _PingRow extends StatelessWidget {
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            'Asks their phone where it is.',
+            blocked ?? 'Asks their phone where it is.',
+            key: const ValueKey('god-view-ping-note'),
             style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
           ),
         ),

@@ -916,10 +916,13 @@ void main() {
       expect(fake.answerAsks, 0);
     });
 
-    testWidgets('no Ping now for someone already reporting', (tester) async {
-      await _pump(tester, size: const Size(1400, 2400));
+    testWidgets('Ping now is greyed out, with the reason, for someone already reporting', (tester) async {
+      final repo = await _pump(tester, size: const Size(1400, 2400));
       await _openDetails(tester, 'd1');
-      expect(find.byKey(const ValueKey('god-view-ping')), findsNothing);
+      final button = tester.widget<ButtonStyleButton>(find.byKey(const ValueKey('god-view-ping')));
+      expect(button.onPressed, isNull);
+      expect(find.text(godViewPingBlocked(_people.firstWhere((p) => p.id == 'd1'))!), findsOneWidget);
+      expect(repo.pinged, isEmpty);
     });
 
     for (final b in Brightness.values) {
