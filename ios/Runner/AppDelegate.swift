@@ -810,6 +810,25 @@ final class NetworkInfoPlugin: NSObject, FlutterPlugin {
         out["simCountry"] = c.isoCountryCode
       }
     }
+    // The battery (-1 until monitoring has a reading) and the free space
+    // the system would make for the app, for Admin's Phone card.
+    let device = UIDevice.current
+    device.isBatteryMonitoringEnabled = true
+    if device.batteryLevel >= 0 {
+      out["batteryPct"] = Int((device.batteryLevel * 100).rounded())
+    }
+    if device.batteryState != .unknown {
+      out["batteryCharging"] = device.batteryState == .charging || device.batteryState == .full
+    }
+    let keys: Set<URLResourceKey> = [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey]
+    if let v = try? URL(fileURLWithPath: NSHomeDirectory()).resourceValues(forKeys: keys) {
+      if let free = v.volumeAvailableCapacityForImportantUsage {
+        out["storageFree"] = NSNumber(value: free)
+      }
+      if let total = v.volumeTotalCapacity {
+        out["storageTotal"] = NSNumber(value: total)
+      }
+    }
     result(out)
   }
 }

@@ -12,6 +12,7 @@ import '../../admin_filters.dart' show RowsPage, adminPeoplePageSizeFor, pagedCo
 import '../../people_paging.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../widgets/phone_card.dart';
 import 'partner_live.dart';
 import 'partner_live_card.dart';
 import 'people_data.dart';
@@ -630,6 +631,8 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
             if (p['auth_user_id'] case final String uid when uid.isNotEmpty) ...[
               const SizedBox(height: 12),
               DriverExtrasOffCard(driverId: uid),
+              const SizedBox(height: 12),
+              PhoneCard(profileId: uid),
             ],
             const SizedBox(height: 16),
             if (canEdit)

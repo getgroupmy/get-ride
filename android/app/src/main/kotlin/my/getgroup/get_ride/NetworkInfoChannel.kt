@@ -1,9 +1,14 @@
 package my.getgroup.get_ride
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.os.BatteryManager
 import android.os.Build
+import android.os.Environment
+import android.os.StatFs
 import android.telephony.TelephonyManager
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
@@ -12,7 +17,8 @@ import io.flutter.plugin.common.MethodChannel
 /// History shows (lib/src/data/device_details.dart). Only calls that need no
 /// runtime permission: ACCESS_NETWORK_STATE is a normal one, and the
 /// operator names and codes need no phone-state access. Nothing asks the
-/// user anything.
+/// user anything. The battery (the sticky ACTION_BATTERY_CHANGED, no
+/// receiver kept) and the free space on the app's storage ride along.
 class NetworkInfoChannel(private val context: Context, messenger: BinaryMessenger) {
     init {
         MethodChannel(messenger, "get_ride/network").setMethodCallHandler { call, result ->
@@ -56,6 +62,26 @@ class NetworkInfoChannel(private val context: Context, messenger: BinaryMessenge
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) out["carrierName"] = tm.simCarrierIdName?.toString()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) out["simSlots"] = tm.activeModemCount
+        } catch (_: Exception) {
+        }
+        try {
+            val battery = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            if (battery != null) {
+                val level = battery.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale = battery.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+                if (level >= 0 && scale > 0) out["batteryPct"] = level * 100 / scale
+                val status = battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                if (status != -1) {
+                    out["batteryCharging"] = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                        status == BatteryManager.BATTERY_STATUS_FULL
+                }
+            }
+        } catch (_: Exception) {
+        }
+        try {
+            val stat = StatFs(Environment.getDataDirectory().path)
+            out["storageFree"] = stat.availableBytes
+            out["storageTotal"] = stat.totalBytes
         } catch (_: Exception) {
         }
         return out

@@ -22,7 +22,10 @@ import 'trace_fraud_screen.dart';
 const securityOwnedCategories = <String>{};
 
 final securityRoutes = <RouteBase>[
-  GoRoute(path: '/admin/m/session-history', builder: (_, _) => const AdminSessionHistoryScreen()),
+  GoRoute(
+    path: '/admin/m/session-history',
+    builder: (_, s) => AdminSessionHistoryScreen(query: s.uri.queryParameters['q'] ?? ''),
+  ),
   GoRoute(path: '/admin/m/trace-fraud', builder: (_, _) => const AdminTraceFraudScreen()),
   GoRoute(path: '/admin/m/messaging', builder: (_, _) => const AdminMessagingScreen()),
   GoRoute(path: '/admin/m/ble-report', builder: (_, _) => const AdminBleReportScreen()),

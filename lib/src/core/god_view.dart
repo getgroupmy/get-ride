@@ -516,6 +516,17 @@ String? godViewNotMovedSince(GodViewPerson p, DateTime now, {DateOrder? order}) 
 bool godViewCanPing(GodViewPerson p) =>
     p.status == GodViewStatus.alwaysOn || p.status == GodViewStatus.lastKnown || p.status == GodViewStatus.notResponding;
 
+/// Why "Ping now" is greyed out for [p], or null when it can be sent: a
+/// phone that is reporting live needs no ping.
+String? godViewPingBlocked(GodViewPerson p) {
+  if (godViewCanPing(p)) return null;
+  return switch (p.status) {
+    GodViewStatus.sos => 'SOS: the phone is reporting live.',
+    GodViewStatus.pickup || GodViewStatus.trip || GodViewStatus.ride => 'On a ride: location updates live.',
+    _ => 'App open: location updates live.',
+  };
+}
+
 /// What god_view_ping answered.
 class GodViewPingResult {
   const GodViewPingResult({
