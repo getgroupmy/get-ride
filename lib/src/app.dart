@@ -113,6 +113,7 @@ import 'features/shell/brand_splash.dart';
 import 'features/shell/not_found_screen.dart';
 import 'features/shell/app_side_menu.dart';
 import 'features/notifications/notifications_screen.dart';
+import 'features/notifications/push_message_screen.dart';
 import 'features/shell/permission_gate.dart';
 import 'features/shell/update_gate.dart';
 import 'features/shell/web_build_gate.dart';
@@ -426,7 +427,18 @@ final routerProvider = Provider<GoRouter>((ref) {
                     routes: [
                       GoRoute(path: 'profile', builder: (_, _) => const ProfileScreen()),
                       GoRoute(path: 'edit', builder: (_, _) => const EditProfileScreen()),
-                      GoRoute(path: 'notifications', builder: (_, _) => const NotificationsScreen()),
+                      GoRoute(
+                        path: 'notifications',
+                        builder: (_, _) => const NotificationsScreen(),
+                        // An admin push's full message (0279), from the
+                        // push or its row on the page.
+                        routes: [
+                          GoRoute(
+                            path: ':messageId',
+                            builder: (_, s) => PushMessageScreen(messageId: s.pathParameters['messageId']!),
+                          ),
+                        ],
+                      ),
                       GoRoute(path: 'referral', builder: (_, _) => const ReferralScreen()),
                       GoRoute(
                         path: 'my-ride',

@@ -45,6 +45,10 @@ class SavedPush {
     this.updatedAt,
     this.values = const {},
     this.area = const PushArea.everywhere(),
+    this.imageUrl,
+    this.partnerTypes = const [],
+    this.approvedOnly = true,
+    this.blocks = const [],
   });
 
   factory SavedPush.fromEntry(SettingEntry e) => SavedPush(
@@ -55,6 +59,10 @@ class SavedPush {
     audience: normalizePushAudience(e.values['audience']),
     updatedAt: e.values['updatedAt'] == null ? null : '${e.values['updatedAt']}',
     area: PushArea.fromJson(e.values['area']),
+    imageUrl: '${e.values['image'] ?? ''}'.trim().isEmpty ? null : '${e.values['image']}'.trim(),
+    partnerTypes: [for (final t in (e.values['partnerTypes'] as List?) ?? const []) '$t'],
+    approvedOnly: e.values['approvedOnly'] != false,
+    blocks: e.values['blocks'] is List ? List<Object?>.from(e.values['blocks'] as List) : const [],
   );
 
   final String id;
@@ -65,6 +73,15 @@ class SavedPush {
 
   /// Where it goes (migration 0168); everywhere for older rows.
   final PushArea area;
+
+  /// The composer's picture, partner types and full message (0279); none
+  /// for older rows.
+  final String? imageUrl;
+  final List<String> partnerTypes;
+  final bool approvedOnly;
+
+  /// The full message's blocks as stored (push_message.dart decodes them).
+  final List<Object?> blocks;
 
   /// Everything stored on the row, kept when it is edited.
   final Map<String, dynamic> values;
@@ -107,6 +124,10 @@ Map<String, dynamic> savedPushValues({
   required String audience,
   required DateTime now,
   PushArea area = const PushArea.everywhere(),
+  String? imageUrl,
+  List<String> partnerTypes = const [],
+  bool approvedOnly = true,
+  List<Map<String, dynamic>> blocks = const [],
 }) => {
   ...?existing,
   'title': title.trim(),
@@ -114,5 +135,12 @@ Map<String, dynamic> savedPushValues({
   'audience': normalizePushAudience(audience),
   // Null clears an area an edit took away.
   'area': area.toJson(),
+  // The composer's extras (0279), when there are any or the row had them:
+  // null and empty clear what an edit took away.
+  if (imageUrl != null || (existing?.containsKey('image') ?? false)) 'image': imageUrl,
+  if (partnerTypes.isNotEmpty || (existing?.containsKey('partnerTypes') ?? false))
+    'partnerTypes': normalizePushAudience(audience) == 'partners' ? partnerTypes : const <String>[],
+  if (!approvedOnly || (existing?.containsKey('approvedOnly') ?? false)) 'approvedOnly': approvedOnly,
+  if (blocks.isNotEmpty || (existing?.containsKey('blocks') ?? false)) 'blocks': blocks,
   'updatedAt': now.toUtc().toIso8601String(),
 };

@@ -77,12 +77,19 @@ export function fcmSendUrl(projectId: string): string {
   return `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/messages:send`;
 }
 
-/** One FCM v1 message: shown by the OS, loud on both platforms. */
+/**
+ * One FCM v1 message: shown by the OS, loud on both platforms. With [image]
+ * (an https address, Admin -> Push Notification, 0279) Android shows the
+ * picture large; an iPhone needs a Notification Service Extension for it,
+ * so APNs is sent `mutable-content` and `fcm_options.image` for when the
+ * app has one.
+ */
 export function fcmMessage(
   token: string,
   title: string,
   body: string,
   data: Record<string, unknown> | undefined | null,
+  image?: string | null,
 ) {
   // A retried event (notification_outbox, migration 0144) carries its
   // event id: it becomes the Android tag and the iOS collapse id, so the
@@ -91,7 +98,7 @@ export function fcmMessage(
   return {
     message: {
       token,
-      notification: { title, body },
+      notification: { title, body, ...(image ? { image } : {}) },
       data: fcmData(data),
       android: {
         priority: "HIGH",
@@ -99,11 +106,13 @@ export function fcmMessage(
           channel_id: ANDROID_CHANNEL_ID,
           sound: "default",
           ...(collapse ? { tag: collapse } : {}),
+          ...(image ? { image } : {}),
         },
       },
       apns: {
         headers: { "apns-priority": "10", ...(collapse ? { "apns-collapse-id": collapse } : {}) },
-        payload: { aps: { sound: "default" } },
+        payload: { aps: { sound: "default", ...(image ? { "mutable-content": 1 } : {}) } },
+        ...(image ? { fcm_options: { image } } : {}),
       },
     },
   };
@@ -522,4 +531,94 @@ export function inArea(row: LocatedRow, area: PushArea, now: Date): boolean {
   if (area.city && !same(row.area_city, area.city)) return false;
   if (area.suburb && !same(row.area_suburb, area.suburb)) return false;
   return true;
+}
+
+// ---- The composer's extras (Admin -> Push Notification, migration 0279) ---
+
+/** A picture's address as send-push takes it: https only, or null. */
+export function imageUrl(raw: unknown): string | null {
+  const v = text(raw);
+  if (!v || v.length > 1000 || /\s/.test(v)) return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === "https:" && u.hostname ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A row id (push_messages, push_schedules), or null. */
+export function uuidOf(raw: unknown): string | null {
+  const v = text(raw);
+  return UUID.test(v) ? v.toLowerCase() : null;
+}
+
+/** The partner types asked for, trimmed, each once (ignoring case), at most 30. */
+export function partnerTypeList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Map<string, string>();
+  for (const v of raw) {
+    const t = text(v);
+    if (t && !seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+  }
+  return [...seen.values()].slice(0, 30);
+}
+
+/** One `partners` row as the partner audience reads it. */
+export interface PartnerRow {
+  auth_user_id?: string | null;
+  partner_types?: string[] | string | null;
+  /** The single type older rows kept. */
+  partner_type?: string | null;
+}
+
+/** A partner's types: `partner_types`, else the legacy `partner_type`. */
+export function typesOfPartner(row: PartnerRow): string[] {
+  let list: unknown[] = [];
+  const raw = row.partner_types;
+  if (Array.isArray(raw)) list = raw;
+  else if (typeof raw === "string" && raw.trim().startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) list = parsed;
+    } catch {
+      list = [];
+    }
+  }
+  const types = list.map(text).filter((t) => t !== "");
+  if (types.length > 0) return types;
+  const legacy = text(row.partner_type);
+  return legacy ? [legacy] : [];
+}
+
+/**
+ * The accounts of the partners whose types overlap [types] (ignoring case),
+ * each once however many types it has; every partner when [types] is
+ * empty. The app counts the same way (push_composer.dart).
+ */
+export function partnerAccounts(rows: PartnerRow[], types: string[]): Set<string> {
+  const wanted = new Set(types.map((t) => t.toLowerCase()));
+  const out = new Set<string>();
+  for (const r of rows) {
+    const id = text(r.auth_user_id);
+    if (!id) continue;
+    if (wanted.size === 0 || typesOfPartner(r).some((t) => wanted.has(t.toLowerCase()))) out.add(id);
+  }
+  return out;
+}
+
+/**
+ * The data a push carries for the app: [base] plus the full message's id
+ * (the app opens it when tapped, and the person may then read it,
+ * push_messages) and the picture.
+ */
+export function withMessage(
+  base: Record<string, unknown> | undefined | null,
+  messageId: string | null,
+  image: string | null,
+): Record<string, unknown> | undefined {
+  if (!messageId && !image) return base ?? undefined;
+  return { ...(base ?? {}), ...(messageId ? { message_id: messageId } : {}), ...(image ? { image } : {}) };
 }

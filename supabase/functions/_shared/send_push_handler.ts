@@ -30,7 +30,18 @@ export interface SendBody {
   /** Count who it would reach; send nothing. */
   dryRun?: boolean;
   data?: Record<string, unknown>;
+  /** A picture shown large in the notification: an https address (0279). */
+  image?: string;
+  /** The full message the push opens in the app (push_messages, 0279). */
+  messageId?: string;
+  /** With the partner audience: only partners of these types (any of them). */
+  partnerTypes?: string[];
+  /** The push_schedules row this send is for; taken from the database only. */
+  scheduleId?: string;
 }
+
+/** Who is asking (authorizePush): a schedule id counts from the database only. */
+export type SendCaller = "webhook" | "service" | "admin";
 
 export function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
@@ -41,7 +52,7 @@ export function json(payload: unknown, status = 200): Response {
 
 export async function handleSendPush(
   req: Request,
-  deps: { auth: PushAuthDeps; dispatch(payload: SendBody): Promise<Response> },
+  deps: { auth: PushAuthDeps; dispatch(payload: SendBody, caller: SendCaller): Promise<Response> },
 ): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -59,5 +70,5 @@ export async function handleSendPush(
   } catch {
     return json({ error: "Invalid JSON body" }, 400);
   }
-  return await deps.dispatch(payload);
+  return await deps.dispatch(payload, auth.caller);
 }

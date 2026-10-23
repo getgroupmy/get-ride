@@ -151,7 +151,11 @@ String pushReachText(Map<String, dynamic> r, PushArea area) {
   final head = devices == 0
       ? 'Nobody$where would get this'
       : 'Reaches $people ${people == 1 ? 'person' : 'people'} on $devices ${devices == 1 ? 'device' : 'devices'}$where';
-  if (area.kind == PushAreaKind.everywhere || unlocated == 0) return '$head.';
+  // A partner send counts its partners too (0279), each once whatever its types.
+  final partners = r['partners'] is num
+      ? ' ${v('partners')} ${v('partners') == 1 ? 'partner matches' : 'partners match'}, each counted once.'
+      : '';
+  if (area.kind == PushAreaKind.everywhere || unlocated == 0) return '$head.$partners';
   return '$head. $unlocated ${unlocated == 1 ? 'device has' : 'devices have'} no known location yet and '
-      '${unlocated == 1 ? 'is' : 'are'} left out.';
+      '${unlocated == 1 ? 'is' : 'are'} left out.$partners';
 }

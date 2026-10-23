@@ -68,7 +68,17 @@ class NotificationsRepository {
   Future<void> markRead([List<String>? ids]) => _db.rpc('notifications_mark_read', params: {'p_ids': ids});
 
   Future<void> delete(List<String> ids) => _db.rpc('notifications_delete', params: {'p_ids': ids});
+
+  /// The full message an admin push opened (`push_messages`, migration
+  /// 0279); null when it is gone or was not sent to this account.
+  Future<Map<String, dynamic>?> message(String id) =>
+      _db.from('push_messages').select('id, title, body, image_url, blocks, created_at').eq('id', id).maybeSingle();
 }
+
+/// One full message, by id (the page a push with one opens).
+final pushMessageProvider = FutureProvider.autoDispose.family<Map<String, dynamic>?, String>(
+  (ref, id) => ref.watch(notificationsRepositoryProvider).message(id),
+);
 
 final notificationsRepositoryProvider = Provider((ref) => NotificationsRepository(ref.watch(supabaseProvider)));
 
