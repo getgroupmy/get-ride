@@ -248,6 +248,10 @@ final defaultApiProviders = <ApiProviderDef>[
     _svc('ipinfo', 'IPinfo', 'IP geolocation lookups'),
     _svc('ipgeolocation', 'ipgeolocation.io', 'IP-based geolocation service'),
   ]),
+  // Admin > Reports' scheduled emails (migration 0280, the ai-report-email function).
+  ApiProviderDef(id: 'email', name: 'Email', description: 'Sending email', category: 'Email', services: [
+    _svc('resend', 'Resend', 'API key for the Reports emails (sender set on Admin > Reports)'),
+  ]),
 ];
 
 /// Adds missing default providers/services without touching edits; defaults

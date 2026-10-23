@@ -290,6 +290,29 @@ void main() {
     expect(admin.regionCalls.single[godViewPage]?['country'], 'Malaysia');
   });
 
+  testWidgets('a Reports grant keeps its region too (0280)', (tester) async {
+    final admin = _Admin(grants: [
+      {
+        'id': 'g1',
+        'profile_id': 'p-aina',
+        'page': reportsPage,
+        'access_level': 'edit',
+        'region': {'country': 'Malaysia', 'state': 'Johor'},
+      },
+    ]);
+    await _pump(tester, admin, const AdminSubAdminsScreen());
+    await tester.tap(find.byKey(const ValueKey('sub-admin-edit-p-aina')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.ancestor(of: find.text('Filter pages'), matching: find.byType(TextField)), 'reports');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('grant-reports-region')), findsOneWidget);
+    expect(find.text('Johor, Malaysia'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('grant-notes')), 'Johor reports');
+    await tester.tap(find.byKey(const ValueKey('grant-save')));
+    await tester.pumpAndSettle();
+    expect(admin.regionCalls.single[reportsPage]?['state'], 'Johor');
+  });
+
   testWidgets('Edit access has an address of its own: a reload opens the same person', (tester) async {
     final admin = _Admin(grants: [
       {'id': 'g1', 'profile_id': 'p-aina', 'page': '*', 'access_level': 'read'},

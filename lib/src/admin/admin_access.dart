@@ -36,6 +36,9 @@ class AdminGrant {
 /// God View's page key (migration 0270).
 const godViewPage = 'admin-god-view';
 
+/// Reports' page key (migration 0280). Its grant can carry a region too.
+const reportsPage = 'admin-reports';
+
 class AdminAccess {
   const AdminAccess(this.grants);
   static const none = AdminAccess([]);
@@ -107,6 +110,8 @@ final adminModules = <String, AdminModule>{
   ]),
   // Telematics (0255): km and trips per driver, vehicle and pair.
   'telematics': const AdminModule('telematics', 'Telematics', ['admin-telematics']),
+  // Reports (0280): ask in plain words, download, save, email on a schedule.
+  'reports': const AdminModule('reports', 'Reports', [reportsPage]),
   'settings': const AdminModule('settings', 'Settings', ['admin-settings']),
   'sub-admins': const AdminModule('sub-admins', 'Sub-admins', ['admin-settings-sub-admin']),
 };

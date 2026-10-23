@@ -53,6 +53,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callerCanEdit, FARE_AI_PAGES } from "../_shared/admin_page.ts";
 import { rpcTestAccountLookup, testAccountCheck } from "../_shared/test_traffic.ts";
+import {
+  type CallResult,
+  callProvider,
+  DEFAULT_MODELS,
+  type FareAIKey,
+  type Provider,
+} from "../_shared/ai_providers.ts";
 
 import {
   buildPrompt,
@@ -61,7 +68,6 @@ import {
   type FareTrend,
   parseStops,
   parseTrafficExtras,
-  type ResolvedRequest,
   resolveRequest,
   resolveTrendSettings,
   retryPolicyMs,
@@ -76,27 +82,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Max-Age": "7200",
 };
-
-type Provider =
-  | "gemini"
-  | "grok"
-  | "chatgpt"
-  | "groq"
-  | "claude"
-  | "perplexity"
-  | "mistral"
-  | "deepseek"
-  | "cohere"
-  | "together"
-  | "openrouter"
-  | "fireworks";
-
-interface FareAIKey {
-  id: string;
-  label: string;
-  key: string;
-  enabled: boolean;
-}
 
 interface FareAIConfig {
   serviceEnabled?: boolean;
@@ -135,172 +120,11 @@ interface RouteEstimate extends TrafficExtras {
   trend?: FareTrend;
 }
 
-interface CallResult {
-  content: string | null;
-  httpStatus: number | null;
-  error: string | null;
-}
-
-const DEFAULT_MODELS: Record<Provider, string> = {
-  gemini: "gemini-2.5-flash",
-  grok: "grok-3",
-  chatgpt: "gpt-4o-mini",
-  groq: "llama-3.3-70b-versatile",
-  claude: "claude-3-5-haiku-latest",
-  perplexity: "sonar",
-  mistral: "mistral-small-latest",
-  deepseek: "deepseek-chat",
-  cohere: "command-r",
-  together: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
-  openrouter: "openai/gpt-4o-mini",
-  fireworks: "accounts/fireworks/models/llama-v3p3-70b-instruct",
-};
-
 function json(payload: unknown, status = 200): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-async function callOpenAICompatible(
-  endpoint: string,
-  apiKey: string,
-  model: string,
-  prompt: string,
-  label: string,
-  req: ResolvedRequest,
-): Promise<CallResult> {
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: req.temperature,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: req.systemInstruction },
-        { role: "user", content: prompt },
-      ],
-    }),
-  });
-  if (!response.ok) {
-    const errText = await response.text();
-    return {
-      content: null,
-      httpStatus: response.status,
-      error: `${label} HTTP ${response.status}: ${errText.substring(0, 200)}`,
-    };
-  }
-  const data = await response.json();
-  const content: string | undefined = data?.choices?.[0]?.message?.content;
-  return {
-    content: content ?? null,
-    httpStatus: response.status,
-    error: content ? null : "Empty content",
-  };
-}
-
-async function callGemini(prompt: string, apiKey: string, model: string, req: ResolvedRequest): Promise<CallResult> {
-  const endpoint =
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: req.systemInstruction }] },
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: req.temperature, responseMimeType: "application/json" },
-    }),
-  });
-  if (!response.ok) {
-    const errText = await response.text();
-    return {
-      content: null,
-      httpStatus: response.status,
-      error: `HTTP ${response.status}: ${errText.substring(0, 200)}`,
-    };
-  }
-  const data = await response.json();
-  const content: string | undefined = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  return {
-    content: content ?? null,
-    httpStatus: response.status,
-    error: content ? null : "Empty content",
-  };
-}
-
-async function callAnthropic(prompt: string, apiKey: string, model: string, req: ResolvedRequest): Promise<CallResult> {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      // Claude requires a cap; the others use their own limit.
-      max_tokens: req.maxTokens,
-      temperature: req.temperature,
-      system: req.systemInstruction,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  if (!response.ok) {
-    const errText = await response.text();
-    return {
-      content: null,
-      httpStatus: response.status,
-      error: `Claude HTTP ${response.status}: ${errText.substring(0, 200)}`,
-    };
-  }
-  const data = await response.json();
-  const content: string | undefined = data?.content?.[0]?.text;
-  return {
-    content: content ?? null,
-    httpStatus: response.status,
-    error: content ? null : "Empty content",
-  };
-}
-
-function callProvider(
-  provider: Provider,
-  prompt: string,
-  apiKey: string,
-  model: string,
-  req: ResolvedRequest,
-): Promise<CallResult> {
-  switch (provider) {
-    case "grok":
-      return callOpenAICompatible("https://api.x.ai/v1/chat/completions", apiKey, model, prompt, "Grok", req);
-    case "chatgpt":
-      return callOpenAICompatible("https://api.openai.com/v1/chat/completions", apiKey, model, prompt, "ChatGPT", req);
-    case "groq":
-      return callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", apiKey, model, prompt, "Groq", req);
-    case "perplexity":
-      return callOpenAICompatible("https://api.perplexity.ai/chat/completions", apiKey, model, prompt, "Perplexity", req);
-    case "mistral":
-      return callOpenAICompatible("https://api.mistral.ai/v1/chat/completions", apiKey, model, prompt, "Mistral", req);
-    case "deepseek":
-      return callOpenAICompatible("https://api.deepseek.com/chat/completions", apiKey, model, prompt, "DeepSeek", req);
-    case "cohere":
-      return callOpenAICompatible("https://api.cohere.ai/compatibility/v1/chat/completions", apiKey, model, prompt, "Cohere", req);
-    case "together":
-      return callOpenAICompatible("https://api.together.xyz/v1/chat/completions", apiKey, model, prompt, "Together AI", req);
-    case "openrouter":
-      return callOpenAICompatible("https://openrouter.ai/api/v1/chat/completions", apiKey, model, prompt, "OpenRouter", req);
-    case "fireworks":
-      return callOpenAICompatible("https://api.fireworks.ai/inference/v1/chat/completions", apiKey, model, prompt, "Fireworks", req);
-    case "claude":
-      return callAnthropic(prompt, apiKey, model, req);
-    case "gemini":
-    default:
-      return callGemini(prompt, apiKey, model, req);
-  }
 }
 
 function parseEstimate(content: string): RouteEstimate | null {
