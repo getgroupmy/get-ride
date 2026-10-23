@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/avatar.dart';
+import '../../data/identity_repository.dart' show recordProfileSelfie;
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/live_selfie.dart';
 import '../../widgets/net_image.dart';
 
 /// Where a new account lands after sign-up: Driver opens the Drive tab, where
@@ -15,15 +16,16 @@ String signupLanding(String? role) => role == 'driver' ? '/drive' : '/';
 
 /// The optional sign-up photo step (Expo `profile-photo.tsx`): the photo
 /// becomes the avatar. Skip goes on without one; it can be added later from
-/// Edit profile.
+/// Edit profile. A live selfie (0281): the front camera with its blink or
+/// head-turn check, and how it was taken kept for the admin.
 class SignupPhotoScreen extends ConsumerStatefulWidget {
-  const SignupPhotoScreen({super.key, required this.next, this.pickPhoto = pickAvatarImage});
+  const SignupPhotoScreen({super.key, required this.next, this.takeSelfie = takeLiveAvatar});
 
   /// Where Continue and Skip go.
   final String next;
 
-  /// Photo picker, cut square (overridden in tests).
-  final Future<PickedImage?> Function(BuildContext context) pickPhoto;
+  /// The live selfie camera, cut square (overridden in tests).
+  final Future<LiveSelfie?> Function(BuildContext context) takeSelfie;
 
   @override
   ConsumerState<SignupPhotoScreen> createState() => _SignupPhotoScreenState();
@@ -33,21 +35,23 @@ class _SignupPhotoScreenState extends ConsumerState<SignupPhotoScreen> {
   bool _uploading = false;
 
   Future<void> _pick() async {
-    final PickedImage? photo;
+    final LiveSelfie? selfie;
     try {
-      photo = await widget.pickPhoto(context);
+      selfie = await widget.takeSelfie(context);
     } catch (e) {
       if (mounted) showError(context, e);
       return;
     }
-    if (photo == null || !mounted) return;
+    if (selfie == null || !mounted) return;
+    final photo = selfie.picked;
     final problem = avatarProblem(photo.bytes.length);
     if (problem != null) return showInfo(context, problem);
     setState(() => _uploading = true);
     try {
-      await ref
+      final url = await ref
           .read(accountRepositoryProvider)
           .uploadAvatar(photo.bytes, ext: photo.ext, contentType: photo.contentType);
+      await recordProfileSelfie(ref, url, selfie);
       ref.invalidate(profileProvider);
     } catch (e) {
       if (mounted) showError(context, e);
@@ -107,7 +111,7 @@ class _SignupPhotoScreenState extends ConsumerState<SignupPhotoScreen> {
               BusyButton.outlined(
                 onPressed: _uploading ? null : _pick,
                 icon: const Icon(Icons.photo_camera_outlined),
-                child: Text(url == null ? 'Choose photo' : 'Change photo'),
+                child: Text(url == null ? 'Take a selfie' : 'Take a new selfie'),
               ),
               const SizedBox(height: 12),
               FilledButton(onPressed: url == null || _uploading ? null : _done, child: const Text('Continue')),

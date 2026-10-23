@@ -12,11 +12,13 @@ import '../../core/partner_doc_check.dart' show renewalWindowDays;
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_type_rules.dart' show EffectiveTypeRules, partnerTypesAvailableIn;
 import '../../core/vehicle_onboarding.dart';
+import '../../data/identity_repository.dart' show recordProfileSelfie;
 import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/live_selfie.dart';
 import '../../widgets/loading_skeleton.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/net_image.dart';
@@ -48,7 +50,7 @@ OnboardingStep? onboardingStepFromQuery(String? key) {
 class PartnerOnboardingScreen extends ConsumerStatefulWidget {
   const PartnerOnboardingScreen({
     super.key,
-    this.pickAvatar = pickAvatarImage,
+    this.takeSelfie = takeLiveAvatar,
     this.pickPhoto = pickDocumentImage,
     this.startAt,
   });
@@ -58,9 +60,9 @@ class PartnerOnboardingScreen extends ConsumerStatefulWidget {
   /// steps go in order ([onboardingStartStep]).
   final OnboardingStep? startAt;
 
-  /// The profile photo picker: camera or gallery on a phone, cut square
-  /// (overridden in tests).
-  final Future<PickedImage?> Function(BuildContext context) pickAvatar;
+  /// The profile photo: a live selfie with the front camera (0281), cut
+  /// square (overridden in tests).
+  final Future<LiveSelfie?> Function(BuildContext context) takeSelfie;
 
   /// The ID photo picker (overridden in tests).
   final Future<PickedImage?> Function(BuildContext context) pickPhoto;
@@ -205,10 +207,11 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
   // ---- Steps -----------------------------------------------------------------
 
   Future<void> _pickAvatar() async {
-    final img = await widget.pickAvatar(context);
-    if (img == null || !mounted) return;
+    final selfie = await widget.takeSelfie(context);
+    if (selfie == null || !mounted) return;
     await _save((s) async {
-      final url = await _repo.uploadAvatar(s, img.bytes, img.name);
+      final url = await _repo.uploadAvatar(s, selfie.bytes, selfie.name);
+      await recordProfileSelfie(ref, url, selfie);
       return _patchBoth(s, {'avatar_url': url});
     });
   }
@@ -453,7 +456,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         BusyButton.filled(
           onPressed: _busy ? null : _pickAvatar,
           icon: const Icon(Icons.photo_camera_outlined),
-          child: Text(url.isEmpty ? 'Choose photo' : 'Change photo'),
+          child: Text(url.isEmpty ? 'Take a selfie' : 'Take a new selfie'),
         ),
         if (url.isNotEmpty && _viewing == OnboardingStep.avatar) ...[
           const SizedBox(height: 8),

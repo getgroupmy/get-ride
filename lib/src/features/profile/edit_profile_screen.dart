@@ -6,19 +6,24 @@ import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/avatar.dart';
 import '../../core/contact_phone.dart';
 import '../../core/profile_identity.dart';
+import '../../data/identity_repository.dart' show recordProfileSelfie;
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
+import '../../widgets/live_selfie.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/net_image.dart';
 import '../../widgets/storage_image.dart';
 import '../../widgets/page_style_host.dart';
 
 class EditProfileScreen extends ConsumerStatefulWidget {
-  const EditProfileScreen({super.key, this.pickPhoto = pickImage});
+  const EditProfileScreen({super.key, this.pickPhoto = pickImage, this.takeSelfie = takeLiveAvatar});
 
-  /// Photo picker (overridden in tests).
+  /// The ID photo picker (overridden in tests).
   final Future<PickedImage?> Function(BuildContext context) pickPhoto;
+
+  /// The profile photo: a live selfie (0281), cut square (overridden in tests).
+  final Future<LiveSelfie?> Function(BuildContext context) takeSelfie;
 
   @override
   ConsumerState<EditProfileScreen> createState() => _EditProfileScreenState();
@@ -77,21 +82,23 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   /// Picks a photo and saves it straight away, apart from the form: the
   /// name and email still need Save, the photo does not.
   Future<void> _changePhoto() async {
-    final PickedImage? photo;
+    final LiveSelfie? selfie;
     try {
-      photo = await widget.pickPhoto(context);
+      selfie = await widget.takeSelfie(context);
     } catch (e) {
       if (mounted) showError(context, e);
       return;
     }
-    if (photo == null || !mounted) return;
+    if (selfie == null || !mounted) return;
+    final photo = selfie.picked;
     final problem = avatarProblem(photo.bytes.length);
     if (problem != null) return showInfo(context, problem);
     setState(() => _uploading = true);
     try {
-      await ref
+      final url = await ref
           .read(accountRepositoryProvider)
           .uploadAvatar(photo.bytes, ext: photo.ext, contentType: photo.contentType);
+      await recordProfileSelfie(ref, url, selfie);
       ref.invalidate(profileProvider);
       if (mounted) showInfo(context, 'Profile photo updated');
     } catch (e) {

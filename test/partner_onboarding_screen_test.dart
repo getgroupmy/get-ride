@@ -13,6 +13,7 @@ import 'package:get_ride/src/features/partner/driver_permit_screen.dart' show pe
 import 'package:get_ride/src/features/partner/partner_onboarding_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/live_selfie.dart' show LiveSelfie;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // No token refresh: its timer would outlive the first test.
@@ -138,7 +139,7 @@ void main() {
     await _pump(tester, OnboardingState(profile: const {}, partner: _partner()));
     expect(find.text('Step 1 of 6'), findsOneWidget);
     expect(find.text('Add a profile photo'), findsOneWidget);
-    expect(find.text('Choose photo'), findsOneWidget);
+    expect(find.text('Take a selfie'), findsOneWidget);
     // The current step is filled, not ticked: no step is done yet.
     for (final chip in tester.widgetList<ChoiceChip>(find.byType(ChoiceChip))) {
       expect(chip.showCheckmark, isFalse);
@@ -196,15 +197,15 @@ void main() {
     });
   }
 
-  testWidgets('the profile photo comes from the avatar picker and is saved to both rows', (tester) async {
+  testWidgets('the profile photo is a live selfie and is saved to both rows', (tester) async {
     final repo = await _pump(
       tester,
       OnboardingState(profile: const {}, partner: _partner()),
       screen: PartnerOnboardingScreen(
-        pickAvatar: (_) async => (bytes: Uint8List(4), name: 'me.jpg', ext: 'jpg', contentType: 'image/jpeg'),
+        takeSelfie: (_) async => LiveSelfie(bytes: Uint8List(4), name: 'me.jpg', liveness: 'passed', detail: 'blink'),
       ),
     );
-    await tester.tap(find.text('Choose photo'));
+    await tester.tap(find.text('Take a selfie'));
     await tester.pump();
     await tester.pump();
     expect(repo.avatars, ['me.jpg']);

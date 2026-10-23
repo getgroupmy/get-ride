@@ -9,7 +9,8 @@
 // (dispatch_may_grant / dispatch_grant); see _shared/dispatch_account.ts.
 //
 // Request:  POST { kind: "stand_admin" | "staff" | "fleet_owner", name, phone,
-//                  stand_ids?: uuid[], group_id?: uuid, perms?: {assign, ...} }
+//                  stand_ids?: uuid[], group_id?: uuid, perms?: {assign, ...},
+//                  verify?: {verify_selfie, verify_id, verify_days} }
 //           with the caller's session token.
 // Response: 200 { user_id, created }
 //           400 bad_request · 401 not_signed_in · 403 not_authorized
@@ -89,7 +90,7 @@ Deno.serve(async (req) => {
         p_phone: r.phone,
         p_stand_ids: r.stand_ids,
         p_group: r.group_id,
-        p_perms: r.perms,
+        p_perms: { ...r.perms, ...r.verify },
       });
       if (error) throw new Error(error.message);
       return data;

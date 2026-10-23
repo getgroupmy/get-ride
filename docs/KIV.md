@@ -25,3 +25,7 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 - Floor (stairs) and cold-truck add-ons.
 - Cash on delivery for items.
 - Business accounts.
+
+## Owner setup
+
+- AI Reports email: add the Resend key in Admin › Settings › API Keys (Email › Resend) and verify the getride.my domain in Resend. Until then scheduled report emails don't send; downloads work.

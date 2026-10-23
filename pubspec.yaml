@@ -90,6 +90,9 @@ dependencies:
   google_maps_flutter_ios_sdk9: ^2.19.0
   apple_maps_flutter: ^1.4.0
   flutter_svg: ^2.3.0
+  camera: ^0.12.1
+  google_mlkit_face_detection: ^0.15.1
+  google_mlkit_text_recognition: ^0.17.1
 
 dev_dependencies:
   flutter_test:

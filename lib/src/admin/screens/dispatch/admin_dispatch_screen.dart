@@ -9,7 +9,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../core/dispatch.dart';
+import '../../../core/signin_checks.dart';
 import '../../../data/dispatch_repository.dart';
+import '../../../data/identity_repository.dart';
 import '../../../features/dispatch/dispatch_console.dart';
 import '../../../features/dispatch/stand_charges_view.dart';
 import '../../../features/dispatch/stand_staff_view.dart' show AccessChips;
@@ -22,6 +24,7 @@ import '../../../widgets/search_select.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../profile_search.dart';
+import 'signin_checks_fields.dart';
 
 const dispatchConsolePage = 'admin-dispatch';
 const dispatchStandsPage = 'admin-dispatch-stands';
@@ -39,6 +42,9 @@ final adminStandPeopleProvider = FutureProvider.autoDispose<List<Map<String, dyn
 );
 final adminAccountsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>(
   (ref) => ref.watch(dispatchRepositoryProvider).accounts(),
+);
+final adminRenewDaysProvider = FutureProvider.autoDispose<int>(
+  (ref) => ref.watch(identityRepositoryProvider).renewDays(),
 );
 final adminGroupPeopleProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
   (ref, id) => ref.watch(dispatchRepositoryProvider).groupPeople(id),
@@ -893,14 +899,47 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
   final _phone = TextEditingController();
   Set<String> _stands = {};
   String? _fleet;
+  SignInAsks _asks = const SignInAsks();
+  bool _daysBad = false;
   String? _error;
   bool _busy = false;
+  final _renew = TextEditingController();
+  bool _renewShown = false;
 
   @override
   void dispose() {
     _name.dispose();
     _phone.dispose();
+    _renew.dispose();
     super.dispose();
+  }
+
+  Future<void> _editChecks(Map<String, dynamic> a) async {
+    final asks = await editSignInChecks(
+      context,
+      name: '${a['name'] ?? ''}',
+      current: SignInAsks.fromJson(a['verify']),
+    );
+    if (asks == null || !mounted) return;
+    try {
+      await ref.read(identityRepositoryProvider).setAsks('${a['user_id']}', '${a['kind']}', asks);
+      ref.invalidate(adminAccountsProvider);
+      if (mounted) showInfo(context, 'Sign-in checks saved.');
+    } catch (e) {
+      if (mounted) showError(context, dispatchErrorText(e));
+    }
+  }
+
+  Future<void> _saveRenew() async {
+    final n = int.tryParse(_renew.text.trim());
+    if (n == null || n < 0 || n > 365) return showInfo(context, 'Give 0 to 365 days.');
+    try {
+      await ref.read(identityRepositoryProvider).setRenewDays(n);
+      ref.invalidate(adminRenewDaysProvider);
+      if (mounted) showInfo(context, 'Saved.');
+    } catch (e) {
+      if (mounted) showError(context, dispatchErrorText(e));
+    }
   }
 
   Future<void> _create() async {
@@ -910,6 +949,7 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
     if (problem == null && (digits.length < 8 || digits.length > 15)) problem = "The phone number doesn't look right.";
     if (problem == null && _kind == 'stand_admin' && _stands.isEmpty) problem = 'Pick their stand.';
     if (problem == null && _kind == 'fleet_owner' && _fleet == null) problem = 'Pick their fleet.';
+    if (problem == null && _daysBad) problem = 'Give 1 to 365 days to finish, or leave it blank.';
     setState(() => _error = problem);
     if (problem != null) return;
     setState(() => _busy = true);
@@ -922,10 +962,12 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
             phone: _phone.text,
             standIds: _kind == 'stand_admin' ? _stands.toList() : const [],
             groupId: _kind == 'fleet_owner' ? _fleet : null,
+            asks: _asks,
           );
       if (!mounted) return;
       _name.clear();
       _phone.clear();
+      setState(() => _asks = const SignInAsks());
       ref.invalidate(adminAccountsProvider);
       ref.invalidate(adminStandPeopleProvider);
       showInfo(context, made ? 'ID made. They get an SMS to set their PIN.' : 'Role given to the existing account.');
@@ -947,6 +989,12 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
         if (g.kind == GroupKind.fleet) g,
     ];
     final accounts = ref.watch(adminAccountsProvider);
+    // The stored window, once, into the box the admin edits.
+    final renewDays = ref.watch(adminRenewDaysProvider).value;
+    if (renewDays != null && !_renewShown) {
+      _renewShown = true;
+      _renew.text = '$renewDays';
+    }
 
     final form = Card(
       child: Padding(
@@ -1029,6 +1077,13 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
                 items: [for (final g in fleets) DropdownMenuItem(value: g.id, child: Text(g.name))],
                 onChanged: (v) => setState(() => _fleet = v),
               ),
+            const SizedBox(height: 12),
+            SignInChecksFields(
+              value: _asks,
+              enabled: canEdit,
+              onChanged: (a) => setState(() => _asks = a),
+              onDaysBad: (b) => setState(() => _daysBad = b),
+            ),
             if (_error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -1046,7 +1101,7 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
             ),
             const SizedBox(height: 6),
             Text(
-              'They get an SMS to set their own PIN on first sign-in. Same app as riders and drivers; they see only '
+              'They get an SMS to sign in, then do the steps above. Same app as riders and drivers; they see only '
               'what their role allows.',
               style: muted,
             ),
@@ -1063,6 +1118,28 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text('IDs', style: t.textTheme.titleMedium),
+            if (renewDays != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Expanded(child: Text('Ask for a new ID this many days before it runs out', style: muted)),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 84,
+                      child: TextField(
+                        key: const ValueKey('renew-days'),
+                        controller: _renew,
+                        enabled: canEdit,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true, suffixText: 'days'),
+                      ),
+                    ),
+                    if (canEdit)
+                      TextButton(key: const ValueKey('renew-days-save'), onPressed: _saveRenew, child: const Text('Save')),
+                  ],
+                ),
+              ),
             if (accounts.isLoading && accounts.value == null) const LinearProgressIndicator(),
             if (accounts.hasValue && accounts.value!.isEmpty) Text('No IDs yet.', style: muted),
             ListSearchFilter(
@@ -1089,10 +1166,21 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
                             ].join(', '),
                             if (a['kind'] == 'stand_admin') '${a['staff'] ?? 0} staff',
                             if (a['active'] == false) 'Disabled',
+                            ?asksText(SignInAsks.fromJson(a['verify'])),
+                            ?verifyStatus(a['verify']),
                           ].where((s) => s.isNotEmpty).join(' · '),
                         ),
                         trailing: canEdit
-                            ? TextButton(
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    key: ValueKey('account-checks-${a['user_id']}'),
+                                    tooltip: 'Sign-in checks',
+                                    icon: const Icon(Icons.verified_user_outlined),
+                                    onPressed: () => _editChecks(a),
+                                  ),
+                                  TextButton(
                                 onPressed: () async {
                                   try {
                                     await ref
@@ -1105,6 +1193,8 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
                                   }
                                 },
                                 child: Text(a['active'] == false ? 'Enable' : 'Disable'),
+                                  ),
+                                ],
                               )
                             : null,
                       ),

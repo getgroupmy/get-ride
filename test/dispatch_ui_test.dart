@@ -9,6 +9,8 @@ import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/dispatch/admin_dispatch_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/dispatch.dart';
+import 'package:get_ride/src/core/signin_checks.dart' show DispatchChecks, SignInAsks;
+import 'package:get_ride/src/data/identity_repository.dart';
 import 'package:get_ride/src/data/dispatch_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/dispatch/dispatch_console.dart';
@@ -76,6 +78,20 @@ Map<String, dynamic> _order(String id, String status, {Map<String, dynamic> extr
   },
   ...extra,
 };
+
+class _Identity extends IdentityRepository {
+  _Identity() : super(_db);
+  final asks = <String>[];
+
+  @override
+  Future<int> renewDays() async => 30;
+
+  @override
+  Future<DispatchChecks> myChecks() async => DispatchChecks.none;
+
+  @override
+  Future<void> setAsks(String userId, String kind, SignInAsks a) async => asks.add('$userId $kind ${a.toJson()}');
+}
 
 class _Repo extends DispatchRepository {
   _Repo({this.roles = DispatchRoles.none, this.orders = const []}) : super(_db);
@@ -156,8 +172,9 @@ class _Repo extends DispatchRepository {
     List<String> standIds = const [],
     String? groupId,
     StandPerms perms = const StandPerms(),
+    SignInAsks? asks,
   }) async {
-    grants.add('$kind $name $phone $standIds $groupId ${perms.toJson()}');
+    grants.add('$kind $name $phone $standIds $groupId ${perms.toJson()}${asks == null ? '' : ' ${asks.toJson()}'}');
     return true;
   }
 
@@ -232,6 +249,13 @@ class _Repo extends DispatchRepository {
         {'id': 's1', 'name': 'Pavilion KL'},
       ],
       'staff': 2,
+      'verify': {
+        'selfie': true,
+        'id': true,
+        'days': 7,
+        'needs': ['selfie', 'id'],
+        'paused': true,
+      },
     },
   ];
 
@@ -330,6 +354,7 @@ Future<void> _pump(
   Brightness b = Brightness.light,
   Size size = const Size(1280, 1600),
   List<AdminGrant> grants = const [],
+  _Identity? identity,
 }) async {
   await tester.binding.setSurfaceSize(size);
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -339,6 +364,7 @@ Future<void> _pump(
         supabaseProvider.overrideWithValue(_db),
         ...quietLiveOverrides,
         dispatchRepositoryProvider.overrideWithValue(repo),
+        identityRepositoryProvider.overrideWithValue(identity ?? _Identity()),
         dispatchServiceNamesProvider.overrideWith((_) => const ['Taxi', 'Comfort']),
         adminAccessProvider.overrideWith((_) async => AdminAccess(grants)),
         currentUserIdProvider.overrideWithValue('me'),
@@ -702,12 +728,14 @@ void main() {
 
       testWidgets('admin pages: stands with their people, groups, accounts, charges', (tester) async {
         final repo = _Repo(roles: DispatchRoles(stands: [_stand()]));
+        final identity = _Identity();
         await _pump(
           tester,
           const AdminDispatchScreen(ticking: false),
           repo,
           b: b,
           grants: const [AdminGrant(page: '*', edit: true)],
+          identity: identity,
         );
         for (final tab in ['Console', 'Stands', 'Groups & fleets', 'Accounts', 'Charges']) {
           expect(find.text(tab), findsOneWidget);
@@ -733,8 +761,19 @@ void main() {
         await _tap(tester, find.byKey(const ValueKey('account-create')));
         expect(find.text('Pick their stand.'), findsOneWidget);
         await _tap(tester, find.byKey(const ValueKey('account-stand-s1')));
+        // When they sign in: the PIN is locked on, the ID asked, within 5 days.
+        expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('ask-pin'))).onChanged, isNull);
+        await _tap(tester, find.byKey(const ValueKey('ask-id')));
+        await tester.enterText(find.byKey(const ValueKey('ask-days')), '5');
         await _tap(tester, find.byKey(const ValueKey('account-create')));
         expect(repo.grants.single, startsWith('stand_admin TBS Operations +60 12-300 2200 [s1]'));
+        expect(repo.grants.single, endsWith('{verify_selfie: false, verify_id: true, verify_days: 5}'));
+        expect(find.textContaining('Paused: not verified'), findsOneWidget);
+        await _tap(tester, find.byKey(const ValueKey('account-checks-u3')));
+        expect(find.byKey(const ValueKey('account-checks-dialog')), findsOneWidget);
+        await _tap(tester, find.descendant(of: find.byKey(const ValueKey('account-checks-dialog')), matching: find.byKey(const ValueKey('ask-selfie'))));
+        await _tap(tester, find.byKey(const ValueKey('account-checks-save')));
+        expect(identity.asks.single, 'u3 stand_admin {verify_selfie: false, verify_id: true, verify_days: 7}');
 
         await _tap(tester, find.text('Charges'));
         await _tap(tester, find.byKey(const ValueKey('setby-stand')));

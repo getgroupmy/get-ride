@@ -23,6 +23,9 @@ export interface DispatchAccountRequest {
   stand_ids: string[];
   group_id: string | null;
   perms: Record<string, boolean>;
+  /** What they do on first sign-in (0281): a selfie, their ID, and within
+   * how many days (null: no deadline). Sent to dispatch_grant in p_perms. */
+  verify: { verify_selfie: boolean; verify_id: boolean; verify_days: number | null };
 }
 
 export interface DispatchAccountDeps {
@@ -68,7 +71,11 @@ export function parseRequest(body: unknown): DispatchAccountRequest | null {
   const raw = b.perms && typeof b.perms === "object" ? b.perms as Record<string, unknown> : {};
   const perms: Record<string, boolean> = {};
   for (const p of PERMS) perms[p] = raw[p] === true;
-  return { kind, name, phone, stand_ids: stands as string[], group_id: group, perms };
+  const v = b.verify && typeof b.verify === "object" ? b.verify as Record<string, unknown> : {};
+  const days = typeof v.verify_days === "number" && Number.isInteger(v.verify_days) ? v.verify_days : null;
+  if (days !== null && (days < 1 || days > 365)) return null;
+  const verify = { verify_selfie: v.verify_selfie === true, verify_id: v.verify_id === true, verify_days: days };
+  return { kind, name, phone, stand_ids: stands as string[], group_id: group, perms, verify };
 }
 
 export async function handleDispatchAccount(

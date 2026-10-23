@@ -89,3 +89,22 @@ Deno.test("the database's refusals come back by name", async () => {
   );
   assertEquals(r, { status: 409, body: { error: "DISPATCH_ALREADY_ADMIN" } });
 });
+
+Deno.test("the first sign-in switches travel with the request", () => {
+  const r = parseRequest({
+    kind: "stand_admin",
+    name: "Pavilion",
+    phone: "+60123456789",
+    stand_ids: [STAND],
+    verify: { verify_selfie: true, verify_id: "yes", verify_days: 7 },
+  });
+  assertEquals(r?.verify, { verify_selfie: true, verify_id: false, verify_days: 7 });
+  assertEquals(
+    parseRequest({ kind: "stand_admin", name: "P", phone: "+60123456789", stand_ids: [STAND] })?.verify,
+    { verify_selfie: false, verify_id: false, verify_days: null },
+  );
+  assertEquals(
+    parseRequest({ kind: "stand_admin", name: "P", phone: "+60123456789", stand_ids: [STAND], verify: { verify_days: 0 } }),
+    null,
+  );
+});

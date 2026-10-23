@@ -10,6 +10,7 @@ import '../../core/side_menu.dart';
 import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../../data/app_display_repository.dart';
 import '../../data/dispatch_repository.dart' show dispatchRolesProvider;
+import '../../data/identity_repository.dart' show dispatchChecksProvider;
 import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -113,7 +114,9 @@ class RiderMenu extends ConsumerWidget {
     final t = Theme.of(context);
     final profile = ref.watch(profileProvider);
     final isAdmin = ref.watch(adminAccessProvider).value?.isAdmin ?? false;
-    final dispatch = !isAdmin && (ref.watch(dispatchRolesProvider).value?.any ?? false);
+    // Also while the role is shut for its sign-in checks (0281): the steps are there.
+    final dispatch = !isAdmin &&
+        ((ref.watch(dispatchRolesProvider).value?.any ?? false) || (ref.watch(dispatchChecksProvider).value?.holds ?? false));
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
     final menu = [

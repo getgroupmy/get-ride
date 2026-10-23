@@ -7,7 +7,7 @@
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>GET.ride uses Bluetooth to confirm you're getting into the right car at pickup (your phone and your driver's find each other), to connect to a Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer, and to print fares on a Bluetooth receipt printer.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>GET.ride uses the camera to scan payment and wallet QR codes, and to photograph your documents, vehicle and profile picture, and to take photos to send in chats.</string>
+	<string>GET.ride uses the camera to scan payment and wallet QR codes, to take a live selfie for your profile and sign-in checks, to photograph your ID, documents and vehicle, and to take photos to send in chats.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>GET.ride lets you choose photos of your documents, vehicle and profile picture from your photo library, and send photos in chats with your driver, passenger or support.</string>
 	<key>NSMicrophoneUsageDescription</key>

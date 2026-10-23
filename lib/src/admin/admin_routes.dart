@@ -40,7 +40,10 @@ final adminRoute = ShellRoute(
     ),
     GoRoute(
       path: '/admin/documents',
-      builder: (_, s) => AdminDocumentsScreen(vehicle: s.uri.queryParameters['kind'] == 'vehicle'),
+      builder: (_, s) => AdminDocumentsScreen(
+        vehicle: s.uri.queryParameters['kind'] == 'vehicle',
+        signIn: s.uri.queryParameters['kind'] == 'signin',
+      ),
     ),
     GoRoute(
       path: '/admin/rides',

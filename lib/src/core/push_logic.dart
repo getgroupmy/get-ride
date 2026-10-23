@@ -110,6 +110,10 @@ String? pushRouteFor(Map<String, dynamic> data) {
     case 'wallet_transfer_request':
     case 'wallet_transfer_response':
       return '/wallet';
+    case 'identity_check':
+      // A dispatch ID's selfie or ID (0281): to the admin, the queue; to the
+      // person, the decision on their sign-in steps.
+      return data['for'] == 'admin' ? '/admin/documents?kind=signin' : '/dispatch';
     case 'ride_message':
       // The chat over the recipient's own trip screen (migration 0129 says
       // which side they are on).
