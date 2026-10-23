@@ -7,7 +7,7 @@
 import { assertEquals } from "jsr:@std/assert@1.0.19";
 
 import { livePushAuthDeps, sameSecret, WEBHOOK_SECRET_HEADER } from "./push_auth.ts";
-import { handleSendPush, json, type SendBody } from "./send_push_handler.ts";
+import { handleSendPush, json, type SendBody, type SendCaller } from "./send_push_handler.ts";
 
 const URL_ = "https://ref.supabase.co";
 const ANON = "anon-key";
@@ -57,14 +57,16 @@ function fakePostgrest(calls: string[]): typeof fetch {
 function setup() {
   const calls: string[] = [];
   const sent: SendBody[] = [];
+  const callers: SendCaller[] = [];
   const deps = {
     auth: livePushAuthDeps({ url: URL_, anonKey: ANON, serviceKey: SERVICE }, fakePostgrest(calls)),
-    dispatch: (payload: SendBody) => {
+    dispatch: (payload: SendBody, caller: SendCaller) => {
       sent.push(payload);
+      callers.push(caller);
       return Promise.resolve(json({ recipients: 1, sent: 1, failed: 0 }));
     },
   };
-  return { calls, sent, deps };
+  return { calls, sent, callers, deps };
 }
 
 function post(headers: Record<string, string>, body: unknown = { title: "Hi", body: "There", audience: "all" }) {
@@ -141,6 +143,19 @@ Deno.test("the webhook secret -> sent (200); a wrong one -> 401", async () => {
   );
   assertEquals(res2.status, 401);
   assertEquals(bad.sent.length, 0);
+});
+
+Deno.test("the send is told who asked, so only the database names a schedule", async () => {
+  const body = { title: "Weekend bonus", body: "RM 30 extra", audience: "partners", scheduleId: "s1" };
+  const hook = setup();
+  await handleSendPush(post({ [WEBHOOK_SECRET_HEADER]: VAULT_SECRET }, body), hook.deps);
+  assertEquals(hook.callers, ["webhook"]);
+  const admin = setup();
+  await handleSendPush(post({ Authorization: `Bearer ${ADMIN_JWT}` }, body), admin.deps);
+  assertEquals(admin.callers, ["admin"]);
+  const service = setup();
+  await handleSendPush(post({ Authorization: `Bearer ${SERVICE}` }, body), service.deps);
+  assertEquals(service.callers, ["service"]);
 });
 
 Deno.test("the check runs before the body is read", async () => {

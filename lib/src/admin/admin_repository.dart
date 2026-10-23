@@ -8,6 +8,7 @@ import 'admin_access.dart';
 import 'admin_filters.dart' show RowsPage, adminPeoplePageSize, rowsPage, searchOrFilter, userSearchColumns;
 import 'admin_settings_models.dart';
 import 'profile_search.dart';
+import 'push_composer.dart' show PushSchedule;
 import 'saved_push.dart';
 import 'screens/support_agents.dart';
 import '../core/notification_delivery.dart';
@@ -288,7 +289,10 @@ class AdminRepository {
 
   /// Sends a broadcast, or with [dryRun] only counts who it would reach.
   /// [area] (PushArea.toJson) narrows it to the phones last seen there;
-  /// [profileId] sends to that one person's phones instead.
+  /// [profileId] sends to that one person's phones instead. The composer's
+  /// extras (0279): [image] (an https picture), [messageId] (the full
+  /// message, push_messages), and for partners [partnerTypes] and
+  /// [approvedOnly].
   Future<Map<String, dynamic>> sendPush(
     String title,
     String body,
@@ -296,6 +300,10 @@ class AdminRepository {
     Map<String, dynamic>? area,
     bool dryRun = false,
     String? profileId,
+    String? image,
+    String? messageId,
+    List<String> partnerTypes = const [],
+    bool? approvedOnly,
   }) async {
     final res = await _db.functions.invoke('send-push', body: {
       'title': title,
@@ -305,6 +313,10 @@ class AdminRepository {
       // One person only (God View's Send push); the audience is then ignored.
       'profileId': ?profileId,
       if (dryRun) 'dryRun': true,
+      'image': ?image,
+      'messageId': ?messageId,
+      if (partnerTypes.isNotEmpty) 'partnerTypes': partnerTypes,
+      'approvedOnly': ?approvedOnly,
     });
     final data = res.data is Map ? Map<String, dynamic>.from(res.data as Map) : <String, dynamic>{};
     if (data['error'] != null) throw Exception(data['error']);
@@ -323,6 +335,75 @@ class AdminRepository {
       saveSetting(savedPushCategory, id: id, values: values);
 
   Future<void> deleteSavedPush(String id) => deleteSetting(savedPushCategory, id);
+
+  /// Stores a full message (push_messages, 0279) and answers its id, or
+  /// with [id] changes that one.
+  Future<String> savePushMessage({
+    String? id,
+    required String title,
+    required String body,
+    String? image,
+    required List<Map<String, dynamic>> blocks,
+  }) async {
+    final row = {'title': title, 'body': body, 'image_url': image, 'blocks': blocks};
+    if (id != null) {
+      await _updateOne('push_messages', id, row);
+      return id;
+    }
+    final saved = await _db.from('push_messages').insert(row).select('id').single();
+    return saved['id'] as String;
+  }
+
+  /// A full message, for editing a schedule; null when it is gone.
+  Future<Map<String, dynamic>?> pushMessage(String id) =>
+      _db.from('push_messages').select().eq('id', id).maybeSingle();
+
+  /// The pushes waiting to go (push_schedules, 0279), soonest first.
+  Future<List<PushSchedule>> pushSchedules() async {
+    final rows = await _db
+        .from('push_schedules')
+        .select()
+        .eq('status', 'active')
+        .order('next_at', ascending: true)
+        .limit(100);
+    return [for (final r in rows) PushSchedule.fromRow(r)];
+  }
+
+  /// Schedules a push ([row]: pushScheduleRow), or with [id] changes it.
+  Future<void> savePushSchedule({String? id, required Map<String, dynamic> row}) async {
+    if (id != null) return _updateOne('push_schedules', id, row);
+    await _db.from('push_schedules').insert(row);
+  }
+
+  /// Stops a scheduled push; what was sent stays sent.
+  Future<void> cancelPushSchedule(String id) => _updateOne('push_schedules', id, {'status': 'cancelled'});
+
+  /// The composer's partner chips: the admin's partner types (Partner Type
+  /// settings) and every partner's types and status, read a page at a time.
+  Future<({List<Map<String, dynamic>> types, List<Map<String, dynamic>> partners})> pushPartnerAudience() async {
+    final types = await _db
+        .from('settings_entries')
+        .select('values')
+        .eq('category', 'partner-type')
+        .order('position', ascending: true)
+        .order('created_at', ascending: true);
+    final partners = <Map<String, dynamic>>[];
+    const page = 1000;
+    for (var from = 0; ; from += page) {
+      final rows = await _db
+          .from('partners')
+          .select('id, auth_user_id, partner_types, partner_type, status')
+          .not('auth_user_id', 'is', null)
+          .order('id', ascending: true)
+          .range(from, from + page - 1);
+      partners.addAll(rows);
+      if (rows.length < page) break;
+    }
+    return (
+      types: [for (final t in types) Map<String, dynamic>.from((t['values'] as Map?) ?? const {})],
+      partners: partners,
+    );
+  }
 
   /// How trip pushes were delivered over the last [hours] (migration 0144).
   /// Empty on a database without it.

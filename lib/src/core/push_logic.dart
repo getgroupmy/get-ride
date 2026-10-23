@@ -83,6 +83,13 @@ FirebaseOptions? firebaseOptionsFor(TargetPlatform platform, FirebaseEnv env, {b
   }
 }
 
+/// The page of the full message a push carries (`data.message_id`), or null.
+String? pushMessageRoute(Map<String, dynamic> data) {
+  final id = data['message_id'];
+  if (id is! String || id.trim().isEmpty) return null;
+  return '/account/notifications/${Uri.encodeComponent(id.trim())}';
+}
+
 /// The `platform` stored beside the token in `push_tokens`, matching what
 /// the Expo app writes (`Platform.OS`).
 String? pushPlatformName(TargetPlatform platform) => switch (platform) {
@@ -199,7 +206,9 @@ String? pushRouteFor(Map<String, dynamic> data) {
       final ride = Uri.encodeComponent(id);
       return data['role'] == 'partner' ? '/drive/trip/$ride' : '/ride/$ride';
     default:
-      return null;
+      // An admin push with a full message (Admin -> Push Notification,
+      // 0279): that message's page, over the notifications page.
+      return pushMessageRoute(data);
   }
 }
 

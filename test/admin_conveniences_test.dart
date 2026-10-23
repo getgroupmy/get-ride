@@ -7,6 +7,7 @@ import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/admin_repository.dart';
 import 'package:get_ride/src/admin/admin_settings_models.dart';
 import 'package:get_ride/src/admin/profile_search.dart';
+import 'package:get_ride/src/admin/push_composer.dart' show PushSchedule;
 import 'package:get_ride/src/admin/saved_push.dart';
 import 'package:get_ride/src/admin/screens/commission_screen.dart';
 import 'package:get_ride/src/admin/screens/geo/geo_data.dart';
@@ -78,6 +79,10 @@ class _Admin extends AdminRepository {
     Map<String, dynamic>? area,
     bool dryRun = false,
     String? profileId,
+    String? image,
+    String? messageId,
+    List<String> partnerTypes = const [],
+    bool? approvedOnly,
   }) async {
     if (dryRun) return {'dryRun': true, 'recipients': 3, 'accounts': 2, 'unlocated': 0};
     sent.add([title, body, audience]);
@@ -86,6 +91,13 @@ class _Admin extends AdminRepository {
 
   @override
   Future<List<Map<String, dynamic>>> pushHistory() async => const [];
+
+  @override
+  Future<List<PushSchedule>> pushSchedules() async => const [];
+
+  @override
+  Future<({List<Map<String, dynamic>> types, List<Map<String, dynamic>> partners})> pushPartnerAudience() async =>
+      (types: const <Map<String, dynamic>>[], partners: const <Map<String, dynamic>>[]);
 
   @override
   Future<List<NotificationDelivery>> notificationDelivery({int hours = 24}) async => const [];

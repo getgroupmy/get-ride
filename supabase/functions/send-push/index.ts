@@ -14,7 +14,8 @@
 //
 // Request body: { title: string, body: string, audience?: "all" | "partners" | "active_partners" | "users",
 //                approvedOnly?: boolean, profileId?: string, excludeProfileIds?: string[], data?: object,
-//                area?: object, dryRun?: boolean }
+//                area?: object, dryRun?: boolean, image?: string, messageId?: string,
+//                partnerTypes?: string[], scheduleId?: string }
 //
 // Audience resolution:
 //   * all      — every registered token
@@ -30,6 +31,22 @@
 // `area` ({ country, state?, city?, suburb? } or { lat, lng, radiusKm })
 // narrows a broadcast to the phones last seen there (push_tokens, 0168);
 // `dryRun: true` answers how many it would reach and sends nothing.
+//
+// Admin -> Push Notification's composer (migration 0279):
+//   * `image` — an https picture, shown large in the notification (FCM
+//     `notification.image`, Android's too, `data.image`; APNs is sent
+//     `mutable-content` and `fcm_options.image` for an iPhone build with a
+//     Notification Service Extension);
+//   * `messageId` — the full message (push_messages) the app opens when the
+//     push is tapped: sent as `data.message_id` and kept on each recipient's
+//     notifications page row, which is what lets them read it;
+//   * `partnerTypes` — with the partner audience, only partners of any of
+//     these types (`partner_types`, or the legacy `partner_type`), each
+//     partner once; the dry run counts the same way and answers `partners`;
+//   * `scheduleId` — the push_schedules row the database's scheduled run
+//     (push_schedules_due) sends for; honoured from the webhook secret or the
+//     service role only. It is logged in push_notifications and the row's
+//     `last_result` says how it went.
 //
 // Ride offers and partner broadcasts skip phones in passenger mode, user
 // broadcasts skip phones in driver mode (push_tokens.mode, migration 0166;
@@ -72,7 +89,13 @@ import {
   fcmMessage,
   fcmOutcome,
   fcmSendUrl,
+  imageUrl,
   parseServiceAccount,
+  partnerAccounts,
+  partnerTypeList,
+  type PartnerRow,
+  uuidOf,
+  withMessage,
   inArea,
   inboxRows,
   type InboxRow,
@@ -90,7 +113,7 @@ import {
   resolveAudience,
 } from "../_shared/push.ts";
 import { livePushAuthDeps } from "../_shared/push_auth.ts";
-import { handleSendPush, json, type SendBody } from "../_shared/send_push_handler.ts";
+import { handleSendPush, json, type SendBody, type SendCaller } from "../_shared/send_push_handler.ts";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -141,7 +164,7 @@ function serviceRoleKey(): string | undefined {
   return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SERVICE_ROLE_KEY");
 }
 
-async function dispatch(payload: SendBody): Promise<Response> {
+async function dispatch(payload: SendBody, caller: SendCaller = "admin"): Promise<Response> {
   const title = (payload.title ?? "").trim();
   const body = (payload.body ?? "").trim();
   const audience = resolveAudience(payload.audience);
@@ -175,21 +198,38 @@ async function dispatch(payload: SendBody): Promise<Response> {
   // Count who it would reach, send nothing (the admin's preview).
   const dryRun = payload.dryRun === true;
 
+  // The composer's picture and full message (0279). A picture or a message
+  // id that is given but not usable is refused, as an area is.
+  let image = imageUrl(payload.image);
+  if (payload.image != null && payload.image !== "" && image === null) {
+    return json({ error: "The picture must be an https address." }, 400);
+  }
+  const messageId = uuidOf(payload.messageId);
+  if (payload.messageId != null && payload.messageId !== "" && messageId === null) {
+    return json({ error: "The full message id is not usable." }, 400);
+  }
+  const partnerTypes = partnerTypeList(payload.partnerTypes);
+  // Only the database's scheduled run says which schedule a send is for.
+  const scheduleId = caller === "admin" ? null : uuidOf(payload.scheduleId);
+
   // Resolve the audience to a set of profile ids when scoping by role.
   // "all" and "users" both reach every registered device: every account is a
   // user account, whether or not it also has a partner account. "partners"
   // narrows to profiles that hold a `partners` row, "active_partners" to the
   // approved ones. Read in pages: one read stops at the API's row cap.
   let only: Set<string> | null = null;
+  const byType = partnerTypes.length > 0 && !profileId && (audience === "partners" || audience === "active_partners");
   if (profileId) {
     only = new Set([profileId]);
   } else if (audience === "partners" || audience === "active_partners") {
-    const { data: partners, error: partnersErr } = await readAllPages<{ auth_user_id: string | null }>(
+    // With partner types, each partner's types are read too (partnerAccounts).
+    const columns = byType ? "auth_user_id, partner_types, partner_type" : "auth_user_id";
+    const { data: partners, error: partnersErr } = await readAllPages<PartnerRow>(
       (from, to) => {
-        let q = supabase.from("partners").select("auth_user_id").not("auth_user_id", "is", null);
+        let q = supabase.from("partners").select(columns).not("auth_user_id", "is", null);
         if (approvedOnly) q = q.eq("status", "approved");
         return q.order("auth_user_id").range(from, to) as unknown as PromiseLike<{
-          data: { auth_user_id: string | null }[] | null;
+          data: PartnerRow[] | null;
           error: { message?: string } | null;
         }>;
       },
@@ -197,10 +237,25 @@ async function dispatch(payload: SendBody): Promise<Response> {
     if (partnersErr) {
       return json({ error: `Failed to load partners: ${partnersErr.message}` }, 500);
     }
-    only = new Set(partners.map((p) => p.auth_user_id).filter((v): v is string => !!v));
+    only = partnerAccounts(partners, byType ? partnerTypes : []);
     if (only.size === 0) {
+      if (dryRun) return json({ dryRun: true, recipients: 0, accounts: 0, unlocated: 0, partners: 0 });
+      if (scheduleId) await noteSchedule(supabase, scheduleId, { recipients: 0, sent: 0, failed: 0 });
       return json({ recipients: 0, sent: 0, failed: 0, tickets: [] });
     }
+  }
+
+  // The full message must exist; its picture stands in for a missing one.
+  if (messageId && !dryRun) {
+    const { data: message, error: messageErr } = await supabase
+      .from("push_messages")
+      .select("id, image_url")
+      .eq("id", messageId)
+      .maybeSingle();
+    if (messageErr || !message) {
+      return json({ error: "The full message was not found." }, 400);
+    }
+    if (!image) image = imageUrl(message.image_url);
   }
 
   // The device rows, a page at a time. A single profile is read by id; a
@@ -249,6 +304,8 @@ async function dispatch(payload: SendBody): Promise<Response> {
       accounts: new Set(recipientRows.flatMap((r) => (r.profile_id ? [r.profile_id] : []))).size,
       // Phones in the audience whose place is not known: an area send skips them.
       unlocated: area ? audienceRows.filter((r) => !(r as LocatedRow).located_at).length : 0,
+      // Partners in the audience, each once (with or without a phone).
+      ...(only !== null && !profileId ? { partners: only.size } : {}),
     });
   }
 
@@ -260,7 +317,7 @@ async function dispatch(payload: SendBody): Promise<Response> {
       profileId ? [profileId] : recipientRows.flatMap((r) => (r.profile_id ? [r.profile_id] : [])),
       title,
       body,
-      payload.data,
+      withMessage(payload.data, messageId, image),
       mode,
     ),
   );
@@ -277,8 +334,19 @@ async function dispatch(payload: SendBody): Promise<Response> {
   const recipients = deliveries.length;
 
   const loggedAudience = profileId ? "direct" : audience;
-  // The history records an area send's target (0168).
-  const logged = (row: Record<string, unknown>) => (area ? { ...row, target: area } : row);
+  // The history records an area send's target (0168), and the composer's
+  // schedule, message, picture and partner types (0279) when there are any.
+  const logged = (row: Record<string, unknown>) => ({
+    ...row,
+    ...(area ? { target: area } : {}),
+    ...(scheduleId ? { schedule_id: scheduleId } : {}),
+    ...(messageId ? { message_id: messageId } : {}),
+    ...(image ? { image_url: image } : {}),
+    ...(byType ? { partner_types: partnerTypes } : {}),
+  });
+  // What the app is sent: the caller's data, or the audience, plus the
+  // message id and the picture.
+  const appData = withMessage(payload.data ?? { audience }, messageId, image);
 
   if (recipients === 0) {
     await supabase.from("push_notifications").insert(logged({
@@ -289,6 +357,7 @@ async function dispatch(payload: SendBody): Promise<Response> {
       sent: 0,
       failed: 0,
     }));
+    if (scheduleId) await noteSchedule(supabase, scheduleId, { recipients: 0, sent: 0, failed: 0 });
     return json({ recipients: 0, sent: 0, failed: 0, tickets: [] });
   }
 
@@ -298,7 +367,7 @@ async function dispatch(payload: SendBody): Promise<Response> {
     title,
     body,
     sound: "default",
-    data: payload.data ?? { audience },
+    data: appData,
   }));
 
   const tickets: unknown[] = [];
@@ -423,7 +492,7 @@ async function dispatch(payload: SendBody): Promise<Response> {
     } else {
       const url = fcmSendUrl(account.project_id);
       const sendOne = async ({ token, style }: { token: string; style: "alert" | "call" }) => {
-        const data = payload.data ?? { audience };
+        const data = appData;
         try {
           const res = await fetch(url, {
             method: "POST",
@@ -432,7 +501,7 @@ async function dispatch(payload: SendBody): Promise<Response> {
               "Content-Type": "application/json",
             },
             body: JSON.stringify(
-              style === "call" ? fcmCallMessage(token, title, body, data) : fcmMessage(token, title, body, data)
+              style === "call" ? fcmCallMessage(token, title, body, data) : fcmMessage(token, title, body, data, image)
             ),
           });
           const result = await res.json().catch(() => null);
@@ -480,6 +549,28 @@ async function dispatch(payload: SendBody): Promise<Response> {
     sent,
     failed,
   }));
+  if (scheduleId) await noteSchedule(supabase, scheduleId, { recipients, sent, failed });
 
   return json({ recipients, sent, failed, pruned, tickets });
+}
+
+/**
+ * How a scheduled send went, on its push_schedules row (0279). Never stands
+ * in the way of the push: a failure is logged and nothing else.
+ */
+async function noteSchedule(
+  // deno-lint-ignore no-explicit-any
+  supabase: any,
+  scheduleId: string,
+  result: { recipients: number; sent: number; failed: number },
+): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from("push_schedules")
+      .update({ last_result: { ...result, at: new Date().toISOString() } })
+      .eq("id", scheduleId);
+    if (error) console.log("[send-push] schedule result not written:", error.message);
+  } catch (e) {
+    console.log("[send-push] schedule result not written:", String(e));
+  }
 }
