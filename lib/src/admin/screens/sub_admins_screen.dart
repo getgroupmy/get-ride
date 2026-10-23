@@ -330,9 +330,16 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
   RegionScope get _savedGodRegion =>
       RegionScope.fromJson(_existing.where((g) => g.page == godViewPage).firstOrNull?.region);
 
+  /// The region Reports is limited to for this person (0280).
+  RegionScope _reportsRegion = RegionScope.all;
+
+  RegionScope get _savedReportsRegion =>
+      RegionScope.fromJson(_existing.where((g) => g.page == reportsPage).firstOrNull?.region);
+
   void _load() {
     final existing = _existing;
     _godRegion = _savedGodRegion;
+    _reportsRegion = _savedReportsRegion;
     _levels = initialGrantLevels(grantablePages.keys, existing);
     _notes.text = existing.map((g) => g.notes).whereType<String>().firstOrNull ?? '';
   }
@@ -376,7 +383,8 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
     final id = '${person['id']}';
     final plan = planGrantChanges(_existing, _levels, notes: _notes.text);
     final godView = (_levels[godViewPage] ?? GrantLevel.none) != GrantLevel.none;
-    final regionChanged = godView && _godRegion != _savedGodRegion;
+    final reports = (_levels[reportsPage] ?? GrantLevel.none) != GrantLevel.none;
+    final regionChanged = (godView && _godRegion != _savedGodRegion) || (reports && _reportsRegion != _savedReportsRegion);
     if (plan.upserts.isEmpty && plan.deletes.isEmpty && !regionChanged) {
       _close(false);
       return;
@@ -402,7 +410,10 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
             upserts: plan.upserts,
             deletes: plan.deletes,
             notes: notes.isEmpty ? null : notes,
-            regions: {if (godView) godViewPage: _godRegion.isAll ? null : _godRegion.toJson()},
+            regions: {
+              if (godView) godViewPage: _godRegion.isAll ? null : _godRegion.toJson(),
+              if (reports) reportsPage: _reportsRegion.isAll ? null : _reportsRegion.toJson(),
+            },
           ),
       success: 'Access saved for ${_personLabel(person, id)}',
     );
@@ -592,6 +603,28 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
                     if (picked != null && mounted) setState(() => _godRegion = picked);
                   },
                   child: Text(_godRegion.isAll ? 'Pick' : 'Change'),
+                ),
+              ),
+            // Reports show a sub-admin the rides, partners and SOS in this region only.
+            if (pages.any((e) => e.key == reportsPage) &&
+                (_levels[reportsPage] ?? GrantLevel.none) != GrantLevel.none &&
+                (_levels['*'] ?? GrantLevel.none) == GrantLevel.none)
+              ListTile(
+                key: const ValueKey('grant-reports-region'),
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.summarize_outlined),
+                title: const Text('Reports region'),
+                subtitle: Text(
+                  _reportsRegion.isAll
+                      ? 'Not set: their reports show no rides, partners, vehicles, SOS or ratings until you pick one'
+                      : _reportsRegion.label,
+                ),
+                trailing: TextButton(
+                  onPressed: () async {
+                    final picked = await pickRegionScope(context, title: 'Reports region', initial: _reportsRegion);
+                    if (picked != null && mounted) setState(() => _reportsRegion = picked);
+                  },
+                  child: Text(_reportsRegion.isAll ? 'Pick' : 'Change'),
                 ),
               ),
           ],

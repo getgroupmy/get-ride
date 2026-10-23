@@ -35,6 +35,7 @@ const _nav = [
   _NavItem('messaging', Icons.sms_outlined),
   _NavItem('dispatch', Icons.storefront_outlined),
   _NavItem('telematics', Icons.speed_outlined),
+  _NavItem('reports', Icons.summarize_outlined),
   _NavItem('settings', Icons.tune),
   _NavItem('sub-admins', Icons.admin_panel_settings_outlined),
 ];

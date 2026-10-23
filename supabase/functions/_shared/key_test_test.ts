@@ -159,3 +159,16 @@ Deno.test("a self-hosted server key must be an https address; Amazon uses the se
   const req = test("amazon_places").request!(KEY, "ap-southeast-1");
   assert(req.url.startsWith("https://places.geo.ap-southeast-1.amazonaws.com/"));
 });
+
+Deno.test("Resend (the Reports emails): checks the key, sends nothing", () => {
+  const t = test("resend_key");
+  assertEquals(t.provider, "email");
+  const r = t.request!("re_123", "");
+  assertEquals(r.url, "https://api.resend.com/domains");
+  assertEquals(r.method ?? "GET", "GET");
+  assertEquals(r.headers?.Authorization, "Bearer re_123");
+  assertEquals(verdictOf(t, 401, { name: "restricted_api_key" }, "").result, "ok");
+  assertEquals(verdictOf(t, 200, { data: [{ name: "getride.my", status: "verified" }] }, "").result, "ok");
+  assertEquals(verdictOf(t, 200, { data: [] }, "").result, "warn");
+  assertEquals(verdictOf(t, 401, { name: "validation_error", message: "API key is invalid" }, "").result, "fail");
+});

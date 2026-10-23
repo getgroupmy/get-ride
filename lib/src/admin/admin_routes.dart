@@ -12,6 +12,7 @@ import 'screens/documents_screen.dart';
 import 'screens/people_screens.dart';
 import 'screens/promo_codes_screen.dart';
 import 'screens/push_screen.dart';
+import 'screens/reports/reports_screen.dart';
 import 'screens/rides_screen.dart';
 import 'screens/settings_screens.dart';
 import 'screens/sub_admins_screen.dart';
@@ -59,6 +60,7 @@ final adminRoute = ShellRoute(
     GoRoute(path: '/admin/messaging', builder: (_, _) => const AdminMessagingScreen()),
     GoRoute(path: '/admin/dispatch', builder: (_, _) => const AdminDispatchScreen()),
     GoRoute(path: '/admin/telematics', builder: (_, _) => const AdminTelematicsScreen()),
+    GoRoute(path: '/admin/reports', builder: (_, _) => const AdminReportsScreen()),
     GoRoute(
       path: '/admin/sub-admins',
       builder: (_, _) => const AdminSubAdminsScreen(),

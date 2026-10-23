@@ -206,6 +206,29 @@ when the function is reached at another address than
 checked against the provider's documentation, are in
 `functions/_shared/payments/` (`deno test --allow-read=lib,supabase supabase/functions`).
 
+## Reports (0280)
+
+Admin → Reports: an admin types the report they need; the `ai-report`
+function asks the AI service set in API Keys (the provider and keys of
+Admin → Fare AI) for a report plan over the approved datasets of 0280 — the
+AI is never shown a row — and the page runs it with `ai_report_run`, which
+checks it again, keeps a sub-admin to their region and People pages, and
+logs it in `admin_audit_log`. Saved reports can be emailed on a schedule:
+pg_cron (`ai-report-schedules`, every 5 minutes) hands the due ones to the
+`ai-report-email` function with the push webhook secret, as
+`location-ping` is called.
+
+```bash
+supabase functions deploy ai-report --no-verify-jwt
+supabase functions deploy ai-report-email --no-verify-jwt
+```
+
+Email goes through Resend: the key in Admin → API Keys → Email → Resend
+(or the function secret `RESEND_API_KEY`), the sender set on Admin →
+Reports (default `GET.ride Reports <reports@getride.my>`; its domain must
+be verified with Resend). Link-only emails keep their files in the private
+`ai-reports` bucket, signed for 7 days.
+
 ## Re-seeding
 
 ```bash

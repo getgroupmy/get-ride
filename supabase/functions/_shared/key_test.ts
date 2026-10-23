@@ -454,6 +454,15 @@ export const TESTS: KeyTest[] = [
     services: ["overpass"],
     request: (k) => ({ url: `${base(k)}?data=${enc("[out:json];node(1);out;")}` }),
   },
+  // ---- Email (the Reports schedules, migration 0280) --------------------------------------
+  {
+    id: "resend_key",
+    provider: "email",
+    label: "Resend · key check",
+    about: "Asks Resend for the key's sending domains. No email is sent.",
+    services: ["resend"],
+    request: (k) => ({ url: "https://api.resend.com/domains", headers: { Authorization: `Bearer ${k}` } }),
+  },
 ];
 
 /** A self-hosted server's address saved as a key: https only, no trailing slash. */
@@ -571,6 +580,17 @@ export function verdictOf(test: KeyTest, status: number, body: J, text: string):
     return test.keyCheck
       ? { result: "ok", title: "Google knows this key, and Geocoding works with it", detail: "The key isn't kept to one API. For a phone key, keep it to Maps SDK for Android or iOS." }
       : { result: "ok", title: "Works", detail: "Google answered." };
+  }
+  // A Resend key kept to sending can't list the domains: it still sends.
+  if (test.provider === "email" && status === 401 && body?.name === "restricted_api_key") {
+    return { result: "ok", title: "Works (a sending-only key)", detail: "Resend accepts the key for sending email." };
+  }
+  if (test.provider === "email" && okStatus) {
+    const domains = Array.isArray(body?.data) ? body.data as { name?: string; status?: string }[] : [];
+    const verified = domains.filter((d) => d?.status === "verified").map((d) => d.name).filter(Boolean);
+    return verified.length
+      ? { result: "ok", title: "Works", detail: `Resend accepts the key. Verified to send from: ${verified.join(", ")}.` }
+      : { result: "warn", title: "The key works, but no domain is verified", detail: "Verify the sender's domain (e.g. getride.my) in Resend, or the emails will be refused." };
   }
   if (!okStatus) {
     if (status === 401 || status === 403) {

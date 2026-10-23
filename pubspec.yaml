@@ -75,6 +75,10 @@ dependencies:
   timezone: ^0.11.1
   image_picker: ^1.2.4
   image: ^4.10.1
+  # Admin > Reports' Excel download (lib/src/core/ai_report_xlsx.dart): the
+  # .xlsx is a zip of a few XML files. MIT licence; already in the app
+  # through image.
+  archive: ^4.3.0
   device_info_plus: ^13.3.0
   android_id: ^0.6.0
   flutter_callkit_incoming: ^3.1.6
