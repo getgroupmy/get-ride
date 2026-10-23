@@ -4,6 +4,9 @@
 // (test/god_view_test.dart).
 library;
 
+import 'app_version.dart';
+import 'date_order.dart';
+
 /// A partner (circle on the map) or a user (rounded square).
 enum GodViewKind { partner, user }
 
@@ -480,3 +483,111 @@ String? _str(Object? v) {
   final s = '$v'.trim();
   return s.isEmpty ? null : s;
 }
+
+// ---- No location (migration 0275) ---------------------------------------------------------------
+
+/// Why God View cannot put someone on the map (god_view_unlocated): no
+/// push token at all, tokens never located, or located before the 7-day
+/// window.
+enum GodViewNoLocation {
+  noApp('no_app'),
+  neverLocated('never_located'),
+  stale('stale');
+
+  const GodViewNoLocation(this.db);
+  final String db;
+
+  static GodViewNoLocation parse(Object? s) =>
+      GodViewNoLocation.values.firstWhere((v) => v.db == s, orElse: () => GodViewNoLocation.neverLocated);
+}
+
+/// An account in the People list's "No location" section: not on the map.
+class GodViewUnlocated {
+  const GodViewUnlocated({
+    required this.kind,
+    required this.id,
+    required this.reason,
+    this.partnerRowId,
+    this.name,
+    this.vehicle,
+    this.plate,
+    this.lastSeenAt,
+    this.appVersion,
+    this.appPlatform,
+    this.tokenPlatform,
+  });
+
+  factory GodViewUnlocated.fromJson(Map<String, dynamic> j) => GodViewUnlocated(
+    kind: j['kind'] == 'partner' ? GodViewKind.partner : GodViewKind.user,
+    id: '${j['id']}',
+    reason: GodViewNoLocation.parse(j['reason']),
+    partnerRowId: _str(j['partner_row_id']),
+    name: _str(j['name']),
+    vehicle: _str(j['vehicle']),
+    plate: _str(j['plate']),
+    lastSeenAt: DateTime.tryParse('${j['last_seen_at'] ?? ''}'),
+    appVersion: _str(j['app_version']),
+    appPlatform: _str(j['app_platform']),
+    tokenPlatform: _str(j['token_platform']),
+  );
+
+  final GodViewKind kind;
+  final String id;
+  final GodViewNoLocation reason;
+  final String? partnerRowId;
+  final String? name;
+  final String? vehicle;
+  final String? plate;
+  final DateTime? lastSeenAt;
+
+  /// The account's app version and platform (profiles, migration 0176).
+  final String? appVersion;
+  final String? appPlatform;
+
+  /// The platform of its newest push token.
+  final String? tokenPlatform;
+
+  bool get isPartner => kind == GodViewKind.partner;
+
+  String get displayName => (name ?? '').trim().isEmpty ? (isPartner ? 'Partner' : 'User') : name!.trim();
+
+  String get vehicleLine {
+    if (!isPartner) return 'User';
+    final parts = [vehicle, plate].whereType<String>().where((s) => s.trim().isNotEmpty).toList();
+    return parts.isEmpty ? 'Partner' : parts.join(' · ');
+  }
+
+  String get initials {
+    final words = displayName.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    return words.take(2).map((w) => w[0].toUpperCase()).join();
+  }
+}
+
+/// The reason line under a "No location" row. For tokens never located,
+/// the admin's App Version rows ([rules]) tell an old build ("Old app
+/// version (1.2.0)") from a current one, which reports where it is unless
+/// location is not allowed; without a version or a rule it cannot be told.
+String godViewNoLocationReason(GodViewUnlocated u, List<AppVersionRule> rules, {DateOrder? order}) {
+  switch (u.reason) {
+    case GodViewNoLocation.noApp:
+      return "Hasn't opened the new app";
+    case GodViewNoLocation.stale:
+      return 'Last seen ${formatDateForUser(u.lastSeenAt?.toLocal(), order: order)}';
+    case GodViewNoLocation.neverLocated:
+      final v = u.appVersion;
+      final platform = rulePlatform(u.appPlatform ?? u.tokenPlatform ?? '');
+      if (v == null || parseVersion(v) == null) return 'No location yet';
+      final hasRule = rules.any((r) => rulePlatform(r.platform) == platform || rulePlatform(r.platform) == 'all');
+      if (!hasRule || platform == 'web') return 'No location yet';
+      final verdict = resolveUpdate(rules, platform: platform, current: v);
+      return verdict.kind == UpdateKind.none ? 'Location not allowed' : 'Old app version ($v)';
+  }
+}
+
+/// The "No location" rows the filters let through: partners and users as
+/// the toggles say (users only under "All": none of them is searching, in
+/// a ride or reporting); the search is the server's.
+List<GodViewUnlocated> godViewUnlocatedShown(List<GodViewUnlocated> rows, GodViewFilters f) => [
+  for (final u in rows)
+    if (u.isPartner ? f.partners : f.users && f.userFilter == GodViewUserFilter.all) u,
+];

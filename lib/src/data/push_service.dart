@@ -217,8 +217,10 @@ class PushService {
   /// the phone is now, moved or not, from the foreground; whether location
   /// is set to always; and, when it is, the install's background key
   /// ([bgKey], only its hash is stored) that the closed app reports with.
-  /// The area is left as it was. True when the server took it; quiet on
-  /// failure (a database without it: the area report still runs).
+  /// The server refreshes the area from its regions after a move (0275);
+  /// [reportLocation] still names it from the geocoder. True when the server
+  /// took it; quiet on failure (a database without it: the area report
+  /// still runs).
   Future<bool> checkIn(LatLng point, {required bool always, String? bgKey}) async {
     final tokens = [?_registeredToken, ?_registeredVoip];
     if (tokens.isEmpty || _db.auth.currentUser == null) return false;

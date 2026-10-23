@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Regression test for migration 0272: God View presence. The open app's
--- check-in moves only the caller's own phone and keeps the area; the
+-- check-in moves only the caller's own phone (its area: 0275); the
 -- closed app's background report needs the install's key, location set to
 -- always, and yields to the open app; God View shows "Always on" (a fresh
 -- background report with location always), partners "online, not
@@ -135,10 +135,11 @@ select pg_temp.refused($q$select public.push_checkin(array['gv272-c1'], 95, 101)
 select pg_temp.refused($q$select public.push_checkin(array['gv272-c1'], 3, 101, false, true, 'short')$q$, 'a short key');
 reset role;
 select pg_temp.check((select last_lat = 30.9 and located_at = now() and not located_bg and location_always
-                         and area_country = 'Keep 272'
+                         -- 0275: the area now follows a move, from the regions (North 272 holds it).
+                         and area_country = 'Testland 272' and area_state = 'North 272'
                          and bg_key_hash = encode(extensions.digest('k272k272k272k272k272k272k272k272k272k272', 'sha256'), 'hex')
                         from public.push_tokens where token = 'gv272-c1'),
-  'the check-in: position, now, foreground, always, the key''s hash, the area left alone');
+  'the check-in: position, now, foreground, always, the key''s hash, the area from the regions');
 select pg_temp.check((select last_lat = 2 and bg_key_hash is null from public.push_tokens where token = 'gv272-c2'),
   'someone else''s phone is untouched');
 
@@ -161,8 +162,8 @@ select pg_temp.check(public.push_background_location('short', 30.92, 130.92) = 0
 select pg_temp.check(public.push_background_location('k272k272k272k272k272k272k272k272k272k272', 91, 130.92) = 0,
   'a background report off the map moves nothing');
 reset role;
-select pg_temp.check((select last_lat = 30.91 and located_bg and area_country = 'Keep 272' from public.push_tokens
-                       where token = 'gv272-c1'), 'the background report: position, background, the area left alone');
+select pg_temp.check((select last_lat = 30.91 and located_bg and area_state = 'North 272' from public.push_tokens
+                       where token = 'gv272-c1'), 'the background report: position, background, the area from the regions');
 -- Location no longer always: the key goes, and with it the background report.
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000272c1');

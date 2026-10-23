@@ -13,8 +13,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/app_version.dart' show AppVersionRule;
 import '../../core/god_view.dart';
 import '../../core/page_styles.dart' show godViewSurface;
+import '../../data/app_version_repository.dart' show appVersionRulesProvider;
 import '../../data/geo_service.dart' show defaultCenter;
 import '../../data/god_view_repository.dart';
 import '../../widgets/busy.dart';
@@ -76,6 +78,11 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
 
   GodViewFilters _filters = const GodViewFilters();
   GodViewSnapshot? _snap;
+
+  /// The People list's "No location" section (0275): fetched on open, on
+  /// Refresh and with the search, not with every poll.
+  List<GodViewUnlocated> _unlocated = const [];
+  bool _noLocationOpen = false;
   Object? _error;
   DateTime? _fetchedAt;
   ({double minLat, double minLng, double maxLat, double maxLng})? _box;
@@ -101,7 +108,10 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
         if (mounted && _visible) setState(() {});
       });
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load();
+      _loadUnlocated();
+    });
   }
 
   ModalRoute<Object?>? _route;
@@ -180,6 +190,22 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     }
   }
 
+  /// Quiet on failure (a database without 0275): the section stays empty.
+  Future<void> _loadUnlocated() async {
+    final query = _filters.query;
+    try {
+      final rows = await ref.read(godViewRepositoryProvider).unlocated(query: query);
+      if (mounted && _filters.query == query) setState(() => _unlocated = rows);
+    } catch (e) {
+      debugPrint('[god-view] no-location list not loaded: $e');
+    }
+  }
+
+  void _refresh() {
+    _load();
+    _loadUnlocated();
+  }
+
   void _afterLoad(GodViewSnapshot s) {
     if (!_mapReady) return;
     if (_follow && _selectedLast != null) {
@@ -220,7 +246,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   void _onSearch(String q) {
     setState(() => _filters = _filters.copyWith(query: q));
     _searchWait?.cancel();
-    _searchWait = Timer(const Duration(milliseconds: 400), _load);
+    _searchWait = Timer(const Duration(milliseconds: 400), _refresh);
   }
 
   void _select(GodViewPerson p, {bool move = true}) {
@@ -305,6 +331,17 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     context.push(path);
   }
 
+  /// A "No location" row: the profile, when this admin may open it
+  /// ([canPartner] / [canUser]: the edit pages' grants).
+  VoidCallback? _openUnlocated(GodViewUnlocated u, {required bool canPartner, required bool canUser}) {
+    if (!(u.isPartner ? canPartner : canUser)) return null;
+    if (u.isPartner && u.partnerRowId == null) return null;
+    final path = u.isPartner
+        ? '/admin/m/partner-edit?id=${Uri.encodeQueryComponent(u.partnerRowId!)}'
+        : '/admin/m/user-edit?id=${Uri.encodeQueryComponent(u.id)}';
+    return () => context.push(path);
+  }
+
   void _openRide(GodViewPerson p) => context.push('/admin/rides?ride=${Uri.encodeQueryComponent(p.rideId!)}');
 
   @override
@@ -313,11 +350,13 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     final snap = _snap;
     final shown = godViewShown(snap?.people ?? const [], _filters, serverQuery: snap?.query ?? '');
     final now = _now();
+    final canPartner = ref.watch(pageAccessProvider('admin-partner-edit')) != AccessLevel.none;
+    final canUser = ref.watch(pageAccessProvider('admin-user-edit')) != AccessLevel.none;
     return AdminPage(
       title: 'God View',
       module: 'god-view',
       actions: [
-        IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _load),
+        IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refresh),
       ],
       body: LayoutBuilder(
         builder: (context, c) {
@@ -336,6 +375,11 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           final panel = _Panel(
             tabs: _tabs,
             people: godViewListOrder(shown),
+            unlocated: godViewUnlocatedShown(_unlocated, _filters),
+            versionRules: ref.watch(appVersionRulesProvider).value ?? const [],
+            noLocationOpen: _noLocationOpen,
+            onNoLocationOpen: (v) => setState(() => _noLocationOpen = v),
+            onOpenUnlocated: (u) => _openUnlocated(u, canPartner: canPartner, canUser: canUser),
             selected: _selectedLast,
             selectedId: _selectedId,
             now: now,
@@ -964,6 +1008,11 @@ class _Panel extends StatelessWidget {
   const _Panel({
     required this.tabs,
     required this.people,
+    required this.unlocated,
+    required this.versionRules,
+    required this.noLocationOpen,
+    required this.onNoLocationOpen,
+    required this.onOpenUnlocated,
     required this.selected,
     required this.selectedId,
     required this.now,
@@ -973,6 +1022,11 @@ class _Panel extends StatelessWidget {
 
   final TabController tabs;
   final List<GodViewPerson> people;
+  final List<GodViewUnlocated> unlocated;
+  final List<AppVersionRule> versionRules;
+  final bool noLocationOpen;
+  final ValueChanged<bool> onNoLocationOpen;
+  final VoidCallback? Function(GodViewUnlocated) onOpenUnlocated;
   final GodViewPerson? selected;
   final String? selectedId;
   final DateTime now;
@@ -991,20 +1045,41 @@ class _Panel extends StatelessWidget {
     Expanded(
       child: AnimatedBuilder(
         animation: tabs,
-        builder: (context, _) => tabs.index == 1
-            ? details
-            : people.isEmpty
-            ? const Padding(padding: EdgeInsets.all(16), child: Text('No one matches.'))
-            : ListView.builder(
-                key: const ValueKey('god-view-people'),
-                itemCount: people.length,
-                itemBuilder: (_, i) => _PersonRow(
+        builder: (context, _) {
+          if (tabs.index == 1) return details;
+          if (people.isEmpty && unlocated.isEmpty) {
+            return const Padding(padding: EdgeInsets.all(16), child: Text('No one matches.'));
+          }
+          // The located people, then the collapsible "No location (N)" rows.
+          final noLocation = unlocated.isEmpty ? 0 : 1 + (noLocationOpen ? unlocated.length : 0);
+          return ListView.builder(
+            key: const ValueKey('god-view-people'),
+            itemCount: people.length + noLocation,
+            itemBuilder: (_, i) {
+              if (i < people.length) {
+                return _PersonRow(
                   person: people[i],
                   selected: people[i].id == selectedId,
                   now: now,
                   onTap: () => onPick(people[i]),
-                ),
-              ),
+                );
+              }
+              if (i == people.length) {
+                return _NoLocationHeader(
+                  count: unlocated.length,
+                  open: noLocationOpen,
+                  onTap: () => onNoLocationOpen(!noLocationOpen),
+                );
+              }
+              final u = unlocated[i - people.length - 1];
+              return _UnlocatedRow(
+                person: u,
+                reason: godViewNoLocationReason(u, versionRules),
+                onTap: onOpenUnlocated(u),
+              );
+            },
+          );
+        },
       ),
     ),
   ]);
@@ -1053,6 +1128,99 @@ class _PersonRow extends StatelessWidget {
               ]),
             ]),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NoLocationHeader extends StatelessWidget {
+  const _NoLocationHeader({required this.count, required this.open, required this.onTap});
+  final int count;
+  final bool open;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Material(
+      color: t.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+      child: InkWell(
+        key: const ValueKey('god-view-no-location'),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(children: [
+            Icon(Icons.location_off_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('No location ($count)', style: const TextStyle(fontWeight: FontWeight.w600)),
+            ),
+            Icon(open ? Icons.expand_less : Icons.expand_more, color: t.colorScheme.onSurfaceVariant),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Someone God View cannot put on the map: in the list only, greyed, with why.
+class _UnlocatedRow extends StatelessWidget {
+  const _UnlocatedRow({required this.person, required this.reason, required this.onTap});
+  final GodViewUnlocated person;
+  final String reason;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final p = person;
+    final grey = godViewStatusColor(GodViewStatus.lastKnown, t.brightness);
+    final size = 34.0;
+    return InkWell(
+      key: ValueKey('god-view-unlocated-${p.id}'),
+      onTap: onTap,
+      child: Opacity(
+        opacity: 0.72,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(children: [
+            Container(
+              width: size,
+              height: size,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: grey,
+                shape: p.isPartner ? BoxShape.circle : BoxShape.rectangle,
+                borderRadius: p.isPartner ? null : BorderRadius.circular(size * 0.25),
+              ),
+              child: Text(
+                p.initials,
+                style: TextStyle(color: _on(grey), fontWeight: FontWeight.w700, fontSize: size * 0.36),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(p.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(
+                  '${p.vehicleLine} · $reason',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12, color: t.colorScheme.onSurfaceVariant),
+                ),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(color: grey.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(6)),
+              child: Text(
+                'No location',
+                style: TextStyle(color: t.colorScheme.onSurfaceVariant, fontSize: 11, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ]),
         ),
       ),
     );

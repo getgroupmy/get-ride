@@ -5,7 +5,7 @@
 // their ages, which actions an admin's grants show; and the page with a fake
 // repository in light and dark, wide and on a phone, the phone hidden until
 // Show, Suspend asking for a reason (and warning about a trip), Send push
-// sending to one person.
+// sending to one person; the "No location" section (0275) with its reasons.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,7 +13,10 @@ import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/god_view_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/core/app_version.dart';
+import 'package:get_ride/src/core/date_order.dart';
 import 'package:get_ride/src/core/god_view.dart';
+import 'package:get_ride/src/data/app_version_repository.dart';
 import 'package:get_ride/src/data/god_view_repository.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -74,9 +77,28 @@ final _people = [
   _p('u6', GodViewStatus.alwaysOn, kind: GodViewKind.user, name: 'Siti A.', ageSeconds: 300),
 ];
 
+final _unlocated = [
+  GodViewUnlocated.fromJson(const {'kind': 'partner', 'id': 'n1', 'partner_row_id': 'pr-n1', 'name': 'Nur Aina',
+      'vehicle': 'Proton Saga', 'plate': 'NL 275', 'reason': 'no_app'}),
+  GodViewUnlocated.fromJson(const {'kind': 'user', 'id': 'n2', 'name': 'Ong K.', 'reason': 'never_located',
+      'app_version': '1.2.0', 'app_platform': 'android'}),
+  GodViewUnlocated.fromJson(const {'kind': 'user', 'id': 'n3', 'name': 'Siti', 'reason': 'stale',
+      'last_seen_at': '2026-10-01T04:00:00Z'}),
+];
+
+const _rules = [AppVersionRule(platform: 'Android', latest: '1.4.10')];
+
 class _FakeRepo extends GodViewRepository {
   _FakeRepo() : super(null);
   final asked = <({bool offline, String query, bool box})>[];
+  final askedUnlocated = <String>[];
+
+  @override
+  Future<List<GodViewUnlocated>> unlocated({String query = '', int limit = 500}) async {
+    askedUnlocated.add(query);
+    return _unlocated;
+  }
+
   final revealed = <String>[];
   final suspended = <(String, String, String?)>[];
   final pushed = <(String, String, String)>[];
@@ -85,7 +107,7 @@ class _FakeRepo extends GodViewRepository {
   @override
   Future<GodViewSnapshot> snapshot({
     ({double minLat, double minLng, double maxLat, double maxLng})? box,
-    bool showOffline = false,
+    bool showOffline = true,
     String query = '',
     int limit = 1500,
   }) async {
@@ -145,6 +167,7 @@ Future<_FakeRepo> _pump(
         godViewRepositoryProvider.overrideWithValue(repo),
         godViewPollProvider.overrideWithValue(null),
         godViewClockProvider.overrideWithValue(() => _now),
+        appVersionRulesProvider.overrideWith((_) async => _rules),
       ],
       child: MaterialApp(theme: appTheme(b), home: const GodViewScreen()),
     ),
@@ -163,6 +186,39 @@ Future<void> _openDetails(WidgetTester tester, String id) async {
 
 void main() {
   group('logic', () {
+    test('no location: the reasons', () {
+      const dmy = DateOrder.dmy;
+      String why(Map<String, dynamic> j, [List<AppVersionRule> rules = _rules]) =>
+          godViewNoLocationReason(GodViewUnlocated.fromJson(j), rules, order: dmy);
+      expect(why({'id': 'a', 'reason': 'no_app'}), "Hasn't opened the new app");
+      expect(why({'id': 'a', 'reason': 'stale', 'last_seen_at': '2026-10-01T12:00:00Z'}), 'Last seen 01/10/2026');
+      expect(why({'id': 'a', 'reason': 'never_located', 'app_version': '1.2.0', 'app_platform': 'android'}),
+          'Old app version (1.2.0)');
+      expect(why({'id': 'a', 'reason': 'never_located', 'app_version': '1.4.10', 'app_platform': 'android'}),
+          'Location not allowed', reason: 'a current build reports unless location is off');
+      expect(why({'id': 'a', 'reason': 'never_located', 'app_version': '1.2.0', 'token_platform': 'android'}),
+          'Old app version (1.2.0)', reason: "the token's platform when the profile has none");
+      expect(why({'id': 'a', 'reason': 'never_located', 'app_version': '1.2.0', 'app_platform': 'ios'}),
+          'No location yet', reason: 'no rule for iPhones');
+      expect(why({'id': 'a', 'reason': 'never_located'}), 'No location yet', reason: 'no version');
+      expect(why({'id': 'a', 'reason': 'never_located', 'app_version': '1.2.0', 'app_platform': 'android'}, const []),
+          'No location yet', reason: 'no rules');
+      expect(GodViewNoLocation.parse('whatever'), GodViewNoLocation.neverLocated);
+    });
+
+    test('no location: the filters', () {
+      expect(godViewUnlocatedShown(_unlocated, const GodViewFilters()).map((u) => u.id), ['n1', 'n2', 'n3']);
+      expect(godViewUnlocatedShown(_unlocated, const GodViewFilters(partners: false)).map((u) => u.id), ['n2', 'n3']);
+      expect(godViewUnlocatedShown(_unlocated, const GodViewFilters(users: false)).map((u) => u.id), ['n1']);
+      expect(
+        godViewUnlocatedShown(_unlocated, const GodViewFilters(userFilter: GodViewUserFilter.searching)).map((u) => u.id),
+        ['n1'],
+        reason: 'nobody without a location is searching',
+      );
+      final n1 = _unlocated.first;
+      expect((n1.isPartner, n1.vehicleLine, n1.initials, n1.partnerRowId), (true, 'Proton Saga · NL 275', 'NA', 'pr-n1'));
+    });
+
     test('status words, the pulse and the order', () {
       expect(GodViewStatus.parse('app_open'), GodViewStatus.appOpen);
       expect(GodViewStatus.parse('pickup').label, 'Going to pickup');
@@ -406,6 +462,49 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    for (final b in Brightness.values) {
+      testWidgets('No location: a collapsed section under the located people in ${b.name}', (tester) async {
+        final repo = await _pump(tester, b: b, size: const Size(1400, 2400));
+        expect(repo.askedUnlocated, [''], reason: 'asked once on open, not with every poll');
+        final header = find.byKey(const ValueKey('god-view-no-location'));
+        expect(header, findsOneWidget);
+        expect(find.text('No location (3)'), findsOneWidget);
+        expect(find.byKey(const ValueKey('god-view-unlocated-n1')), findsNothing, reason: 'collapsed');
+        expect(find.byKey(const ValueKey('god-view-marker-n1')), findsNothing, reason: 'never on the map');
+        expect(tester.getTopLeft(header).dy, greaterThan(tester.getTopLeft(find.byKey(const ValueKey('god-view-row-u5'))).dy),
+            reason: 'below the located ones');
+        await tester.tap(header);
+        await tester.pump();
+        for (final id in ['n1', 'n2', 'n3']) {
+          expect(find.byKey(ValueKey('god-view-unlocated-$id')), findsOneWidget, reason: id);
+        }
+        expect(find.textContaining("Hasn't opened the new app"), findsOneWidget);
+        expect(find.textContaining('Old app version (1.2.0)'), findsOneWidget);
+        expect(find.textContaining('Last seen '), findsOneWidget);
+        expect(find.text('No location'), findsNWidgets(3));
+        expect(tester.takeException(), isNull);
+        // Refresh asks again; the poll does not.
+        await tester.tap(find.byTooltip('Refresh'));
+        await tester.pump();
+        expect(repo.askedUnlocated, ['', '']);
+      });
+    }
+
+    testWidgets('No location follows the Partners and Users toggles and the search', (tester) async {
+      final repo = await _pump(tester, size: const Size(1400, 2400));
+      await tester.enterText(find.byKey(const ValueKey('god-view-search')), 'nur');
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      expect(repo.askedUnlocated.last, 'nur');
+      await tester.tap(find.byKey(const ValueKey('god-view-no-location')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('god-view-unlocated-n1')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('god-view-partners')));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('god-view-unlocated-n1')), findsNothing, reason: 'a partner');
+      expect(find.byKey(const ValueKey('god-view-unlocated-n2')), findsOneWidget);
+    });
 
     testWidgets('the phone stays hidden until Show, which the server logs', (tester) async {
       final repo = await _pump(tester);
