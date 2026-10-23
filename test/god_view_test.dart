@@ -519,8 +519,14 @@ void main() {
           expect(find.text('God View'), findsWidgets);
           expect(find.byKey(const ValueKey('god-view-legend')), findsOneWidget);
           expect(find.text('Users with app open'), findsOneWidget);
-          // 0272: the new statuses in the legend and the stats.
+          // The legend starts closed, opens on a tap and closes again.
           final legendBox = find.byKey(const ValueKey('god-view-legend'));
+          expect(find.descendant(of: legendBox, matching: find.text('Always on')), findsNothing);
+          expect(find.descendant(of: legendBox, matching: find.text('Legend')), findsOneWidget);
+          await tester.tap(find.byKey(const ValueKey('god-view-legend-toggle')));
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+          // 0272: the new statuses in the legend and the stats.
           for (final l in ['Always on', 'Online, not responding', 'Last known']) {
             expect(find.descendant(of: legendBox, matching: find.text(l)), findsOneWidget, reason: l);
           }
@@ -542,6 +548,10 @@ void main() {
           } else {
             expect(panel.dy, greaterThan(legend.dy));
           }
+          await tester.tap(find.byKey(const ValueKey('god-view-legend-toggle')));
+          await tester.pump();
+          expect(find.descendant(of: legendBox, matching: find.text('Always on')), findsNothing);
+          expect(find.descendant(of: legendBox, matching: find.text('Legend')), findsOneWidget);
         });
       }
     }

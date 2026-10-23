@@ -1050,44 +1050,74 @@ class _MapButton extends StatelessWidget {
   }
 }
 
-class _Legend extends StatelessWidget {
+/// Closed to a small "Legend" button so it does not cover the map; a tap opens it and
+/// another closes it again.
+class _Legend extends StatefulWidget {
   const _Legend({required this.statuses});
   final List<GodViewStatus> statuses;
 
   @override
+  State<_Legend> createState() => _LegendState();
+}
+
+class _LegendState extends State<_Legend> {
+  bool _open = false;
+
+  @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    return Container(
-      key: const ValueKey('god-view-legend'),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: t.colorScheme.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: t.colorScheme.outlineVariant),
+    final header = InkWell(
+      key: const ValueKey('god-view-legend-toggle'),
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => setState(() => _open = !_open),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(_open ? Icons.close : Icons.info_outline, size: 16),
+          const SizedBox(width: 6),
+          Text(_open ? 'Hide legend' : 'Legend', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+        ]),
       ),
+    );
+    return Material(
+      key: const ValueKey('god-view-legend'),
+      color: t.colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: t.colorScheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-        for (final s in statuses)
+        header,
+        if (_open)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(
-                  color: godViewStatusColor(s, t.brightness),
-                  shape: BoxShape.circle,
-                  border: switch (godViewStatusOutline(s, t.brightness)) {
-                    final c? => Border.all(color: c, width: 1.5),
-                    null => null,
-                  },
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+              for (final s in widget.statuses)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        color: godViewStatusColor(s, t.brightness),
+                        shape: BoxShape.circle,
+                        border: switch (godViewStatusOutline(s, t.brightness)) {
+                          final c? => Border.all(color: c, width: 1.5),
+                          null => null,
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(s.label, style: const TextStyle(fontSize: 12)),
+                  ]),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Text(s.label, style: const TextStyle(fontSize: 12)),
+              const SizedBox(height: 2),
+              Text('Circle: partner · Square: user',
+                  style: TextStyle(fontSize: 12, color: t.colorScheme.onSurfaceVariant)),
             ]),
           ),
-        const SizedBox(height: 2),
-        Text('Circle: partner · Square: user', style: TextStyle(fontSize: 12, color: t.colorScheme.onSurfaceVariant)),
       ]),
     );
   }
