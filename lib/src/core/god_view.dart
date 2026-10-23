@@ -1,4 +1,4 @@
-// Admin → God View (migrations 0270, 0272): who is where, in what state.
+// Admin → God View (migrations 0270, 0272, 0276): who is where, in what state.
 // The rows come from god_view_snapshot; everything here is pure, so the
 // page only draws and the rules are tested on their own
 // (test/god_view_test.dart).
@@ -23,7 +23,10 @@ enum GodViewStatus {
   ride('ride', 'In a ride'),
   appOpen('app_open', 'App open'),
   /// The freshest report came from the background (the app closed or not
-  /// on screen) in the last 30 minutes, location set to "Allow all the time".
+  /// on screen) in the last 30 minutes, location set to "Allow all the time";
+  /// or (0276) a phone still set so, with the background key, quiet for up
+  /// to the admin's hours (God View settings, 12 by default): it reports
+  /// when it moves and answers the "Still there?" pings.
   alwaysOn('always_on', 'Always on'),
   sos('sos', 'SOS'),
   /// No recent position: where they last were, up to 7 days ago (0272;
@@ -102,6 +105,7 @@ class GodViewPerson {
     this.area,
     this.sos = false,
     this.incidentId,
+    this.movedAt,
   });
 
   factory GodViewPerson.fromJson(Map<String, dynamic> j) => GodViewPerson(
@@ -126,6 +130,7 @@ class GodViewPerson {
     area: _str(j['area']),
     sos: j['sos'] == true,
     incidentId: _str(j['incident_id']),
+    movedAt: DateTime.tryParse('${j['moved_at'] ?? ''}'),
   );
 
   final GodViewKind kind;
@@ -149,6 +154,9 @@ class GodViewPerson {
   final String? area;
   final bool sos;
   final String? incidentId;
+
+  /// An Always on phone's last move of more than 200 m (0276).
+  final DateTime? movedAt;
 
   bool get isPartner => kind == GodViewKind.partner;
 
@@ -245,6 +253,57 @@ List<({String label, int value, bool alarm})> godViewStats(
     ),
 ];
 
+/// Admin → God View → Settings (migration 0276), kept in
+/// admin_display_settings.settings.godView; only a full admin changes them
+/// (god_view_save_settings).
+class GodViewSettings {
+  const GodViewSettings({
+    this.pings = true,
+    this.pingMinutes = defaultPingMinutes,
+    this.alwaysOnHours = defaultAlwaysOnHours,
+    this.editable = false,
+  });
+
+  factory GodViewSettings.fromJson(Map<String, dynamic> j) {
+    int n(Object? v, int fallback, int min, int max) => v is num ? v.round().clamp(min, max) : fallback;
+    return GodViewSettings(
+      pings: j['pings'] is bool ? j['pings'] as bool : true,
+      pingMinutes: n(j['pingMinutes'], defaultPingMinutes, minPingMinutes, maxPingMinutes),
+      alwaysOnHours: n(j['alwaysOnHours'], defaultAlwaysOnHours, minAlwaysOnHours, maxAlwaysOnHours),
+      editable: j['editable'] == true,
+    );
+  }
+
+  static const defaultPingMinutes = 30, minPingMinutes = 10, maxPingMinutes = 240;
+  static const defaultAlwaysOnHours = 12, minAlwaysOnHours = 1, maxAlwaysOnHours = 48;
+
+  /// Send the scheduled "Still there?" pings.
+  final bool pings;
+
+  /// Ping an Always on phone whose last report is this old.
+  final int pingMinutes;
+
+  /// An Always on phone stays Always on this long after its last report.
+  final int alwaysOnHours;
+
+  /// This admin may change them (a full admin with edit).
+  final bool editable;
+
+  GodViewSettings copyWith({bool? pings, int? pingMinutes, int? alwaysOnHours}) => GodViewSettings(
+    pings: pings ?? this.pings,
+    pingMinutes: pingMinutes ?? this.pingMinutes,
+    alwaysOnHours: alwaysOnHours ?? this.alwaysOnHours,
+    editable: editable,
+  );
+}
+
+/// "30 min", "1 h", "1 h 30 min", "4 h".
+String godViewMinutesLabel(int minutes) {
+  if (minutes < 60) return '$minutes min';
+  final h = minutes ~/ 60, m = minutes % 60;
+  return m == 0 ? '$h h' : '$h h $m min';
+}
+
 class GodViewSnapshot {
   const GodViewSnapshot({
     required this.at,
@@ -256,6 +315,7 @@ class GodViewSnapshot {
     this.scoped = false,
     this.scopeMissing = false,
     this.query = '',
+    this.settings = const GodViewSettings(),
   });
 
   factory GodViewSnapshot.fromJson(Map<String, dynamic> j, {String query = ''}) => GodViewSnapshot(
@@ -271,6 +331,9 @@ class GodViewSnapshot {
     scoped: j['scoped'] == true,
     scopeMissing: j['scope_missing'] == true,
     query: query,
+    settings: j['settings'] is Map
+        ? GodViewSettings.fromJson(Map<String, dynamic>.from(j['settings'] as Map))
+        : const GodViewSettings(),
   );
 
   final DateTime at;
@@ -286,6 +349,9 @@ class GodViewSnapshot {
 
   /// The search the server filtered these rows by.
   final String query;
+
+  /// Admin → God View → Settings, as the server applies them (0276).
+  final GodViewSettings settings;
 }
 
 /// The Users sub-filter in the top bar.
@@ -413,6 +479,101 @@ String godViewAge(DateTime? at, DateTime now) {
   }
   final d = s ~/ 86400;
   return d == 1 ? '1 day ago' : '$d days ago';
+}
+
+/// "4:31 PM", in the phone's own time.
+String godViewClock(DateTime at) {
+  final d = at.toLocal();
+  final h12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
+  return '$h12:${d.minute.toString().padLeft(2, '0')} ${d.hour >= 12 ? 'PM' : 'AM'}';
+}
+
+/// "4:31 PM" today, else "21/10/2026, 4:31 PM" (the date in the admin's order).
+String godViewWhen(DateTime at, DateTime now, {DateOrder? order}) {
+  final d = at.toLocal(), n = now.toLocal();
+  final today = d.year == n.year && d.month == n.month && d.day == n.day;
+  return today ? godViewClock(d) : '${formatDateForUser(d, order: order)}, ${godViewClock(d)}';
+}
+
+/// An Always on phone quiet for longer than the live window (30 minutes):
+/// it has not moved, as far as the server knows.
+const godViewQuietAfter = Duration(minutes: 30);
+
+/// "Not moved since 4:31 PM" for an Always on phone that has not moved for
+/// [godViewQuietAfter] (0276: when it last moved more than 200 m, else its
+/// last report); null for anyone else.
+String? godViewNotMovedSince(GodViewPerson p, DateTime now, {DateOrder? order}) {
+  if (p.status != GodViewStatus.alwaysOn) return null;
+  final since = p.movedAt ?? p.updatedAt;
+  if (since == null || now.difference(since) < godViewQuietAfter) return null;
+  return 'Not moved since ${godViewWhen(since, now, order: order)}';
+}
+
+// ---- "Still there?" (migration 0276) ------------------------------------------------------------
+
+/// Whether the Details tab offers "Ping now": someone whose phone may be
+/// quiet. A live partner or a user in a ride is already reporting.
+bool godViewCanPing(GodViewPerson p) =>
+    p.status == GodViewStatus.alwaysOn || p.status == GodViewStatus.lastKnown || p.status == GodViewStatus.notResponding;
+
+/// What god_view_ping answered.
+class GodViewPingResult {
+  const GodViewPingResult({
+    this.phones = 0,
+    this.sent = 0,
+    this.recent = 0,
+    this.posted = false,
+    this.sentAt,
+    this.retryAt,
+  });
+
+  factory GodViewPingResult.fromJson(Map<String, dynamic> j) => GodViewPingResult(
+    phones: (j['phones'] as num?)?.toInt() ?? 0,
+    sent: (j['sent'] as num?)?.toInt() ?? 0,
+    recent: (j['recent'] as num?)?.toInt() ?? 0,
+    posted: j['posted'] == true,
+    sentAt: DateTime.tryParse('${j['sent_at'] ?? ''}'),
+    retryAt: DateTime.tryParse('${j['retry_at'] ?? ''}'),
+  );
+
+  /// Phones with location always and the background key.
+  final int phones;
+  final int sent;
+
+  /// Pinged in the last 2 minutes, so not again.
+  final int recent;
+
+  /// The server queued the push (false: no function configured).
+  final bool posted;
+  final DateTime? sentAt;
+  final DateTime? retryAt;
+}
+
+/// Where a "Ping now" stands on the Details tab.
+enum GodViewPingStage { sending, waiting, answered, noAnswer, recent, noPhone, failed }
+
+/// How long the page waits for the phone's answer.
+const godViewPingWait = Duration(seconds: 60);
+
+/// The line under "Ping now".
+String godViewPingLine(GodViewPingStage stage, {DateTime? at, DateTime? now}) => switch (stage) {
+  GodViewPingStage.sending => 'Sending the ping…',
+  GodViewPingStage.waiting => 'Ping sent… waiting for the phone to answer.',
+  GodViewPingStage.answered =>
+    at == null ? 'The phone answered. Position updated.' : 'The phone answered at ${godViewClock(at)}. Position updated.',
+  GodViewPingStage.noAnswer => 'No answer yet. The phone may be off, without signal, or the app closed by swiping it away.',
+  GodViewPingStage.recent =>
+    at == null ? 'Pinged in the last 2 minutes. Try again shortly.' : 'Pinged in the last 2 minutes. Try again after ${godViewClock(at)}.',
+  GodViewPingStage.noPhone => 'No phone to ping: none of their phones has location set to always with the app\'s background reporting.',
+  GodViewPingStage.failed => 'The ping could not be sent. Try again later.',
+};
+
+/// The stage god_view_ping's answer puts the page in.
+GodViewPingStage godViewPingStageOf(GodViewPingResult r) {
+  if (r.phones == 0) return GodViewPingStage.noPhone;
+  if (r.sent == 0) return GodViewPingStage.recent;
+  if (!r.posted) return GodViewPingStage.failed;
+  return GodViewPingStage.waiting;
 }
 
 /// The line under the map's stats when the row cap left people out.

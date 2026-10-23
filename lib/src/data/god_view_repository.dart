@@ -1,6 +1,7 @@
-// Admin → God View (migrations 0270, 0272, 0275): the snapshot the page
-// polls, the people with no location, a phone shown on request (logged by
-// the server), suspend and a push to one person. Who may do what is the server's; this only asks.
+// Admin → God View (migrations 0270, 0272, 0275, 0276): the snapshot the
+// page polls, the people with no location, a phone shown on request (logged
+// by the server), suspend, a push to one person, "Ping now" and the God
+// View settings. Who may do what is the server's; this only asks.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -73,6 +74,40 @@ class GodViewRepository {
   /// (send-push, kept in the push history as "direct").
   Future<void> sendPush(String profileId, String title, String body) =>
       AdminRepository(_db!).sendPush(title, body, 'all', profileId: profileId);
+
+  /// "Ping now" (migration 0276): a silent "Still there?" push to this
+  /// person's Always on phones, each at most once in 2 minutes; the server
+  /// checks God View access and logs it.
+  Future<GodViewPingResult> ping(String profileId) async {
+    final res = await _db!.rpc('god_view_ping', params: {'p_profile_id': profileId});
+    return GodViewPingResult.fromJson(res is Map ? Map<String, dynamic>.from(res) : const {});
+  }
+
+  /// Whether one of the person's phones reported since [since] (the ping's
+  /// sent_at), and when its last report was.
+  Future<({bool answered, DateTime? at})> pingAnswer(String profileId, DateTime since) async {
+    final res = await _db!.rpc(
+      'god_view_ping_answer',
+      params: {'p_profile_id': profileId, 'p_since': since.toUtc().toIso8601String()},
+    );
+    final m = res is Map ? res : const {};
+    return (answered: m['answered'] == true, at: DateTime.tryParse('${m['located_at'] ?? ''}'));
+  }
+
+  /// Admin → God View → Settings; full admins only. The settings as saved.
+  Future<GodViewSettings> saveSettings(GodViewSettings s) async {
+    final res = await _db!.rpc(
+      'god_view_save_settings',
+      params: {'p_pings': s.pings, 'p_ping_minutes': s.pingMinutes, 'p_always_on_hours': s.alwaysOnHours},
+    );
+    final saved = GodViewSettings.fromJson(res is Map ? Map<String, dynamic>.from(res) : const {});
+    return GodViewSettings(
+      pings: saved.pings,
+      pingMinutes: saved.pingMinutes,
+      alwaysOnHours: saved.alwaysOnHours,
+      editable: s.editable,
+    );
+  }
 }
 
 final godViewRepositoryProvider = Provider<GodViewRepository>(
@@ -81,6 +116,9 @@ final godViewRepositoryProvider = Provider<GodViewRepository>(
 
 /// How often the page asks while it is on screen; null in tests (no timer).
 final godViewPollProvider = Provider<Duration?>((ref) => const Duration(seconds: 5));
+
+/// How often the page asks whether a pinged phone answered. A seam for tests.
+final godViewPingPollProvider = Provider<Duration>((ref) => const Duration(seconds: 4));
 
 /// The clock behind "updated N s ago" and the ages. A seam for tests.
 final godViewClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
