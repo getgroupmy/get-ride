@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../admin/admin_repository.dart';
 import '../core/god_view.dart';
+import '../core/god_view_trail.dart';
 import '../providers.dart';
 
 class GodViewRepository {
@@ -92,6 +93,17 @@ class GodViewRepository {
     );
     final m = res is Map ? res : const {};
     return (answered: m['answered'] == true, at: DateTime.tryParse('${m['located_at'] ?? ''}'));
+  }
+
+  /// Where [profileId] went between [from] and [to] (migration 0278, at
+  /// most 48 hours; the server checks God View access and logs it).
+  Future<GodViewTrail> trail(String profileId, DateTime from, DateTime to) async {
+    final res = await _db!.rpc('god_view_trail', params: {
+      'p_profile_id': profileId,
+      'p_from': from.toUtc().toIso8601String(),
+      'p_to': to.toUtc().toIso8601String(),
+    });
+    return GodViewTrail.fromJson(res is Map ? Map<String, dynamic>.from(res) : const {});
   }
 
   /// Admin → God View → Settings; full admins only. The settings as saved.

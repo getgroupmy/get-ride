@@ -19,19 +19,25 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/app_version.dart' show AppVersionRule;
 import '../../core/god_view.dart';
+import '../../core/god_view_trail.dart' show trailWindow;
 import '../../core/page_styles.dart' show godViewSurface;
 import '../../data/app_version_repository.dart' show appVersionRulesProvider;
 import '../../data/geo_service.dart' show defaultCenter;
 import '../../data/god_view_repository.dart';
+import '../../providers.dart' show geoServiceProvider;
 import '../../widgets/busy.dart';
 import '../../widgets/call_number.dart';
 import '../../widgets/common.dart';
+import '../../widgets/date_boxes.dart' show pickDateFromCalendar;
 import '../../widgets/map_credit.dart';
 import '../../widgets/map_tiles.dart';
 import '../../widgets/page_style_host.dart';
 import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
+import 'god_view_movement.dart';
+import 'people/partner_live_card.dart' show PartnerLivePill;
+import 'people/partner_screens.dart' show partnerLiveProvider;
 import 'people_screens.dart' show adminDialerProvider;
 import 'safety/safety_incidents_screen.dart' show openSafetyIncidents;
 
@@ -93,6 +99,14 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   String? _selectedId;
   GodViewPerson? _selectedLast;
   bool _follow = false;
+
+  /// The Movement trail (0278) for the selected person, when open.
+  GodViewMovementState? _move;
+
+  /// "Show address": the street address of [_addrFor]'s position.
+  String? _addrFor;
+  String? _addr;
+  bool _addrBusy = false;
   final _phones = <String, String?>{};
 
   Timer? _poll, _tick, _searchWait, _pingPoll;
@@ -251,12 +265,89 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
 
   void _select(GodViewPerson p, {bool move = true}) {
     setState(() {
+      if (_selectedId != p.id) {
+        _move = null;
+        _addrFor = null;
+        _addr = null;
+      }
       _selectedId = p.id;
       _selectedLast = p;
       if (_follow) _follow = false;
     });
     _tabs.animateTo(1);
     if (move && _mapReady) _map.move(LatLng(p.lat, p.lng), math.max(_map.camera.zoom, 14));
+  }
+
+  Future<void> _showAddress(GodViewPerson p) async {
+    setState(() {
+      _addrFor = p.id;
+      _addr = null;
+      _addrBusy = true;
+    });
+    String text;
+    try {
+      final place = await ref.read(geoServiceProvider).reverse(LatLng(p.lat, p.lng));
+      text = [place.name, place.address].where((s) => s.trim().isNotEmpty).toSet().join(', ');
+      if (text.isEmpty) text = 'No address found for this spot.';
+    } catch (e) {
+      text = 'Address not found: $e';
+    }
+    if (!mounted || _addrFor != p.id) return;
+    setState(() {
+      _addr = text;
+      _addrBusy = false;
+    });
+  }
+
+  void _toggleMovement(GodViewPerson p) {
+    if (_move?.personId == p.id) {
+      setState(() => _move = null);
+      return;
+    }
+    setState(() => _move = GodViewMovementState(personId: p.id));
+    _loadTrail();
+  }
+
+  Future<void> _loadTrail() async {
+    final m = _move;
+    if (m == null) return;
+    setState(() => _move = m.copyWith(loading: true, error: () => null));
+    final w = trailWindow(day: m.day, now: _now());
+    try {
+      final trail = await ref.read(godViewRepositoryProvider).trail(m.personId, w.from, w.to);
+      if (!mounted || _move?.personId != m.personId || _move?.day != m.day) return;
+      setState(() => _move = _move!.copyWith(trail: () => trail, loading: false));
+      _fitTrail();
+    } catch (e) {
+      if (!mounted || _move?.personId != m.personId) return;
+      setState(() => _move = _move!.copyWith(loading: false, error: () => e));
+    }
+  }
+
+  void _fitTrail() {
+    final pts = _move?.shown ?? const [];
+    if (!_mapReady || pts.isEmpty) return;
+    if (_follow) setState(() => _follow = false);
+    final ll = [for (final p in pts) LatLng(p.lat, p.lng)];
+    if (ll.length == 1) {
+      _map.move(ll.first, 16);
+    } else {
+      _map.fitCamera(CameraFit.coordinates(coordinates: ll, padding: const EdgeInsets.all(56), maxZoom: 17));
+    }
+  }
+
+  Future<void> _pickTrailDay() async {
+    final now = _now();
+    final picked = await pickDateFromCalendar(
+      context,
+      initial: _move?.day ?? now.subtract(const Duration(days: 1)),
+      firstDate: now.subtract(const Duration(days: 89)),
+      lastDate: now,
+      helpText: 'Movement on',
+    );
+    if (picked == null || !mounted || _move == null) return;
+    setState(() => _move = _move!.copyWith(day: () => picked, hours: const {}, trail: () => null));
+    await _loadTrail();
   }
 
   Future<String?> _phone(GodViewPerson p) async {
@@ -530,6 +621,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
                   pattern: StrokePattern.dashed(segments: const [8, 7]),
                 ),
           ]),
+          if (_move case final m? when m.personId == selected) ...godViewTrailLayers(m.shown, b, card),
           MarkerLayer(markers: [
             for (final p in markers)
               Marker(
@@ -682,13 +774,45 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           Text('No longer on the map as filtered.', style: TextStyle(color: t.colorScheme.onSurfaceVariant)),
         ],
         const SizedBox(height: 12),
+        if (p.isPartner)
+          if (ref.watch(partnerLiveProvider((uid: p.id, hasVehicle: (p.plate ?? '').trim().isNotEmpty))).value
+              case final live?)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                SizedBox(width: 80, child: Text('Status', style: TextStyle(color: t.colorScheme.onSurfaceVariant))),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    PartnerLivePill(key: const ValueKey('god-view-live-status'), status: live.status, small: true),
+                    const SizedBox(height: 2),
+                    Text(live.detail, style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+                  ]),
+                ),
+              ]),
+            ),
         _Facts(rows: [
           ('Type', p.isPartner ? 'Partner · ${_serviceName(p.serviceIcon)}' : 'User'),
-          if (p.isPartner) ('Vehicle', p.vehicleLine),
+          if (p.isPartner) ('Vehicle', p.vehicleLine == 'Partner' ? 'No vehicle linked' : p.vehicleLine),
           if (p.area != null) ('Area', p.area!),
           ('Position', '${p.lat.toStringAsFixed(5)}, ${p.lng.toStringAsFixed(5)} · ${godViewAge(p.updatedAt, now)}'),
           if (p.rideCode != null) ('Ride', [p.rideCode!, if (p.etaMin != null) 'ETA ${p.etaMin} min'].join(' · ')),
           if (other != null) (p.isPartner ? 'Passenger' : 'Driver', other),
+        ]),
+        const SizedBox(height: 6),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          SizedBox(width: 80, child: Text('Address', style: TextStyle(color: t.colorScheme.onSurfaceVariant))),
+          Expanded(
+            child: _addrFor == p.id && !_addrBusy && _addr != null
+                ? Text(_addr!, key: const ValueKey('god-view-address'))
+                : Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: BusyButton.text(
+                      key: const ValueKey('god-view-show-address'),
+                      onPressed: _addrBusy ? null : () => _showAddress(p),
+                      child: Text(_addrBusy && _addrFor == p.id ? 'Looking up…' : 'Show address'),
+                    ),
+                  ),
+          ),
         ]),
         const SizedBox(height: 6),
         Row(children: [
@@ -714,6 +838,30 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
             stage: _ping?.id == p.id ? _ping!.stage : null,
             at: _ping?.id == p.id ? _ping!.at : null,
             onPing: () => _pingNow(p),
+          ),
+        ],
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          key: const ValueKey('god-view-movement-button'),
+          onPressed: () => _toggleMovement(p),
+          icon: const Icon(Icons.route_outlined),
+          label: Text(_move?.personId == p.id ? 'Hide movement' : 'Movement'),
+        ),
+        if (_move case final m? when m.personId == p.id) ...[
+          const SizedBox(height: 8),
+          GodViewMovementPanel(
+            state: m,
+            onLast24: () {
+              if (m.day == null) return;
+              setState(() => _move = m.copyWith(day: () => null, hours: const {}, trail: () => null));
+              _loadTrail();
+            },
+            onPickDay: _pickTrailDay,
+            onHours: (h) {
+              setState(() => _move = m.copyWith(hours: h));
+              _fitTrail();
+            },
+            onRetry: _loadTrail,
           ),
         ],
         const SizedBox(height: 12),
