@@ -655,6 +655,26 @@ class _Controls extends StatelessWidget {
           onChanged: enabled ? (on) => onSet(key, on ? 1 : 0) : null,
           secondary: reset,
         );
+      case StyleKind.choice:
+        final at0 = styles.number(at, kind, token).round().clamp(0, token.options.length - 1);
+        return ListTile(
+          title: Text(token.label),
+          subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const SizedBox(height: 4),
+            Wrap(spacing: 6, runSpacing: 6, children: [
+              for (var i = 0; i < token.options.length; i++)
+                ChoiceChip(
+                  key: ValueKey('page-style-$key-$i'),
+                  label: Text(token.options[i]),
+                  selected: i == at0,
+                  onSelected: enabled ? (_) => onSet(key, i * 1.0) : null,
+                ),
+            ]),
+            const SizedBox(height: 4),
+            Text(_origin(key, kind)),
+          ]),
+          trailing: reset,
+        );
       case StyleKind.color:
         Widget swatch(Brightness b) {
           final c = styles.color(at, kind, token, b);

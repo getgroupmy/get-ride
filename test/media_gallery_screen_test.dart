@@ -148,13 +148,23 @@ void main() {
       return img.encodePng(im);
     }
 
-    Future<void> open(WidgetTester tester, Brightness b, {String name = 'pharmacy_cross.png', int? size}) async {
+    Future<void> open(
+      WidgetTester tester,
+      Brightness b, {
+      String name = 'pharmacy_cross.png',
+      int? size,
+      Uint8List? raw,
+      Future<Uint8List?> Function(Uint8List)? engine,
+    }) async {
       tester.view.physicalSize = const Size(1000, 1400);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
-      final bytes = size == null ? sample() : Uint8List(size);
+      final bytes = raw ?? (size == null ? sample() : Uint8List(size));
       await tester.pumpWidget(ProviderScope(
-        overrides: [mediaFilePickerProvider.overrideWithValue(() async => (bytes: bytes, name: name))],
+        overrides: [
+          mediaFilePickerProvider.overrideWithValue(() async => (bytes: bytes, name: name)),
+          engineImageDecoderProvider.overrideWithValue(engine ?? (_) async => null),
+        ],
         child: MaterialApp(
           theme: appTheme(b),
           home: Builder(
@@ -211,6 +221,26 @@ void main() {
       await tester.tap(_key('media-choose'));
       await tester.pumpAndSettle();
       expect(find.text('Over 2 MB. Pick a smaller file.'), findsOneWidget);
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('a file the image reader can\'t open is read by the platform instead (${b.name})', (tester) async {
+        // Named .webp but really another format (AVIF, HEIC): the platform's
+        // decoder hands back a PNG and the upload goes on.
+        await open(tester, b, name: 'car.webp', raw: Uint8List.fromList([1, 2, 3, 4, 5]), engine: (_) async => sample());
+        await tester.tap(_key('media-choose'));
+        await tester.pumpAndSettle();
+        expect(find.text('This file could not be read as a picture.'), findsNothing);
+        expect(tester.widget<FilledButton>(_key('media-upload-save')).onPressed, isNotNull);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('a file nothing can read says so', (tester) async {
+      await open(tester, Brightness.light, name: 'car.webp', raw: Uint8List.fromList([1, 2, 3, 4, 5]));
+      await tester.tap(_key('media-choose'));
+      await tester.pumpAndSettle();
+      expect(find.text('This file could not be read as a picture.'), findsOneWidget);
     });
 
     testWidgets('a GIF is refused', (tester) async {

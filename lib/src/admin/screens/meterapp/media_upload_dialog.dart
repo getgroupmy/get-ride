@@ -2,6 +2,8 @@
 // versions), with the background taken off on this device when asked
 // (core/background_removal.dart), a before/after preview on a checkerboard,
 // and "Follow the theme colour" for a one-colour icon.
+import 'dart:ui' as ui;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -37,6 +39,21 @@ Future<MediaAsset?> showMediaUploadDialog(BuildContext context, {MediaKind kind 
       context: context,
       builder: (_) => MediaUploadDialog(initialKind: kind, lockKind: lockKind),
     );
+
+/// The picture in [bytes] as PNG, read by the platform's own decoder (the
+/// browser on the web), for formats the image package can't read; null when
+/// it can't either. A seam for tests.
+final engineImageDecoderProvider = Provider<Future<Uint8List?> Function(Uint8List bytes)>((ref) => (bytes) async {
+      try {
+        final codec = await ui.instantiateImageCodec(bytes);
+        final frame = await codec.getNextFrame();
+        final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+        frame.image.dispose();
+        return data?.buffer.asUint8List();
+      } catch (_) {
+        return null;
+      }
+    });
 
 /// A chosen file, its small copy for the preview, and the preview after.
 class _Pick {
@@ -89,10 +106,12 @@ class _MediaUploadDialogState extends ConsumerState<MediaUploadDialog> {
   });
 
   Future<void> _choose({bool dark = false}) async {
-    final f = await ref.read(mediaFilePickerProvider)();
-    if (f == null || !mounted) return;
-    final mime = mediaMimeFor(f.name);
-    if (mime == null) return setState(() => _error = 'Use a PNG, JPG, WebP or SVG file.');
+    final picked = await ref.read(mediaFilePickerProvider)();
+    if (picked == null || !mounted) return;
+    var f = picked;
+    final found = mediaMimeFor(f.name);
+    if (found == null) return setState(() => _error = 'Use a PNG, JPG, WebP or SVG file.');
+    var mime = found;
     if (_kind == MediaKind.image && mime == 'image/svg+xml') {
       return setState(() => _error = 'Use a PNG, JPG or WebP file for an image.');
     }
@@ -104,12 +123,25 @@ class _MediaUploadDialogState extends ConsumerState<MediaUploadDialog> {
       if (problem != null) return setState(() => _error = problem);
     }
     // A big file is read off the UI thread.
-    final small = mime == 'image/svg+xml'
+    var small = mime == 'image/svg+xml'
         ? null
         : f.bytes.length < 300 * 1024
         ? previewImage(f.bytes)
         : await compute(previewImage, f.bytes);
     if (!mounted) return;
+    // A file named .webp/.jpg that is really something else (AVIF and HEIC
+    // are often saved under those names): the browser or phone reads it,
+    // and it goes on as a PNG.
+    if (mime != 'image/svg+xml' && small == null) {
+      final png = await ref.read(engineImageDecoderProvider)(f.bytes);
+      if (!mounted) return;
+      if (png != null) {
+        f = (bytes: png, name: '${f.name.replaceFirst(RegExp(r'\.[A-Za-z0-9]+$'), '')}.png');
+        mime = 'image/png';
+        small = png.length < 300 * 1024 ? previewImage(png) : await compute(previewImage, png);
+        if (!mounted) return;
+      }
+    }
     if (mime != 'image/svg+xml' && small == null) {
       return setState(() => _error = 'This file could not be read as a picture.');
     }

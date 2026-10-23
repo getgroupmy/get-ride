@@ -1,5 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:get_ride/src/admin/screens/god_view_movement.dart';
 import 'package:get_ride/src/core/god_view_trail.dart';
+import 'package:get_ride/src/core/page_styles.dart';
+import 'package:latlong2/latlong.dart';
 
 final _t0 = DateTime.utc(2026, 10, 23, 1); // 09:00 in Malaysia
 
@@ -59,5 +64,47 @@ void main() {
     expect(stops.first.until.difference(stops.first.at.at), const Duration(minutes: 8));
     expect(trailDuration(const Duration(minutes: 65)), '1 h 5 min');
     expect(trailClock(pts.first.at), '09:00');
+  });
+
+  test('Follow roads: runs thinned, routed in chunks, gaps left straight, calls capped', () async {
+    // A run of 60 points 200 m apart, a quiet hour, then a run of 3.
+    final pts = [
+      for (var i = 0; i < 60; i++) _p(3.0 + i * 0.0018, 101.0, i),
+      for (var i = 0; i < 3; i++) _p(3.5 + i * 0.0018, 101.0, 130 + i),
+    ];
+    final asked = <int>[];
+    final roads = await trailRoads(pts, (p) async {
+      asked.add(p.length);
+      return [...p, p.last];
+    });
+    expect(roads.length, 2, reason: 'one road per solid run, none for the gap');
+    expect(asked.first, trailRoadChunk);
+    expect(asked.every((n) => n <= trailRoadChunk), isTrue);
+    expect(roads.every((r) => r != null), isTrue);
+
+    final failed = await trailRoads(pts, (p) async => null);
+    expect(failed, [null, null], reason: 'a failed route is drawn straight');
+
+    var calls = 0;
+    final long = [for (var i = 0; i < 600; i++) _p(3.0 + i * 0.0018, 101.0, i)];
+    final capped = await trailRoads(long, (p) async {
+      calls++;
+      return p;
+    });
+    expect(calls, 0, reason: 'more calls than allowed: straight, nothing asked');
+    expect(capped, [null]);
+  });
+
+  test('the trail look reads the line style and the colours', () {
+    final d = TrailLook.defaults(Brightness.light);
+    expect(d.pattern, const StrokePattern.solid());
+    final dashed = TrailLook(early: d.early, late: d.late, stop: d.stop, style: 1);
+    expect(dashed.pattern, isNot(const StrokePattern.solid()));
+    expect(trailLineStyles, ['Solid', 'Dashed', 'Dotted']);
+    expect(trailPaths, ['Straight lines', 'Follow roads']);
+    final layers = godViewTrailLayers([_p(3, 101, 0), _p(3.01, 101, 5)], d, Colors.white,
+        roads: [[const LatLng(3, 101), const LatLng(3.005, 101.002), const LatLng(3.01, 101)]]);
+    final line = (layers.first as PolylineLayer).polylines.single;
+    expect(line.points.length, 3, reason: 'the road, not the straight line');
   });
 }
