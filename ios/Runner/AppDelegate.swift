@@ -602,7 +602,7 @@ final class BackgroundLocationReporter: NSObject, CLLocationManagerDelegate {
   }
 
   /// POSTs [body] to the database function [fn]; the answer's body, or nil.
-  private func rpc(url: String, anonKey: String, fn: String, body: [String: Any], done: @escaping (Data?) -> Void) {
+  private func rpc(url: String, anonKey: String, fn: String, body: [String: Any], done: @escaping (Foundation.Data?) -> Void) {
     let base = url.hasSuffix("/") ? String(url.dropLast()) : url
     guard let endpoint = URL(string: base + "/rest/v1/rpc/" + fn),
       let payload = try? JSONSerialization.data(withJSONObject: body)
