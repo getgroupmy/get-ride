@@ -12,7 +12,7 @@ import 'page_surfaces.dart';
 
 export 'page_surfaces.dart';
 
-enum StyleKind { number, color, toggle }
+enum StyleKind { number, color, toggle, choice }
 
 /// One editable value of a surface.
 class StyleToken {
@@ -28,6 +28,7 @@ class StyleToken {
     this.unit = 'px',
     this.light,
     this.dark,
+    this.options = const [],
   });
 
   final String key;
@@ -45,6 +46,9 @@ class StyleToken {
   /// A colour's value when nobody set it; null for the theme's.
   final int? light, dark;
 
+  /// A choice's options, in order; stored as the chosen one's index.
+  final List<String> options;
+
   const StyleToken.number(
     String key,
     String label,
@@ -61,6 +65,21 @@ class StyleToken {
 
   const StyleToken.toggle(String key, String label, {bool on = true, String group = 'Layout'})
     : this(key, label, StyleKind.toggle, group: group, fallback: on ? 1 : 0, min: 0, max: 1, unit: '');
+
+  /// One of [options] (at least two); [fallback] is the default's index.
+  const StyleToken.choice(String key, String label, List<String> options, {int fallback = 0, String group = 'Layout'})
+    : this(
+        key,
+        label,
+        StyleKind.choice,
+        group: group,
+        fallback: fallback * 1.0,
+        min: 0,
+        // An index; readers clamp it to the options there are.
+        max: 9,
+        unit: '',
+        options: options,
+      );
 }
 
 /// Surface id of the app-wide values every page, sheet and modal inherits.
@@ -190,8 +209,22 @@ const elementTokens = <String, List<StyleToken>>{
   godViewSurface: [
     StyleToken.number('markerSize', 'Marker size', 30, min: 20, max: 48, group: 'Map'),
     StyleToken.number('panelWidth', 'People panel width', 340, min: 280, max: 480, group: 'Panel'),
+    StyleToken.color('trailLate', 'Colour (latest)', light: 0xFF0C7AB8, dark: 0xFF4CC0FF, group: _trail),
+    StyleToken.toggle('trailFade', 'Lighter for earlier', group: _trail),
+    StyleToken.color('trailEarly', 'Colour (earliest)', light: 0xFF9CC9E6, dark: 0xFF2B5F80, group: _trail),
+    StyleToken.number('trailWidth', 'Line width', 4, min: 1, max: 12, group: _trail),
+    StyleToken.choice('trailStyle', 'Line', trailLineStyles, group: _trail),
+    StyleToken.choice('trailPath', 'Path', trailPaths, group: _trail),
+    StyleToken.color('trailStop', 'Stops', light: 0xFFA86400, dark: 0xFFF2B25C, group: _trail),
   ],
 };
+
+const _trail = 'Movement trail';
+
+/// God View → Movement: how the line is drawn, and whether it follows the
+/// roads between the reported points or goes straight from one to the next.
+const trailLineStyles = ['Solid', 'Dashed', 'Dotted'];
+const trailPaths = ['Straight lines', 'Follow roads'];
 
 /// Every token [s] can change: its kind's, then its own items'.
 List<StyleToken> tokensOf(SurfaceEntry s) => [...tokensFor(s.kind), ...?elementTokens[s.id]];

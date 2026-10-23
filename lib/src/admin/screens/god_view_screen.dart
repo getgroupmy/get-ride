@@ -105,6 +105,11 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   /// The Movement trail (0278) for the selected person, when open.
   GodViewMovementState? _move;
 
+  /// "Follow roads" (App Page Settings): the road for each run of the
+  /// shown trail, and which trail and hours it was worked out for.
+  List<List<LatLng>?> _roads = const [];
+  String? _roadsFor;
+
   /// "Show address": the street address of [_addrFor]'s position.
   String? _addrFor;
   String? _addr;
@@ -331,6 +336,31 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
       setState(() => _move = _move!.copyWith(loading: false, error: () => e));
     }
   }
+
+  String _roadsKey(GodViewMovementState m) =>
+      '${m.personId}|${m.day}|${(m.hours.toList()..sort()).join(',')}|${m.trail?.from}|${m.trail?.points.length}';
+
+  /// Works out the roads for the shown trail once per trail and hours.
+  void _maybeLoadRoads(TrailLook look) {
+    final m = _move;
+    if (!look.followRoads || m == null || m.trail == null || m.loading) return;
+    final key = _roadsKey(m);
+    if (_roadsFor == key || _roadsAsked == key) return;
+    _roadsAsked = key;
+    final geo = ref.read(geoServiceProvider);
+    trailRoads(m.shown, (pts) async {
+      final r = await geo.route(pts.first, pts.last, via: pts.sublist(1, pts.length - 1));
+      return r.points;
+    }).then((roads) {
+      if (!mounted || _roadsAsked != key) return;
+      setState(() {
+        _roads = roads;
+        _roadsFor = key;
+      });
+    }, onError: (Object e) => debugPrint('[god-view] trail roads: $e'));
+  }
+
+  String? _roadsAsked;
 
   void _fitTrail() {
     final pts = _move?.shown ?? const [];
@@ -600,6 +630,12 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     final markers = godViewMarkers(shown);
     final selected = _selectedId;
     final card = Theme.of(context).colorScheme.surface;
+    final look = TrailLook.of(context);
+    if (look.followRoads && _move != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybeLoadRoads(look);
+      });
+    }
     return Stack(children: [
       FlutterMap(
         mapController: _map,
@@ -629,7 +665,8 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
                   pattern: StrokePattern.dashed(segments: const [8, 7]),
                 ),
           ]),
-          if (_move case final m? when m.personId == selected) ...godViewTrailLayers(m.shown, b, card),
+          if (_move case final m? when m.personId == selected)
+            ...godViewTrailLayers(m.shown, look, card, roads: look.followRoads && _roadsFor == _roadsKey(m) ? _roads : const []),
           MarkerLayer(markers: [
             for (final p in markers)
               Marker(
