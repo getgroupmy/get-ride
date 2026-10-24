@@ -253,5 +253,11 @@ end $$;
 comment on function public.before_user_created_hook(jsonb) is
   'Supabase Auth Before User Created hook (0287): refuses a phone sign-up while passenger and driver sign-up are both closed, so no SMS code is sent.';
 
+-- Partner applications: partners.my_ride_code defaults to gen_my_ride_code()
+-- (0160), which runs as the user inserting their own application row. It was
+-- revoked from authenticated, so no new partner row could be created from the
+-- app. It is a pure code generator that reads no data.
+grant execute on function public.gen_my_ride_code() to authenticated;
+
 notify pgrst, 'reload schema';
 insert into supabase_migrations.schema_migrations (version, name) values ('20261024170000', '0287_registration_switches') on conflict do nothing;

@@ -167,13 +167,16 @@ select pg_temp.check((select address from public.partners where auth_user_id = '
   'an application part-way through is still saved');
 
 -- 6. Driver open again: the application may start --------------------------------------------------
--- Inserted as the table owner with the passenger's claims: the gate reads
--- the claims, and the 0160 my_ride trigger (gen_my_ride_code, not granted
--- to the apps) does not stand in the way of what is tested here.
+-- Inserted as the passenger (authenticated), with the my_ride_code default:
+-- gen_my_ride_code is granted to the apps in 0287.
+select pg_temp.check(has_function_privilege('authenticated', 'public.gen_my_ride_code()', 'execute'),
+  'the apps may run the my_ride_code default');
 select pg_temp.set_switches('{"driverRegistrationEnabled": true}');
+set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000287c1');
 insert into public.partners (auth_user_id, name, phone, status)
   values ('00000000-0000-0000-0000-0000000287c1', 'New Partner', '+60110000288', 'unapproved');
+reset role;
 select pg_temp.set_switches('{"driverRegistrationEnabled": false}');
 select pg_temp.refused($q$insert into public.partners (auth_user_id, name, phone, status)
   values ('00000000-0000-0000-0000-0000000287c1', 'Second', '+60110000289', 'unapproved')$q$,
