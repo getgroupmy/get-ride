@@ -1,11 +1,14 @@
 // The customer's ticket for a stand order: shown on the console (and sent by
 // SMS by the server when a phone was given). The trip code is what the
 // driver asks for at pickup; the link is the shared-ride page.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/dispatch.dart';
 import '../../core/ride_share.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/page_style_host.dart';
 
 /// The ticket as plain text (copied, or read out to the customer).
@@ -128,7 +131,12 @@ class DispatchTicketDialog extends StatelessWidget {
         TextButton(
           onPressed: () {
             Clipboard.setData(ClipboardData(text: dispatchTicketText(o)));
-            ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Ticket copied')));
+            unawaited(showAppNotice(
+              id: 'notice.dispatch-ticket',
+              context: context,
+              message: 'Ticket copied',
+              kind: NoticeKind.success,
+            ));
           },
           child: const Text('Copy'),
         ),

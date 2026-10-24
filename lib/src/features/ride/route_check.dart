@@ -14,6 +14,7 @@ import '../../data/city_ride_repository.dart';
 import '../../data/models.dart';
 import '../../data/reliability_repository.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/page_style_host.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 
@@ -93,9 +94,11 @@ class _RouteCheckWatcherState extends ConsumerState<RouteCheckWatcher> {
       default:
         await report('no_answer');
         if (mounted) {
-          ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-            key: ValueKey('route-check-alerted'),
-            content: Text('We told your emergency contacts and GET.ride support.'),
+          unawaited(showAppNotice(
+            id: 'notice.route-check',
+            key: const ValueKey('route-check-alerted'),
+            context: context,
+            message: 'We told your emergency contacts and GET.ride support.',
           ));
         }
     }

@@ -10,6 +10,7 @@ import '../../../app.dart' show routerProvider;
 import '../../../core/support_call.dart';
 import '../../../data/support_call_repository.dart';
 import '../../../providers.dart';
+import '../../../widgets/app_notice.dart';
 import 'call_session.dart' show callsJoinedHereProvider;
 import 'mic_gate.dart';
 
@@ -118,9 +119,12 @@ class _IncomingCallListenerState extends ConsumerState<IncomingCallListener> {
       ref.read(callsJoinedHereProvider).add(c.id);
       unawaited(ref.read(routerProvider).push('/call/${c.id}'));
     } else {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text(c.fromUser ? 'Another agent answered this call.' : 'This call has ended.')),
-      );
+      // This sits above the pages: the notice opens on the router's own.
+      unawaited(showAppNotice(
+        id: 'notice.support-call',
+        context: ref.read(routerProvider).routerDelegate.navigatorKey.currentContext ?? context,
+        message: c.fromUser ? 'Another agent answered this call.' : 'This call has ended.',
+      ));
     }
   }
 

@@ -26,6 +26,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 class _FakeRepo implements MapsRepository {
   final saved = <MapSettings>[];
@@ -526,6 +527,7 @@ void main() {
   }
 
   Future<void> choose(WidgetTester tester, String key, String label) async {
+    await closeAnyNotice(tester);
     await tester.ensureVisible(find.byKey(ValueKey(key)));
     await tester.tap(find.byKey(ValueKey(key)));
     await tester.pumpAndSettle();
@@ -704,6 +706,7 @@ void main() {
       final svc = security.stored.firstWhere((p) => p.id == 'google').services.firstWhere((s) => s.id == 'geocoding');
       final added = svc.keys.single;
       expect([added.label, added.value], ['Prod', 'AIzaGEOCODE1234']);
+      await closeAnyNotice(tester);
       await tester.tap(find.byKey(const ValueKey('maps-save')));
       await tester.pumpAndSettle();
       expect(repo.saved.single.keyRef('google_geocoding'), 'google/geocoding#${added.id}');

@@ -16,6 +16,7 @@ import 'package:get_ride/src/admin/screens/reports/reports_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/ai_report.dart';
 import 'package:get_ride/src/data/ai_report_repository.dart';
+import 'notice.dart';
 
 final _now = DateTime.utc(2026, 10, 23, 2);
 
@@ -194,6 +195,7 @@ void main() {
         expect(files.single.$2.sublist(0, 3), [0xef, 0xbb, 0xbf], reason: 'UTF-8 with a BOM');
         final csv = utf8.decode(files.single.$2);
         expect(csv, contains('Total,372,8232.4'));
+        await closeNotice(tester);
         await tester.tap(find.byKey(const ValueKey('reports-download-xlsx')));
         await tester.pumpAndSettle();
         expect(files.last.$1, endsWith('.xlsx'));

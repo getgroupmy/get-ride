@@ -13,6 +13,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../data/geo_service.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_credit.dart';
 import '../../widgets/map_tiles.dart';
@@ -126,9 +127,7 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
     if (!mounted) return;
     setState(() => _locating = false);
     if (here == null) {
-      ScaffoldMessenger.maybeOf(context)
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text(MapPlacePicker.noFixMessage)));
+      unawaited(showAppNotice(id: 'notice.map-place-picker', context: context, message: MapPlacePicker.noFixMessage));
       return;
     }
     recenterMap(_map, here, zoom: 17);

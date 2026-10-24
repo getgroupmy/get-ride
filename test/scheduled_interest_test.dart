@@ -11,6 +11,7 @@ import 'package:get_ride/src/core/scheduled_rides.dart';
 import 'package:get_ride/src/data/scheduled_ride_repository.dart';
 import 'package:get_ride/src/features/partner/scheduled_jobs_screen.dart';
 import 'package:get_ride/src/features/ride/scheduled_rides_screen.dart';
+import 'notice.dart';
 
 class _FakeRepo implements ScheduledRideRepository {
   final calls = <String>[];
@@ -200,8 +201,10 @@ void main() {
 
         await tester.tap(find.byKey(const ValueKey('scheduled-job-accept-d1')));
         await tester.pumpAndSettle();
+        await closeAnyNotice(tester);
         await tester.tap(find.byKey(const ValueKey('scheduled-interest-on-d3')));
         await tester.pumpAndSettle();
+        await closeAnyNotice(tester);
         await tester.tap(find.byKey(const ValueKey('scheduled-interest-off-d2')));
         await tester.pumpAndSettle();
         expect(repo.calls, ['accept d1', 'interest d3 true', 'interest d2 false']);
@@ -251,6 +254,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('scheduled-offer-accept-o1')));
         await tester.pumpAndSettle();
 
+        await closeAnyNotice(tester);
         await tester.tap(find.byKey(const ValueKey('scheduled-job-handover-d6')));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('driver-code-sheet')), findsOneWidget);

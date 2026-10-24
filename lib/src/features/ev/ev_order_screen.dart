@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +9,7 @@ import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/ev_wizard.dart';
 import '../../data/ev_order_repository.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/loading_skeleton.dart';
@@ -159,9 +162,7 @@ class _EvOrderScreenState extends ConsumerState<EvOrderScreen> {
 
   void _say(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    unawaited(showAppNotice(id: 'notice.ev-order', context: context, message: message));
   }
 
   // ---- Derived -------------------------------------------------------------

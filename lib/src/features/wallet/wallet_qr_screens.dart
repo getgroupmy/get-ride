@@ -1,3 +1,4 @@
+import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import 'dart:async';
 
@@ -225,7 +226,12 @@ class _ReceiveQrScreenState extends ConsumerState<ReceiveQrScreen> {
                           ClipboardData(text: walletAccountNumber(userId)),
                         );
                         if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Copied')));
+                          unawaited(showAppNotice(
+                            id: 'notice.wallet-qr',
+                            context: context,
+                            message: 'Copied',
+                            kind: NoticeKind.success,
+                          ));
                         }
                       },
                     ),
@@ -412,8 +418,9 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
     switch (qr) {
       case GetAccountQr(:final userId, :final amount):
         if (userId == ref.read(currentUserIdProvider)) {
+          // Scanning goes on once it is read: the camera still sees the code.
+          await showAppNotice(id: 'notice.wallet-qr', context: context, message: 'That is your own code.');
           _handled = false;
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('That is your own code.')));
           return;
         }
         await _scanner.stop();
@@ -421,10 +428,14 @@ class _ScanPayScreenState extends ConsumerState<ScanPayScreen> {
         final q = {'to': userId, if (amount != null) 'amt': amount.toStringAsFixed(2)};
         context.pushReplacement(Uri(path: '/wallet/trade', queryParameters: q).toString());
       case UnsupportedQr(:final message):
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(key: const ValueKey('scan-unsupported'), content: Text(message)));
-        // Scanning goes on; the same code isn't read again straight away.
+        // Scanning goes on once it is read; the same code isn't read again
+        // straight away.
+        await showAppNotice(
+          id: 'notice.wallet-qr',
+          key: const ValueKey('scan-unsupported'),
+          context: context,
+          message: message,
+        );
         await Future<void>.delayed(const Duration(seconds: 2));
         _handled = false;
     }

@@ -14,6 +14,7 @@ import 'package:get_ride/src/features/partner/vehicle_screens.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 // No token refresh: its timer would outlive the first test.
 final _db = SupabaseClient(
@@ -170,7 +171,9 @@ void main() {
     await tester.tap(find.text('Continue'));
     await tester.pump();
     await tester.pump();
+    await pumpNotice(tester);
     expect(find.textContaining('already registered to another account'), findsOneWidget);
+    await closeNotice(tester);
     expect(find.text("What's the plate number?"), findsOneWidget);
   });
 
@@ -185,6 +188,7 @@ void main() {
     await tester.tap(find.text('Save and continue'));
     await tester.pump();
     expect(repo.patches, isEmpty);
+    await closeNotice(tester);
     await tester.enterText(find.widgetWithText(TextField, 'Colour'), 'White');
     await tester.tap(find.text('Save and continue'));
     await tester.pump();
@@ -357,12 +361,15 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, 'Year'), '1890');
     await tester.tap(find.text('Save and continue'));
     await tester.pump();
+    await pumpNotice(tester);
     expect(find.textContaining('Enter the year as 4 digits, from 1950 to'), findsOneWidget);
+    await closeNotice(tester);
     expect(repo.patches, isEmpty);
     await tester.enterText(find.widgetWithText(TextField, 'Year'), '202');
     await tester.tap(find.text('Save and continue'));
     await tester.pump();
     expect(repo.patches, isEmpty);
+    await closeNotice(tester);
     // A fifth digit is not taken.
     await tester.enterText(find.widgetWithText(TextField, 'Year'), '20201');
     expect(find.widgetWithText(TextField, '2020'), findsOneWidget);
@@ -381,7 +388,9 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, "Owner's ID number"), '800101-10-1111');
     await tester.tap(find.text('Select an option to continue'));
     await tester.pump();
+    await pumpNotice(tester);
     expect(find.text('Please tell us whether this is your own vehicle.'), findsOneWidget);
+    await closeNotice(tester);
     expect(repo.patches, isEmpty);
 
     await tester.tap(find.text("It's someone else's"));

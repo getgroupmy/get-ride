@@ -9,6 +9,7 @@ import 'package:get_ride/src/widgets/pdf_actions.dart';
 import 'package:get_ride/src/widgets/ride_map.dart' show PickupPin, openingView;
 import 'package:get_ride/src/providers.dart';
 import 'package:latlong2/latlong.dart';
+import 'notice.dart';
 
 const _rider = '11111111-1111-1111-1111-111111111111';
 const _driver = '22222222-2222-2222-2222-222222222222';
@@ -142,6 +143,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('receipt-copy-booking-id')));
     await tester.pump();
     expect(copied, 'GR-A1B2C3D4');
+    await pumpNotice(tester);
     expect(find.text('Booking ID copied'), findsOneWidget);
   });
 

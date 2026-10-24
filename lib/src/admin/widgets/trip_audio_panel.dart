@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/voice_protection.dart';
 import '../../data/voice_protection_repository.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import 'admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
@@ -80,7 +81,14 @@ class _TripAudioPanelState extends ConsumerState<TripAudioPanel> {
       if (!mounted) return;
       await openStoredFile(context, url, title: 'Trip recording');
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not open: $e')));
+      if (mounted) {
+        unawaited(showAppNotice(
+          id: 'notice.admin-trip-audio',
+          context: context,
+          message: 'Could not open: $e',
+          kind: NoticeKind.error,
+        ));
+      }
     } finally {
       if (mounted) setState(() => _busyId = null);
     }

@@ -9,6 +9,7 @@ import 'package:get_ride/src/admin/screens/meterapp/meterapp_module.dart';
 import 'package:get_ride/src/admin/screens/meterapp/site_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 // No token refresh: its timer would outlive the test.
 final _db = SupabaseClient(
@@ -86,12 +87,14 @@ void main() {
       'splash_image_url': null,
     });
 
+    await closeAnyNotice(tester);
     // A bad colour is refused before anything is written.
     await tester.enterText(find.byKey(const ValueKey('app-settings-light.text')), 'grey');
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('app-settings-save')));
     await tester.pumpAndSettle();
     expect(store.patches, hasLength(1));
+    await pumpNotice(tester);
     expect(find.text('Invalid Light Text colour'), findsOneWidget);
   });
 

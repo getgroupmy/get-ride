@@ -80,7 +80,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsOneWidget);
     expect(find.text('Go offline to book a ride.'), findsOneWidget);
-    expect(find.byType(SnackBar), findsNothing);
     await tester.tap(find.byKey(const ValueKey('notice-ok')));
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);

@@ -14,6 +14,7 @@ import '../../core/trip_receipt.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/pdf_actions.dart';
@@ -79,21 +80,9 @@ class _BookingIdRow extends StatelessWidget {
   Future<void> _copy(BuildContext context) async {
     await Clipboard.setData(ClipboardData(text: bookingNo));
     if (!context.mounted) return;
-    // The snack bar is the inverse of the page in light and dark alike.
-    final tick = Theme.of(context).colorScheme.onInverseSurface;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              Icon(Icons.check_circle, color: tick),
-              const SizedBox(width: 12),
-              const Expanded(child: Text('Booking ID copied')),
-            ],
-          ),
-        ),
-      );
+    unawaited(
+      showAppNotice(id: 'notice.trip-receipt', context: context, message: 'Booking ID copied', kind: NoticeKind.success),
+    );
   }
 
   @override

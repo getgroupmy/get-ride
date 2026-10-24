@@ -29,6 +29,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
+import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 final _now = DateTime.utc(2026, 10, 21, 8);
@@ -839,6 +840,7 @@ void main() {
       await tester.pump();
       expect(repo.suspended, [('d2', 'Safety concern', 'Rider called in')]);
       await tester.pump(const Duration(seconds: 1));
+      await pumpNotice(tester);
       expect(find.textContaining('On a trip: they can finish this one.'), findsOneWidget);
     });
 
@@ -854,6 +856,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(repo.pushed, [('u3', 'Hello', 'Your driver is near')]);
+      await closeNotice(tester);
     });
 
     for (final b in Brightness.values) {

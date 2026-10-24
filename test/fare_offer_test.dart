@@ -5,6 +5,7 @@ import 'package:get_ride/src/core/fare.dart';
 import 'package:get_ride/src/features/ride/confirm_parts.dart';
 import 'package:get_ride/src/features/ride/fare_offer_controls.dart';
 import 'package:get_ride/src/widgets/shake.dart';
+import 'notice.dart';
 
 String rm(double v) => 'RM ${v.toStringAsFixed(2)}';
 
@@ -88,6 +89,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('fare-lower')));
       await tester.pump();
       expect(changes, isEmpty);
+      await pumpNotice(tester);
       expect(find.text('Minimum fare is RM 8.00'), findsOneWidget);
     });
 
@@ -166,7 +168,7 @@ void main() {
     expect(tester.getTopLeft(card).dx, x, reason: 'and back in place');
     expect(inner(), 0);
     expect(changes, isEmpty);
-    expect(find.byType(SnackBar), findsNothing);
+    expect(find.byKey(const ValueKey('notice')), findsNothing);
     expect(find.textContaining('Minimum fare'), findsNothing);
   });
 

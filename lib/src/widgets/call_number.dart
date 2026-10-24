@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import 'app_notice.dart';
 
 /// Dials [number] with the phone app. Where nothing can place a call (a
 /// desktop browser, a tablet without a SIM) the number is shown with a Copy
@@ -39,18 +43,12 @@ bool canDialHere({bool web = kIsWeb, TargetPlatform? platform}) {
 
 /// "Can't call from here" with the number and a Copy action.
 void showNumberToCopy(BuildContext context, String number) {
-  final messenger = ScaffoldMessenger.maybeOf(context);
-  if (messenger == null) return;
-  messenger
-    ..hideCurrentSnackBar()
-    ..showSnackBar(
-      SnackBar(
-        key: const ValueKey('call-fallback'),
-        content: Text("Can't place a call here. Call $number"),
-        action: SnackBarAction(
-          label: 'Copy',
-          onPressed: () => Clipboard.setData(ClipboardData(text: number)),
-        ),
-      ),
-    );
+  unawaited(showAppNotice(
+    id: 'notice.call-number',
+    key: const ValueKey('call-fallback'),
+    context: context,
+    message: "Can't place a call here. Call $number",
+    actionLabel: 'Copy',
+    onAction: () => Clipboard.setData(ClipboardData(text: number)),
+  ));
 }

@@ -12,6 +12,7 @@ import 'package:get_ride/src/features/wallet/wallet_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'notice.dart';
 
 RideRequest ride(String status, {String? askedBy, String? reason}) => RideRequest({
   'id': 'r1',
@@ -277,6 +278,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(rides.cancels, [('open', 'high_fares')]);
+      await pumpNotice(tester);
       expect(find.text('Request cancelled'), findsOneWidget);
     });
 
@@ -434,6 +436,7 @@ void main() {
       expect(find.widgetWithText(OutlinedButton, 'Request cancellation'), findsNothing);
       rows.add(ride('on_trip'));
       await settle(tester);
+      await pumpNotice(tester);
       expect(find.text('Your driver declined the cancellation. The ride continues.'), findsOneWidget);
     });
 

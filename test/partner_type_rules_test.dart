@@ -23,6 +23,7 @@ import 'package:get_ride/src/features/partner/vehicle_screens.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
@@ -257,7 +258,9 @@ void main() {
         for (var i = 0; i < 4; i++) {
           await tester.pump();
         }
+        await pumpNotice(tester);
         expect(find.text('Vehicles for eHailing in Selangor must be at most 10 years old (this one is 12).'), findsOneWidget);
+        await closeNotice(tester);
         expect(repo.patches, isEmpty);
 
         await tester.enterText(find.widgetWithText(TextField, 'Year'), '${DateTime.now().year - 3}');

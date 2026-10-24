@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/book_for.dart';
+import '../../widgets/app_notice.dart';
 import '../profile/emergency_contacts_screen.dart' show contactPickerProvider;
 import '../../widgets/page_style_host.dart';
 
@@ -74,15 +77,20 @@ class _BookForSheetState extends ConsumerState<_BookForSheet> {
                         if (c.phone != null) _phone.text = c.phone!;
                       });
                       if (c.phone == null && context.mounted) {
-                        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                          const SnackBar(content: Text('That contact has no phone number.')),
-                        );
+                        unawaited(showAppNotice(
+                          id: 'notice.book-for',
+                          context: context,
+                          message: 'That contact has no phone number.',
+                        ));
                       }
                     } catch (_) {
                       if (context.mounted) {
-                        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                          const SnackBar(content: Text("Couldn't open your contacts. Please try again.")),
-                        );
+                        unawaited(showAppNotice(
+                          id: 'notice.book-for',
+                          context: context,
+                          message: "Couldn't open your contacts. Please try again.",
+                          kind: NoticeKind.error,
+                        ));
                       }
                     }
                   },

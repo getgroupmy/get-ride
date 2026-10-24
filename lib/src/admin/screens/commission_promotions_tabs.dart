@@ -5,6 +5,8 @@
 // off. Reports: the commission charged by day, week, month, region or
 // driver between two dates, as a CSV too, and the drivers whose GET.credit
 // is under the floor.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +15,7 @@ import '../../core/commission_promotions.dart';
 import '../../core/format.dart' show formatDateTime, formatMoney, formatTime;
 import '../../data/live_tables.dart';
 import '../../features/partner/earnings_screen.dart' show CsvShareOutcome, earningsCsvSharerProvider;
+import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/image_share.dart' show shareOriginOf;
@@ -56,7 +59,6 @@ String promoMomentDate(DateTime d) => _day(d);
 
 /// Hands a CSV to the share sheet, or downloads it on the web (as the Earnings page does).
 Future<void> _exportCsv(BuildContext button, WidgetRef ref, String csv, String fileName) async {
-  final messenger = ScaffoldMessenger.of(button);
   final outcome = await ref.read(earningsCsvSharerProvider)(csv, fileName, shareOriginOf(button));
   final note = switch (outcome) {
     CsvShareOutcome.shared => null,
@@ -64,7 +66,14 @@ Future<void> _exportCsv(BuildContext button, WidgetRef ref, String csv, String f
     CsvShareOutcome.copied => 'Couldn\'t open sharing; the CSV is on your clipboard.',
     CsvShareOutcome.failed => 'Couldn\'t export the CSV.',
   };
-  if (note != null) messenger.showSnackBar(SnackBar(content: Text(note)));
+  if (note != null && button.mounted) {
+    unawaited(showAppNotice(
+      id: 'notice.admin-commission-promotions',
+      context: button,
+      message: note,
+      kind: outcome == CsvShareOutcome.failed ? NoticeKind.error : NoticeKind.info,
+    ));
+  }
 }
 
 // ---- Promotions ----------------------------------------------------------------------------------

@@ -13,6 +13,7 @@ import 'package:get_ride/src/widgets/common.dart' show errorText;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
+import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
@@ -162,6 +163,7 @@ void main() {
         expect(c.baseOtherCharges, isFalse);
         expect(c.meterCommission, isTrue);
 
+        await closeNotice(tester);
         // Not allowed below zero: the limit field goes.
         await tester.ensureVisible(find.byKey(const ValueKey('commission-allow-negative')));
         await tester.tap(find.byKey(const ValueKey('commission-allow-negative')));
@@ -201,6 +203,7 @@ void main() {
         expect(t.value, 0.10);
         expect(t.position, 1);
 
+        await closeNotice(tester);
         await tester.tap(find.byKey(const ValueKey('commission-tier-active-t1')));
         await tester.pumpAndSettle();
         expect(admin.savedTiers.last.active, isFalse);

@@ -27,6 +27,7 @@ import '../../data/obd/obd_session.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../../core/printers.dart' show SavedPrinter;
 import '../../data/printer/printer_service.dart';
+import '../../widgets/app_notice.dart';
 import 'meter_receipt_pdf.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
@@ -909,9 +910,11 @@ class _MeterScreenState extends ConsumerState<MeterScreen> with WidgetsBindingOb
         if (didPop) return;
         if (_tab != 'meter') return setState(() => _tab = 'meter');
         if (locked) {
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(const SnackBar(content: Text('End the hire before leaving the meter.')));
+          unawaited(showAppNotice(
+            id: 'notice.meter',
+            context: context,
+            message: 'End the hire before leaving the meter.',
+          ));
           return;
         }
         // After the stage's own pop handler has looked for a dialog to
@@ -1842,9 +1845,7 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
     }
   }
 
-  void _say(String message) => ScaffoldMessenger.maybeOf(context)
-    ?..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
+  void _say(String message) => unawaited(showAppNotice(id: 'notice.meter', context: context, message: message));
 
   void _printed(String message) {
     if (!mounted) return;
@@ -1972,7 +1973,12 @@ class _ReceiptDialogState extends ConsumerState<_ReceiptDialog> {
       TextButton.icon(
         onPressed: () {
           Clipboard.setData(ClipboardData(text: meterReceiptText(trip)));
-          ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Receipt copied')));
+          unawaited(showAppNotice(
+            id: 'notice.meter',
+            context: context,
+            message: 'Receipt copied',
+            kind: NoticeKind.success,
+          ));
         },
         icon: const Icon(Icons.copy),
         label: const Text('Copy'),

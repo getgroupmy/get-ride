@@ -9,6 +9,8 @@
 //
 // [openScannedGetQr] routes every other GET code where it already went
 // (My Ride codes, wallet codes, invite links).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +23,7 @@ import '../../data/my_qr_repository.dart';
 import '../../data/my_ride_repository.dart';
 import '../../data/referral_repository.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/loading_skeleton.dart';
 import '../my_ride/my_ride_parts.dart'
@@ -368,12 +371,14 @@ class _DriverResultState extends ConsumerState<_DriverResult> {
     final booking = DirectBooking(token: widget.scan.token, driver: _r.driver);
     ref.read(directBookingProvider.notifier).set(booking);
     final router = GoRouter.of(context);
-    final messenger = ScaffoldMessenger.maybeOf(context);
+    // Opened over Home once the sheet has closed and Home is up.
+    unawaited(showAppNotice(
+      id: 'notice.qr-result',
+      context: context,
+      message: 'Choose your pickup and destination to book ${booking.driverName}.',
+    ));
     widget.close();
     router.go('/');
-    messenger?.showSnackBar(
-      SnackBar(content: Text('Choose your pickup and destination to book ${booking.driverName}.')),
-    );
   }
 
   @override

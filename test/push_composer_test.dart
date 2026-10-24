@@ -19,6 +19,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
+import 'notice.dart';
 
 // No token refresh: its timer would outlive the test.
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
@@ -452,6 +453,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('push-send')));
     await _openDialog(tester);
     expect(admin.scheduleWrites, isEmpty);
+    await closeNotice(tester);
     expect(find.byType(AlertDialog), findsNothing);
   });
 
@@ -501,6 +503,7 @@ void main() {
     expect(w.row.containsKey('send_at'), isFalse, reason: 'the time was not changed');
     expect(admin.messages.single['id'], 'm9', reason: 'the same full message is updated');
 
+    await closeNotice(tester);
     await tester.tap(find.byKey(const ValueKey('push-schedule-cancel-s1')));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Stop sending'));

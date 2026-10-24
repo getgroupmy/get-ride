@@ -20,6 +20,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
+import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
@@ -250,17 +251,20 @@ void main() {
         expect(repo.bypasses, [('v2', true)]);
         expect(find.text('Bypass 3 days'), findsOneWidget);
 
+        await closeNotice(tester);
         await tester.tap(find.byKey(const ValueKey('permit-tab-bypass')));
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const ValueKey('permit-end-bypass-v3')));
         await tester.pumpAndSettle();
         expect(repo.bypasses.last, ('v3', false));
 
+        await closeAnyNotice(tester);
         await tester.tap(find.byKey(const ValueKey('permit-tab-expired')));
         await tester.pumpAndSettle();
         expect(find.textContaining('cannot take rides'), findsOneWidget);
         expect(find.byKey(const ValueKey('permit-bypass-v4')), findsOneWidget);
 
+        await closeAnyNotice(tester);
         await tester.tap(find.byKey(const ValueKey('permit-tab-with')));
         await tester.pumpAndSettle();
         expect(find.text('valid until 01/01/2030'), findsOneWidget);

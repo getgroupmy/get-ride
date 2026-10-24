@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/ride_chat.dart' show formatVoiceDuration;
+import 'app_notice.dart';
 
 /// Plays one voice note.
 abstract class VoicePlayback {
@@ -125,8 +126,12 @@ class _VoiceNotePlayerState extends ConsumerState<VoiceNotePlayer> {
       if (mounted) setState(() => _playing = true);
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.maybeOf(context)
-            ?.showSnackBar(const SnackBar(content: Text("Couldn't play that voice note.")));
+        unawaited(showAppNotice(
+          id: 'notice.voice-note',
+          context: context,
+          message: "Couldn't play that voice note.",
+          kind: NoticeKind.error,
+        ));
       }
     } finally {
       if (mounted) setState(() => _loading = false);

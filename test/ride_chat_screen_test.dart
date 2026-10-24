@@ -35,6 +35,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'chat_media_fakes.dart';
 import 'fake_mic.dart';
+import 'notice.dart';
 
 class _Repo implements RideChatRepository {
   final rows = StreamController<List<RideMessage>>.broadcast();
@@ -367,7 +368,9 @@ Finder waiting() => find.byWidgetPredicate((w) => w is Icon && w.semanticLabel =
     expect(repo.sent, isEmpty);
     expect(find.text("I've arrived"), findsWidgets, reason: 'it is in the thread already');
     expect(waiting(), findsOneWidget);
+    await pumpNotice(tester);
     expect(find.textContaining('No connection'), findsOneWidget);
+    await closeNotice(tester);
 
     // Back online: the open chat tries again on its own.
     repo.offline = false;
@@ -391,7 +394,9 @@ Finder waiting() => find.byWidgetPredicate((w) => w is Icon && w.semanticLabel =
     await tester.tap(find.byKey(const ValueKey("quick-I've arrived")));
     await tester.pump();
     expect(waiting(), findsNothing, reason: 'nothing is kept on the phone');
+    await pumpNotice(tester);
     expect(find.text(noConnectionMessage), findsOneWidget, reason: 'said plainly, not as the raw exception');
+    await closeNotice(tester);
     repo.offline = false;
     await tester.tap(find.byKey(const ValueKey("quick-I've arrived")));
     await tester.pump();
@@ -619,6 +624,7 @@ Finder waiting() => find.byWidgetPredicate((w) => w is Icon && w.semanticLabel =
     await tester.pump();
     await tester.pump();
     expect(repo.sent, isEmpty);
+    await pumpNotice(tester);
     expect(find.textContaining('Too short'), findsOneWidget);
   });
 

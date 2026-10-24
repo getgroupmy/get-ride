@@ -3,11 +3,14 @@
 // owner (their fleet's vehicles) or a stand admin (their stand's orders).
 // Driver / Vehicle / Driver + vehicle, one picked from a searchable list
 // (or all of them), the period, the report, the period's list and its CSV.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/telematics.dart';
 import '../../data/telematics_repository.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/image_share.dart' show shareOriginOf;
 import '../../widgets/search_select.dart';
@@ -81,7 +84,6 @@ class _TelematicsScopeViewState extends ConsumerState<TelematicsScopeView> {
   }
 
   Future<void> _export(BuildContext button, List<TelematicsListRow> rows) async {
-    final messenger = ScaffoldMessenger.of(button);
     final name = telematicsCsvFileName(_group, _range);
     final outcome = await ref.read(earningsCsvSharerProvider)(
       telematicsListCsv(rows, _group),
@@ -94,7 +96,14 @@ class _TelematicsScopeViewState extends ConsumerState<TelematicsScopeView> {
       CsvShareOutcome.copied => 'Couldn\'t open sharing; the CSV is on your clipboard.',
       CsvShareOutcome.failed => 'Couldn\'t export the CSV.',
     };
-    if (note != null) messenger.showSnackBar(SnackBar(content: Text(note)));
+    if (note != null && button.mounted) {
+      unawaited(showAppNotice(
+        id: 'notice.telematics',
+        context: button,
+        message: note,
+        kind: outcome == CsvShareOutcome.failed ? NoticeKind.error : NoticeKind.info,
+      ));
+    }
   }
 
   @override

@@ -39,6 +39,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'quiet_live.dart';
+import 'notice.dart';
 
 const _eco = Place(name: 'Eco Majestic', address: 'Semenyih', point: LatLng(2.9300, 101.8300));
 const _klcc = Place(name: 'KLCC', address: 'Kuala Lumpur', point: LatLng(2.9400, 101.8400));
@@ -371,6 +372,7 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
         expect(container.read(demoRidesProvider)[id]!.fare, greaterThan(20));
+        await closeNotice(tester);
         await tester.tap(find.byKey(const ValueKey('cancel-request')));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));

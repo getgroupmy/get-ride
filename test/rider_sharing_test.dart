@@ -34,6 +34,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image/image.dart' as img;
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show AuthClientOptions, SupabaseClient;
+import 'notice.dart';
 
 const _me = '11111111-1111-1111-1111-111111111111';
 final _png = Uint8List.fromList([0x89, 0x50, 0x4E, 0x47]);
@@ -421,15 +422,14 @@ void main() {
         expect(copied.single, referralMessage(code, referralLink(code)));
         expect(find.text(copiedForPasting), findsOneWidget);
 
-        ScaffoldMessenger.of(tester.element(find.byKey(const ValueKey('referral-card-save')))).clearSnackBars();
-        await tester.pumpAndSettle();
+        await closeAnyNotice(tester);
         await tester.tap(find.byKey(const ValueKey('referral-card-save')));
         await tester.pumpAndSettle();
         expect(seams.saved.single.fileName, referralCardFileName(code));
         expect(find.text('Image saved to your downloads'), findsOneWidget);
 
         // A download that fails says so.
-        ScaffoldMessenger.of(tester.element(find.byKey(const ValueKey('referral-card-save')))).clearSnackBars();
+        await closeAnyNotice(tester);
         seams.saveFails = true;
         await tester.pumpWidget(
           _app(
@@ -470,6 +470,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('referral-share-invite')));
       await tester.pump();
       expect(seams.texts, hasLength(1));
+      await pumpNotice(tester);
       expect(find.text('Invite copied, paste it to a friend'), findsOneWidget);
     });
   });

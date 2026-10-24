@@ -19,6 +19,7 @@ import 'package:get_ride/src/data/payments_repository.dart';
 import 'package:get_ride/src/features/wallet/wallet_topup.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
@@ -243,6 +244,7 @@ void main() {
         expect(find.textContaining(_secretTyped), findsNothing);
         expect(find.text('Replace'), findsNWidgets(2));
 
+        await closeNotice(tester);
         // Clear the secret key.
         await tester.tap(find.byKey(const ValueKey('secret-clear-secretKey')));
         await tester.pumpAndSettle();

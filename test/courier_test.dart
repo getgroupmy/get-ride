@@ -44,6 +44,7 @@ import 'package:get_ride/src/widgets/page_style_host.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'text_contrast.dart';
+import 'notice.dart';
 
 const _walker = FreightVehicle(
   id: 'c1',
@@ -180,6 +181,8 @@ Future<void> _pump(WidgetTester tester, Widget home, List<Override> overrides, B
 }
 
 Future<void> _tap(WidgetTester tester, String key) async {
+  // A message from the last step is closed first, as the user would.
+  await closeAnyNotice(tester);
   await tester.ensureVisible(find.byKey(ValueKey(key)));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(ValueKey(key)));

@@ -17,6 +17,7 @@ import 'package:get_ride/src/data/ride_option_providers.dart';
 import 'package:get_ride/src/data/ride_pet_repository.dart' show petConfigProvider;
 import 'package:get_ride/src/features/partner/driver_services_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 class _QuietLive extends LiveTables {
   @override
@@ -184,8 +185,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('driver-service-switch-ride')));
     await tester.pump();
     expect(repo.saved, ['v1 ride false']);
-    expect(find.text("Ride off. You won't get these requests."), findsOneWidget);
     expect(_switch(tester, 'ride').value, isFalse);
+    await pumpNotice(tester);
+    expect(find.text("Ride off. You won't get these requests."), findsOneWidget);
   });
 
   testWidgets("an add-on goes to the driver's add-on list", (tester) async {
@@ -196,6 +198,7 @@ void main() {
     await tester.pump();
     expect(extras.set, {'pet:cat', 'pet:dog'});
     expect(repo.saved, isEmpty);
+    await pumpNotice(tester);
     expect(find.textContaining('off. You won'), findsOneWidget);
   });
 
@@ -203,6 +206,7 @@ void main() {
     await _pump(tester, Brightness.light);
     await tester.tap(find.byKey(const ValueKey('driver-service-row-comfort')));
     await tester.pump();
+    await pumpNotice(tester);
     expect(find.text('Set by get.ride. Contact support to change it.'), findsOneWidget);
   });
 

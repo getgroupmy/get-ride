@@ -19,6 +19,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
+import 'notice.dart';
 
 // No token refresh: its timer would outlive the test.
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
@@ -177,6 +178,7 @@ void main() {
         expect(admin.statuses, [('u2', 'approved')]);
 
         // Block asks first; Cancel leaves it.
+        await closeNotice(tester);
         await tester.tap(find.byKey(const ValueKey('quick-blocked-u1')));
         await tester.pumpAndSettle();
         expect(find.text('Block this user?'), findsOneWidget);

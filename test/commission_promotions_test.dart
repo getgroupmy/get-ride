@@ -20,6 +20,7 @@ import 'package:get_ride/src/admin/screens/meterapp/display_store.dart' show set
 
 import 'quiet_live.dart';
 import 'text_contrast.dart';
+import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
@@ -438,11 +439,13 @@ void main() {
         expect(p.newDriverDays, 14);
         expect(p.endsAt.difference(p.startsAt), const Duration(days: 7));
 
+        await closeNotice(tester);
         await tester.tap(find.byKey(const ValueKey('commission-promo-active-p1')));
         await tester.pumpAndSettle();
         expect(admin.saved.last.id, 'p1');
         expect(admin.saved.last.active, isFalse);
 
+        await closeNotice(tester);
         await tester.tap(find.byKey(const ValueKey('commission-promo-delete-p1')));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
@@ -482,6 +485,7 @@ void main() {
         expect(exported.single, contains('Ali,u1,GR201A,3,1,120.00,14.10'));
         expect(find.textContaining('Downloaded'), findsOneWidget);
 
+        await closeNotice(tester);
         await tester.tap(find.byKey(const ValueKey('below-credit-export')));
         await tester.pumpAndSettle();
         expect(exported.last, contains('Debt Driver,u9,GR9,,-60.00,-50.00,10.00'));

@@ -6,6 +6,7 @@ import 'package:get_ride/src/data/account_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/profile/emergency_contacts_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'notice.dart';
 
 class _FakeAccount implements AccountRepository {
   final saved = <String>[];
@@ -66,7 +67,9 @@ void main() {
     await pump(tester, () async => (name: 'Ali', phone: null));
     await tester.tap(find.byKey(const ValueKey('contact-pick')));
     await tester.pump();
+    await pumpNotice(tester);
     expect(find.text('The selected contact has no phone number.'), findsOneWidget);
+    await closeNotice(tester);
     expect(find.widgetWithText(TextField, 'Ali'), findsOneWidget);
   });
 

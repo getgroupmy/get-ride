@@ -15,6 +15,7 @@ import '../../data/models.dart';
 import '../../data/push_service.dart';
 import '../../data/ride_call_repository.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../support/call/call_session.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
 import '../support/call/mic_gate.dart';
@@ -655,17 +656,14 @@ Future<void> startRideCall(BuildContext context, WidgetRef ref, RideRequest ride
       }
     } catch (_) {}
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(rideCallFailure(e)),
-        action: phone == null
-            ? null
-            : SnackBarAction(
-                label: 'Phone call',
-                onPressed: () => dialer(Uri(scheme: 'tel', path: phone)),
-              ),
-      ),
-    );
+    unawaited(showAppNotice(
+      id: 'notice.ride-call',
+      context: context,
+      message: rideCallFailure(e),
+      kind: NoticeKind.error,
+      actionLabel: phone == null ? null : 'Phone call',
+      onAction: phone == null ? null : () => dialer(Uri(scheme: 'tel', path: phone)),
+    ));
   }
 }
 

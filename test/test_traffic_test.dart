@@ -16,6 +16,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
+import 'notice.dart';
 
 // No token refresh: its timer would outlive the test.
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
@@ -167,6 +168,7 @@ void main() {
       expect(store.added, [_id(5)]);
       expect(tester.widget<ListTile>(find.byKey(ValueKey('test-account-pick-${_id(5)}'))).onTap, isNull);
 
+      await closeAnyNotice(tester);
       await tester.tap(find.byTooltip('Close'));
       await tester.pumpAndSettle();
       expect(find.text('Tester accounts (2)'), findsOneWidget);

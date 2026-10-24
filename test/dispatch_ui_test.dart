@@ -24,6 +24,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
 import 'text_contrast.dart';
+import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 final _now = DateTime.now().toUtc();
@@ -379,6 +380,8 @@ Future<void> _pump(
 }
 
 Future<void> _tap(WidgetTester tester, Finder f) async {
+  // A message from the last step is closed first, as the user would.
+  await closeAnyNotice(tester);
   await tester.ensureVisible(f);
   await tester.pumpAndSettle();
   await tester.tap(f);
@@ -696,7 +699,9 @@ void main() {
         await tester.enterText(find.byKey(const ValueKey('credit-limit')), '400');
         await _tap(tester, find.byKey(const ValueKey('charges-save')));
         expect(repo2.fees, isEmpty, reason: 'past the cap');
+        await pumpNotice(tester);
         expect(find.text('The limit is RM 0 to RM 300.00.'), findsOneWidget);
+        await closeNotice(tester);
         await tester.enterText(find.byKey(const ValueKey('credit-limit')), '250');
         await _tap(tester, find.byKey(const ValueKey('charges-save')));
         expect(repo2.fees.single, 'limit 250.0', reason: 'only the limit: the fee is the admin\'s');

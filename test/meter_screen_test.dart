@@ -31,6 +31,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_elm.dart';
 import 'support/fake_printer.dart';
+import 'notice.dart';
 
 class _FakeLocation implements MeterLocation {
   final controller = StreamController<MeterFix>.broadcast();
@@ -707,6 +708,7 @@ void main() {
       await tester.binding.handlePopRoute();
       await tester.pump();
       expect(find.text('Leave the meter?'), findsNothing);
+      await pumpNotice(tester);
       expect(find.text('End the hire before leaving the meter.'), findsOneWidget);
     });
 

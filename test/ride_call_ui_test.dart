@@ -22,6 +22,7 @@ import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/features/support/call/mic_gate.dart';
 
 import 'fake_mic.dart';
+import 'notice.dart';
 
 const rider = 'rider-1', driver = 'driver-1';
 
@@ -575,6 +576,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('ride-call')).first);
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
+    await pumpNotice(tester);
     expect(find.textContaining('Check your connection'), findsOneWidget);
     await tester.tap(find.text('Phone call'));
     await tester.pump();
