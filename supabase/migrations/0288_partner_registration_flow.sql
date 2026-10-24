@@ -42,6 +42,9 @@
 -- 7. A registration vehicle over an age limit is never refused
 --    (VEHICLE_TOO_OLD): the service is paused instead. A Kad Pemandu read in
 --    the Driver permit step counts as the permit at submit.
+-- 8. A service paused for a vehicle is off for it on the server: no open
+--    request read, no bid or take (VEHICLE_SERVICE_PAUSED), no push or offer
+--    (driver_service_effective, 0263); the Services page says why.
 -- ============================================================================
 
 -- ---- 1. profiles ----------------------------------------------------------------------------------
@@ -851,6 +854,303 @@ as $$
               and (p.driver_permit_valid_until is null or p.driver_permit_valid_until >= current_date));
 $$;
 revoke all on function public.ptr_partner_has_permit(uuid) from public, anon, authenticated;
+
+-- ---- 8. A paused service is off for that vehicle -------------------------------------------------
+-- vehicle_service_status is kept per Partner Service type (eHailing, Teksi);
+-- requests name a Vehicle Service (Ride, Premium, Teksi ...), which the
+-- types allow (partner_type_services, 0257). A Vehicle Service is paused for
+-- a vehicle when every one of its types that allows it is paused there
+-- (paused_age or waiting_permit): a taxi with eHailing waiting for its EVP
+-- still takes Ride through Teksi. driver_service_effective (0263) then says
+-- off, and with it everything that rule enforces: the open requests a
+-- driver reads, bids and takes (VEHICLE_SERVICE_PAUSED), direct bookings,
+-- My Ride targets, the new-request, widening, everyone, stand and airport
+-- pushes and offers, the dispatch tick and the scheduled list. The Services
+-- page says why (driver_services_for: vehicle_block).
+
+-- Why [p_service] is paused for [p_vehicle]: {status, type, max_age_years,
+-- permit_name} of the first allowing type that is paused, or null when one
+-- allowing type is active, none allows it, or nothing is paused.
+create or replace function public.vehicle_service_block(p_vehicle uuid, p_service text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_types text[];
+  t text;
+  r public.vehicle_service_status;
+  v_first jsonb;
+begin
+  if p_vehicle is null or coalesce(btrim(p_service), '') = '' or p_service ~ '^(extra|hail):' then
+    return null;
+  end if;
+  if not exists (select 1 from public.vehicle_service_status s where s.vehicle_id = p_vehicle and s.status <> 'active') then
+    return null;
+  end if;
+  v_types := array(
+    select distinct x from (
+      select s.service as x from public.vehicle_service_status s where s.vehicle_id = p_vehicle
+      union
+      select unnest(public.ptr_text_array(public.ptr_vehicle_context(p_vehicle) -> 'types'))
+    ) q
+    where coalesce(btrim(x), '') <> '');
+  foreach t in array v_types loop
+    continue when not public.partner_type_allows_service(t, p_service);
+    r := null;
+    select * into r from public.vehicle_service_status s
+     where s.vehicle_id = p_vehicle and public.ptr_key(s.service) = public.ptr_key(t)
+     limit 1;
+    if r.vehicle_id is null or r.status = 'active' then
+      return null;
+    end if;
+    v_first := coalesce(v_first, jsonb_build_object(
+      'status', r.status, 'type', r.service, 'max_age_years', r.max_age_years, 'permit_name', r.permit_name));
+  end loop;
+  return v_first;
+end;
+$$;
+revoke execute on function public.vehicle_service_block(uuid, text) from public, anon, authenticated;
+grant execute on function public.vehicle_service_block(uuid, text) to service_role;
+
+-- The driver's words for a block: "eHailing paused: vehicle over the
+-- 15-year limit", "eHailing waiting for the vehicle permit".
+create or replace function public.vehicle_service_block_text(p jsonb)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select case p ->> 'status'
+    when 'paused_age' then format('%s paused: vehicle over the %s-year limit', p ->> 'type',
+                                  coalesce(p ->> 'max_age_years', '?'))
+    when 'waiting_permit' then format('%s waiting for the vehicle permit', p ->> 'type')
+  end;
+$$;
+grant execute on function public.vehicle_service_block_text(jsonb) to authenticated, service_role;
+
+create or replace function public.driver_service_effective(p_driver uuid, p_vehicle uuid, p_service text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_key text := public.driver_service_key(p_service);
+  l public.driver_service_locks;
+begin
+  if p_driver is null or coalesce(v_key, '') = '' then
+    return true;
+  end if;
+  -- 0288: paused for this vehicle (over its age limit, or waiting for the
+  -- vehicle permit GET.ride uploads): off, whatever the switch or a lock.
+  if p_vehicle is not null and v_key !~ '^(extra|hail):'
+     and public.vehicle_service_block(p_vehicle, v_key) is not null then
+    return false;
+  end if;
+  l := public.driver_service_lock(p_driver, p_vehicle, v_key);
+  if l.id is not null then
+    return l.mode = 'on';
+  end if;
+  return coalesce((select p.enabled from public.driver_service_prefs p
+                    where p.driver_id = p_driver and p.vehicle_id = p_vehicle and p.service_key = v_key), true);
+end;
+$$;
+
+
+create or replace function public.driver_services_off(p_driver uuid)
+returns text[]
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_vehicle uuid;
+begin
+  if p_driver is null then
+    return '{}';
+  end if;
+  v_vehicle := public.driver_session_vehicle(p_driver);
+  return coalesce((
+    select array_agg(k order by k) from (
+      select p.service_key as k from public.driver_service_prefs p
+       where p.driver_id = p_driver and p.vehicle_id = v_vehicle and not p.enabled
+      union
+      select l.service_key from public.driver_service_locks l
+       where l.mode = 'off' and (l.until is null or l.until > now())
+      union
+      -- 0288: the services paused for this vehicle.
+      select public.driver_service_key(e.values->>'name') from public.settings_entries e
+       where e.category = 'vehicle-services' and coalesce(btrim(e.values->>'name'), '') <> ''
+         and exists (select 1 from public.vehicle_service_status s
+                      where s.vehicle_id = v_vehicle and s.status <> 'active')
+    ) x
+    where k !~ '^(extra|hail):' and not public.driver_service_effective(p_driver, v_vehicle, k)), '{}');
+end;
+$$;
+
+
+create or replace function public.driver_services_for(p_vehicle uuid default null)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_vehicle uuid := coalesce(p_vehicle, public.driver_session_vehicle(auth.uid()));
+  v public.vehicle;
+  v_ctx jsonb;
+  v_types text[];
+  v_service text;
+  v_names jsonb;
+begin
+  if v_uid is null then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  if v_vehicle is null then
+    return jsonb_build_object('vehicle', null);
+  end if;
+  if not public.driver_may_drive(v_uid, v_vehicle) then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  select * into v from public.vehicle where id = v_vehicle;
+  v_ctx := public.ptr_vehicle_context(v_vehicle);
+  v_types := public.ptr_text_array(v_ctx -> 'types');
+  if coalesce(cardinality(v_types), 0) = 0 then
+    select case when coalesce(cardinality(p.partner_types), 0) > 0 then p.partner_types
+                when coalesce(btrim(p.partner_type), '') <> '' then array[p.partner_type] else '{}' end
+      into v_types
+      from public.partners p where p.auth_user_id = v_uid order by p.created_at limit 1;
+  end if;
+  v_types := coalesce(v_types, '{}');
+  v_service := coalesce(nullif(v.service_approved_id, ''), nullif(v.service_id, ''));
+
+  return jsonb_build_object(
+    'vehicle', jsonb_build_object(
+      'id', v.id, 'plate', v.plate, 'make', v.make, 'model', v.model, 'color', v.color,
+      'vehicle_type', v.vehicle_type, 'energy', public.vehicle_energy(v.id), 'service_id', v_service,
+      'service_name', (select e.values->>'name' from public.settings_entries e
+                        where e.category = 'vehicle-services' and e.id::text = v_service)),
+    'types', to_jsonb(v_types),
+    'order_enforced', public.service_order_enforced(),
+    'services', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', e.id, 'name', e.values->>'name', 'key', public.driver_service_key(e.values->>'name'),
+               'types', e.values->'serviceTypes',
+               'parents', e.values->'parentServices',
+               'description', coalesce(e.values->>'shortDescription', e.values->>'description', ''),
+               'max_pax', e.values->'maxPax',
+               'partner_ok', cardinality(v_types) = 0
+                             or exists (select 1 from unnest(v_types) t
+                                         where public.partner_type_allows_service(t, e.values->>'name')),
+               'order_ok', public.service_order_allows(v_service, e.values->>'name'),
+               'permit_missing', exists (
+                 select 1 from public.permit_types pt
+                  where pt.active and pt.applies_to = 'vehicle' and pt.required
+                    and (public.permit_settings_for(pt.country)).enforce
+                    and coalesce(cardinality(pt.services), 0) > 0
+                    and exists (select 1 from unnest(public.ptr_text_array(v_ctx -> 'countries')) c
+                                 where public.ptr_name(c) = public.ptr_name(pt.country))
+                    and public.permit_type_covers(pt.partner_types, pt.services, v_types, e.id::text)
+                    and coalesce((select v2.permit_bypass_until > now() from public.vehicle v2 where v2.id = v.id), false) = false
+                    and coalesce((select public.permit_doc_state(d.status, d.expiry_date) from public.vehicle_documents d
+                                   where d.vehicle_id = v.id and d.permit_type_id = pt.id
+                                   order by d.uploaded_at desc limit 1), 'without') <> 'with'),
+               'pref', (select p.enabled from public.driver_service_prefs p
+                         where p.driver_id = v_uid and p.vehicle_id = v.id
+                           and p.service_key = public.driver_service_key(e.values->>'name')),
+               'lock', public.driver_service_lock_json(v_uid, v.id, e.values->>'name'),
+               -- 0288: {status, type, max_age_years, permit_name} when paused for this vehicle.
+               'vehicle_block', public.vehicle_service_block(v.id, e.values->>'name'),
+               'on', public.driver_service_effective(v_uid, v.id, e.values->>'name'))
+             order by coalesce((e.values->>'displayPriority')::numeric, 1e9), e.position, e.created_at)
+        from public.settings_entries e
+       where e.category = 'vehicle-services'
+         and coalesce(btrim(e.values->>'name'), '') <> ''
+         and lower(coalesce(e.values->>'status', 'true')) not in ('false', '0', 'off', 'inactive')), '[]'::jsonb),
+    'keys', coalesce((
+      select jsonb_object_agg(k, jsonb_build_object(
+               'pref', (select p.enabled from public.driver_service_prefs p
+                         where p.driver_id = v_uid and p.vehicle_id = v.id and p.service_key = k),
+               'lock', public.driver_service_lock_json(v_uid, v.id, k),
+               'on', public.driver_service_effective(v_uid, v.id, k)))
+        from (select 'hail:meter' as k union select 'hail:destination'
+              union select p.service_key from public.driver_service_prefs p
+                     where p.driver_id = v_uid and p.vehicle_id = v.id and p.service_key ~ '^(extra|hail):'
+              union select l.service_key from public.driver_service_locks l
+                     where l.service_key ~ '^(extra|hail):' and (l.until is null or l.until > now())) ks), '{}'::jsonb));
+end;
+$$;
+
+
+create or replace function public.ride_requests_driver_services()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_app boolean := coalesce(current_setting('role', true), '') in ('anon', 'authenticated');
+  v_keep uuid[];
+  l public.driver_service_locks;
+  v_block jsonb;
+begin
+  if tg_op = 'INSERT' then
+    if coalesce(btrim(new.service), '') = '' then
+      return new;
+    end if;
+    if v_app and new.status = 'open' and new.direct_driver_id is not null
+       and not public.driver_takes_service(new.direct_driver_id, new.service) then
+      raise exception 'DRIVER_SERVICE_OFF_DIRECT' using errcode = '42501',
+        hint = format('This driver doesn''t take %s requests right now. Choose another service, or book without the code.',
+                      new.service);
+    end if;
+    if new.direct_driver_id is null and coalesce(cardinality(new.target_driver_ids), 0) > 0 then
+      select coalesce(array_agg(d), '{}') into v_keep
+        from unnest(new.target_driver_ids) d
+       where public.driver_takes_service(d, new.service);
+      if cardinality(v_keep) = 0 then
+        new.target_driver_ids := null;
+        new.targeted_until := null;
+      else
+        new.target_driver_ids := v_keep;
+      end if;
+    end if;
+    return new;
+  end if;
+  -- A driver's own bid or take from the app.
+  if v_app and old.status = 'open'
+     and new.partner_id is not null and new.partner_id is distinct from old.partner_id
+     and new.partner_id = auth.uid()
+     and not public.driver_takes_service(new.partner_id, old.service) then
+    -- 0288: paused for this vehicle.
+    v_block := public.vehicle_service_block(public.driver_session_vehicle(new.partner_id), old.service);
+    if v_block is not null then
+      raise exception 'VEHICLE_SERVICE_PAUSED' using errcode = '42501',
+        hint = public.vehicle_service_block_text(v_block);
+    end if;
+    l := public.driver_service_lock(new.partner_id, public.driver_session_vehicle(new.partner_id), old.service);
+    raise exception 'DRIVER_SERVICE_OFF' using errcode = '42501',
+      hint = case when l.id is not null
+                  then format('get.ride keeps %s off for you. Contact support to change it.', old.service)
+                  else format('You turned %s off in Services. Turn it on to take these requests.', old.service) end;
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.driver_service_effective(uuid, uuid, text) from public, anon, authenticated;
+revoke execute on function public.driver_services_off(uuid) from public, anon, authenticated;
+grant execute on function public.driver_service_effective(uuid, uuid, text), public.driver_services_off(uuid) to service_role;
+revoke execute on function public.driver_services_for(uuid) from public, anon;
+grant execute on function public.driver_services_for(uuid) to authenticated;
+revoke execute on function public.ride_requests_driver_services() from public, anon, authenticated;
 
 -- The help article on becoming a driver says the new order (only while it
 -- still has the old wording an admin hasn't changed).

@@ -299,6 +299,7 @@ class ServiceFacts {
     this.pref,
     this.lock,
     this.on = true,
+    this.vehicleBlock,
   });
 
   factory ServiceFacts.fromJson(Map j) {
@@ -324,6 +325,7 @@ class ServiceFacts {
       pref: j['pref'] is bool ? j['pref'] as bool : null,
       lock: ServiceLock.fromJson(j['lock']),
       on: j['on'] != false,
+      vehicleBlock: VehicleServiceBlock.fromJson(j['vehicle_block']),
     );
   }
 
@@ -352,7 +354,41 @@ class ServiceFacts {
   /// On now, by the server's rule.
   final bool on;
 
+  /// Paused for this car (0288): over a Partner Service type's age limit,
+  /// or waiting for the vehicle permit GET.ride uploads.
+  final VehicleServiceBlock? vehicleBlock;
+
   String get key => DriverServiceKey.service(name);
+}
+
+/// Why a service is paused for this car (0288, `vehicle_service_status`):
+/// the Partner Service type it comes through and what holds it.
+class VehicleServiceBlock {
+  const VehicleServiceBlock({required this.status, required this.type, this.maxAgeYears, this.permitName});
+
+  static VehicleServiceBlock? fromJson(Object? j) {
+    if (j is! Map) return null;
+    final status = '${j['status'] ?? ''}';
+    if (status != 'paused_age' && status != 'waiting_permit') return null;
+    return VehicleServiceBlock(
+      status: status,
+      type: '${j['type'] ?? ''}'.trim(),
+      maxAgeYears: _int(j['max_age_years']),
+      permitName: '${j['permit_name'] ?? ''}'.trim().isEmpty ? null : '${j['permit_name']}'.trim(),
+    );
+  }
+
+  /// paused_age or waiting_permit.
+  final String status;
+  final String type;
+  final int? maxAgeYears;
+  final String? permitName;
+
+  /// "eHailing paused: vehicle over the 15-year limit", "eHailing waiting for
+  /// the vehicle permit" (the server's vehicle_service_block_text).
+  String get text => status == 'paused_age'
+      ? '$type paused: vehicle over the ${maxAgeYears ?? '?'}-year limit'
+      : '$type waiting for the vehicle permit';
 }
 
 int? _int(Object? v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}'.trim());
@@ -458,6 +494,7 @@ ServiceTab serviceTabFor(String name, Iterable<String> typeNames) {
 /// as the server only refuses them then.
 String? ineligibleReason(ServiceFacts s, {ServiceFacts? own, bool orderEnforced = false, bool regionOk = true}) {
   if (!s.partnerOk) return 'Not in your Partner Service type';
+  if (s.vehicleBlock case final b?) return b.text;
   if (orderEnforced && !s.orderOk) {
     if (own == null) return "Your car's service isn't approved yet";
     final mine = own.maxPax, theirs = s.maxPax;

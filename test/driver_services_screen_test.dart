@@ -143,6 +143,42 @@ void main() {
     });
   }
 
+  for (final b in Brightness.values) {
+    testWidgets('a service paused for this car says why, ${b.name} (0288)', (tester) async {
+      await _pump(
+        tester,
+        b,
+        overview: DriverServicesOverview(
+          car: _overview.car,
+          types: const ['eHailing', 'Teksi'],
+          services: const [
+            ServiceFacts(id: 'r', name: 'Ride', typeNames: ['Car'], maxPax: 4),
+            ServiceFacts(
+              id: 'p',
+              name: 'Premium',
+              typeNames: ['Car'],
+              on: false,
+              vehicleBlock: VehicleServiceBlock(status: 'waiting_permit', type: 'eHailing', permitName: 'EVP'),
+            ),
+            ServiceFacts(
+              id: 'c',
+              name: 'Comfort',
+              typeNames: ['Car'],
+              on: false,
+              vehicleBlock: VehicleServiceBlock(status: 'paused_age', type: 'eHailing', maxAgeYears: 15),
+            ),
+          ],
+        ),
+      );
+      expect(find.text('eHailing waiting for the vehicle permit'), findsOneWidget);
+      expect(find.text('eHailing paused: vehicle over the 15-year limit'), findsOneWidget);
+      expect(_switch(tester, 'premium').value, isFalse);
+      expect(_switch(tester, 'premium').onChanged, isNull);
+      expect(_switch(tester, 'ride').onChanged, isNotNull, reason: 'other services are unaffected');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('a switch is saved for this car, with its toast', (tester) async {
     final (repo, _) = await _pump(tester, Brightness.light);
     await tester.tap(find.byKey(const ValueKey('driver-service-switch-ride')));
