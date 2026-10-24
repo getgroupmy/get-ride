@@ -16,13 +16,27 @@
 //           400 bad_request · 401 not_signed_in · 403 not_authorized
 //           404 not_found · 503 unavailable
 //
+// Partner registration (0288): POST { document: { kind, id } } compares one
+// document with the person's photo (National ID, Kad Pemandu, a Required
+// Document marked "Has the person's photo") against their newest live
+// selfie, asked by the database (x-push-secret) or an admin, and keeps the
+// score per document (document_face_checks).
+//
 // Deploy: supabase functions deploy face-compare
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { callerCanEditHere } from "../_shared/admin_page.ts";
 import { signedJsonPost } from "../_shared/aws_sigv4.ts";
-import { base64, type CheckRow, DOCUMENT_PAGES, handleFaceCompare } from "../_shared/face_compare.ts";
+import {
+  base64,
+  type CheckRow,
+  DOCUMENT_FACE_PAGES,
+  DOCUMENT_PAGES,
+  documentRequest,
+  handleDocumentFaceCompare,
+  handleFaceCompare,
+} from "../_shared/face_compare.ts";
 import { compareRequest, FACE_SERVER_TIMEOUT_MS } from "../_shared/face_server.ts";
 
 const corsHeaders = {
@@ -42,11 +56,78 @@ const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABA
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+async function setting(key: string): Promise<unknown> {
+  const { data, error } = await db.from("app_settings").select("value").eq("key", key).maybeSingle();
+  if (error) throw error;
+  return data?.value ?? null;
+}
+
+async function download(bucket: string, path: string): Promise<Uint8Array | null> {
+  const { data, error } = await db.storage.from(bucket).download(path);
+  if (error || !data) return null;
+  return new Uint8Array(await data.arrayBuffer());
+}
+
+async function awsCompare(key: Parameters<typeof signedJsonPost>[0], source: Uint8Array, target: Uint8Array) {
+  const body = JSON.stringify({
+    SourceImage: { Bytes: base64(source) },
+    TargetImage: { Bytes: base64(target) },
+    SimilarityThreshold: 0,
+  });
+  const signed = await signedJsonPost(key, "rekognition", "RekognitionService.CompareFaces", body);
+  const res = await fetch(signed.url, { method: "POST", headers: signed.headers, body, signal: AbortSignal.timeout(15000) });
+  return { status: res.status, body: await res.json().catch(() => null) };
+}
+
+async function serverCompare(server: Parameters<typeof compareRequest>[0], selfie: Uint8Array, card: Uint8Array) {
+  const r = compareRequest(server, selfie, card);
+  const res = await fetch(r.url, {
+    method: r.method,
+    headers: r.headers,
+    body: r.body,
+    signal: AbortSignal.timeout(FACE_SERVER_TIMEOUT_MS),
+  });
+  return { status: res.status, body: await res.json().catch(() => null) };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return reply({ error: "Method not allowed" }, 405);
 
-  const result = await handleFaceCompare(await req.json().catch(() => null), req.headers.get("Authorization"), {
+  const input = await req.json().catch(() => null);
+  if (documentRequest(input) !== null || (input as { document?: unknown } | null)?.document !== undefined) {
+    const doc = await handleDocumentFaceCompare(input, {
+      authorization: req.headers.get("Authorization"),
+      secret: req.headers.get("x-push-secret"),
+    }, {
+      async webhookSecretOk(secret) {
+        const { data, error } = await db.rpc("push_webhook_secret_ok", { p_secret: secret });
+        if (error) console.log("[face-compare] secret check:", error.message);
+        return data === true;
+      },
+      canReview: (authorization) => callerCanEditHere(authorization, DOCUMENT_FACE_PAGES),
+      async source(kind, id) {
+        const { data, error } = await db.rpc("document_face_check_source", { p_kind: kind, p_id: id });
+        if (error) throw error;
+        return data ?? null;
+      },
+      apiProviders: () => setting("api_providers"),
+      verifySettings: () => setting("dispatch_verify"),
+      download,
+      compare: awsCompare,
+      compareSelfHosted: serverCompare,
+      async store(kind, id, state, score, provider, reason, selfieUrl) {
+        const { error } = await db.rpc("document_face_check_store", {
+          p_kind: kind, p_id: id, p_state: state, p_score: score, p_provider: provider, p_reason: reason,
+          p_selfie: selfieUrl,
+        });
+        if (error) throw error;
+      },
+    });
+    return reply(doc.body, doc.status);
+  }
+
+  const result = await handleFaceCompare(input, req.headers.get("Authorization"), {
     canReview: (authorization) => callerCanEditHere(authorization, DOCUMENT_PAGES),
     async check(id) {
       const { data, error } = await db.from("identity_checks").select("id, user_id, kind, file_url")

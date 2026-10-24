@@ -270,9 +270,9 @@ void main() {
 
       testWidgets('a type not offered in the service area is not offered at sign-up', (tester) async {
         await _pumpOnboarding(tester, b);
-        expect(find.text('What kind of partner are you?'), findsOneWidget);
-        expect(find.widgetWithText(FilterChip, 'Teksi'), findsOneWidget);
-        expect(find.widgetWithText(FilterChip, 'eHailing'), findsNothing);
+        expect(find.text('Choose your Partner Service type'), findsOneWidget);
+        expect(find.byKey(const ValueKey('service-card-Teksi')), findsOneWidget);
+        expect(find.byKey(const ValueKey('service-card-eHailing')), findsNothing);
       });
 
       testWidgets('street hail (the Meter) is hidden where it is not allowed', (tester) async {
@@ -403,6 +403,7 @@ Future<void> _pumpOnboarding(WidgetTester tester, Brightness b) async {
     ..._partner,
     'status': 'unapproved',
     'avatar_url': 'https://example.com/a.png',
+    'selfie_liveness': 'passed',
     'address': 'Jalan 1, Muar',
     'service_states': ['Malaysia|Johor'],
     'service_cities': ['Malaysia|Johor|Muar'],

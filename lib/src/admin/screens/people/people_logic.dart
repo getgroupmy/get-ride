@@ -675,6 +675,7 @@ class DocFlags {
     this.requireFrontBack = false,
     this.allowPdfUpload = false,
     this.isTaxiPermit = false,
+    this.hasPhoto = false,
   });
 
   factory DocFlags.fromValues(Map<String, dynamic> v) => DocFlags(
@@ -686,6 +687,7 @@ class DocFlags {
         requireFrontBack: _truthy(v['requireFrontBack'], false),
         allowPdfUpload: _truthy(v['allowPdfUpload'], false),
         isTaxiPermit: _truthy(v['isTaxiPermit'], false),
+        hasPhoto: requiredDocHasPhoto(v),
       );
 
   final bool requireStartDate, requireExpiryDate, requireDocumentNumber, requireInsuranceProvider, isPwd,
@@ -694,7 +696,30 @@ class DocFlags {
   /// The admin's "Taxi Driver Permit display" tag: the AI check also reads
   /// the permit's fields, and the driver's portrait is cut out of it.
   final bool isTaxiPermit;
+
+  /// The admin's "Has the person's photo" (0288): the upload is face-matched
+  /// against the person's live selfie, which they take first on a phone.
+  final bool hasPhoto;
 }
+
+/// Names that carry the holder's photo: licences, permits, IDs (0288).
+final _photoDocName = RegExp(
+  r'licen[cs]e|lesen|permit|kad pemandu|\bpsv\b|\bgdl\b|mykad|mypr|passport|pasport|identity|\bid card\b|driver card',
+  caseSensitive: false,
+);
+
+/// Whether a Required Document carries the person's photo: the admin's
+/// `hasPhoto`, else on for licences, permits and IDs by name (and the taxi
+/// driver permit). The server's required_document_has_photo agrees.
+bool requiredDocHasPhoto(Map<String, dynamic> v) {
+  final set = v['hasPhoto'];
+  if (set is bool) return set;
+  if (set == 'true' || set == 'false') return set == 'true';
+  return _truthy(v['isTaxiPermit'], false) || _photoDocName.hasMatch('${v['name'] ?? ''}');
+}
+
+/// The default for "Has the person's photo" on a document named [name].
+bool defaultDocHasPhoto(String name) => _photoDocName.hasMatch(name);
 
 class RequiredDoc {
   const RequiredDoc({

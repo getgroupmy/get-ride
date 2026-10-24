@@ -158,6 +158,51 @@ class IdentityRepository {
     } catch (_) {}
   }
 
+  /// Whether the signed-in person has a live selfie on record (liveness
+  /// passed): the gate before a document with their photo is sent (0288).
+  /// True when it can't be asked (an older database): the server flags it.
+  Future<bool> liveSelfieOk() async {
+    try {
+      return (await _db.rpc('my_live_selfie_ok')) == true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Keeps a live selfie taken for the document gate: uploaded to the
+  /// person's own ID_Image folder and recorded with how it was taken. The
+  /// documents that waited for one are then compared (0288).
+  Future<void> recordLiveSelfie(LiveSelfie selfie) async {
+    // A profile-purpose selfie lives in the person's avatars folder (0281).
+    final path = '$_uid/selfie_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final files = _db.storage.from('avatars');
+    await uploadStoredFile(files, path, selfie.bytes, contentType: 'image/jpeg');
+    final url = files.getPublicUrl(path);
+    await _db.rpc('identity_check_submit', params: {
+      'p': {
+        'kind': 'selfie',
+        'purpose': 'profile',
+        'file_url': url,
+        'liveness': selfie.liveness,
+        'liveness_detail': ?selfie.detail,
+      },
+    });
+  }
+
+  /// The id-read function's text of the person's own registration document
+  /// [fileUrl] (0288), when the admin's ID card reading allows the server;
+  /// null when it isn't allowed, set up or read.
+  Future<String?> readRegistrationText(String fileUrl) async {
+    try {
+      final res = await _db.functions.invoke('id-read', body: {'file_url': fileUrl, 'purpose': 'registration'});
+      final m = _map(res.data);
+      final text = '${m['text'] ?? ''}'.trim();
+      return m['state'] == 'read' && text.isNotEmpty ? text : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ---- The admin -----------------------------------------------------------------------------
 
   /// Admin → Documents → Sign-in checks; [filter] waiting, approved, rejected or all.
@@ -197,6 +242,19 @@ class IdentityRepository {
   Future<Map<String, dynamic>> compareFaces(String id) async {
     try {
       final res = await _db.functions.invoke('face-compare', body: {'check_id': id});
+      return _map(res.data);
+    } on FunctionException catch (e) {
+      return {'state': 'error', 'reason': '${_map(e.details)['error'] ?? e.status}'};
+    }
+  }
+
+  /// Compares one document with the person's photo against their live
+  /// selfie again (0288; Admin › Documents › Check again).
+  Future<Map<String, dynamic>> compareDocumentFace(String kind, String id) async {
+    try {
+      final res = await _db.functions.invoke('face-compare', body: {
+        'document': {'kind': kind, 'id': id},
+      });
       return _map(res.data);
     } on FunctionException catch (e) {
       return {'state': 'error', 'reason': '${_map(e.details)['error'] ?? e.status}'};

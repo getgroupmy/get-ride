@@ -377,6 +377,7 @@ String? faceReasonText(Object? reason) => switch (reason) {
   'no_pair' => 'No selfie and ID to compare yet',
   'no_photo' => "A photo couldn't be read",
   'too_big' => 'A photo is too big',
+  'no_live_selfie' => 'No live selfie yet',
   _ => null,
 };
 
@@ -503,3 +504,19 @@ String livenessText(Object? liveness, [Object? detail]) => switch (liveness) {
   },
   _ => 'Live check: not checked',
 };
+
+/// Below this a document's face match needs a closer look (0288; the
+/// server's partner_face_low_score).
+const faceLowScore = 60;
+
+/// Whether a document's face match needs a closer look (0288): the faces
+/// differ, no face was found, the score is low, or there was no live selfie
+/// to compare with. "Not checked" for want of a provider is not a flag: the
+/// admin compares by eye.
+bool faceNeedsCloserLook(Object? state, Object? score, {Object? reason}) {
+  final s = (score as num?)?.toDouble();
+  return state == 'no_match' ||
+      state == 'no_face' ||
+      (s != null && s < faceLowScore) ||
+      (state == 'not_checked' && reason == 'no_live_selfie');
+}

@@ -18,12 +18,24 @@
 //           403 not_authorized · vision_off · 404 not_found
 //           409 not_waiting · already_read · 503 unavailable
 //
+// Partner registration (0288): POST { file_url, purpose: "registration" }
+// returns the text of the person's own registration document (National ID,
+// SSM document, Kad Pemandu, vehicle grant) for the app to read, at most 30
+// a day, unless ID card reading is "On the phone only".
+//
 // Deploy: supabase functions deploy id-read
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { callerCanEditHere } from "../_shared/admin_page.ts";
-import { DOCUMENT_PAGES, handleIdRead, type IdCheckRow, visionRequest } from "../_shared/id_read.ts";
+import {
+  DOCUMENT_PAGES,
+  handleIdRead,
+  handleRegistrationRead,
+  type IdCheckRow,
+  isRegistrationRead,
+  visionRequest,
+} from "../_shared/id_read.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,18 +60,54 @@ async function setting(key: string): Promise<unknown> {
   return data?.value ?? null;
 }
 
+async function callerId(authorization: string | null): Promise<string | null> {
+  const token = /^Bearer\s+(.+)$/i.exec((authorization ?? "").trim())?.[1]?.trim();
+  if (!token) return null;
+  const { data, error } = await db.auth.getUser(token);
+  if (error || !data?.user) return null;
+  return data.user.id;
+}
+
+async function download(bucket: string, path: string): Promise<Uint8Array | null> {
+  const { data, error } = await db.storage.from(bucket).download(path);
+  if (error || !data) return null;
+  return new Uint8Array(await data.arrayBuffer());
+}
+
+async function annotate(key: string, image: Uint8Array) {
+  const r = visionRequest(key, image);
+  const res = await fetch(r.url, { method: r.method, headers: r.headers, body: r.body, signal: AbortSignal.timeout(20000) });
+  return { status: res.status, body: await res.json().catch(() => null) };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return reply({ error: "Method not allowed" }, 405);
 
-  const result = await handleIdRead(await req.json().catch(() => null), req.headers.get("Authorization"), {
-    async caller(authorization) {
-      const token = /^Bearer\s+(.+)$/i.exec((authorization ?? "").trim())?.[1]?.trim();
-      if (!token) return null;
-      const { data, error } = await db.auth.getUser(token);
-      if (error || !data?.user) return null;
-      return data.user.id;
-    },
+  const input = await req.json().catch(() => null);
+  if (isRegistrationRead(input)) {
+    const r = await handleRegistrationRead(input, req.headers.get("Authorization"), {
+      caller: callerId,
+      async owns(uid, bucket, path) {
+        const { data, error } = await db.rpc("registration_file_owned", { p_uid: uid, p_bucket: bucket, p_path: path });
+        if (error) throw error;
+        return data === true;
+      },
+      async spend(uid, limit) {
+        const { data, error } = await db.rpc("registration_text_read_spend", { p_user: uid, p_limit: limit });
+        if (error) throw error;
+        return data === true;
+      },
+      verifySettings: () => setting("dispatch_verify"),
+      apiProviders: () => setting("api_providers"),
+      download,
+      annotate,
+    });
+    return reply(r.body, r.status);
+  }
+
+  const result = await handleIdRead(input, req.headers.get("Authorization"), {
+    caller: callerId,
     canReview: (authorization) => callerCanEditHere(authorization, DOCUMENT_PAGES),
     async check(id) {
       const { data, error } = await db.from("identity_checks")
@@ -69,21 +117,8 @@ Deno.serve(async (req) => {
     },
     verifySettings: () => setting("dispatch_verify"),
     apiProviders: () => setting("api_providers"),
-    async download(bucket, path) {
-      const { data, error } = await db.storage.from(bucket).download(path);
-      if (error || !data) return null;
-      return new Uint8Array(await data.arrayBuffer());
-    },
-    async annotate(key, image) {
-      const r = visionRequest(key, image);
-      const res = await fetch(r.url, {
-        method: r.method,
-        headers: r.headers,
-        body: r.body,
-        signal: AbortSignal.timeout(20000),
-      });
-      return { status: res.status, body: await res.json().catch(() => null) };
-    },
+    download,
+    annotate,
     async store(id, read) {
       const { data, error } = await db.rpc("identity_check_store_read", { p_id: id, p: read });
       if (error) throw error;

@@ -257,3 +257,70 @@ export async function handleIdRead(input: unknown, authorization: string | null,
     return { status: 503, body: { error: "unavailable" } };
   }
 }
+
+// ---- Partner registration documents (migration 0288) -------------------------------------------
+//
+// The National ID, the SSM company document, the Kad Pemandu and the vehicle
+// grant read for partner registration, when the phone couldn't read them
+// (web, desktop, an unreadable photo) and the admin's ID card reading
+// setting isn't "On the phone only". Only the person's own file (their
+// ID_Image folder, their partner's provider-documents folder, their
+// vehicle's vehicle-documents folder), at most REGISTRATION_READS_PER_DAY a
+// day. The text comes back as read: the app's readers turn it into fields
+// (lib/src/core/document_text.dart). Nothing is kept but the count.
+//
+// Request:  POST { file_url, purpose: "registration" }
+// Response: 200 { state: "read" | "not_read" | "error", text?, reason?, detail? }
+//           400 bad_request · 401 not_signed_in · 403 not_authorized · vision_off
+//           429 too_many · 503 unavailable
+
+export const REGISTRATION_READS_PER_DAY = 30;
+
+export interface RegistrationReadDeps {
+  caller(authorization: string | null): Promise<string | null>;
+  /** registration_file_owned(uid, bucket, path). */
+  owns(uid: string, bucket: string, path: string): Promise<boolean>;
+  /** registration_text_read_spend(uid, limit): false once the day's reads are spent. */
+  spend(uid: string, limit: number): Promise<boolean>;
+  verifySettings(): Promise<unknown>;
+  apiProviders(): Promise<unknown>;
+  download(bucket: string, path: string): Promise<Uint8Array | null>;
+  annotate(key: string, image: Uint8Array): Promise<{ status: number; body: unknown }>;
+}
+
+export function isRegistrationRead(input: unknown): boolean {
+  return (input as { purpose?: unknown } | null)?.purpose === "registration";
+}
+
+export async function handleRegistrationRead(
+  input: unknown,
+  authorization: string | null,
+  deps: RegistrationReadDeps,
+): Promise<Result> {
+  const url = (input as { file_url?: unknown } | null)?.file_url;
+  const where = typeof url === "string" && url.length <= 1000 ? storageObject(url) : null;
+  if (!where) return { status: 400, body: { error: "bad_request" } };
+  try {
+    const uid = await deps.caller(authorization);
+    if (!uid) return { status: 401, body: { error: "not_signed_in" } };
+    if (!(await deps.owns(uid, where.bucket, where.path))) return { status: 403, body: { error: "not_authorized" } };
+    const [apiProviders, verify] = await Promise.all([deps.apiProviders(), deps.verifySettings()]);
+    if (idReadMode(verify) === "phone") return { status: 403, body: { error: "vision_off" } };
+    const key = visionKey(apiProviders);
+    if (!key) return { status: 200, body: { state: "not_read", reason: "no_key" } };
+    if (!(await deps.spend(uid, REGISTRATION_READS_PER_DAY))) return { status: 429, body: { error: "too_many" } };
+    const image = await deps.download(where.bucket, where.path);
+    if (!image) return { status: 200, body: { state: "not_read", reason: "no_photo" } };
+    if (image.length > MAX_IMAGE_BYTES) return { status: 200, body: { state: "not_read", reason: "too_big" } };
+    const answer = await deps.annotate(key, image);
+    const v = readVision(answer.status, answer.body);
+    if ("error" in v) return { status: 200, body: { state: "error", detail: v.error } };
+    const text = v.text.trim();
+    return {
+      status: 200,
+      body: text ? { state: "read", text: text.slice(0, 20000) } : { state: "not_read", reason: "nothing_found" },
+    };
+  } catch {
+    return { status: 503, body: { error: "unavailable" } };
+  }
+}

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
@@ -19,6 +20,7 @@ import 'package:get_ride/src/admin/profile_search.dart';
 import 'package:get_ride/src/admin/sub_admin_grants.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/data/identity_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
@@ -88,6 +90,12 @@ class _Admin extends AdminRepository {
   @override
   Future<List<Map<String, dynamic>>> documents(String table) async => docs;
 
+  /// Face matches by document id (0288).
+  Map<String, Map<String, dynamic>> faces = const {};
+
+  @override
+  Future<Map<String, Map<String, dynamic>>> documentFaceChecks(String kind, Iterable<String> ids) async => faces;
+
   @override
   Future<({Map<String, Map<String, dynamic>> partners, Map<String, Map<String, dynamic>> vehicles})> documentOwners(
     Iterable<String> partnerIds,
@@ -120,6 +128,7 @@ Future<GoRouter> _pump(
   String initial = '/admin/sub-admins',
   Size size = const Size(1000, 1600),
   double textScale = 1,
+  List<Override> extra = const [],
 }) async {
   tester.platformDispatcher.textScaleFactorTestValue = textScale;
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
@@ -146,6 +155,7 @@ Future<GoRouter> _pump(
       ...quietLiveOverrides,
       adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
       adminRepositoryProvider.overrideWithValue(admin),
+      ...extra,
     ],
     child: MaterialApp.router(
       theme: appTheme(b),
@@ -746,6 +756,42 @@ void main() {
       expect(admin.docPatches.single['document_number'], 'L999');
     });
 
+    for (final b in Brightness.values) {
+      testWidgets('a photo document shows its face match; a low one comes first and is filtered (${b.name})',
+          (tester) async {
+        final admin = _Admin(docs: [
+          doc,
+          {...doc, 'id': 'd2', 'doc_name': 'PSV licence'},
+          {...doc, 'id': 'd3', 'doc_name': 'Vehicle insurance'},
+        ])
+          ..faces = {
+            'd1': {'state': 'match', 'score': 91.4, 'provider': 'aws', 'selfie_url': 's', '_liveness': 'passed', '_liveness_detail': 'blink'},
+            'd2': {'state': 'no_match', 'score': 31, 'provider': 'aws', 'selfie_url': 's', '_liveness': 'passed'},
+          };
+        final identity = _Faces();
+        await _pump(tester, admin, const AdminDocumentsScreen(), b: b, extra: [identityRepositoryProvider.overrideWithValue(identity)]);
+        expect(find.textContaining('Face: 91% match'), findsOneWidget);
+        expect(find.textContaining('Face: Faces differ: 31% match'), findsOneWidget);
+        // The low match first.
+        expect(tester.getTopLeft(find.byKey(const ValueKey('doc-row-d2'))).dy,
+            lessThan(tester.getTopLeft(find.byKey(const ValueKey('doc-row-d1'))).dy));
+        await tester.tap(find.text('Needs a closer look'));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('doc-row-d2')), findsOneWidget);
+        expect(find.byKey(const ValueKey('doc-row-d1')), findsNothing);
+        expect(find.byKey(const ValueKey('doc-row-d3')), findsNothing);
+        await tester.tap(find.text('PSV licence'));
+        await tester.pumpAndSettle();
+        expect(find.text('Needs a closer look: compare the photo with the selfie by eye.'), findsOneWidget);
+        expect(find.text('Faces differ: 31% match · AWS'), findsWidgets);
+        await tester.tap(find.byKey(const ValueKey('doc-face-again')));
+        await tester.pumpAndSettle();
+        expect(identity.asked, ['provider_document:d2']);
+        expect(find.text('Not checked · No live selfie yet'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
     testWidgets('a document is deleted after confirming', (tester) async {
       final admin = _Admin(docs: [doc]);
       await _pump(tester, admin, const AdminDocumentsScreen());
@@ -759,4 +805,15 @@ void main() {
       expect(admin.deleted, ['d1']);
     });
   });
+}
+
+class _Faces extends IdentityRepository {
+  _Faces() : super(_db);
+  final asked = <String>[];
+
+  @override
+  Future<Map<String, dynamic>> compareDocumentFace(String kind, String id) async {
+    asked.add('$kind:$id');
+    return {'state': 'not_checked', 'reason': 'no_live_selfie'};
+  }
 }

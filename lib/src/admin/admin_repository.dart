@@ -181,6 +181,39 @@ class AdminRepository {
         await _db.from(table).select().order('uploaded_at', ascending: false).limit(500),
       );
 
+  /// The face match of each of these documents against the person's live
+  /// selfie (0288), by document id, with how that selfie was taken
+  /// (`_liveness`, `_liveness_detail`). Empty on a database before 0288.
+  Future<Map<String, Map<String, dynamic>>> documentFaceChecks(String kind, Iterable<String> ids) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return const {};
+    try {
+      final rows = List<Map<String, dynamic>>.from(
+        await _db.from('document_face_checks').select().eq('doc_kind', kind).inFilter('doc_id', list),
+      );
+      final selfies = {for (final r in rows) '${r['selfie_url'] ?? ''}'}..remove('');
+      final live = <String, Map<String, dynamic>>{};
+      if (selfies.isNotEmpty) {
+        for (final c in List<Map<String, dynamic>>.from(await _db
+            .from('identity_checks')
+            .select('file_url, liveness, liveness_detail')
+            .inFilter('file_url', selfies.toList()))) {
+          live['${c['file_url']}'] = c;
+        }
+      }
+      return {
+        for (final r in rows)
+          '${r['doc_id']}': {
+            ...r,
+            '_liveness': live['${r['selfie_url']}']?['liveness'],
+            '_liveness_detail': live['${r['selfie_url']}']?['liveness_detail'],
+          },
+      };
+    } catch (_) {
+      return const {};
+    }
+  }
+
   /// Whose documents these are: partner names (by partner id) and, for
   /// vehicle documents, plates (by vehicle id). One query per kind.
   Future<({Map<String, Map<String, dynamic>> partners, Map<String, Map<String, dynamic>> vehicles})> documentOwners(

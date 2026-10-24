@@ -3,8 +3,11 @@ import { assert, assertEquals } from "jsr:@std/assert@1.0.19";
 import {
   base64,
   type CheckRow,
+  type DocumentFaceDeps,
+  documentRequest,
   type FaceCompareDeps,
   faceSetting,
+  handleDocumentFaceCompare,
   handleFaceCompare,
   providerPlan,
   readCompare,
@@ -222,4 +225,67 @@ Deno.test("self-hosted without its key: not set up", async () => {
   const x = counting("self_hosted", { apiProviders: () => Promise.resolve(providers.slice(0, 1)) });
   assertEquals((await handleFaceCompare({ check_id: ID }, "Bearer admin", x.d)).body.reason, "no_server");
   assertEquals(x.calls, []);
+});
+
+// ---- 0288: one document against the live selfie ---------------------------------------------------
+
+const DOC = "00000000-0000-0000-0000-000000000288";
+function docDeps(over: Partial<DocumentFaceDeps> = {}) {
+  const stored: string[] = [];
+  const d: DocumentFaceDeps = {
+    webhookSecretOk: (s) => Promise.resolve(s === "db-secret"),
+    canReview: (a) => Promise.resolve(a === "Bearer admin" ? true : a === "Bearer rider" ? false : null),
+    source: (_k, id) =>
+      Promise.resolve(id === DOC
+        ? { user_id: "u1", file_url: `${URL}/u1/id_1.jpg`, selfie_url: `${URL}/u1/signin/selfie_1.jpg` }
+        : null),
+    apiProviders: () => Promise.resolve(providers),
+    verifySettings: () => Promise.resolve(null),
+    download: () => Promise.resolve(new Uint8Array([1, 2, 3])),
+    compare: () => Promise.resolve({ status: 200, body: { FaceMatches: [{ Similarity: 41.5 }] } }),
+    compareSelfHosted: () => Promise.resolve({ status: 200, body: { similarity: 0.9 } }),
+    store: (kind, id, state, score, provider, reason) => {
+      stored.push(`${kind} ${id} ${state} ${score} ${provider} ${reason}`);
+      return Promise.resolve();
+    },
+    ...over,
+  };
+  return { d, stored };
+}
+const body = (kind = "national_id", id = DOC) => ({ document: { kind, id } });
+
+Deno.test("document: the request names a known kind and a row id", () => {
+  assertEquals(documentRequest(body()), { kind: "national_id", id: DOC });
+  assertEquals(documentRequest(body("selfie")), null);
+  assertEquals(documentRequest(body("national_id", "x")), null);
+  assertEquals(documentRequest(null), null);
+});
+
+Deno.test("document: only the database's secret or an admin may ask", async () => {
+  const { d } = docDeps();
+  assertEquals((await handleDocumentFaceCompare(body(), { authorization: null, secret: null }, d)).status, 401);
+  assertEquals((await handleDocumentFaceCompare(body(), { authorization: "Bearer rider", secret: null }, d)).status, 403);
+  assertEquals((await handleDocumentFaceCompare(body(), { authorization: null, secret: "wrong" }, d)).status, 403);
+  assertEquals((await handleDocumentFaceCompare(body(), { authorization: "Bearer admin", secret: null }, d)).status, 200);
+  assertEquals((await handleDocumentFaceCompare(body("national_id", "00000000-0000-0000-0000-000000000000"),
+    { authorization: null, secret: "db-secret" }, d)).status, 404);
+});
+
+Deno.test("document: the score is kept per document", async () => {
+  const { d, stored } = docDeps();
+  const r = await handleDocumentFaceCompare(body("provider_document"), { authorization: null, secret: "db-secret" }, d);
+  assertEquals(r.body, { state: "no_match", score: 41.5, provider: "aws" });
+  assertEquals(stored, [`provider_document ${DOC} no_match 41.5 aws null`]);
+});
+
+Deno.test("document: no live selfie, or no provider, is not checked", async () => {
+  const none = docDeps({
+    source: () => Promise.resolve({ user_id: "u1", file_url: `${URL}/u1/id_1.jpg`, selfie_url: null }),
+  });
+  const r = await handleDocumentFaceCompare(body(), { authorization: null, secret: "db-secret" }, none.d);
+  assertEquals(r.body, { state: "not_checked", score: null, reason: "no_live_selfie" });
+  const off = docDeps({ verifySettings: () => Promise.resolve({ faceProvider: "off" }) });
+  const o = await handleDocumentFaceCompare(body("driver_permit"), { authorization: null, secret: "db-secret" }, off.d);
+  assertEquals(o.body, { state: "not_checked", score: null, reason: "off" });
+  assert(off.stored[0].startsWith("driver_permit"));
 });

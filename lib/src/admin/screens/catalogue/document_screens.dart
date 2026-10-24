@@ -548,6 +548,16 @@ class _RequiredDocEditorState extends State<_RequiredDocEditor> {
             value: f.isTaxiPermit,
             onChanged: (x) => setState(() => f.isTaxiPermit = x),
           ),
+          SwitchListTile(
+            key: const ValueKey('required-doc-has-photo'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text("Has the person's photo"),
+            subtitle: const Text(
+                'Licences, permits and IDs with the holder\'s photo. The upload is matched against the person\'s live '
+                'selfie (taken first on a phone); a low match marks the application "Needs a closer look".'),
+            value: f.effectiveHasPhoto,
+            onChanged: (x) => setState(() => f.hasPhoto = x),
+          ),
           const Divider(),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,

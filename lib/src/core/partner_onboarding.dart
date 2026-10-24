@@ -1,68 +1,121 @@
-// Partner onboarding rules, ported from the Expo app's
-// `utils/partnerOnboardingStore.ts` and `app/partner-onboarding.tsx`.
+// Partner onboarding rules, first ported from the Expo app's
+// `utils/partnerOnboardingStore.ts`, reworked for the registration order of
+// 0288 (core/partner_registration.dart):
 //
-// Someone becomes a partner in six steps: profile photo, ID number, address,
-// service area, partner type, and the required documents. Each step is
-// "done" when its value is stored, on the partner row or (for the photo, ID
-// and address) on the profile, so a returning partner resumes at the first
-// step that is still missing, and nothing is asked twice.
+//   profile photo (only when missing) -> service area -> Partner Service
+//   type -> National ID -> Check your details -> Your company -> Driver
+//   permit -> Register vehicle -> Vehicle documents -> Service documents ->
+//   Pending admin approval,
+//
+// each optional step only when the picked services need it there. A step is
+// "done" when what it keeps is stored (the photo, the area, the types, the
+// ID on the profile) or confirmed (`partners.registration_steps`), so a
+// returning partner, also one part-way through the old order, resumes at the
+// first step still missing in this one, and nothing is asked twice. An
+// application already sent (documents_ok) is done.
 //
 // The required-document rules themselves are shared with the admin panel
 // (`resolveRequiredDocs` in people_logic.dart).
 import '../admin/screens/people/people_logic.dart';
+import 'partner_registration.dart';
 import 'partner_type_rules.dart' show permitRequirements;
 import 'vehicle_onboarding.dart';
 
 enum OnboardingStep {
   avatar('avatar', 'Profile photo'),
-  id('id', 'ID number'),
-  address('address', 'Address'),
   serviceArea('service-area', 'Service area'),
   partnerType('partner-type', 'Partner Service type'),
-  requirements('requirements', 'Documents'),
-  done('done', 'Submitted');
+  id('id', 'National ID'),
+  details('details', 'Check your details'),
+  company('company', 'Your company'),
+  driverPermit('driver-permit', 'Driver permit'),
+  vehicle('vehicle', 'Register vehicle'),
+  vehicleDocs('vehicle-documents', 'Vehicle documents'),
+  requirements('requirements', 'Service documents'),
+  done('done', 'Pending admin approval');
 
   const OnboardingStep(this.key, this.label);
 
-  /// The value stored in `partners.onboarding_step` (the Expo keys).
+  /// The value stored in `partners.onboarding_step`.
   final String key;
   final String label;
 
-  /// The steps a partner fills in, in order (without [done]).
-  static const wizard = [avatar, id, address, serviceArea, partnerType, requirements];
+  /// Every step a partner may fill in, in order (without [done]).
+  static const wizard = [
+    avatar,
+    serviceArea,
+    partnerType,
+    id,
+    details,
+    company,
+    driverPermit,
+    vehicle,
+    vehicleDocs,
+    requirements,
+  ];
+
+  /// The steps this partner fills in: the optional ones only when [needs]
+  /// says so; without [includePhoto] (a photo already taken when the form
+  /// opened) the photo step is left out.
+  static List<OnboardingStep> stepsFor(RegistrationNeeds needs, {bool includePhoto = true}) => [
+        if (includePhoto) avatar,
+        serviceArea,
+        partnerType,
+        id,
+        details,
+        if (needs.company) company,
+        if (needs.driverPermit) driverPermit,
+        if (needs.vehicle) ...[vehicle, vehicleDocs],
+        requirements,
+      ];
 }
 
 String _text(Object? v) => '${v ?? ''}'.trim();
 
 int _len(Object? v) => v is List ? v.length : 0;
 
-/// The first step still missing (Expo `computeFirstStep`). [profile] is the
-/// `profiles` row and [partner] the `partners` row; either may be null.
-OnboardingStep firstIncompleteStep(Map<String, dynamic>? profile, Map<String, dynamic>? partner) {
-  final avatar = [partner?['avatar_url'], profile?['avatar_url'], profile?['profile_image']].map(_text);
-  if (avatar.every((s) => s.isEmpty)) return OnboardingStep.avatar;
-  if (_text(partner?['ic']).isEmpty && _text(profile?['ic']).isEmpty) return OnboardingStep.id;
-  if (_text(partner?['address']).isEmpty && _text(profile?['address']).isEmpty) return OnboardingStep.address;
+/// The first step still missing. [profile] is the `profiles` row and
+/// [partner] the `partners` row; either may be null. [needs] says which
+/// optional steps apply (by default those already confirmed); [onPhone]
+/// asks for a live-checked photo.
+OnboardingStep firstIncompleteStep(
+  Map<String, dynamic>? profile,
+  Map<String, dynamic>? partner, {
+  RegistrationNeeds? needs,
+  bool onPhone = false,
+}) {
+  if (partner?['documents_ok'] == true) return OnboardingStep.done;
+  if (!photoStepDone(profile, partner, onPhone: onPhone)) return OnboardingStep.avatar;
   if (_len(partner?['service_countries']) == 0 ||
       _len(partner?['service_states']) == 0 ||
       _len(partner?['service_cities']) == 0) {
     return OnboardingStep.serviceArea;
   }
   if (_len(partner?['partner_types']) == 0) return OnboardingStep.partnerType;
-  if (partner?['documents_ok'] != true) return OnboardingStep.requirements;
-  return OnboardingStep.done;
+  if (!idStepDone(profile)) return OnboardingStep.id;
+  final done = registrationStepsDone(partner);
+  if (!done.contains(regStepDetails)) return OnboardingStep.details;
+  final n = needs ?? RegistrationNeeds.fromConfirmed(partner);
+  if (n.company && !done.contains(regStepCompany)) return OnboardingStep.company;
+  if (n.driverPermit && !done.contains(regStepDriverPermit)) return OnboardingStep.driverPermit;
+  if (n.vehicle && !done.contains(regStepVehicle)) return OnboardingStep.vehicle;
+  if (n.vehicle && !done.contains(regStepVehicleDocs)) return OnboardingStep.vehicleDocs;
+  return OnboardingStep.requirements;
 }
 
-/// Where an unfinished application stands: "Step 3 of 6 · Address", and the
-/// share done (2 of 6 steps behind it). Null once every step is done.
+/// Where an unfinished application stands: "Step 5 of 8 · National ID", and
+/// the share done. Null once it is sent. Without the settings at hand the
+/// optional steps count as the partner has confirmed them so far.
 ({int step, int of, String label, double done})? onboardingProgress(
   Map<String, dynamic>? profile,
-  Map<String, dynamic>? partner,
-) {
-  final s = firstIncompleteStep(profile, partner);
+  Map<String, dynamic>? partner, {
+  RegistrationNeeds? needs,
+}) {
+  final s = firstIncompleteStep(profile, partner, needs: needs);
   if (s == OnboardingStep.done) return null;
-  final i = OnboardingStep.wizard.indexOf(s);
-  final of = OnboardingStep.wizard.length;
+  final steps = OnboardingStep.stepsFor(needs ?? RegistrationNeeds.fromConfirmed(partner));
+  final i = steps.indexOf(s);
+  final of = steps.length;
   return (step: i + 1, of: of, label: s.label, done: i / of);
 }
 

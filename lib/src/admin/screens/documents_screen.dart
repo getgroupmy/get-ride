@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -12,7 +13,8 @@ import '../../widgets/in_app_page.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/date_boxes.dart';
-import '../../core/signin_checks.dart' show rejectNotes;
+import '../../core/signin_checks.dart' show faceMatchText, faceNeedsCloserLook, livenessText, rejectNotes;
+import '../../data/identity_repository.dart' show identityRepositoryProvider;
 import '../widgets/reject_reason.dart';
 import 'signin_checks_review.dart';
 
@@ -28,7 +30,13 @@ final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dyn
         docs.map((d) => d['partner_id']).whereType<String>(),
         table == 'vehicle_documents' ? docs.map((d) => d['vehicle_id']).whereType<String>() : const [],
       );
-      return [for (final d in docs) withDocumentOwner(d, owners.partners, owners.vehicles)];
+      final faces = await repo.documentFaceChecks(
+        table == 'vehicle_documents' ? 'vehicle_document' : 'provider_document',
+        docs.map((d) => '${d['id']}'),
+      );
+      return [
+        for (final d in docs) {...withDocumentOwner(d, owners.partners, owners.vehicles), '_face': faces['${d['id']}']},
+      ];
     } catch (_) {
       return docs;
     }
@@ -94,6 +102,29 @@ String? documentDateError(String s) {
   return null;
 }
 
+/// A document's face match against the person's live selfie (0288), or
+/// null when the document has no photo of them.
+Map<String, dynamic>? documentFace(Map<String, dynamic> d) =>
+    d['_face'] is Map ? Map<String, dynamic>.from(d['_face'] as Map) : null;
+
+/// Whether [d]'s face match needs a closer look (low score, faces differ,
+/// no face, no live selfie).
+bool documentNeedsCloserLook(Map<String, dynamic> d) {
+  final f = documentFace(d);
+  return f != null && faceNeedsCloserLook(f['state'], f['score'], reason: f['reason']);
+}
+
+/// The face match line: "82% match · AWS", "Not checked · No live selfie yet",
+/// "Checking…" while the server works on it.
+String documentFaceText(Map<String, dynamic> f) => f['state'] == 'pending'
+    ? 'Checking the face match…'
+    : faceMatchText(f['state'], f['score'], provider: f['provider'], reason: f['reason']);
+
+/// How the selfie it was matched with was taken.
+String documentSelfieText(Map<String, dynamic> f) => f['reason'] == 'no_live_selfie' || f['selfie_url'] == null
+    ? 'No live selfie: not checked'
+    : livenessText(f['_liveness'] ?? 'passed', f['_liveness_detail']);
+
 /// Expiry wins over a non-rejected status (Expo `computeDisplayStatus`).
 String documentDisplayStatus(Map<String, dynamic> d, {DateTime? now}) {
   final status = (d['status'] as String?) ?? 'Pending Review';
@@ -107,6 +138,7 @@ const _docFilters = {
   'Approved': 'Approved',
   'Rejected': 'Rejected',
   'Expired': 'Expired',
+  'closer': 'Needs a closer look',
   'all': 'All',
 };
 
@@ -167,10 +199,30 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
           'Partner': d['_owner'] ?? d['partner_id'],
           if (_vehicle) 'Vehicle': d['_plate'] ?? d['vehicle_id'],
           'AI verified': d['ai_verified'] == null ? null : (d['ai_verified'] == true ? 'Yes' : 'No'),
+          if (documentFace(d) case final f?) ...{
+            'Face match': documentFaceText(f),
+            'Selfie': documentSelfieText(f),
+          },
           'Uploaded': dateText(d['uploaded_at']),
           'Reviewed': dateText(d['reviewed_at']),
         }),
+        if (documentNeedsCloserLook(d))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Icon(Icons.report_outlined, color: Theme.of(ctx).colorScheme.error),
+              const SizedBox(width: 8),
+              const Expanded(child: Text('Needs a closer look: compare the photo with the selfie by eye.')),
+            ]),
+          ),
         Wrap(spacing: 8, children: [
+          if (canEdit && documentFace(d) != null)
+            BusyButton.outlined(
+              key: const ValueKey('doc-face-again'),
+              icon: const Icon(Icons.face_retouching_natural),
+              child: const Text('Check again'),
+              onPressed: () => _faceAgain(ctx, d),
+            ),
           for (final (label, key) in [('View front', 'file_url'), ('View back', 'file_url_back')])
             if ((d[key] as String?)?.startsWith('http') == true)
               OutlinedButton.icon(
@@ -216,6 +268,18 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
           ]),
       ]),
     );
+  }
+
+  /// Compares the document with the person's live selfie again.
+  Future<void> _faceAgain(BuildContext sheet, Map<String, dynamic> d) async {
+    final r = await ref.read(identityRepositoryProvider).compareDocumentFace(
+          _vehicle ? 'vehicle_document' : 'provider_document',
+          '${d['id']}',
+        );
+    if (!sheet.mounted) return;
+    ref.invalidate(adminDocsProvider(_table));
+    // Not awaited: the button stops spinning while the answer is read.
+    unawaited(showNotice(sheet, title: 'Face match', message: documentFaceText(r)));
   }
 
   Future<void> _editDetails(BuildContext sheet, Map<String, dynamic> d) async {
@@ -400,18 +464,31 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
             data: (docs) {
               final q = _query.trim().toLowerCase();
               final list = docs.where((d) {
+                if (_filter == 'closer') return documentNeedsCloserLook(d) && documentMatches(d, q);
                 if (_filter != 'all' && documentDisplayStatus(d) != _filter) return false;
                 return documentMatches(d, q);
               }).toList();
+              // A low face match first, whatever the filter (stable: newest
+              // first within each).
+              final ordered = [
+                ...list.where(documentNeedsCloserLook),
+                ...list.where((d) => !documentNeedsCloserLook(d)),
+              ];
               if (list.isEmpty) return const EmptyState(icon: Icons.task_alt, title: 'Nothing to show');
               return ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: list.length,
+                itemCount: ordered.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (_, i) {
-                  final d = list[i];
+                  final d = ordered[i];
+                  final face = documentFace(d);
+                  final closer = documentNeedsCloserLook(d);
                   return ListTile(
-                    leading: const Icon(Icons.description_outlined),
+                    key: ValueKey('doc-row-${d['id']}'),
+                    leading: Icon(
+                      closer ? Icons.report_outlined : Icons.description_outlined,
+                      color: closer ? Theme.of(context).colorScheme.error : null,
+                    ),
                     title: Text((d['doc_name'] as String?) ?? 'Document'),
                     subtitle: Text([
                       d['_owner'],
@@ -419,7 +496,9 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
                       d['document_number'],
                       if (d['expiry_date'] != null) 'expires ${formatStoredDateForUser(d['expiry_date'])}',
                       dateText(d['uploaded_at']),
-                    ].whereType<String>().where((s) => s.isNotEmpty).join(' · ')),
+                    ].whereType<String>().where((s) => s.isNotEmpty).join(' · ') +
+                        (face == null ? '' : '\nFace: ${documentFaceText(face)}')),
+                    isThreeLine: face != null,
                     trailing: StatusChip(documentDisplayStatus(d)),
                     onTap: () => _open(d),
                   );

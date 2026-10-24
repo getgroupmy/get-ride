@@ -625,7 +625,7 @@ void _batch2() {
         'service_cities': ['KL'],
       },
     )!;
-    expect('Step ${p.step} of ${p.of} · ${p.label}', 'Step 5 of 6 · Partner Service type');
+    expect('Step ${p.step} of ${p.of} · ${p.label}', 'Step 3 of 6 · Partner Service type');
   });
 
   test("the driver menu keeps an approved driver's pages until approval", () {
