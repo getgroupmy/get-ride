@@ -167,10 +167,11 @@ select pg_temp.check((select address from public.partners where auth_user_id = '
   'an application part-way through is still saved');
 
 -- 6. Driver open again: the application may start --------------------------------------------------
--- Inserted as the passenger (authenticated), with the my_ride_code default:
--- gen_my_ride_code is granted to the apps in 0287.
-select pg_temp.check(has_function_privilege('authenticated', 'public.gen_my_ride_code()', 'execute'),
-  'the apps may run the my_ride_code default');
+-- Inserted as the passenger (authenticated), with the my_ride_code default
+-- (partner_new_my_ride_code, 0287); the generator stays closed to the apps.
+select pg_temp.check(not has_function_privilege('authenticated', 'public.gen_my_ride_code()', 'execute')
+                     and has_function_privilege('authenticated', 'public.partner_new_my_ride_code()', 'execute'),
+  'the apps get a my_ride_code for a new row without running the generator');
 select pg_temp.set_switches('{"driverRegistrationEnabled": true}');
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000287c1');

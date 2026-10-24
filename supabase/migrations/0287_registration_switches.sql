@@ -254,10 +254,44 @@ comment on function public.before_user_created_hook(jsonb) is
   'Supabase Auth Before User Created hook (0287): refuses a phone sign-up while passenger and driver sign-up are both closed, so no SMS code is sent.';
 
 -- Partner applications: partners.my_ride_code defaults to gen_my_ride_code()
--- (0160), which runs as the user inserting their own application row. It was
--- revoked from authenticated, so no new partner row could be created from the
--- app. It is a pure code generator that reads no data.
-grant execute on function public.gen_my_ride_code() to authenticated;
+-- (0160), and its guard trigger calls it too. Both run as the user inserting
+-- their own application row, and gen_my_ride_code is not the apps' to run, so
+-- no partner row could be created from the app. A definer wrapper makes the
+-- code for a new row; the generator itself stays closed to the apps.
+create or replace function public.partner_new_my_ride_code()
+returns text
+language sql
+volatile
+security definer
+set search_path = ''
+as $$ select public.gen_my_ride_code() $$;
+revoke execute on function public.partner_new_my_ride_code() from public, anon;
+grant execute on function public.partner_new_my_ride_code() to authenticated, service_role;
+
+alter table public.partners alter column my_ride_code set default public.partner_new_my_ride_code();
+
+create or replace function public.partners_my_ride_code_guard()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if current_user in ('anon', 'authenticated') and not public.caller_is_admin() then
+    if tg_op = 'INSERT' then
+      new.my_ride_code := public.partner_new_my_ride_code();
+    else
+      new.my_ride_code := old.my_ride_code;
+    end if;
+  end if;
+  if new.my_ride_code is null then
+    new.my_ride_code := coalesce(case when tg_op = 'UPDATE' then old.my_ride_code end, public.partner_new_my_ride_code());
+  else
+    new.my_ride_code := upper(btrim(new.my_ride_code));
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.partners_my_ride_code_guard() from public, anon, authenticated;
 
 notify pgrst, 'reload schema';
 insert into supabase_migrations.schema_migrations (version, name) values ('20261024170000', '0287_registration_switches') on conflict do nothing;
