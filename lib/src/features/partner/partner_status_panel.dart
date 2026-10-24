@@ -15,6 +15,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import 'changes_needed.dart';
 
 class PartnerStatusPanel extends ConsumerWidget {
   const PartnerStatusPanel({super.key, required this.partner, required this.onOpenApplication});
@@ -54,9 +55,9 @@ class PartnerStatusPanel extends ConsumerWidget {
     try {
       await ref.read(partnerOnboardingRepositoryProvider).requestReview();
       ref.invalidate(partnerProvider);
-      if (context.mounted) showInfo(context, 'Sent. An admin will review your application again.');
+      if (context.mounted) await showNotice(context, message: 'Sent. An admin will review your application again.');
     } catch (e) {
-      if (context.mounted) showError(context, e);
+      if (context.mounted) await showErrorNotice(context, e);
     }
   }
 
@@ -64,6 +65,8 @@ class PartnerStatusPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final v = partnerStatusView(partner.raw);
+    // Sent back line by line (0289): the lines and their fixes.
+    if (v.kind == PartnerStatusKind.changesNeeded) return ChangesNeededPanel(partner: partner);
     final danger = v.kind == PartnerStatusKind.rejected || v.kind == PartnerStatusKind.blocked;
     final support = OutlinedButton.icon(
       key: const ValueKey('partner-status-support'),

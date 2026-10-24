@@ -102,6 +102,8 @@ const partnerFilters = {
   'approved': 'Approved',
   'unapproved': 'Unapproved',
   'unapproved-docs': 'Docs incomplete',
+  // Sent back to the driver from Review application (0289).
+  'changes-needed': 'Changes needed',
   'permit-pending': 'Permit pending',
   'permit-non-verified': 'Permit not verified',
   'permit-verified': 'Permit verified',

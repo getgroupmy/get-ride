@@ -603,6 +603,15 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
                   const SizedBox(height: 8),
                   Wrap(spacing: 6, runSpacing: 6, children: [for (final t in _types) Chip(label: Text(capitaliseName(t)))]),
                   Text([p['phone'], p['email'], if (p['ic'] != null) 'IC ${p['ic']}'].whereType<Object>().join(' • ')),
+                  const SizedBox(height: 8),
+                  // Every detail and document as a line to approve, reject
+                  // or edit (0289).
+                  OutlinedButton.icon(
+                    key: const ValueKey('partner-edit-review'),
+                    icon: const Icon(Icons.rule),
+                    label: Text(p['status'] == 'changes-needed' ? 'Review application (with the driver)' : 'Review application'),
+                    onPressed: () => context.push('/admin/m/partner-review?id=${p['id']}'),
+                  ),
                 ]),
               ),
             ),

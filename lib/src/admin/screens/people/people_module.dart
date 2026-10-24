@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin_registry.dart';
+import 'partner_review_screen.dart';
 import 'partner_screens.dart';
 import 'user_screens.dart';
 import 'vehicle_permits_screen.dart';
@@ -15,6 +16,7 @@ final peopleRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/user-id-documents', builder: (_, _) => const UserIdDocumentsScreen()),
   GoRoute(path: '/admin/m/partner-add', builder: (_, _) => const PartnerAddScreen()),
   GoRoute(path: '/admin/m/partner-edit', builder: (_, s) => PartnerEditScreen(id: _id(s))),
+  GoRoute(path: '/admin/m/partner-review', builder: (_, s) => PartnerReviewScreen(id: _id(s))),
   GoRoute(path: '/admin/m/vehicle-add', builder: (_, _) => const VehicleAddScreen()),
   GoRoute(path: '/admin/m/vehicle-edit', builder: (_, s) => VehicleEditScreen(id: _id(s))),
   GoRoute(
@@ -75,6 +77,15 @@ const peopleEntries = <AdminScreenEntry>[
     path: '/admin/m/partner-edit',
     pages: ['admin-partner-edit'],
     icon: Icons.badge,
+    listed: false,
+  ),
+  AdminScreenEntry(
+    section: 'People',
+    title: 'Review application',
+    subtitle: 'Approve, reject or edit each detail and document, then send back or approve',
+    path: '/admin/m/partner-review',
+    pages: [PartnerReviewScreen.page],
+    icon: Icons.rule,
     listed: false,
   ),
   AdminScreenEntry(

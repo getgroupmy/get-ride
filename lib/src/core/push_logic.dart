@@ -187,6 +187,13 @@ String? pushRouteFor(Map<String, dynamic> data) {
       // An approval decision on the partner account or one of its documents
       // (migration 0127): the Drive tab shows where onboarding stands.
       return '/drive';
+    case 'partner_review':
+      // A driver sent back the changes an admin asked for (0289): to the
+      // admin, that application's review.
+      final partner = data['partner_id'];
+      return partner is String && partner.isNotEmpty
+          ? '/admin/m/partner-review?id=${Uri.encodeComponent(partner)}'
+          : '/admin/partners';
     case 'vehicle_status':
       final vehicle = data['vehicle_id'];
       return vehicle is String && vehicle.isNotEmpty ? '/drive/vehicles/${Uri.encodeComponent(vehicle)}' : '/drive';

@@ -295,6 +295,15 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         _viewing = stayOn;
       });
       ref.invalidate(partnerProvider);
+      // A fix from "Changes needed" (0289): once the step is saved, back to
+      // the list of what the admin asked for.
+      if (widget.startAt != null && stayOn == null && '${next.partner['status']}' == 'changes-needed') {
+        if (context.canPop()) {
+          context.pop();
+        } else {
+          context.go('/drive');
+        }
+      }
       return true;
     } catch (e) {
       if (mounted) await showErrorNotice(context, e);
@@ -691,10 +700,20 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, spacing: 6, children: [
             Icon(Icons.hourglass_top, size: 30, color: t.colorScheme.primary),
-            Text(status == 'unapproved' ? 'Pending admin approval' : 'Application submitted', style: t.textTheme.titleLarge),
-            Text(status == 'unapproved'
-                ? 'An admin is checking your ID, documents${hasVehicle ? ' and vehicle' : ''}. We will notify you when it is done.'
-                : 'Account status: $status.'),
+            Text(
+              switch (status) {
+                'unapproved' => 'Pending admin approval',
+                'changes-needed' => 'Changes needed',
+                _ => 'Application submitted',
+              },
+              style: t.textTheme.titleLarge,
+            ),
+            Text(switch (status) {
+              'unapproved' =>
+                'An admin is checking your ID, documents${hasVehicle ? ' and vehicle' : ''}. We will notify you when it is done.',
+              'changes-needed' => 'An admin asked for some changes. Go back to Drive to see each one and fix it.',
+              _ => 'Account status: $status.',
+            }),
           ]),
         ),
       ),
