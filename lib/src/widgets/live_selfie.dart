@@ -1,10 +1,13 @@
 // Every selfie in the app (0281): the front camera, and while it is open the
 // person blinks or turns their head, checked on the phone by its face
-// detector (core/liveness.dart, live_selfie/on_device.dart). Where there is no
+// detector (core/liveness.dart, live_selfie/on_device.dart). On a phone
+// (Android, iOS) with a camera the photo is only taken once that check
+// passes: no shutter without it and no photo from a file. If the check can't
+// start there, a modal says so and offers to try again. Where there is no
 // detector (the web, desktops) the photo is taken plain and recorded as
 // 'not_checked'; with no camera at all, a photo is chosen from a file, also
-// 'not_checked'. Sign-up, Edit profile, partner sign-up and the dispatch
-// sign-in steps all take their selfie here; the admin sees how it was taken.
+// 'not_checked'; the admin sees both. Sign-up, Edit profile, partner
+// registration and the dispatch sign-in steps all take their selfie here.
 import 'dart:async';
 
 import 'package:camera/camera.dart';
@@ -51,12 +54,16 @@ Future<LiveSelfie?> takeLiveAvatar(BuildContext context) async {
   return LiveSelfie(bytes: square.bytes, name: square.name, liveness: s.liveness, detail: s.detail);
 }
 
-/// After this long without the check passing, the photo may be taken
-/// without it (recorded as not checked).
+/// After this long without the check passing, a tip on how to pass it.
+/// There is no way round the check on a phone.
 const liveSelfieGiveUpAfter = Duration(seconds: 25);
 
+/// Whether this is a phone, where the live check is required.
+bool get liveSelfieOnPhone =>
+    !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
+
 class LiveSelfieScreen extends StatefulWidget {
-  const LiveSelfieScreen({super.key, this.cameras, this.pickFile, this.challenge});
+  const LiveSelfieScreen({super.key, this.cameras, this.pickFile, this.challenge, this.onPhone, this.openFaces});
 
   /// The cameras (overridden in tests); the phone's by default.
   final Future<List<CameraDescription>> Function()? cameras;
@@ -67,11 +74,17 @@ class LiveSelfieScreen extends StatefulWidget {
   /// What to ask (random by default).
   final LiveChallenge? challenge;
 
+  /// Whether the live check is required (a phone; overridden in tests).
+  final bool? onPhone;
+
+  /// The face detector (overridden in tests); the phone's by default.
+  final FrameFaces? Function()? openFaces;
+
   @override
   State<LiveSelfieScreen> createState() => _LiveSelfieScreenState();
 }
 
-enum _Mode { starting, live, plain, noCamera }
+enum _Mode { starting, live, plain, noCamera, checkFailed }
 
 class _LiveSelfieScreenState extends State<LiveSelfieScreen> {
   CameraController? _cam;
@@ -91,7 +104,15 @@ class _LiveSelfieScreenState extends State<LiveSelfieScreen> {
     _start();
   }
 
+  bool get _phone => widget.onPhone ?? liveSelfieOnPhone;
+
   Future<void> _start() async {
+    if (_mode != _Mode.starting) {
+      setState(() {
+        _mode = _Mode.starting;
+        _error = null;
+      });
+    }
     List<CameraDescription> cams;
     try {
       cams = await (widget.cameras ?? availableCameras)();
@@ -101,7 +122,8 @@ class _LiveSelfieScreenState extends State<LiveSelfieScreen> {
     if (!mounted) return;
     if (cams.isEmpty) return setState(() => _mode = _Mode.noCamera);
     final front = cams.where((c) => c.lensDirection == CameraLensDirection.front).firstOrNull ?? cams.first;
-    final faces = openFrameFaces();
+    final faces = (widget.openFaces ?? openFrameFaces)();
+    if (faces == null && _phone) return _checkFailed();
     final cam = CameraController(
       front,
       ResolutionPreset.medium,
@@ -113,6 +135,8 @@ class _LiveSelfieScreenState extends State<LiveSelfieScreen> {
     } catch (_) {
       await cam.dispose();
       await faces?.close();
+      // A phone has a camera: the check is what failed to start.
+      if (_phone) return _checkFailed();
       if (mounted) setState(() => _mode = _Mode.noCamera);
       return;
     }
@@ -136,7 +160,46 @@ class _LiveSelfieScreenState extends State<LiveSelfieScreen> {
         _faces = null;
       }
     }
+    if (_phone) {
+      _cam = null;
+      await cam.dispose();
+      return _checkFailed();
+    }
     setState(() => _mode = _Mode.plain);
+  }
+
+  /// On a phone the check couldn't start: a modal says so, with Try again.
+  Future<void> _checkFailed() async {
+    if (!mounted) return;
+    setState(() => _mode = _Mode.checkFailed);
+    final retry = await showAppDialog<bool>(
+      id: 'selfie.check-failed',
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => AlertDialog(
+        key: const ValueKey('selfie-check-failed'),
+        icon: const Icon(Icons.face_retouching_off),
+        title: const Text("The face check couldn't start"),
+        content: const Text(
+          'The selfie is taken once you blink or turn your head, checked on this phone. Close other apps '
+          'using the camera, allow camera access for GET.ride, then try again.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('selfie-check-retry'),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Try again'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    if (retry == true) {
+      await _start();
+    } else {
+      Navigator.of(context).maybePop();
+    }
   }
 
   /// A few frames a second to the detector, one at a time.
@@ -214,6 +277,7 @@ class _LiveSelfieScreenState extends State<LiveSelfieScreen> {
       _Mode.live => _taking ? 'Hold still' : _tracker.text,
       _Mode.plain => 'Look at the camera, then take the photo',
       _Mode.noCamera => "This device has no camera we can use. Choose a clear photo of your face.",
+      _Mode.checkFailed => "The face check couldn't start.",
     };
     return Scaffold(
       appBar: AppBar(title: const Text('Take a selfie')),
@@ -282,11 +346,20 @@ class _LiveSelfieScreenState extends State<LiveSelfieScreen> {
                       icon: const Icon(Icons.photo_camera_outlined),
                       label: const Text('Take photo'),
                     ),
+                  // No way round the check on a phone: a tip instead.
                   if (_mode == _Mode.live && _giveUp)
-                    TextButton(
-                      key: const ValueKey('selfie-take-anyway'),
-                      onPressed: _taking ? null : () => _take(live: false),
-                      child: const Text('Take it without the check'),
+                    Text(
+                      'Face the light, hold the phone at eye level and keep your whole face in the frame.',
+                      key: const ValueKey('selfie-tip'),
+                      textAlign: TextAlign.center,
+                      style: t.textTheme.bodyMedium,
+                    ),
+                  if (_mode == _Mode.checkFailed)
+                    FilledButton.icon(
+                      key: const ValueKey('selfie-retry'),
+                      onPressed: _start,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Try again'),
                     ),
                   if (_mode == _Mode.noCamera)
                     FilledButton.icon(

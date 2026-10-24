@@ -82,6 +82,20 @@ void main() {
 
     test('the Partner Service type comes first', () {
       expect(ineligibleReason(_svc('Teksi', partnerOk: false, permitMissing: true), own: own), 'Not in your Partner Service type');
+      // 0288: paused for this car, with the server's reason.
+      final paused = ServiceFacts.fromJson(const {
+        'id': 'p',
+        'name': 'Premium',
+        'vehicle_block': {'status': 'paused_age', 'type': 'eHailing', 'max_age_years': 15},
+      });
+      expect(ineligibleReason(paused, own: own), 'eHailing paused: vehicle over the 15-year limit');
+      final waiting = ServiceFacts.fromJson(const {
+        'id': 'p',
+        'name': 'Premium',
+        'vehicle_block': {'status': 'waiting_permit', 'type': 'eHailing', 'permit_name': 'EVP'},
+      });
+      expect(ineligibleReason(waiting, own: own), 'eHailing waiting for the vehicle permit');
+      expect(ServiceFacts.fromJson(const {'id': 'r', 'name': 'Ride', 'vehicle_block': null}).vehicleBlock, isNull);
     });
 
     test('seats and class only while the service order applies to every booking', () {

@@ -215,3 +215,121 @@ export async function handleFaceCompare(input: unknown, authorization: string | 
     return { status: 503, body: { error: "unavailable" } };
   }
 }
+
+// ---- One document against the live selfie (migration 0288) ---------------------------------------
+//
+// Every document with the person's photo on it (the National ID, the Kad
+// Pemandu, Required Documents marked "Has the person's photo") is compared
+// with their newest live selfie when it is added: the database asks
+// (document_face_check_kick, x-push-secret) and an admin may ask again.
+// The score is kept per document (document_face_check_store); a low one
+// marks the partner "Needs a closer look". Never a decision.
+//
+// Request:  POST { document: { kind, id } }
+// Response: 200 { state, score?, provider?, reason?, detail? }
+//           400 bad_request · 401 not_signed_in · 403 not_authorized
+//           404 not_found · 503 unavailable
+
+export const DOCUMENT_KINDS = ["national_id", "driver_permit", "provider_document", "vehicle_document"] as const;
+export type DocumentKind = typeof DOCUMENT_KINDS[number];
+
+/** Admin pages that may ask again: the Documents pages and the partner's. */
+export const DOCUMENT_FACE_PAGES = [...DOCUMENT_PAGES, "admin-partners", "admin-partner-edit"];
+
+export interface DocumentSource {
+  user_id: string;
+  file_url: string | null;
+  selfie_url: string | null;
+}
+
+export interface DocumentFaceDeps {
+  /** Whether the x-push-secret header is the database's webhook secret. */
+  webhookSecretOk(secret: string): Promise<boolean>;
+  /** Whether the caller's token is an admin who may ask; null when not signed in. */
+  canReview(authorization: string | null): Promise<boolean | null>;
+  source(kind: DocumentKind, id: string): Promise<DocumentSource | null>;
+  apiProviders(): Promise<unknown>;
+  verifySettings(): Promise<unknown>;
+  download(bucket: string, path: string): Promise<Uint8Array | null>;
+  compare(key: AwsKey, source: Uint8Array, target: Uint8Array): Promise<{ status: number; body: unknown }>;
+  compareSelfHosted(server: FaceServer, selfie: Uint8Array, card: Uint8Array): Promise<{ status: number; body: unknown }>;
+  store(
+    kind: DocumentKind,
+    id: string,
+    state: FaceState,
+    score: number | null,
+    provider: FaceProvider | null,
+    reason: string | null,
+    selfieUrl: string | null,
+  ): Promise<void>;
+}
+
+export function documentRequest(input: unknown): { kind: DocumentKind; id: string } | null {
+  const d = (input as { document?: { kind?: unknown; id?: unknown } } | null)?.document;
+  if (!d || typeof d.kind !== "string" || typeof d.id !== "string") return null;
+  if (!(DOCUMENT_KINDS as readonly string[]).includes(d.kind)) return null;
+  if (!/^[0-9a-f-]{36}$/i.test(d.id)) return null;
+  return { kind: d.kind as DocumentKind, id: d.id };
+}
+
+export async function handleDocumentFaceCompare(
+  input: unknown,
+  headers: { authorization: string | null; secret: string | null },
+  deps: DocumentFaceDeps,
+): Promise<Result> {
+  const req = documentRequest(input);
+  if (!req) return { status: 400, body: { error: "bad_request" } };
+  try {
+    const secret = (headers.secret ?? "").trim();
+    let allowed = secret ? await deps.webhookSecretOk(secret) : false;
+    if (!allowed) {
+      const admin = await deps.canReview(headers.authorization);
+      if (admin === null && !secret) return { status: 401, body: { error: "not_signed_in" } };
+      allowed = admin === true;
+    }
+    if (!allowed) return { status: 403, body: { error: "not_authorized" } };
+    const src = await deps.source(req.kind, req.id);
+    if (!src) return { status: 404, body: { error: "not_found" } };
+    const done = async (state: FaceState, score: number | null, provider: FaceProvider | null, reason: string | null) => {
+      await deps.store(req.kind, req.id, state, score, provider, reason, src.selfie_url);
+      return {
+        status: 200,
+        body: { state, score, ...(provider ? { provider } : {}), ...(reason ? { reason } : {}) },
+      };
+    };
+    if (!src.selfie_url) return await done("not_checked", null, null, "no_live_selfie");
+    const [apiProviders, verify] = await Promise.all([deps.apiProviders(), deps.verifySettings()]);
+    const key = rekognitionKey(apiProviders);
+    const server = faceServerKey(apiProviders);
+    const plan = providerPlan(faceSetting(verify), key !== null, server !== null);
+    if (plan.reason) return await done("not_checked", null, null, plan.reason);
+    const a = storageObject(src.selfie_url), b = storageObject(src.file_url);
+    const [selfie, card] = await Promise.all([
+      a ? deps.download(a.bucket, a.path) : null,
+      b ? deps.download(b.bucket, b.path) : null,
+    ]);
+    if (!selfie || !card) return await done("not_checked", null, null, "no_photo");
+    if (selfie.length > MAX_IMAGE_BYTES || card.length > MAX_IMAGE_BYTES) {
+      return await done("not_checked", null, null, "too_big");
+    }
+    let r: { state: FaceState; score: number | null; detail?: string } = { state: "error", score: null };
+    let used: FaceProvider = plan.order[0];
+    for (const provider of plan.order) {
+      used = provider;
+      if (provider === "self_hosted") {
+        const answer = await deps.compareSelfHosted(server!, selfie, card)
+          .then((x) => readServerCompare(x.status, x.body))
+          .catch(() => ({ state: "error" as const, score: null, failed: true, detail: "Self-hosted server: no answer" }));
+        r = { state: answer.state, score: answer.score, ...(answer.detail ? { detail: answer.detail } : {}) };
+        if (answer.failed) continue;
+        break;
+      }
+      const answer = await deps.compare(key!, selfie, card);
+      r = readCompare(answer.status, answer.body);
+      break;
+    }
+    return await done(r.state, r.score, used, r.state === "error" ? (r.detail ?? "error") : null);
+  } catch {
+    return { status: 503, body: { error: "unavailable" } };
+  }
+}

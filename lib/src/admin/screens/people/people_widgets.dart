@@ -23,6 +23,7 @@ import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
 import '../../../widgets/chip_button.dart';
 import '../../../widgets/date_boxes.dart';
+import '../../../widgets/live_selfie_gate.dart';
 
 /// Wide screens get a two-column form, phones one column.
 class FormColumns extends StatelessWidget {
@@ -929,6 +930,12 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
     if (err != null) return showError(context, err);
     // The date boxes say under themselves what is wrong (an expired date).
     if (_form.currentState?.validate() == false) return;
+    // A document with the person's photo, sent by the person: a live selfie
+    // first, on a phone (0288). An admin's upload for them isn't held.
+    if (f.hasPhoto && widget.authUserId != null) {
+      final ok = await ref.read(liveSelfieGateProvider)(context);
+      if (!ok || !mounted) return;
+    }
     setState(() => _busy = true);
     final repo = ref.read(peopleRepositoryProvider);
     final ok = await runAdminAction(context, () async {

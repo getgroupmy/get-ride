@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/account_deletion.dart';
 import '../../core/auth_utils.dart' show capitaliseName;
+import '../../core/partner_registration.dart' show closerLookReasonText;
 import '../../core/partner_status.dart';
 import '../../data/account_deletion_repository.dart';
 import '../../widgets/busy.dart';
@@ -39,10 +40,18 @@ final adminUsersProvider = FutureProvider.autoDispose.family<RowsPage, int>((ref
   final r = ref.watch(adminUsersRequestProvider(pageSize));
   return ref.watch(adminRepositoryProvider).users(limit: r.limit, query: r.query);
 });
-final adminPartnersProvider = FutureProvider.autoDispose((ref) {
+final adminPartnersProvider = FutureProvider.autoDispose((ref) async {
   ref.watchAdminLive('partners');
-  return ref.watch(adminRepositoryProvider).partners();
+  return closerLookFirst(await ref.watch(adminRepositoryProvider).partners());
 });
+
+/// Applications that need a closer look (0288: a low face match, a selfie
+/// without the live check, a mismatched ID number, a failed permit check)
+/// first; otherwise as they came (newest first).
+List<Map<String, dynamic>> closerLookFirst(List<Map<String, dynamic>> rows) => [
+      ...rows.where((r) => r['needs_closer_look'] == true),
+      ...rows.where((r) => r['needs_closer_look'] != true),
+    ];
 final adminVehiclesProvider = FutureProvider.autoDispose((ref) {
   ref.watchAdminLive('vehicle');
   return ref.watch(adminRepositoryProvider).vehicles();
@@ -666,6 +675,10 @@ class AdminPartnersScreen extends ConsumerWidget {
                 'Joined': dateText(p['joined_at']),
                 'Reason shown to partner': p['status_note'],
                 'Sent back for review': dateText(p['resubmitted_at']),
+                if (p['needs_closer_look'] == true)
+                  'Needs a closer look': [
+                    for (final r in (p['closer_look_reasons'] as List?) ?? const []) closerLookReasonText('$r'),
+                  ].join('\n'),
               }),
         _statusPicker(
           context: ctx,
@@ -730,7 +743,12 @@ class AdminPartnersScreen extends ConsumerWidget {
           title: vehicles ? _vehicleTitle(p) : ((p['name'] as String?) ?? '(no name)'),
           subtitle: vehicles
               ? [p['owner_name'], p['display_id']].whereType<String>().join(' · ')
-              : [p['phone'], p['plate'], p['display_id']].whereType<String>().join(' · '),
+              : [
+                  if (p['needs_closer_look'] == true) 'Needs a closer look',
+                  p['phone'],
+                  p['plate'],
+                  p['display_id'],
+                ].whereType<String>().join(' · '),
           status: '${p['status'] ?? ''}',
           phone: vehicles ? p['owner_phone'] : p['phone'],
           canEdit: canEdit,

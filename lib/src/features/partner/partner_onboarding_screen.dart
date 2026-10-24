@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,12 +12,14 @@ import '../../admin/screens/people/people_widgets.dart';
 import '../../core/app_display.dart' show partnerRegistrationPausedMessage, partnerRegistrationPausedTitle;
 import '../../core/partner_doc_check.dart' show renewalWindowDays;
 import '../../core/partner_onboarding.dart';
+import '../../core/partner_registration.dart';
 import '../../core/partner_type_rules.dart' show EffectiveTypeRules, partnerTypesAvailableIn;
 import '../../core/vehicle_onboarding.dart';
 import '../../data/app_display_repository.dart' show appDisplayProvider;
 import '../../data/identity_repository.dart' show recordProfileSelfie;
 import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
+import '../../data/vehicle_onboarding_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -24,6 +27,8 @@ import '../../widgets/live_selfie.dart';
 import '../../widgets/loading_skeleton.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/net_image.dart';
+import 'registration_parts.dart';
+import 'registration_steps.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 
@@ -37,7 +42,8 @@ OnboardingStep onboardingStartStep(OnboardingStep reached, OnboardingStep wanted
 }
 
 /// The step a `/drive/onboarding?step=<key>` address asks for, by its stored
-/// key ('requirements' for the documents); null for none or an unknown one.
+/// key ('requirements' for the service documents); null for none or an
+/// unknown one.
 OnboardingStep? onboardingStepFromQuery(String? key) {
   for (final s in OnboardingStep.wizard) {
     if (s.key == key) return s;
@@ -45,16 +51,20 @@ OnboardingStep? onboardingStepFromQuery(String? key) {
   return null;
 }
 
-/// Becoming a partner (Expo `app/partner-onboarding.tsx`): profile photo,
-/// ID, address, service area, partner type and the required documents, then
-/// submitted for an admin to review. A returning partner lands on the first
-/// step still missing; finished steps can be reopened from the header.
+/// Becoming a partner (0288): profile photo (only when missing), service
+/// area, Partner Service type, National ID, Check your details, then Your
+/// company, Driver permit, Register vehicle and Vehicle documents where the
+/// picked services need them, Service documents, and Pending admin approval
+/// (partner and vehicle reviewed together). A returning partner lands on the
+/// first step still missing; finished steps can be reopened from the header.
 class PartnerOnboardingScreen extends ConsumerStatefulWidget {
   const PartnerOnboardingScreen({
     super.key,
     this.takeSelfie = takeLiveAvatar,
     this.pickPhoto = pickDocumentImage,
     this.startAt,
+    this.onPhone,
+    this.now,
   });
 
   /// The step to open on ("Update documents" asks for the documents), when
@@ -62,37 +72,87 @@ class PartnerOnboardingScreen extends ConsumerStatefulWidget {
   /// steps go in order ([onboardingStartStep]).
   final OnboardingStep? startAt;
 
-  /// The profile photo: a live selfie with the front camera (0281), cut
-  /// square (overridden in tests).
+  /// The profile photo: a live selfie with the front camera, cut square
+  /// (overridden in tests). On a phone it is only taken once the live check
+  /// passes.
   final Future<LiveSelfie?> Function(BuildContext context) takeSelfie;
 
   /// The ID photo picker (overridden in tests).
   final Future<PickedImage?> Function(BuildContext context) pickPhoto;
 
+  /// Whether the live check is required (a phone; overridden in tests).
+  final bool? onPhone;
+
+  /// The clock (tests).
+  final DateTime? now;
+
   @override
   ConsumerState<PartnerOnboardingScreen> createState() => _PartnerOnboardingScreenState();
 }
 
-class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScreen> {
+class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScreen> implements RegHost {
   OnboardingState? _s;
   Object? _loadError;
   bool _busy = false;
 
-  /// A finished step reopened from the header; null shows the first
-  /// incomplete one.
+  /// A step shown other than the first one missing: reopened from the
+  /// header, or kept while it has more to do.
   OnboardingStep? _viewing;
 
-  final _ic = TextEditingController();
-  final _address = TextEditingController();
   ServiceArea _area = const ServiceArea();
+  bool _areaFromLocation = false;
   List<String> _types = const [];
   GeoOptions _geo = const GeoOptions();
   _Entries _typeEntries = const [];
   _Entries _requiredDocs = const [];
   Set<String> _vehicleTypeIds = const {};
   bool _docsComplete = false;
+  bool _vehicleDocsComplete = false;
+
+  /// The photo step is listed only when the photo was missing on opening.
+  bool _photoStep = true;
+
+  /// The vehicle registered in this application.
+  Map<String, dynamic>? _vehicle;
+  List<Map<String, dynamic>> _vehicleStatuses = const [];
+
+  @override
+  Uint8List? idFront;
+
+  bool get _onPhone => widget.onPhone ?? liveSelfieOnPhone;
 
   PartnerOnboardingRepository get _repo => ref.read(partnerOnboardingRepositoryProvider);
+
+  @override
+  OnboardingState get state => _s!;
+
+  @override
+  bool get busy => _busy;
+
+  @override
+  Iterable<Map<String, dynamic>> get typeValues => _typeEntries.map((e) => e.values);
+
+  @override
+  List<String> get offeredTypes => partnerTypesAvailableIn(
+        partnerTypeOptions(typeValues),
+        typeValues,
+        ServiceArea.fromRow(_s?.partner),
+      );
+
+  @override
+  Future<PickedImage?> pickIdPhoto(BuildContext context) => widget.pickPhoto(context);
+
+  RegistrationNeeds _needsFor(Map<String, dynamic> partner) => RegistrationNeeds.of(
+        parseStringList(partner['partner_types']),
+        typeValues,
+        ServiceArea.fromRow(partner),
+      );
+
+  OnboardingStep _reached(OnboardingState s) =>
+      firstIncompleteStep(s.profile, s.partner, needs: _needsFor(s.partner), onPhone: _onPhone);
+
+  List<OnboardingStep> _stepsFor(OnboardingState s) =>
+      OnboardingStep.stepsFor(_needsFor(s.partner), includePhoto: _photoStep);
 
   @override
   void initState() {
@@ -107,8 +167,6 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
   @override
   void dispose() {
     _slowTimer?.cancel();
-    _ic.dispose();
-    _address.dispose();
     super.dispose();
   }
 
@@ -131,34 +189,68 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       } catch (_) {}
       final s = await _repo.load(mayStart: mayStart);
       final people = ref.read(peopleRepositoryProvider);
-      final area = ServiceArea.fromRow(s.partner);
+      var area = ServiceArea.fromRow(s.partner);
       final settled = await Future.wait<Object>([
         people.geoOptions(inUse: [area]),
         people.partnerTypes(),
         people.requiredDocuments(),
         people.documentTypes(),
       ]);
+      final geo = settled[0] as GeoOptions;
+      // A new application: the area is filled in from where the phone is.
+      var fromLocation = false;
+      if (area.isEmpty) {
+        try {
+          final here = await ref.read(registrationLocatorProvider)().timeout(const Duration(seconds: 15));
+          final found = here == null
+              ? null
+              : areaFromPlace(country: here.country, state: here.state, city: here.city, options: geo);
+          if (found != null) {
+            area = found;
+            fromLocation = true;
+          }
+        } catch (_) {}
+      }
+      final vehicle = await _loadVehicle(s.partner);
       if (!mounted) return;
       setState(() {
-        _s = s;
+        _typeEntries = settled[1] as _Entries;
+        _s = s.copyWith(needs: _needsFor(s.partner));
+        _photoStep = !photoStepDone(s.profile, s.partner, onPhone: _onPhone);
         // Opened for one step (`?step=`): there, unless an earlier one is
         // still missing. Only on the first load.
         if (_viewing == null && widget.startAt != null) {
-          final start = onboardingStartStep(s.step, widget.startAt!);
-          _viewing = start == s.step ? null : start;
+          final reached = _reached(_s!);
+          final start = onboardingStartStep(reached, widget.startAt!);
+          _viewing = start == reached ? null : start;
         }
-        _ic.text = '${s.partner['ic'] ?? s.profile?['ic'] ?? ''}';
-        _address.text = '${s.partner['address'] ?? s.profile?['address'] ?? ''}';
         _area = area;
+        _areaFromLocation = fromLocation;
         _types = parseStringList(s.partner['partner_types']);
-        _geo = settled[0] as GeoOptions;
-        _typeEntries = settled[1] as _Entries;
+        _geo = geo;
         _requiredDocs = settled[2] as _Entries;
         _vehicleTypeIds = vehicleDocTypeIds(settled[3] as _Entries);
+        _vehicle = vehicle.vehicle;
+        _vehicleStatuses = vehicle.statuses;
       });
       ref.invalidate(partnerProvider);
     } catch (e) {
       if (mounted) setState(() => _loadError = e);
+    }
+  }
+
+  Future<({Map<String, dynamic>? vehicle, List<Map<String, dynamic>> statuses})> _loadVehicle(
+    Map<String, dynamic> partner,
+  ) async {
+    final id = '${partner['registration_vehicle_id'] ?? ''}';
+    if (id.isEmpty) return (vehicle: null, statuses: const <Map<String, dynamic>>[]);
+    try {
+      final repo = ref.read(vehicleOnboardingRepositoryProvider);
+      final v = await repo.vehicle(id);
+      final st = v == null ? const <Map<String, dynamic>>[] : await repo.serviceStatuses(id);
+      return (vehicle: v, statuses: st);
+    } catch (_) {
+      return (vehicle: null, statuses: const <Map<String, dynamic>>[]);
     }
   }
 
@@ -176,36 +268,44 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         people.requiredDocuments(),
         people.documentTypes(),
       ]);
+      final vehicle = await _loadVehicle(s.partner);
       if (!mounted || _busy) return;
       setState(() {
-        _s = s;
-        _geo = settled[0] as GeoOptions;
         _typeEntries = settled[1] as _Entries;
+        _s = s.copyWith(needs: _needsFor(s.partner));
+        _geo = settled[0] as GeoOptions;
         _requiredDocs = settled[2] as _Entries;
         _vehicleTypeIds = vehicleDocTypeIds(settled[3] as _Entries);
+        _vehicle = vehicle.vehicle ?? _vehicle;
+        _vehicleStatuses = vehicle.statuses;
       });
     } catch (_) {}
   }
 
-  /// Runs one save, then shows the next step still missing.
-  Future<void> _save(Future<OnboardingState> Function(OnboardingState s) action) async {
+  @override
+  Future<bool> save(Future<OnboardingState> Function(OnboardingState s) action, {OnboardingStep? stayOn}) async {
     final s = _s;
-    if (s == null || _busy) return;
+    if (s == null || _busy) return false;
     setState(() => _busy = true);
     try {
-      final next = await action(s);
-      if (!mounted) return;
+      final next = await action(s.copyWith(needs: _needsFor(s.partner)));
+      if (!mounted) return false;
       setState(() {
-        _s = next;
-        _viewing = null;
+        _s = next.copyWith(needs: _needsFor(next.partner));
+        _viewing = stayOn;
       });
       ref.invalidate(partnerProvider);
+      return true;
     } catch (e) {
-      if (mounted) showError(context, e);
+      if (mounted) await showErrorNotice(context, e);
+      return false;
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  @override
+  void goTo(OnboardingStep step) => setState(() => _viewing = step);
 
   Future<OnboardingState> _patchBoth(OnboardingState s, Map<String, dynamic> patch) async {
     final profile = await _repo.patchProfile(patch);
@@ -218,74 +318,83 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
   Future<void> _pickAvatar() async {
     final selfie = await widget.takeSelfie(context);
     if (selfie == null || !mounted) return;
-    await _save((s) async {
+    await save((s) async {
       final url = await _repo.uploadAvatar(s, selfie.bytes, selfie.name);
+      // How it was taken first, so the partner row reads it with the photo.
       await recordProfileSelfie(ref, url, selfie);
       return _patchBoth(s, {'avatar_url': url});
     });
   }
 
-  Future<void> _saveId() async {
-    final ic = _ic.text.trim();
-    if (ic.isEmpty) return showError(context, 'Please enter your ID number.');
-    await _save((s) => _patchBoth(s, {'ic': ic}));
-  }
-
-  Future<void> _uploadIdImage() async {
-    final img = await widget.pickPhoto(context);
-    if (img == null || !mounted) return;
-    final s = _s;
-    if (s == null) return;
-    setState(() => _busy = true);
-    try {
-      final url = await _repo.uploadIdImage(s, _ic.text.trim(), img.bytes, img.name);
-      final profile = await _repo.patchProfile({'id_image': url});
-      if (!mounted) return;
-      setState(() => _s = s.copyWith(profile: profile));
-      showInfo(context, 'ID image saved');
-    } catch (e) {
-      if (mounted) showError(context, e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _saveAddress() async {
-    final address = _address.text.trim();
-    if (address.isEmpty) return showError(context, 'Please enter your address.');
-    await _save((s) => _patchBoth(s, {'address': address}));
-  }
-
   Future<void> _saveArea() async {
     if (!_area.complete) {
-      return showError(context, 'Please select at least one country, state and city you will serve.');
+      return showNotice(context, message: 'Please select at least one country, state and city you will serve.');
     }
-    await _save((s) async => s.copyWith(partner: await _repo.patchPartner(s, _area.toRow())));
+    await save((s) async => s.copyWith(partner: await _repo.patchPartner(s, _area.toRow())));
   }
 
   Future<void> _saveTypes() async {
-    if (_types.isEmpty) return showError(context, 'Please select at least one Partner Service type.');
-    final entries = _typeEntries.map((e) => e.values);
-    final unavailable = _types.where((t) => !EffectiveTypeRules.of(t, entries).availableIn(_area)).toList();
+    if (_types.isEmpty) return showNotice(context, message: 'Please select at least one Partner Service type.');
+    final unavailable =
+        _types.where((t) => !EffectiveTypeRules.of(t, typeValues).availableIn(ServiceArea.fromRow(_s!.partner))).toList();
     if (unavailable.isNotEmpty) {
-      return showError(context, '${unavailable.join(', ')} is not offered in your service area.');
+      return showNotice(context, message: '${unavailable.join(', ')} is not offered in your service area.');
     }
-    await _save((s) async => s.copyWith(partner: await _repo.patchPartner(s, partnerTypeColumns(_types))));
+    await save((s) async => s.copyWith(partner: await _repo.patchPartner(s, partnerTypeColumns(_types))));
   }
 
+  Future<void> _vehicleDocsDone() async {
+    if (!_vehicleDocsComplete) {
+      return showNotice(context, message: 'Please upload every compulsory vehicle document first.');
+    }
+    await save((s) async => s.copyWith(partner: await _repo.patchPartner(s, withRegistrationStep(s.partner, regStepVehicleDocs))));
+  }
+
+  /// Partner and vehicle are sent for review together.
   Future<void> _submit() async {
     if (!_docsComplete) {
-      return showError(context, 'Please upload every compulsory document before submitting.');
+      return showNotice(context, message: 'Please upload every compulsory document before submitting.');
     }
-    await _save((s) async => s.copyWith(partner: await _repo.patchPartner(s, {'documents_ok': true})));
+    await save((s) async {
+      final v = _vehicle;
+      if (v != null && _needsFor(s.partner).vehicle && v['documents_ok'] != true) {
+        final vehicles = ref.read(vehicleOnboardingRepositoryProvider);
+        _vehicle = await vehicles.update(v['id'] as String, {'documents_ok': true, 'onboarding_step': 'done'});
+      }
+      return s.copyWith(partner: await _repo.patchPartner(s, {'documents_ok': true}));
+    });
   }
 
-  List<RequiredDoc> _docsFor(OnboardingState s) => requiredDocsFor(
+  List<RequiredDoc> _docsFor(OnboardingState s) => serviceDocsAfterPermitStep(
+        requiredDocsFor(
+          requiredDocuments: _requiredDocs,
+          partnerTypeValues: typeValues,
+          partnerTypes: parseStringList(s.partner['partner_types']),
+          area: ServiceArea.fromRow(s.partner),
+          vehicleTypeIds: _vehicleTypeIds,
+        ),
+        permitStep: _needsFor(s.partner).driverPermit,
+      );
+
+  List<String> _docNamesFor(String type) => [
+        for (final d in serviceDocsAfterPermitStep(
+          requiredDocsFor(
+            requiredDocuments: _requiredDocs,
+            partnerTypeValues: typeValues,
+            partnerTypes: [type],
+            area: _area,
+            vehicleTypeIds: _vehicleTypeIds,
+          ),
+          permitStep: false,
+        ))
+          if (d.compulsory) d.name,
+      ];
+
+  List<RequiredDoc> _vehicleDocs(OnboardingState s) => vehicleRequiredDocs(
         requiredDocuments: _requiredDocs,
-        partnerTypeValues: _typeEntries.map((e) => e.values),
+        vehicleTypeIds: _vehicleTypeIds,
         partnerTypes: parseStringList(s.partner['partner_types']),
         area: ServiceArea.fromRow(s.partner),
-        vehicleTypeIds: _vehicleTypeIds,
       );
 
   // ---- Layout ----------------------------------------------------------------
@@ -298,6 +407,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       'document_type',
       'partners',
       'provider_documents',
+      'vehicle_service_status',
     ], () => unawaited(_refresh()));
     final s = _s;
     Widget body;
@@ -342,45 +452,48 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         ),
       ]);
     } else {
-      final step = _viewing ?? s.step;
+      final reached = _reached(s);
+      final step = _viewing ?? reached;
       body = ResponsiveCenter(
         maxWidth: 640,
         child: ListView(padding: const EdgeInsets.all(16), children: [
-          _header(s.step, step),
-          const SizedBox(height: 16),
+          if (step != OnboardingStep.done || reached != OnboardingStep.done) ...[
+            _header(s, reached, step),
+            const SizedBox(height: 16),
+          ],
           if (_busy) const LinearProgressIndicator(),
-          _stepBody(s, step),
+          KeyedSubtree(key: ValueKey('step-${step.key}'), child: _stepBody(s, step)),
         ]),
       );
     }
     return Scaffold(
       appBar: AppBar(
         leading: sideMenuLeading(context),
-        title: Text(s?.step == OnboardingStep.done ? 'Partner application' : 'Become a partner'),
+        title: Text(s != null && _reached(s) == OnboardingStep.done ? 'Partner application' : 'Become a partner'),
       ),
       body: body,
     );
   }
 
-  Widget _header(OnboardingStep reached, OnboardingStep showing) {
+  Widget _header(OnboardingState s, OnboardingStep reached, OnboardingStep showing) {
     final t = Theme.of(context);
-    final reachedIndex = reached == OnboardingStep.done ? OnboardingStep.wizard.length : OnboardingStep.wizard.indexOf(reached);
+    final steps = _stepsFor(s);
+    final reachedIndex = reached == OnboardingStep.done ? steps.length : steps.indexOf(reached).clamp(0, steps.length);
+    final showingIndex = steps.indexOf(showing);
+    final label = reached == OnboardingStep.done
+        ? 'All steps complete'
+        : 'Step ${(showingIndex < 0 ? reachedIndex : showingIndex) + 1} of ${steps.length} · ${showing.label}';
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(
-        reached == OnboardingStep.done
-            ? 'All steps complete'
-            : 'Step ${reachedIndex + 1} of ${OnboardingStep.wizard.length}',
-        style: t.textTheme.labelLarge,
-      ),
+      Text(label, key: const ValueKey('onboarding-progress'), style: t.textTheme.labelLarge),
       const SizedBox(height: 8),
       // Counted as the step on screen says: full on the last step.
-      LinearProgressIndicator(value: ((reachedIndex + 1) / OnboardingStep.wizard.length).clamp(0.0, 1.0)),
+      LinearProgressIndicator(value: ((reachedIndex + 1) / steps.length).clamp(0.0, 1.0)),
       const SizedBox(height: 12),
       // The steps go in order (each opens once the one before is saved):
       // finished steps and the current one are chips that open them; later
       // steps are plain locked labels, not buttons.
       Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        for (final (i, step) in OnboardingStep.wizard.indexed)
+        for (final (i, step) in steps.indexed)
           if (i <= reachedIndex)
             ChoiceChip(
               key: ValueKey('onboarding-step-${step.key}'),
@@ -401,48 +514,65 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
 
   Widget _stepBody(OnboardingState s, OnboardingStep step) => switch (step) {
         OnboardingStep.avatar => _avatarStep(s),
-        OnboardingStep.id => _idStep(s),
-        OnboardingStep.address => _textStep(
-            title: 'Your address',
-            subtitle: 'Where you live. It is kept private and only used to verify your account.',
-            controller: _address,
-            label: 'Address',
-            maxLines: 3,
-            onSave: _saveAddress,
-          ),
         OnboardingStep.serviceArea => _section(
-            title: 'Where will you drive?',
-            subtitle: 'Choose every country, state and city you will take jobs in. '
-                'This also decides which documents you need.',
+            title: 'Where will you work?',
+            subtitle: 'Choose every country, state and city you will take jobs in. Your service area decides which '
+                'services you can join on the next screen.',
             children: [
+              if (_areaFromLocation)
+                const RegNotice(
+                  key: ValueKey('area-from-location'),
+                  icon: Icons.my_location,
+                  tone: NoticeTone.done,
+                  children: [Text('Filled in from your current location. Change it if you will work somewhere else.')],
+                ),
               ServiceAreaField(value: _area, options: _geo, enabled: !_busy, onChanged: (a) => setState(() => _area = a)),
               const SizedBox(height: 16),
-              _continue(_saveArea),
+              _continue(_saveArea, label: 'Continue'),
             ],
           ),
         OnboardingStep.partnerType => _section(
-            title: 'What kind of partner are you?',
-            subtitle: 'Pick every service you will offer.',
+            title: 'Choose your Partner Service type',
+            subtitle: 'Offered in ${_areaText(ServiceArea.fromRow(s.partner))}. Pick every service you will offer. '
+                'Services marked Vehicle service add the vehicle steps.',
             children: [
-              PartnerTypeField(
+              CitizensNotice(offered: offeredTypes, entries: typeValues, area: ServiceArea.fromRow(s.partner)),
+              ServiceTypeCards(
                 // Only types offered in the chosen service area (Admin →
-                // Partner Type → Service availability; the server agrees).
-                options: partnerTypesAvailableIn(
-                  partnerTypeOptions(_typeEntries.map((e) => e.values)),
-                  _typeEntries.map((e) => e.values),
-                  _area,
-                ),
+                // Partner Service type → Service availability; the server agrees).
+                options: offeredTypes,
                 value: _types,
+                entries: typeValues,
+                area: ServiceArea.fromRow(s.partner),
+                docsFor: _docNamesFor,
                 enabled: !_busy,
                 onChanged: (v) => setState(() => _types = v),
               ),
               const SizedBox(height: 16),
-              _continue(_saveTypes),
+              _continue(_saveTypes, label: 'Continue'),
             ],
           ),
+        OnboardingStep.id => NationalIdStep(host: this),
+        OnboardingStep.details => DetailsStep(host: this),
+        OnboardingStep.company => CompanyStep(host: this),
+        OnboardingStep.driverPermit => DriverPermitStep(host: this, now: widget.now),
+        OnboardingStep.vehicle => VehicleRegistrationStep(
+            host: this,
+            vehicle: _vehicle,
+            now: widget.now,
+            onVehicle: (v) => setState(() => _vehicle = v),
+          ),
+        OnboardingStep.vehicleDocs => _vehicleDocsStep(s),
         OnboardingStep.requirements => _requirementsStep(s),
         OnboardingStep.done => _doneStep(s),
       };
+
+  String _areaText(ServiceArea a) {
+    final names = [...a.cities.map(areaLabel)];
+    if (names.isEmpty) names.addAll(a.states.map(areaLabel));
+    if (names.isEmpty) names.addAll(a.countries);
+    return names.isEmpty ? 'your area' : names.join(', ');
+  }
 
   Widget _section({required String title, required String subtitle, required List<Widget> children}) {
     final t = Theme.of(context);
@@ -462,9 +592,12 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     final url = [s.partner['avatar_url'], s.profile?['avatar_url'], s.profile?['profile_image']]
         .map((v) => '${v ?? ''}'.trim())
         .firstWhere((v) => v.isNotEmpty, orElse: () => '');
+    final needsLive = url.isNotEmpty && _onPhone && s.partner['selfie_liveness'] != 'passed';
     return _section(
       title: 'Add a profile photo',
-      subtitle: 'Riders see this on every trip. Use a clear photo of your face.',
+      subtitle: needsLive
+          ? 'Partners need a live selfie: the photo is taken when you blink or turn your head. Riders see it before pickup.'
+          : 'Partners need a clear photo of their face. Riders see it before pickup.',
       children: [
         Center(
           child: NetAvatar(url: url, radius: 56, fallback: const Icon(Icons.person, size: 56)),
@@ -475,7 +608,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
           icon: const Icon(Icons.photo_camera_outlined),
           child: Text(url.isEmpty ? 'Take a selfie' : 'Take a new selfie'),
         ),
-        if (url.isNotEmpty && _viewing == OnboardingStep.avatar) ...[
+        if (url.isNotEmpty && !needsLive && _viewing == OnboardingStep.avatar) ...[
           const SizedBox(height: 8),
           OutlinedButton(onPressed: () => setState(() => _viewing = null), child: const Text('Keep this photo')),
         ],
@@ -483,60 +616,52 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     );
   }
 
-  Widget _idStep(OnboardingState s) {
-    final idImage = '${s.profile?['id_image'] ?? ''}'.trim();
+  Widget _vehicleDocsStep(OnboardingState s) {
+    final v = _vehicle;
+    if (v == null) {
+      return _section(
+        title: 'Upload vehicle documents',
+        subtitle: 'Register your vehicle first.',
+        children: [OutlinedButton(onPressed: () => goTo(OnboardingStep.vehicle), child: const Text('Register vehicle'))],
+      );
+    }
+    final docs = _vehicleDocs(s);
     return _section(
-      title: 'Your ID',
-      subtitle: 'Your MyKad or passport number. A photo of the document helps an admin approve you sooner.',
+      title: 'Upload vehicle documents',
+      subtitle: 'For ${v['plate'] ?? 'your vehicle'}. Tap each document to upload it.',
       children: [
-        TextField(
-          controller: _ic,
-          enabled: !_busy,
-          decoration: const InputDecoration(labelText: 'ID number', border: OutlineInputBorder()),
-        ),
-        const SizedBox(height: 12),
-        BusyButton.outlined(
-          onPressed: _busy ? null : _uploadIdImage,
-          icon: Icon(idImage.isEmpty ? Icons.upload_file : Icons.check_circle_outline),
-          child: Text(idImage.isEmpty ? 'Upload a photo of your ID (optional)' : 'ID photo saved — replace'),
+        PartnerDocsUploader(
+          key: ValueKey('veh:${v['id']}:${docs.map((d) => d.id).join(',')}'),
+          partnerId: s.partnerId,
+          vehicleId: v['id'] as String,
+          docs: docs,
+          authUserId: s.partner['auth_user_id'] as String?,
+          title: 'Vehicle documents',
+          onUploads: (uploads) {
+            final complete = compulsoryDocsComplete(docs, uploads);
+            if (mounted && complete != _vehicleDocsComplete) setState(() => _vehicleDocsComplete = complete);
+          },
         ),
         const SizedBox(height: 16),
-        _continue(_saveId),
+        _continue(_vehicleDocsDone, label: _vehicleDocsComplete ? 'Continue' : 'Upload every compulsory document'),
       ],
     );
   }
 
-  Widget _textStep({
-    required String title,
-    required String subtitle,
-    required TextEditingController controller,
-    required String label,
-    required BusyAction onSave,
-    int maxLines = 1,
-  }) =>
-      _section(title: title, subtitle: subtitle, children: [
-        TextField(
-          controller: controller,
-          enabled: !_busy,
-          maxLines: maxLines,
-          decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
-        ),
-        const SizedBox(height: 16),
-        _continue(onSave),
-      ]);
-
   Widget _requirementsStep(OnboardingState s) {
     final docs = _docsFor(s);
+    final types = parseStringList(s.partner['partner_types']);
     return _section(
-      title: 'Upload your documents',
-      subtitle: 'Tap each document to upload it. Every compulsory one is needed before you can submit; '
-          'an admin then reviews them.',
+      title: 'Upload service documents',
+      subtitle: 'What your chosen services need: ${types.join(', ')}.'
+          '${docs.isEmpty ? ' Nothing is set up for these services yet, so you can submit straight away.' : ''}',
       children: [
         PartnerDocsUploader(
           key: ValueKey('${s.partnerId}:${docs.map((d) => d.id).join(',')}'),
           partnerId: s.partnerId,
           docs: docs,
           authUserId: s.partner['auth_user_id'] as String?,
+          title: 'Service documents',
           onUploads: (uploads) {
             final complete = compulsoryDocsComplete(docs, uploads);
             if (mounted && complete != _docsComplete) setState(() => _docsComplete = complete);
@@ -552,18 +677,63 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     final t = Theme.of(context);
     final status = '${s.partner['status'] ?? 'unapproved'}';
     final docs = _docsFor(s);
+    final steps = [
+      for (final st in _stepsFor(s))
+        if (st != OnboardingStep.avatar || _photoStep) st,
+    ];
+    final paused = [for (final r in _vehicleStatuses) if (r['status'] == 'paused_age') r];
+    final waiting = [for (final r in _vehicleStatuses) if (r['status'] == 'waiting_permit') r];
+    final hasVehicle = _needsFor(s.partner).vehicle;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Card(
-        child: ListTile(
-          leading: Icon(Icons.verified_outlined, color: t.colorScheme.primary),
-          title: const Text('Application submitted'),
-          subtitle: Text(status == 'unapproved'
-              ? 'An admin will review your details and documents. You can take jobs from the Drive tab once '
-                  'your account is approved.'
-              : 'Account status: $status.'),
+        key: const ValueKey('pending-approval'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, spacing: 6, children: [
+            Icon(Icons.hourglass_top, size: 30, color: t.colorScheme.primary),
+            Text(status == 'unapproved' ? 'Pending admin approval' : 'Application submitted', style: t.textTheme.titleLarge),
+            Text(status == 'unapproved'
+                ? 'An admin is checking your ID, documents${hasVehicle ? ' and vehicle' : ''}. We will notify you when it is done.'
+                : 'Account status: $status.'),
+          ]),
         ),
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: 8),
+      Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, spacing: 6, children: [
+            for (final st in steps) CheckLine(ok: true, text: st.label),
+          ]),
+        ),
+      ),
+      for (final r in paused)
+        Card(
+          key: ValueKey('pending-paused-${r['service']}'),
+          child: ListTile(
+            leading: Icon(Icons.pause_circle, color: t.colorScheme.error),
+            title: Text('${r['service']} not active'),
+            subtitle: Text('Your vehicle is over the ${r['max_age_years'] ?? ''}-year limit. Add a newer vehicle any time '
+                'from My vehicles to turn it on.'),
+          ),
+        ),
+      for (final r in waiting)
+        Card(
+          key: ValueKey('pending-permit-${r['service']}'),
+          child: ListTile(
+            leading: Icon(Icons.hourglass_top, color: t.colorScheme.tertiary),
+            title: Text('${r['permit_name'] ?? 'Vehicle permit'} for ${r['service']}'),
+            subtitle: Text('GET.ride uploads it for your vehicle after approval. ${r['service']} turns on once it is in.'),
+          ),
+        ),
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          'Drive stays locked until approved. '
+          '${hasVehicle ? 'Partner and vehicle are reviewed together.' : 'No vehicle needed for these services.'}',
+          style: t.textTheme.bodyMedium,
+        ),
+      ),
       PartnerDocsUploader(
         key: ValueKey('done:${s.partnerId}:${docs.map((d) => d.id).join(',')}'),
         partnerId: s.partnerId,
@@ -613,7 +783,7 @@ class _LockedStep extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.lock_outline, size: 14, color: muted),
           const SizedBox(width: 4),
-          Text(next ? '$label · next' : label, style: t.textTheme.labelLarge?.copyWith(color: muted)),
+          Flexible(child: Text(next ? '$label · next' : label, style: t.textTheme.labelLarge?.copyWith(color: muted))),
         ]),
       ),
     );

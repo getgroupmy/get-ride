@@ -121,3 +121,25 @@ Future<CardRead?> readCardPhoto(Uint8List bytes) async {
     } catch (_) {}
   }
 }
+
+/// All the text on a document photo, as the phone reads it; null where it
+/// can't be read here (partner registration, 0288).
+Future<String?> readImageText(Uint8List bytes) async {
+  if (!_phone) return null;
+  final recognizer = TextRecognizer();
+  File? file;
+  try {
+    final dir = await getTemporaryDirectory();
+    file = File('${dir.path}/doc_read_${DateTime.now().microsecondsSinceEpoch}.jpg');
+    await file.writeAsBytes(bytes, flush: true);
+    final text = await recognizer.processImage(InputImage.fromFilePath(file.path));
+    return text.text;
+  } catch (_) {
+    return null;
+  } finally {
+    await recognizer.close();
+    try {
+      await file?.delete();
+    } catch (_) {}
+  }
+}

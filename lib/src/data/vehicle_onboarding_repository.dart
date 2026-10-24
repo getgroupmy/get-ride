@@ -94,6 +94,39 @@ class VehicleOnboardingRepository {
         .single();
   }
 
+  /// A registration document of the vehicle (the owner's authorisation
+  /// letter, the rental or hire-purchase agreement) to
+  /// `vehicle-documents/<id>/<folder>/<side>-<ms>.<ext>`.
+  Future<String> uploadFile(String vehicleId, String folder, String side, Uint8List bytes, String fileName) async {
+    final ext = guessExt(fileName);
+    final path = docFilePath(vehicleId, folder, side, ext);
+    final files = _db.storage.from('vehicle-documents');
+    await uploadStoredFile(files, path, bytes, contentType: contentTypeFor(ext), thumbnail: thumbnail);
+    return files.getPublicUrl(path);
+  }
+
+  /// Each registered service's status on [vehicleId] (0288), by service.
+  Future<List<Map<String, dynamic>>> serviceStatuses(String vehicleId) async => List<Map<String, dynamic>>.from(
+        await _db.from('vehicle_service_status').select().eq('vehicle_id', vehicleId).order('service', ascending: true),
+      );
+
+  /// Replaces the service statuses of [vehicleId] with [rows] (while the
+  /// vehicle is a draft; the server refuses it after).
+  Future<void> saveServiceStatuses(String vehicleId, List<Map<String, dynamic>> rows) async {
+    final keep = [for (final r in rows) '${r['service']}'];
+    final old = await serviceStatuses(vehicleId);
+    for (final o in old) {
+      if (!keep.contains('${o['service']}')) {
+        await _db.from('vehicle_service_status').delete().eq('vehicle_id', vehicleId).eq('service', '${o['service']}');
+      }
+    }
+    if (rows.isNotEmpty) await _db.from('vehicle_service_status').upsert(rows, onConflict: 'vehicle_id,service');
+  }
+
+  /// Updates [v] without moving its step (partner registration keeps its own).
+  Future<Map<String, dynamic>> update(String id, Map<String, dynamic> patch) =>
+      _db.from('vehicle').update(patch).eq('id', id).select().single();
+
   /// Uploads one of the four photos to `vehicle-documents/<id>/photos/`,
   /// with its list thumbnail beside it.
   Future<String> uploadPhoto(String vehicleId, String slot, Uint8List bytes, String fileName) async {

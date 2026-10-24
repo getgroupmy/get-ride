@@ -18,3 +18,5 @@ FrameFaces? openFrameFaces() => null;
 ImageFormatGroup? streamFormat() => null;
 
 Future<CardRead?> readCardPhoto(Uint8List bytes) async => null;
+
+Future<String?> readImageText(Uint8List bytes) async => null;

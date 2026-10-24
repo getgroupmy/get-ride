@@ -13,6 +13,7 @@ import '../../../core/my_ride.dart';
 import '../../../core/partner_type_rules.dart' show PartnerServiceSettings, PartnerTypeRules;
 import '../../../core/service_tree.dart';
 import '../../admin_settings_models.dart';
+import '../people/people_logic.dart' show defaultDocHasPhoto;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -878,6 +879,7 @@ class RequiredDocForm {
     List<RegionSelection>? regions,
     Map<String, bool>? options,
     this.isTaxiPermit = false,
+    this.hasPhoto,
   })  : docTypes = docTypes ?? [],
         partnerTypes = partnerTypes ?? [],
         regions = regions ?? [],
@@ -899,6 +901,7 @@ class RequiredDocForm {
       regions: regions,
       options: {for (final o in requiredDocOptions) o.key: jsBool(v[o.key])},
       isTaxiPermit: jsBool(v['isTaxiPermit']),
+      hasPhoto: v['hasPhoto'] is bool ? v['hasPhoto'] as bool : null,
     );
   }
 
@@ -913,6 +916,12 @@ class RequiredDocForm {
   List<RegionSelection> regions;
   Map<String, bool> options;
   bool isTaxiPermit;
+
+  /// "Has the person's photo" (0288); null until the admin sets it: on for
+  /// licences, permits and IDs by name ([effectiveHasPhoto]).
+  bool? hasPhoto;
+
+  bool get effectiveHasPhoto => hasPhoto ?? (isTaxiPermit || defaultDocHasPhoto(name));
 
   void toggleRegion(RegionSelection r) {
     regions = regions.any((x) => x.key == r.key)
@@ -950,6 +959,7 @@ ValuesResult buildRequiredDocValues({
     'regions': jsonEncode(form.regions.map((r) => r.toJson()).toList()),
     for (final o in requiredDocOptions) o.key: form.options[o.key] ?? false,
     'isTaxiPermit': form.isTaxiPermit,
+    'hasPhoto': form.effectiveHasPhoto,
   };
   // Expo merges onto the existing values so unknown keys survive.
   return (values: {...?editing?.values, ...values}, error: null);

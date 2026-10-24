@@ -218,6 +218,11 @@ Future<void> showNotice(BuildContext context, {String? title, required String me
   ),
 );
 
+/// An error as a modal with one OK (owner rule: popups are modals, never a
+/// bar at the bottom).
+Future<void> showErrorNotice(BuildContext context, Object e, {String? title}) =>
+    showNotice(context, title: title, message: errorText(e));
+
 /// Booking a ride is locked while the driver is online.
 Future<void> showGoOfflineToBook(BuildContext context) => showNotice(
   context,

@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../admin/screens/people/people_logic.dart';
 import '../core/app_display.dart' show isRegistrationClosed, partnerRegistrationPausedTitle;
 import '../core/partner_onboarding.dart';
+import '../core/partner_registration.dart' show RegistrationNeeds;
 import '../providers.dart';
 import 'doc_photos.dart';
 
@@ -22,15 +23,19 @@ class PartnerRegistrationPaused implements Exception {
 /// What the onboarding wizard works on: the signed-in user's profile and
 /// partner rows.
 class OnboardingState {
-  const OnboardingState({required this.profile, required this.partner});
+  const OnboardingState({required this.profile, required this.partner, this.needs});
   final Map<String, dynamic>? profile;
   final Map<String, dynamic> partner;
 
-  String get partnerId => partner['id'] as String;
-  OnboardingStep get step => firstIncompleteStep(profile, partner);
+  /// Which optional steps the picks need (set by the form once it has the
+  /// Partner Service type settings); null: those already confirmed.
+  final RegistrationNeeds? needs;
 
-  OnboardingState copyWith({Map<String, dynamic>? profile, Map<String, dynamic>? partner}) =>
-      OnboardingState(profile: profile ?? this.profile, partner: partner ?? this.partner);
+  String get partnerId => partner['id'] as String;
+  OnboardingStep get step => firstIncompleteStep(profile, partner, needs: needs);
+
+  OnboardingState copyWith({Map<String, dynamic>? profile, Map<String, dynamic>? partner, RegistrationNeeds? needs}) =>
+      OnboardingState(profile: profile ?? this.profile, partner: partner ?? this.partner, needs: needs ?? this.needs);
 }
 
 /// Reads and writes for partner onboarding (Expo `partnerOnboardingStore`).
@@ -52,7 +57,8 @@ class PartnerOnboardingRepository {
 
   Future<Map<String, dynamic>?> _profile() => _db
       .from('profiles')
-      .select('id, name, phone, email, ic, address, avatar_url, profile_image, id_image, nationality')
+      .select('id, name, phone, email, ic, address, avatar_url, profile_image, id_image, nationality, id_type, '
+          'id_number_typed, id_number_read, id_mismatch, id_name, id_image_back, birth_date')
       .eq('id', _uid)
       .maybeSingle();
 
@@ -98,7 +104,7 @@ class PartnerOnboardingRepository {
   /// Updates the partner row and records the step the wizard moves on to.
   Future<Map<String, dynamic>> patchPartner(OnboardingState s, Map<String, dynamic> patch) async {
     final next = {...s.partner, ...patch};
-    final step = firstIncompleteStep(s.profile, next);
+    final step = firstIncompleteStep(s.profile, next, needs: s.needs);
     return _db
         .from('partners')
         .update({...patch, 'onboarding_step': step.key})
@@ -136,6 +142,22 @@ class PartnerOnboardingRepository {
       bytes,
       ext,
     );
+  }
+
+  /// One side ('front' / 'back') of the National ID, to the person's own
+  /// `ID_Image` folder (private). Returns its URL.
+  Future<String> uploadIdSide(Uint8List bytes, String fileName, String side) {
+    final ext = guessExt(fileName);
+    return _upload('ID_Image', '$_uid/id_${side}_${DateTime.now().millisecondsSinceEpoch}.$ext', bytes, ext);
+  }
+
+  /// A registration document read into the partner profile (the company
+  /// document, the driver permit, the vehicle grant before the vehicle
+  /// exists), to the partner's `provider-documents` folder:
+  /// `<partnerId>/<folder>/<side>-<ms>.<ext>`.
+  Future<String> uploadPartnerFile(String partnerId, String folder, String side, Uint8List bytes, String fileName) {
+    final ext = guessExt(fileName);
+    return _upload('provider-documents', docFilePath(partnerId, folder, side, ext), bytes, ext);
   }
 
   /// [path] carries the upload time, so it is cached for a year; an ID

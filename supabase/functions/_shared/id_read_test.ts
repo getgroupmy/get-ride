@@ -1,6 +1,19 @@
 import { assert, assertEquals } from "jsr:@std/assert@1.0.19";
 
-import { type CardRead, handleIdRead, type IdCheckRow, type IdReadDeps, idReadMode, readCardText, readVision, visionKey, visionRequest } from "./id_read.ts";
+import {
+  type CardRead,
+  handleIdRead,
+  handleRegistrationRead,
+  type IdCheckRow,
+  type IdReadDeps,
+  idReadMode,
+  isRegistrationRead,
+  readCardText,
+  readVision,
+  type RegistrationReadDeps,
+  visionKey,
+  visionRequest,
+} from "./id_read.ts";
 
 const cases = JSON.parse(await Deno.readTextFile(new URL("./id_card_cases.json", import.meta.url))) as {
   cases: { name: string; text: string; expect: CardRead }[];
@@ -163,4 +176,52 @@ Deno.test("without a key, a photo or any text", async () => {
 Deno.test("a failure on the way is unavailable", async () => {
   const { d } = deps({ store: () => Promise.reject(new Error("db down")) });
   assertEquals((await handleIdRead({ check_id: ID }, "Bearer u1", d)).status, 503);
+});
+
+// ---- 0288: partner registration documents -----------------------------------------------------------
+
+const REG_URL = "https://x.supabase.co/storage/v1/object/public/provider-documents/p1/company/front-1.jpg";
+function regDeps(over: Partial<RegistrationReadDeps> = {}) {
+  const spent: string[] = [];
+  const d: RegistrationReadDeps = {
+    caller: (a) => Promise.resolve(a === "Bearer u1" ? "u1" : null),
+    owns: (uid, bucket, path) => Promise.resolve(uid === "u1" && bucket === "provider-documents" && path.startsWith("p1/")),
+    spend: (uid) => {
+      spent.push(uid);
+      return Promise.resolve(spent.length <= 2);
+    },
+    verifySettings: () => Promise.resolve({ idRead: "phone_vision" }),
+    apiProviders: () =>
+      Promise.resolve([{ id: "google", services: [{ id: "vision", keys: [{ id: "g1", value: "AIzaTEST" }] }] }]),
+    download: () => Promise.resolve(new Uint8Array([1, 2, 3])),
+    annotate: () =>
+      Promise.resolve({ status: 200, body: { responses: [{ fullTextAnnotation: { text: "Company Name : X SDN BHD" } }] } }),
+    ...over,
+  };
+  return { d, spent };
+}
+const reg = (url = REG_URL) => ({ file_url: url, purpose: "registration" });
+
+Deno.test("registration: the request says its purpose", () => {
+  assertEquals(isRegistrationRead(reg()), true);
+  assertEquals(isRegistrationRead({ check_id: "x" }), false);
+});
+
+Deno.test("registration: the person's own file, as text", async () => {
+  const { d } = regDeps();
+  const r = await handleRegistrationRead(reg(), "Bearer u1", d);
+  assertEquals(r, { status: 200, body: { state: "read", text: "Company Name : X SDN BHD" } });
+});
+
+Deno.test("registration: someone else's file, no session, phone only, too many", async () => {
+  assertEquals((await handleRegistrationRead(reg(), null, regDeps().d)).status, 401);
+  const other = REG_URL.replace("/p1/", "/p2/");
+  assertEquals((await handleRegistrationRead(reg(other), "Bearer u1", regDeps().d)).body, { error: "not_authorized" });
+  assertEquals((await handleRegistrationRead(reg("https://elsewhere/x.jpg"), "Bearer u1", regDeps().d)).status, 400);
+  const phone = regDeps({ verifySettings: () => Promise.resolve({ idRead: "phone" }) });
+  assertEquals((await handleRegistrationRead(reg(), "Bearer u1", phone.d)).body, { error: "vision_off" });
+  const many = regDeps();
+  await handleRegistrationRead(reg(), "Bearer u1", many.d);
+  await handleRegistrationRead(reg(), "Bearer u1", many.d);
+  assertEquals((await handleRegistrationRead(reg(), "Bearer u1", many.d)).status, 429);
 });
