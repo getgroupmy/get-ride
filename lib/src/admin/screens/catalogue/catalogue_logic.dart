@@ -10,7 +10,7 @@ library;
 import 'dart:convert';
 
 import '../../../core/my_ride.dart';
-import '../../../core/partner_type_rules.dart' show PartnerTypeRules;
+import '../../../core/partner_type_rules.dart' show PartnerServiceSettings, PartnerTypeRules;
 import '../../../core/service_tree.dart';
 import '../../admin_settings_models.dart';
 
@@ -623,13 +623,19 @@ ValuesResult buildPartnerTypeValues({
   required List<SubService> tree,
   required List<String> docTypes,
   PartnerTypeRules? rules,
+  PartnerServiceSettings? settings,
 }) {
   final n = name.trim();
-  if (n.isEmpty) return (values: const {}, error: 'Please enter a partner type name.');
+  if (n.isEmpty) return (values: const {}, error: 'Please enter a Partner Service type name.');
   final ruleProblem = rules?.problem(vehicleRequired: vehicleRequired);
   if (ruleProblem != null) return (values: const {}, error: ruleProblem);
+  final settingsProblem = settings?.problem(
+    vehicleRequired: vehicleRequired,
+    ageRequired: (rules ?? PartnerTypeRules.fromValues(editing?.values ?? const {})).ageRequired,
+  );
+  if (settingsProblem != null) return (values: const {}, error: settingsProblem);
   if (hasDuplicateName(entries, n, exceptId: editing?.id)) {
-    return (values: const {}, error: 'A partner type with this name already exists.');
+    return (values: const {}, error: 'A Partner Service type with this name already exists.');
   }
   final values = <String, dynamic>{
     'name': n,
@@ -643,6 +649,13 @@ ValuesResult buildPartnerTypeValues({
     'docTypes': jsonEncode(docTypes),
     // Admin → Partner Type rules (0245); an entry never edited keeps none.
     if (rules != null) 'rules': rules.toJson() else if (editing?.values['rules'] != null) 'rules': editing!.values['rules'],
+    // Registration settings (citizens only, permits, ...): written once
+    // edited; otherwise whatever the entry had is kept as it was.
+    if (settings != null)
+      ...settings.toValues()
+    else
+      for (final k in PartnerServiceSettings.keys)
+        if (editing?.values[k] != null) k: editing!.values[k],
   };
   if (editing != null) {
     final prev = editing.values['displayPriority'];
@@ -686,7 +699,7 @@ String toDataUrl(List<int> bytes, String fileName) =>
 const documentTypeKey = 'document-type';
 
 const defaultDocumentTypes = [
-  (name: 'Partner', description: 'Documents shown to partners (partner-documents). Narrow further via Partner Types.'),
+  (name: 'Partner', description: 'Documents shown to partners (partner-documents). Narrow further via Partner Service types.'),
   (name: 'User', description: 'Documents shown to end users'),
   (name: 'Vehicle', description: 'Documents tied to a vehicle'),
   (name: 'Admin-Partner', description: 'Admin-side partner documents'),

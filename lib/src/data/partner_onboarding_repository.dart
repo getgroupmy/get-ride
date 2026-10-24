@@ -5,9 +5,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../admin/screens/people/people_logic.dart';
+import '../core/app_display.dart' show isRegistrationClosed, partnerRegistrationPausedTitle;
 import '../core/partner_onboarding.dart';
 import '../providers.dart';
 import 'doc_photos.dart';
+
+/// New partner registration is closed (Admin → Display → Sign-in Screen →
+/// New driver sign-up) and this account has no application to finish.
+class PartnerRegistrationPaused implements Exception {
+  const PartnerRegistrationPaused();
+
+  @override
+  String toString() => partnerRegistrationPausedTitle;
+}
 
 /// What the onboarding wizard works on: the signed-in user's profile and
 /// partner rows.
@@ -49,7 +59,10 @@ class PartnerOnboardingRepository {
   /// Loads the profile and the partner row, creating the partner row on the
   /// first visit: an admin-added row for this phone is claimed first
   /// (`claim_partner_by_phone`), and only then is a fresh stub inserted.
-  Future<OnboardingState> load() async {
+  /// Without [mayStart] (driver sign-up closed), or when the server refuses
+  /// the stub (`REGISTRATION_CLOSED`, migration 0287), no new application
+  /// is made: [PartnerRegistrationPaused].
+  Future<OnboardingState> load({bool mayStart = true}) async {
     final profile = await _profile();
     final mine = await _db
         .from('partners')
@@ -65,6 +78,7 @@ class PartnerOnboardingRepository {
       return OnboardingState(profile: profile, partner: Map<String, dynamic>.from(claimed.first as Map));
     }
 
+    if (!mayStart) throw const PartnerRegistrationPaused();
     final stub = newPartnerStub(
       id: const Uuid().v4(),
       displayId: newDisplayId('PR'),
@@ -72,8 +86,13 @@ class PartnerOnboardingRepository {
       profile: profile,
       joinedAt: DateTime.now().toUtc().toIso8601String(),
     );
-    final created = await _db.from('partners').insert(stub).select().single();
-    return OnboardingState(profile: profile, partner: created);
+    try {
+      final created = await _db.from('partners').insert(stub).select().single();
+      return OnboardingState(profile: profile, partner: created);
+    } on PostgrestException catch (e) {
+      if (isRegistrationClosed(e.message)) throw const PartnerRegistrationPaused();
+      rethrow;
+    }
   }
 
   /// Updates the partner row and records the step the wizard moves on to.

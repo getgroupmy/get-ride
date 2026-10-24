@@ -74,7 +74,7 @@ void main() {
     expect(serviceChoices([' ride ', 'RIDE'], const []), ['ride']);
   });
 
-  test('types to add: the partner types without a rule, once per key', () {
+  test('types to add: the Partner Service types without a rule, once per key', () {
     expect(typesWithoutRule(['TEKSI', 'eHailing', 'e-hailing', 'Dealer', ' '], [_teksi]), ['eHailing', 'Dealer']);
   });
 

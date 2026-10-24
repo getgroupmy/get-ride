@@ -29,7 +29,7 @@ void main() {
       expect(sorted.map((x) => x.id), ['c', 'a', 'b']);
     });
 
-    test('sortByPriority ties by name for partner types', () {
+    test('sortByPriority ties by name for Partner Service types', () {
       final sorted = sortByPriority([
         e('a', {'displayPriority': 1, 'name': 'Zed'}),
         e('b', {'displayPriority': 1, 'name': 'Alpha'}),
@@ -267,7 +267,7 @@ void main() {
     });
   });
 
-  group('partner type', () {
+  group('Partner Service type', () {
     const json = '[{"id":"S-1","name":"A","enabled":true,"children":[{"id":"S-2","name":"A1","children":[]}]},'
         '{"name":""},{"id":"S-3","name":"B","enabled":false}]';
 
@@ -325,7 +325,7 @@ void main() {
         tree: const [],
         docTypes: const [],
       );
-      expect(dup.error, 'A partner type with this name already exists.');
+      expect(dup.error, 'A Partner Service type with this name already exists.');
       final edit = buildPartnerTypeValues(
         entries: all,
         editing: all[0],
@@ -486,7 +486,7 @@ void main() {
       expect(r.values['isTaxiPermit'], isTrue);
     });
 
-    test('partner type names and doc type labels', () {
+    test('Partner Service type names and doc type labels', () {
       expect(
         enabledPartnerTypeNames([
           e('1', {'name': 'Teksi'}),

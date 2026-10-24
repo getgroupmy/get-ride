@@ -3,8 +3,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/auth_utils.dart';
 import 'package:get_ride/src/data/account_repository.dart';
+import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/auth_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/auth/set_pin_screen.dart';
@@ -17,12 +19,16 @@ class _FakeAuth implements AuthRepository {
   _FakeAuth({this.device = DeviceRegistration.unknown});
   final DeviceRegistration device;
   final pins = <String>[];
+  final roles = <String?>[];
 
   @override
   Future<DeviceRegistration> deviceRegistration() async => device;
 
   @override
-  Future<void> setPin(String pin) async => pins.add(pin);
+  Future<void> setPin(String pin, {String? role}) async {
+    pins.add(pin);
+    roles.add(role);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -58,6 +64,10 @@ GoRouter _router(String initial, {Widget? photo}) => GoRouter(
       path: '/drive',
       builder: (_, _) => const Scaffold(body: Text('drive')),
     ),
+    GoRoute(
+      path: '/drive/onboarding',
+      builder: (_, _) => const Scaffold(body: Text('partner registration')),
+    ),
     GoRoute(path: '/set-pin', builder: (_, _) => const SetPinScreen()),
     GoRoute(
       path: '/signup/photo',
@@ -67,10 +77,14 @@ GoRouter _router(String initial, {Widget? photo}) => GoRouter(
 );
 
 void main() {
-  test('Driver lands on Drive; anything else on the map', () {
-    expect(signupLanding('driver'), '/drive');
+  test('Driver goes straight into partner registration; anything else on the map', () {
+    expect(signupLanding('driver'), '/drive/onboarding');
     expect(signupLanding('passenger'), '/');
     expect(signupLanding(null), '/');
+    expect(signupPhotoNext('/drive/onboarding'), '/drive/onboarding');
+    expect(signupPhotoNext('/drive'), '/drive/onboarding', reason: 'older links meant Driver');
+    expect(signupPhotoNext('/admin'), '/', reason: 'never an arbitrary route');
+    expect(signupPhotoNext(null), '/');
   });
 
   group('new account', () {
@@ -80,6 +94,7 @@ void main() {
       _FakeAccount account, {
       _FakeAuth? auth,
       Brightness brightness = Brightness.light,
+      AppDisplay display = const AppDisplay(),
     }) async {
       tester.view.physicalSize = const Size(800, 1600);
       tester.view.devicePixelRatio = 1;
@@ -90,6 +105,7 @@ void main() {
             authRepositoryProvider.overrideWithValue(auth ?? _FakeAuth()),
             accountRepositoryProvider.overrideWithValue(account),
             profileProvider.overrideWith((ref) async => Profile(profile)),
+            appDisplayProvider.overrideWith((ref) async => display),
           ],
           child: MaterialApp.router(theme: ThemeData(brightness: brightness), routerConfig: _router('/set-pin')),
         ),
@@ -109,18 +125,73 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('chooses passenger or driver and is offered the photo step', (tester) async {
+    testWidgets('chooses driver: photo step, then Skip goes straight into partner registration', (tester) async {
       final account = _FakeAccount();
-      await pump(tester, {'id': 'me'}, account);
+      final auth = _FakeAuth();
+      await pump(tester, {'id': 'me'}, account, auth: auth);
       expect(find.text('Are you a passenger or a driver?'), findsOneWidget);
       await tester.tap(find.text('Driver'));
       await tester.pumpAndSettle();
       await save(tester, name: 'Ali');
       expect(account.names, ['Ali']);
+      expect(auth.roles, ['driver'], reason: 'the server checks the role it signs up as');
       expect(find.text('Add a profile photo'), findsOneWidget);
       await tester.tap(find.text('Skip'));
       await tester.pumpAndSettle();
-      expect(find.text('drive'), findsOneWidget);
+      expect(find.text('partner registration'), findsOneWidget);
+    });
+
+    testWidgets('a passenger lands on the map, as before', (tester) async {
+      final auth = _FakeAuth();
+      await pump(tester, {'id': 'me'}, _FakeAccount(), auth: auth);
+      await save(tester, name: 'Ali');
+      expect(auth.roles, ['passenger']);
+      await tester.tap(find.text('Skip'));
+      await tester.pumpAndSettle();
+      expect(find.text('map'), findsOneWidget);
+    });
+
+    testWidgets('a driver who already has a photo goes straight into partner registration', (tester) async {
+      await pump(tester, {'id': 'me', 'avatar_url': 'https://example.com/a.png'}, _FakeAccount());
+      await tester.tap(find.text('Driver'));
+      await tester.pumpAndSettle();
+      await save(tester, name: 'Ali');
+      expect(find.text('partner registration'), findsOneWidget);
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('passenger sign-up paused: only Driver, with a note (${b.name})', (tester) async {
+        final auth = _FakeAuth();
+        await pump(tester, {'id': 'me'}, _FakeAccount(),
+            auth: auth, brightness: b, display: const AppDisplay(passengerRegistrationEnabled: false));
+        expect(find.text('Passenger'), findsNothing);
+        expect(find.text('Driver'), findsOneWidget);
+        expect(find.text(passengerSignUpPausedNote), findsOneWidget);
+        expect(find.text(driverSignupNote), findsOneWidget, reason: 'Driver is the choice');
+        await save(tester, name: 'Ali');
+        expect(auth.roles, ['driver']);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('driver sign-up paused: only Passenger, with a note (${b.name})', (tester) async {
+        final auth = _FakeAuth();
+        await pump(tester, {'id': 'me'}, _FakeAccount(),
+            auth: auth, brightness: b, display: const AppDisplay(driverRegistrationEnabled: false));
+        expect(find.text('Driver'), findsNothing);
+        expect(find.text('Passenger'), findsOneWidget);
+        expect(find.text(driverSignUpPausedNote), findsOneWidget);
+        await save(tester, name: 'Ali');
+        expect(auth.roles, ['passenger']);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    test('signupRoles follows the switches', () {
+      expect(signupRoles(const AppDisplay()), ['passenger', 'driver']);
+      expect(signupRoles(const AppDisplay(passengerRegistrationEnabled: false)), ['driver']);
+      expect(signupRoles(const AppDisplay(driverRegistrationEnabled: false)), ['passenger']);
+      expect(signupRoles(const AppDisplay(registrationEnabled: false)), ['passenger', 'driver'],
+          reason: 'both closed: the server has the last word');
     });
 
     for (final b in Brightness.values) {

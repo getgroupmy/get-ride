@@ -120,7 +120,7 @@ void main() {
     test('unknown categories fall back to the raw editor', () {
       final c = categoryFor('partner-type');
       expect(c.isRaw, isTrue);
-      expect(c.title, 'Partner Type');
+      expect(c.title, 'Partner Type', reason: 'a raw category is titled from its key');
       expect(c.usesCategoryColumn, isTrue);
     });
   });

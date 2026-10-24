@@ -233,7 +233,7 @@ void main() {
               hasUser: true, area: const ServiceArea(), partnerTypes: ['a'], vehicleRequired: false, hasVehicle: false),
           contains('country, state and city'));
       expect(validatePartnerForm(hasUser: true, area: area, partnerTypes: const [], vehicleRequired: false, hasVehicle: false),
-          contains('partner type'));
+          contains('Partner Service type'));
       expect(validatePartnerForm(hasUser: true, area: area, partnerTypes: ['a'], vehicleRequired: true, hasVehicle: false),
           contains('requires a vehicle'));
       expect(validatePartnerForm(hasUser: true, area: area, partnerTypes: ['a'], vehicleRequired: true, hasVehicle: true),

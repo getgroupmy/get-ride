@@ -34,7 +34,7 @@ const vehicleServicesCategory = SettingsCategory(
 const partnerTypeCategory = SettingsCategory(
   key: partnerTypeKey,
   page: 'admin-settings-partner-type',
-  title: 'Partner Type',
+  title: 'Partner Service type',
   subtitle: 'Categories & nested sub-services',
   table: 'settings_entries',
   fields: [],

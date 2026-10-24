@@ -457,7 +457,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         }
       }
     }
-    if (v && !await _typeRulesCleared(teksi: false)) return _refusal ?? 'Your partner type is not offered here.';
+    if (v && !await _typeRulesCleared(teksi: false)) return _refusal ?? 'Your Partner Service type is not offered here.';
     if (!mounted) return gone;
     if (v && !await _vehiclePermitCleared()) return _refusal ?? "You can't go online yet.";
     if (!mounted) return gone;
@@ -533,14 +533,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final String? why = teksi && check.hailBlocked ? hailNotOfferedMessage : (check.ok ? null : check.reason);
     if (why == null && check.ok) return true;
     if (!mounted) return false;
-    _refusal = why ?? 'Your partner type is not offered here.';
+    _refusal = why ?? 'Your Partner Service type is not offered here.';
     await showAppDialog<void>(
       id: 'partner.type-rules-blocked',
       context: context,
       builder: (ctx) => AlertDialog(
         key: const ValueKey('type-rules-blocked'),
         title: Text(teksi ? 'Street hail not available here' : 'Not available here'),
-        content: Text(why ?? 'Your partner type is not offered here.'),
+        content: Text(why ?? 'Your Partner Service type is not offered here.'),
         actions: [
           FilledButton(
             style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
@@ -1089,8 +1089,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 final notHereCard = EmptyState(
                   key: const ValueKey('partner-type-not-here'),
                   icon: Icons.location_off_outlined,
-                  title: 'No jobs for your partner type here',
-                  message: here?.reason ?? 'Your partner type is not offered in this area.',
+                  title: 'No jobs for your Partner Service type here',
+                  message: here?.reason ?? 'Your Partner Service type is not offered in this area.',
                 );
                 final pins = showRequests ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const <RideRequest>[];
                 final map = ValueListenableBuilder(

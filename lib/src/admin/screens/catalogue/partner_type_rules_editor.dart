@@ -8,7 +8,7 @@ import '../../widgets/region_scope_picker.dart';
 import 'catalogue_widgets.dart';
 
 /// The Partner Type editor's rules (migration 0245): the vehicle age limit,
-/// the permit and street hail — shown only with "Vehicle required" on — and
+/// the permit and street hail — shown only with "Vehicle service" on — and
 /// where the type is offered, for every type.
 class PartnerTypeRulesEditor extends StatefulWidget {
   const PartnerTypeRulesEditor({
@@ -195,7 +195,7 @@ class _PartnerTypeRulesEditorState extends State<PartnerTypeRulesEditor> {
             onChanged: (l) => _set(_r.copyWith(hailRegions: l)),
           ),
       ],
-      const SectionLabel('Service availability', hint: 'Where this partner type can be chosen and gets jobs.'),
+      const SectionLabel('Service availability', hint: 'Where this Partner Service type can be chosen and gets jobs.'),
       RegionListEditor(
         keyPrefix: 'availability',
         value: _r.availability,

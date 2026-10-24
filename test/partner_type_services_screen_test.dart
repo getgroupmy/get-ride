@@ -128,7 +128,7 @@ Finder _inTile(String key, String text) =>
     find.descendant(of: find.byKey(ValueKey('pts-type-$key')), matching: find.text(text));
 
 void main() {
-  test('listed under Services & catalogue next to Partner Type, and grantable', () {
+  test('listed under Services & catalogue next to Partner Service type, and grantable', () {
     final i = allAdminEntries.indexWhere((e) => e.path == '/admin/m/partner-type');
     final e = allAdminEntries[i + 1];
     expect(e.path, partnerTypeServicesPath);

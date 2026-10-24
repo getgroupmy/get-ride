@@ -131,7 +131,7 @@ void main() {
     test('pictures set on their own pages, by address', () {
       expect(labels('url:data:image/png;base64,AAAA'), ['Home box 2 › City rides']);
       expect(labels('url:https://cdn.example.com/van.webp'), ['Vehicle Services › Van 1-tonne (Hero image)']);
-      expect(labels('url:https://cdn.example.com/taxi.png'), ['Partner Type › Taxi']);
+      expect(labels('url:https://cdn.example.com/taxi.png'), ['Partner Service type › Taxi']);
       expect(labels('url:$_base/app-branding/splash-1.png'), ['App Settings › Splash picture']);
       expect(labels('url:$_base/app-branding/promo.png'), ['Display Settings › promoBanner.image']);
       expect(usage.keys.where((k) => k.contains('bank.example.com')), isEmpty);

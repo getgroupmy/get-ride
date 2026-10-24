@@ -260,10 +260,10 @@ class PartnerTypeChips extends StatelessWidget {
         const SizedBox(height: 8),
         if (loading && counts.isEmpty) const LinearProgressIndicator(),
         if (!loading && counts.isEmpty)
-          Text('No partner types are set up yet.', style: t.textTheme.bodySmall?.copyWith(color: muted)),
+          Text('No Partner Service types are set up yet.', style: t.textTheme.bodySmall?.copyWith(color: muted)),
         ListSearchFilter(
           count: counts.length,
-          hint: 'Search partner types',
+          hint: 'Search Partner Service types',
           fieldKey: const ValueKey('push-partner-type-search'),
           builder: (context, q) => Wrap(spacing: 8, runSpacing: 8, children: [
             for (final c in counts)

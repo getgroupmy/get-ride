@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/admin/screens/people/people_logic.dart';
+import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/partner_onboarding.dart';
+import 'package:get_ride/src/data/app_display_repository.dart' show appDisplayProvider;
 import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/data/partner_onboarding_repository.dart';
 import 'package:get_ride/src/features/partner/driver_permit_screen.dart' show permitDocumentsRoute;
@@ -25,12 +27,20 @@ final _db = SupabaseClient(
 
 /// Serves a fixed onboarding state and records the partner patches.
 class _FakeOnboarding extends PartnerOnboardingRepository {
-  _FakeOnboarding(this.state) : super(_db);
+  _FakeOnboarding(this.state, {this.hasApplication = true}) : super(_db);
   OnboardingState state;
+
+  /// False: no partner row yet, so one would be made (as the real load).
+  final bool hasApplication;
   final patches = <Map<String, dynamic>>[];
+  final mayStarts = <bool>[];
 
   @override
-  Future<OnboardingState> load() async => state;
+  Future<OnboardingState> load({bool mayStart = true}) async {
+    mayStarts.add(mayStart);
+    if (!hasApplication && !mayStart) throw const PartnerRegistrationPaused();
+    return state;
+  }
 
   @override
   Future<Map<String, dynamic>> patchPartner(OnboardingState s, Map<String, dynamic> patch) async {
@@ -112,17 +122,20 @@ Future<_FakeOnboarding> _pump(
   _FakePeople? people,
   PartnerOnboardingScreen screen = const PartnerOnboardingScreen(),
   Brightness brightness = Brightness.light,
+  AppDisplay display = const AppDisplay(),
+  bool hasApplication = true,
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
-  final repo = _FakeOnboarding(state);
+  final repo = _FakeOnboarding(state, hasApplication: hasApplication);
   await tester.pumpWidget(ProviderScope(
     overrides: [
       supabaseProvider.overrideWithValue(_db),
       partnerOnboardingRepositoryProvider.overrideWithValue(repo),
       peopleRepositoryProvider.overrideWithValue(people ?? _FakePeople()),
       partnerProvider.overrideWith((_) async => null),
+      appDisplayProvider.overrideWith((_) async => display),
       // No realtime socket in a test.
       liveTablesProvider.overrideWith(_QuietLive.new),
     ],
@@ -135,6 +148,36 @@ Future<_FakeOnboarding> _pump(
 
 void main() {
   startStepTests();
+  for (final b in Brightness.values) {
+    testWidgets('driver sign-up closed: a passenger with no application sees it paused (${b.name})', (tester) async {
+      final repo = await _pump(
+        tester,
+        OnboardingState(profile: const {}, partner: _partner()),
+        brightness: b,
+        display: const AppDisplay(driverRegistrationEnabled: false),
+        hasApplication: false,
+      );
+      await tester.pump();
+      expect(repo.mayStarts, [false]);
+      expect(find.byKey(const ValueKey('partner-registration-paused')), findsOneWidget);
+      expect(find.text(partnerRegistrationPausedTitle), findsOneWidget);
+      expect(find.text('Step 1 of 6'), findsNothing, reason: 'no wizard');
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('driver sign-up closed: an application part-way through carries on', (tester) async {
+    final repo = await _pump(
+      tester,
+      OnboardingState(profile: const {}, partner: _partner()),
+      display: const AppDisplay(driverRegistrationEnabled: false),
+    );
+    await tester.pump();
+    expect(repo.mayStarts, [false]);
+    expect(find.byKey(const ValueKey('partner-registration-paused')), findsNothing);
+    expect(find.text('Step 1 of 6'), findsOneWidget);
+  });
+
   testWidgets('a new partner starts at the profile photo', (tester) async {
     await _pump(tester, OnboardingState(profile: const {}, partner: _partner()));
     expect(find.text('Step 1 of 6'), findsOneWidget);
@@ -172,7 +215,7 @@ void main() {
         'Current step',
       );
       // Later steps are not chips or buttons: a lock and a muted label.
-      for (final label in ['Address', 'Service area', 'Partner type', 'Documents']) {
+      for (final label in ['Address', 'Service area', 'Partner Service type', 'Documents']) {
         expect(find.widgetWithText(ChoiceChip, label), findsNothing);
       }
       expect(find.text('Address · next'), findsOneWidget);
@@ -232,7 +275,7 @@ void main() {
     expect(find.text('Your address'), findsOneWidget);
   });
 
-  testWidgets('partner types come from settings and are saved with partner_type', (tester) async {
+  testWidgets('Partner Service types come from settings and are saved with partner_type', (tester) async {
     final repo = await _pump(
       tester,
       OnboardingState(
@@ -250,7 +293,7 @@ void main() {
     expect(find.text('Upload your documents'), findsOneWidget);
   });
 
-  testWidgets('documents follow the partner type and gate the submit', (tester) async {
+  testWidgets('documents follow the Partner Service type and gate the submit', (tester) async {
     final repo = await _pump(tester, OnboardingState(profile: const {}, partner: _partner(_filledIn)));
     await tester.pump();
     expect(find.text('Driving licence'), findsOneWidget);

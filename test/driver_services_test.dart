@@ -80,8 +80,8 @@ void main() {
   group('why a service is greyed out', () {
     final own = _svc('Ride', pax: 4);
 
-    test('the partner type comes first', () {
-      expect(ineligibleReason(_svc('Teksi', partnerOk: false, permitMissing: true), own: own), 'Not in your partner type');
+    test('the Partner Service type comes first', () {
+      expect(ineligibleReason(_svc('Teksi', partnerOk: false, permitMissing: true), own: own), 'Not in your Partner Service type');
     });
 
     test('seats and class only while the service order applies to every booking', () {
@@ -101,7 +101,7 @@ void main() {
   });
 
   group('the lock that decides', () {
-    test('most specific first: driver, fleet, city, state, country, partner type, everyone', () {
+    test('most specific first: driver, fleet, city, state, country, Partner Service type, everyone', () {
       final locks = [
         _lock(LockScope.everyone, 'comfort', false),
         _lock(LockScope.partnerType, 'comfort', true, type: 'ehailing'),
@@ -130,7 +130,7 @@ void main() {
       expect(lockRank(locks[4], subject), 32, reason: 'a city');
       expect(lockRank(locks[3], subject), 31, reason: 'a state');
       expect(lockRank(locks[2], subject), 30, reason: 'a country, any case');
-      expect(lockRank(locks[1], subject), 20, reason: 'the partner type as its key');
+      expect(lockRank(locks[1], subject), 20, reason: 'the Partner Service type as its key');
     });
 
     test("locks for others don't apply", () {
@@ -229,7 +229,7 @@ void main() {
       expect(
         firstTab(overview(services: [_svc('Ride', partnerOk: false), _svc('Delivery', types: ['Delivery'])])),
         ServiceTab.deliveries,
-        reason: 'a delivery-only partner type opens on Deliveries',
+        reason: 'a delivery-only Partner Service type opens on Deliveries',
       );
     });
 
@@ -249,7 +249,7 @@ void main() {
       expect(main[1].switchable, isFalse, reason: 'locked');
       expect(main[2].reason, 'This car has 4 seats');
       expect(main[2].shownOn, isFalse, reason: 'greyed out shows off');
-      expect(main[3].reason, 'Not in your partner type');
+      expect(main[3].reason, 'Not in your Partner Service type');
       final hail = s[1].rows;
       expect(hail[0].key, DriverServiceKey.hailMeter);
       expect(hail[1].lock!.on, isTrue);

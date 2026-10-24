@@ -49,7 +49,7 @@ void main() {
   setUp(() => deviceDateCountry = () => 'MY');
 
   group('plate colours', () {
-    test('a taxi partner type first, whatever the energy', () {
+    test('a taxi Partner Service type first, whatever the energy', () {
       final c = plateColoursFor(_colours, types: ['eHailing', 'teksi'], energy: 'EV')!;
       expect(c.bg, const Color(0xFFFFFFFF));
       expect(c.fg, const Color(0xFF111111));

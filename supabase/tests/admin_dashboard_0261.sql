@@ -250,7 +250,10 @@ select pg_temp.check((select (l.l->>'drivers_online')::int - (b.live->>'drivers_
   'the live counts: ' || (select l::text from l0261));
 select pg_temp.check((select exists (select 1 from jsonb_array_elements(l->'queues') q
                                       where q @> '{"name": "KLIA T1 261", "waiting": 1}') from l0261), 'the queue by airport');
+-- Just after local midnight the request (made 2 minutes ago) belongs to yesterday.
 select pg_temp.check((select (l->>'first_offer_seconds')::int between 55 and 65 or (l->>'first_offer_samples')::int > 1
+                             or date_trunc('day', (now() - interval '2 minutes') at time zone 'Asia/Kuala_Lumpur')
+                                <> date_trunc('day', now() at time zone 'Asia/Kuala_Lumpur')
                         from l0261), 'time to first offer today: ' || (select l::text from l0261));
 select pg_temp.check((select pg_temp.day_summary()->'airports' @> '[{"name": "KLIA T1 261", "waiting": 1}]'),
   'the airport''s queue in the summary');

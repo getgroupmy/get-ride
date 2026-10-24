@@ -39,7 +39,7 @@ final grantablePages = <String, String>{
   for (final m in adminModules.values)
     for (final p in m.pages) p: '${m.label} · $p',
   for (final c in crudCategories) c.page: 'Settings · ${c.title}',
-  partnerTypeServicesPage: 'Settings · Partner type services',
+  partnerTypeServicesPage: 'Settings · Partner Service type services',
   driverServiceLocksPage: 'Settings · Driver service locks',
   placeTypesPage: 'Settings · Place types',
 };

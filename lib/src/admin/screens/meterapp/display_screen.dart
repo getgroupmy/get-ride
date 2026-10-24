@@ -242,12 +242,28 @@ class _DisplayBody extends ConsumerWidget {
           const _Section('Sign-in Screen'),
           Spotlight(id: 'sign-in-logo', highlight: highlight, child: Card(
             child: Column(children: [
-              toggle(
-                  'Allow new registrations',
-                  'When off, a phone number not already in the user list is shown a "New registrations are closed" '
-                      'page asking them to contact the Administrator. Existing accounts still sign in.',
-                  displayBool(s, 'registrationEnabled'),
-                  (v) => set('registrationEnabled', v)),
+              BusySwitchListTile(
+                key: const ValueKey('display-passenger-registration'),
+                title: const Text('New passenger sign-up'),
+                subtitle: const Text('When off, new accounts can only sign up as a driver, with a note that new '
+                    'passenger accounts are paused. With driver sign-up off too, a phone number not in the user '
+                    'list is told there is no account and gets no SMS code. Existing accounts still sign in.'),
+                value: registrationOpen(s, 'passenger'),
+                onChanged: canEdit
+                    ? (v) => applyDisplay(context, ref, (x) => setRegistrationOpen(x, 'passenger', v))
+                    : null,
+              ),
+              BusySwitchListTile(
+                key: const ValueKey('display-driver-registration'),
+                title: const Text('New driver (partner) sign-up'),
+                subtitle: const Text('When off, new accounts can only sign up as a passenger, and a passenger who '
+                    'opens Become a partner is told new partner registration is paused. Applications already '
+                    'started can still be finished.'),
+                value: registrationOpen(s, 'driver'),
+                onChanged: canEdit
+                    ? (v) => applyDisplay(context, ref, (x) => setRegistrationOpen(x, 'driver', v))
+                    : null,
+              ),
               toggle('Show logo', 'Show the GET.ride logo at the top of the sign-in screen',
                   displayBool(s, 'signInLogo'), (v) => set('signInLogo', v)),
             ]),

@@ -1,8 +1,16 @@
-/// Admin → Settings → Partner Type rules (migration 0245): a vehicle age
-/// limit, a permit requirement, street hail, and where the type is offered,
-/// each by region. Kept in the type's entry as `values.rules`; the server
-/// (`partner_type_rules`, `ptr_*`) reads the same shape and has the last
-/// word. Pure.
+/// Admin → Settings → Partner Service type rules (migration 0245): a vehicle
+/// age limit, a permit requirement, street hail, and where the type is
+/// offered, each by region. Kept in the type's entry as `values.rules`; the
+/// server (`partner_type_rules`, `ptr_*`) reads the same shape and has the
+/// last word. Pure.
+///
+/// The partner registration settings ([PartnerServiceSettings]: citizens
+/// only, business registration, driver and vehicle permits, whose age limits
+/// a type's limit covers) sit beside them as top-level keys of `values`, and
+/// the helpers at the end of the file ([citizensOnlyTypes],
+/// [needsBusinessRegistration], [driverPermitFor], [vehiclePermitFor],
+/// [effectiveMaxVehicleAge]) answer for a service area what registration
+/// asks.
 ///
 /// A [RegionScope] names a country, state, city and suburb; blank levels
 /// match any place, so an empty scope is "All regions". The narrowest
@@ -256,7 +264,7 @@ class PartnerTypeRules {
       }
     }
     if (!availability.all && availability.regions.isEmpty) {
-      return 'Pick the regions where this partner type is offered, or choose All regions.';
+      return 'Pick the regions where this Partner Service type is offered, or choose All regions.';
     }
     return null;
   }
@@ -269,6 +277,7 @@ class EffectiveTypeRules {
     required this.name,
     required this.vehicleRequired,
     required this.rules,
+    this.settings = const PartnerServiceSettings(),
   });
 
   /// [entries]' entry named [type] (by [partnerTypeNameKey]); a name with no
@@ -284,12 +293,18 @@ class EffectiveTypeRules {
       name: name.isEmpty ? type.trim() : name,
       vehicleRequired: vehicle,
       rules: PartnerTypeRules.fromValues(v),
+      settings: PartnerServiceSettings.fromValues(v),
     );
   }
 
   final String name;
   final bool vehicleRequired;
   final PartnerTypeRules rules;
+
+  /// Citizens only, business registration, permits and age-limit cover.
+  final PartnerServiceSettings settings;
+
+  String get key => partnerTypeNameKey(name);
 
   bool get isTeksi => partnerTypeNameKey(name) == 'teksi';
   bool get ageRequired => vehicleRequired && rules.ageRequired;
@@ -460,4 +475,439 @@ class PartnerTypeCheck {
 
 /// What the driver is told when the meter's street hail is refused here.
 const hailNotOfferedMessage =
-    'Street hail is not offered for your partner type here. Use the app for e-hailing jobs instead.';
+    'Street hail is not offered for your Partner Service type here. Use the app for e-hailing jobs instead.';
+
+// ---------------------------------------------------------------------------
+// Partner registration settings (Admin → Partner Service type editor)
+// ---------------------------------------------------------------------------
+
+List<String> _names(Object? raw) {
+  final v = _json(raw);
+  if (v is! List) return const [];
+  final out = <String>[];
+  final seen = <String>{};
+  for (final x in v) {
+    final s = _s(x);
+    if (s.isNotEmpty && seen.add(partnerTypeNameKey(s))) out.add(s);
+  }
+  return out;
+}
+
+bool _sameType(String a, String b) => partnerTypeNameKey(a) == partnerTypeNameKey(b);
+
+/// A switch that holds in some regions: `{"required": bool, "all": bool,
+/// "regions": [...]}` (the shape of the permit rule in `values.rules`).
+class RegionRequirement {
+  const RegionRequirement({this.required = false, this.where = const RegionList()});
+
+  factory RegionRequirement.fromJson(Object? raw) {
+    final m = _json(raw);
+    if (m is! Map) return const RegionRequirement();
+    return RegionRequirement(required: _flag(m['required'], false), where: RegionList.fromJson(m));
+  }
+
+  final bool required;
+  final RegionList where;
+
+  bool appliesAt(RegionPlace p) => required && where.allows(p);
+
+  /// Where in [area] it holds: the region's narrowest name ('' for All
+  /// regions), or null when it holds nowhere there.
+  String? regionIn(ServiceArea area) {
+    if (!required) return null;
+    if (where.all) return '';
+    for (final p in areaPlaces(area)) {
+      final m = where.matchFor(p);
+      if (m != null) return m.name ?? '';
+    }
+    return null;
+  }
+
+  RegionRequirement copyWith({bool? required, RegionList? where}) =>
+      RegionRequirement(required: required ?? this.required, where: where ?? this.where);
+
+  Map<String, dynamic> toJson() => {'required': required, ...where.toJson()};
+}
+
+/// One region's permit: its name and issuer ("Kad Pemandu", "APAD") and,
+/// when picked from Admin → Vehicle permits → Permit types, that type's key.
+class PermitRule {
+  const PermitRule({this.scope = RegionScope.all, this.name = '', this.issuer = '', this.permitType = ''});
+
+  factory PermitRule.fromJson(Map raw) => PermitRule(
+        scope: RegionScope.fromJson(raw),
+        name: _s(raw['name']),
+        issuer: _s(raw['issuer']),
+        permitType: _s(raw['permitType']),
+      );
+
+  final RegionScope scope;
+  final String name;
+  final String issuer;
+
+  /// `permit_types.key` in the scope's country ('' when typed by hand).
+  final String permitType;
+
+  /// "Kad Pemandu (APAD)".
+  String get label => issuer.isEmpty ? name : '$name ($issuer)';
+
+  PermitRule copyWith({RegionScope? scope, String? name, String? issuer, String? permitType}) => PermitRule(
+        scope: scope ?? this.scope,
+        name: name ?? this.name,
+        issuer: issuer ?? this.issuer,
+        permitType: permitType ?? this.permitType,
+      );
+
+  Map<String, dynamic> toJson() => {
+        ...scope.toJson(),
+        'name': name.trim(),
+        if (issuer.trim().isNotEmpty) 'issuer': issuer.trim(),
+        if (permitType.trim().isNotEmpty) 'permitType': permitType.trim(),
+      };
+}
+
+/// A permit required in some regions, named per region:
+/// `{"required": bool, "rules": [{country, state, ..., name, issuer, permitType}]}`.
+class PermitRequirement {
+  const PermitRequirement({this.required = false, this.rules = const []});
+
+  factory PermitRequirement.fromJson(Object? raw) {
+    final m = _json(raw);
+    if (m is! Map) return const PermitRequirement();
+    final list = _json(m['rules']);
+    return PermitRequirement(
+      required: _flag(m['required'], false),
+      rules: [
+        if (list is List)
+          for (final r in list)
+            if (r is Map) PermitRule.fromJson(r),
+      ],
+    );
+  }
+
+  final bool required;
+  final List<PermitRule> rules;
+
+  /// The narrowest rule holding [p] (the first on a tie), or null.
+  PermitRule? ruleAt(RegionPlace p) {
+    if (!required) return null;
+    PermitRule? best;
+    for (final r in rules) {
+      if (r.scope.matches(p) && (best == null || r.scope.rank > best.scope.rank)) best = r;
+    }
+    return best;
+  }
+
+  /// The first place of [area] (in [areaPlaces] order) that needs a permit,
+  /// with its rule.
+  PermitRule? ruleIn(ServiceArea area) {
+    for (final p in areaPlaces(area)) {
+      final r = ruleAt(p);
+      if (r != null) return r;
+    }
+    return null;
+  }
+
+  PermitRequirement copyWith({bool? required, List<PermitRule>? rules}) =>
+      PermitRequirement(required: required ?? this.required, rules: rules ?? this.rules);
+
+  Map<String, dynamic> toJson() => {'required': required, 'rules': [for (final r in rules) r.toJson()]};
+
+  String? problem(String what) {
+    if (!required) return null;
+    if (rules.isEmpty) return 'Add at least one region for the $what, or turn it off.';
+    final seen = <String>{};
+    for (final r in rules) {
+      if (r.name.trim().isEmpty) return 'Name the $what for ${r.scope.label}.';
+      if (!seen.add(r.scope.key)) return 'Two $what rules are for ${r.scope.label}. Keep one.';
+    }
+    return null;
+  }
+}
+
+/// In [scope], this type's max vehicle age replaces the limit of [types]
+/// for a vehicle registered for this type (a taxi's 20 years covers
+/// eHailing's 15).
+class AgeCoverRule {
+  const AgeCoverRule({this.scope = RegionScope.all, this.types = const []});
+
+  factory AgeCoverRule.fromJson(Map raw) => AgeCoverRule(scope: RegionScope.fromJson(raw), types: _names(raw['types']));
+
+  final RegionScope scope;
+  final List<String> types;
+
+  bool covers(String type) => types.any((t) => _sameType(t, type));
+
+  AgeCoverRule copyWith({RegionScope? scope, List<String>? types}) =>
+      AgeCoverRule(scope: scope ?? this.scope, types: types ?? this.types);
+
+  Map<String, dynamic> toJson() => {...scope.toJson(), 'types': types};
+}
+
+/// A Partner Service type's registration settings, kept as top-level keys
+/// of its `values` (next to `vehicleRequired` and `rules`):
+///
+/// * `citizensOnly`: where only citizens may join ([RegionRequirement]).
+/// * `businessRegistration`: where a registered business is required.
+/// * `driverPermit`: where the driver needs a permit, and its name and
+///   issuer per region ([PermitRequirement]).
+/// * `vehiclePermit`: where each vehicle needs a permit, uploaded by GET.ride
+///   or the admin in Vehicle permits (never by the driver). Vehicle services
+///   only.
+/// * `vehiclePermitAlsoFor`: the other types whose vehicles need that permit
+///   when doing this service (a taxi doing eHailing).
+/// * `ageLimitCovers`: per region, the other types whose max vehicle age this
+///   type's limit (`rules.vehicleAge`) replaces for a vehicle registered for
+///   this type.
+///
+/// Missing keys are "off": nothing changes for a type never edited.
+class PartnerServiceSettings {
+  const PartnerServiceSettings({
+    this.citizensOnly = const RegionRequirement(),
+    this.businessRegistration = const RegionRequirement(),
+    this.driverPermit = const PermitRequirement(),
+    this.vehiclePermit = const PermitRequirement(),
+    this.vehiclePermitAlsoFor = const [],
+    this.ageLimitCovers = const [],
+  });
+
+  factory PartnerServiceSettings.fromValues(Map<String, dynamic> values) {
+    final covers = _json(values['ageLimitCovers']);
+    return PartnerServiceSettings(
+      citizensOnly: RegionRequirement.fromJson(values['citizensOnly']),
+      businessRegistration: RegionRequirement.fromJson(values['businessRegistration']),
+      driverPermit: PermitRequirement.fromJson(values['driverPermit']),
+      vehiclePermit: PermitRequirement.fromJson(values['vehiclePermit']),
+      vehiclePermitAlsoFor: _names(values['vehiclePermitAlsoFor']),
+      ageLimitCovers: [
+        if (covers is List)
+          for (final r in covers)
+            if (r is Map) AgeCoverRule.fromJson(r),
+      ],
+    );
+  }
+
+  /// The `values` keys these settings are kept under.
+  static const keys = [
+    'citizensOnly',
+    'businessRegistration',
+    'driverPermit',
+    'vehiclePermit',
+    'vehiclePermitAlsoFor',
+    'ageLimitCovers',
+  ];
+
+  final RegionRequirement citizensOnly;
+  final RegionRequirement businessRegistration;
+  final PermitRequirement driverPermit;
+  final PermitRequirement vehiclePermit;
+  final List<String> vehiclePermitAlsoFor;
+  final List<AgeCoverRule> ageLimitCovers;
+
+  PartnerServiceSettings copyWith({
+    RegionRequirement? citizensOnly,
+    RegionRequirement? businessRegistration,
+    PermitRequirement? driverPermit,
+    PermitRequirement? vehiclePermit,
+    List<String>? vehiclePermitAlsoFor,
+    List<AgeCoverRule>? ageLimitCovers,
+  }) =>
+      PartnerServiceSettings(
+        citizensOnly: citizensOnly ?? this.citizensOnly,
+        businessRegistration: businessRegistration ?? this.businessRegistration,
+        driverPermit: driverPermit ?? this.driverPermit,
+        vehiclePermit: vehiclePermit ?? this.vehiclePermit,
+        vehiclePermitAlsoFor: vehiclePermitAlsoFor ?? this.vehiclePermitAlsoFor,
+        ageLimitCovers: ageLimitCovers ?? this.ageLimitCovers,
+      );
+
+  /// The `values` keys to write.
+  Map<String, dynamic> toValues() => {
+        'citizensOnly': citizensOnly.toJson(),
+        'businessRegistration': businessRegistration.toJson(),
+        'driverPermit': driverPermit.toJson(),
+        'vehiclePermit': vehiclePermit.toJson(),
+        'vehiclePermitAlsoFor': vehiclePermitAlsoFor,
+        'ageLimitCovers': [for (final r in ageLimitCovers) r.toJson()],
+      };
+
+  /// Why these settings can't be saved, or null. The vehicle settings are
+  /// only checked for a vehicle service, and the age cover only with the age
+  /// limit on (they are hidden otherwise).
+  String? problem({required bool vehicleRequired, required bool ageRequired}) {
+    if (citizensOnly.required && !citizensOnly.where.all && citizensOnly.where.regions.isEmpty) {
+      return 'Pick the regions where only citizens may join, or choose All regions.';
+    }
+    if (businessRegistration.required &&
+        !businessRegistration.where.all &&
+        businessRegistration.where.regions.isEmpty) {
+      return 'Pick the regions where a registered business is required, or choose All regions.';
+    }
+    final driver = driverPermit.problem('driver permit');
+    if (driver != null) return driver;
+    if (vehicleRequired) {
+      final vehicle = vehiclePermit.problem('vehicle permit');
+      if (vehicle != null) return vehicle;
+      if (ageRequired) {
+        final seen = <String>{};
+        for (final r in ageLimitCovers) {
+          if (r.types.isEmpty) return 'Pick the Partner Service types the age limit covers in ${r.scope.label}.';
+          if (!seen.add(r.scope.key)) return 'Two age limit cover rules are for ${r.scope.label}. Keep one.';
+        }
+      }
+    }
+    return null;
+  }
+}
+
+/// A permit registration needs: for [type], named [name] by [issuer]
+/// ([permitType] when picked from the permit types), required in [region]
+/// ('' for All regions).
+typedef PermitNeed = ({String type, String name, String issuer, String permitType, String region});
+
+PermitNeed _need(String type, PermitRule r) =>
+    (type: type, name: r.name, issuer: r.issuer, permitType: r.permitType, region: r.scope.name ?? '');
+
+/// Of [types], those only citizens may join somewhere in [area] (in
+/// [types]' order, as the entries name them). Registration's disclaimer
+/// lists them; the rest are open to everyone ([openToEveryoneTypes]).
+List<String> citizensOnlyTypes(List<String> types, Iterable<Map<String, dynamic>> entries, ServiceArea area) => [
+      for (final t in types)
+        if (t.trim().isNotEmpty)
+          if (EffectiveTypeRules.of(t, entries) case final r when r.settings.citizensOnly.regionIn(area) != null) r.name,
+    ];
+
+/// Of [types], those anyone may join in [area].
+List<String> openToEveryoneTypes(List<String> types, Iterable<Map<String, dynamic>> entries, ServiceArea area) {
+  final only = {for (final t in citizensOnlyTypes(types, entries, area)) partnerTypeNameKey(t)};
+  return [
+    for (final t in types)
+      if (t.trim().isNotEmpty && !only.contains(partnerTypeNameKey(t))) EffectiveTypeRules.of(t, entries).name,
+  ];
+}
+
+/// Of [types], those that need a registered business somewhere in [area].
+List<String> businessRegistrationTypes(
+  List<String> types,
+  Iterable<Map<String, dynamic>> entries,
+  ServiceArea area,
+) =>
+    [
+      for (final t in types)
+        if (t.trim().isNotEmpty)
+          if (EffectiveTypeRules.of(t, entries) case final r when r.settings.businessRegistration.regionIn(area) != null)
+            r.name,
+    ];
+
+/// Whether one of [types] needs a registered business in [area] (the "Your
+/// company" step).
+bool needsBusinessRegistration(List<String> types, Iterable<Map<String, dynamic>> entries, ServiceArea area) =>
+    businessRegistrationTypes(types, entries, area).isNotEmpty;
+
+/// The driver permits [types] need in [area], one per permit (a permit two
+/// types need is listed once, under the first).
+List<PermitNeed> driverPermitFor(List<String> types, Iterable<Map<String, dynamic>> entries, ServiceArea area) {
+  final out = <PermitNeed>[];
+  final seen = <String>{};
+  for (final t in types) {
+    if (t.trim().isEmpty) continue;
+    final r = EffectiveTypeRules.of(t, entries);
+    final rule = r.settings.driverPermit.ruleIn(area);
+    if (rule == null) continue;
+    final id = rule.permitType.isNotEmpty ? 'k:${rule.permitType.toLowerCase()}' : 'n:${_norm(rule.name)}';
+    if (seen.add(id)) out.add(_need(r.name, rule));
+  }
+  return out;
+}
+
+/// The vehicle permit a vehicle registered for [vehicleTypes] needs to do
+/// [service] in [area], or null. It is needed when [service] is a vehicle
+/// service requiring one there and the vehicle is registered for [service]
+/// itself, for a type in its `vehiclePermitAlsoFor` (a taxi doing eHailing),
+/// or for no type yet. Uploaded by GET.ride or the admin, never the driver;
+/// the service stays off for that vehicle until it is.
+PermitNeed? vehiclePermitFor(
+  String service,
+  List<String> vehicleTypes,
+  Iterable<Map<String, dynamic>> entries,
+  ServiceArea area,
+) {
+  if (service.trim().isEmpty) return null;
+  final r = EffectiveTypeRules.of(service, entries);
+  if (!r.vehicleRequired) return null;
+  final rule = r.settings.vehiclePermit.ruleIn(area);
+  if (rule == null) return null;
+  final registered = [for (final t in vehicleTypes) if (t.trim().isNotEmpty) t];
+  final applies = registered.isEmpty ||
+      registered.any((t) => _sameType(t, service) || r.settings.vehiclePermitAlsoFor.any((a) => _sameType(a, t)));
+  return applies ? _need(r.name, rule) : null;
+}
+
+/// The age limit a vehicle meets for a service: at most [maxYears] years,
+/// set by [type]'s rule ([type] is the service itself, or the vehicle's
+/// registered type whose limit covers it) for [region] ('' for All regions).
+typedef VehicleAgeLimit = ({int maxYears, String type, String region});
+
+/// The max age of a vehicle registered for [vehicleTypes] doing [service] in
+/// [area], or null when there is no limit. At each place the service's own
+/// limit holds, unless a registered type covers the service there
+/// (`ageLimitCovers`) and has a limit of its own there: that limit replaces
+/// it (the largest when several cover it). A service with no limit at a
+/// place has none, covered or not. Over the area, the lowest place wins, as
+/// [EffectiveTypeRules.vehicleAgeProblem] does.
+VehicleAgeLimit? effectiveMaxVehicleAge(
+  String service,
+  List<String> vehicleTypes,
+  Iterable<Map<String, dynamic>> entries,
+  ServiceArea area,
+) {
+  if (service.trim().isEmpty) return null;
+  final s = EffectiveTypeRules.of(service, entries);
+  final covering = [
+    for (final t in vehicleTypes)
+      if (t.trim().isNotEmpty && !_sameType(t, service)) EffectiveTypeRules.of(t, entries),
+  ];
+  VehicleAgeLimit? worst;
+  for (final p in areaPlaces(area)) {
+    final own = s.ageRuleAt(p);
+    if (own == null) continue;
+    VehicleAgeLimit at = (maxYears: own.maxYears, type: s.name, region: own.scope.name ?? '');
+    VehicleAgeLimit? cover;
+    for (final c in covering) {
+      if (!c.vehicleRequired) continue;
+      final rule = coverRuleAt(c.settings.ageLimitCovers, p);
+      if (rule == null || !rule.covers(service)) continue;
+      final limit = c.ageRuleAt(p);
+      if (limit == null) continue;
+      if (cover == null || limit.maxYears > cover.maxYears) {
+        cover = (maxYears: limit.maxYears, type: c.name, region: limit.scope.name ?? '');
+      }
+    }
+    if (cover != null) at = cover;
+    if (worst == null || at.maxYears < worst.maxYears) worst = at;
+  }
+  return worst;
+}
+
+/// The narrowest of [rules] holding [p], or null.
+AgeCoverRule? coverRuleAt(List<AgeCoverRule> rules, RegionPlace p) {
+  AgeCoverRule? best;
+  for (final r in rules) {
+    if (r.scope.matches(p) && (best == null || r.scope.rank > best.scope.rank)) best = r;
+  }
+  return best;
+}
+
+/// Whole years from [registered] to [now] (a vehicle registered 1 Nov 2010
+/// is 15 on 31 Oct 2026 and 16 on 1 Nov 2026).
+int vehicleAgeYears(DateTime registered, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  var years = n.year - registered.year;
+  if (n.month < registered.month || (n.month == registered.month && n.day < registered.day)) years--;
+  return years < 0 ? 0 : years;
+}
+
+/// Whether a vehicle registered on [registered] is over [limit] on [now]:
+/// it may work until the day it turns `maxYears + 1`.
+bool overVehicleAgeLimit(DateTime registered, VehicleAgeLimit limit, {DateTime? now}) =>
+    vehicleAgeYears(registered, now: now) > limit.maxYears;

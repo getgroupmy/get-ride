@@ -9,7 +9,9 @@ import 'package:get_ride/src/admin/screens/catalogue/catalogue_data.dart';
 import 'package:get_ride/src/admin/screens/catalogue/partner_type_screen.dart';
 import 'package:get_ride/src/admin/screens/geo/geo_data.dart' show regionsProvider;
 import 'package:get_ride/src/admin/screens/geo/geo_logic.dart' show RegionEntry;
+import 'package:get_ride/src/admin/screens/people/vehicle_permits_screen.dart' show adminPermitTypesProvider;
 import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/core/permits.dart' show PermitType;
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -32,6 +34,17 @@ final _types = [
     id: 'ehail',
     values: {'name': 'eHailing', 'enabled': true, 'isDefault': true, 'vehicleRequired': true, 'displayPriority': 2},
   ),
+  SettingEntry(
+    id: 'teksi',
+    values: {'name': 'Teksi', 'enabled': true, 'isDefault': true, 'vehicleRequired': true, 'displayPriority': 3},
+  ),
+];
+
+/// Example permit types (no real holder's data).
+const _permitTypes = [
+  PermitType(country: 'Malaysia', key: 'evp', name: 'EVP', issuer: 'APAD'),
+  PermitType(country: 'Malaysia', key: 'kad-pemandu', name: 'Kad Pemandu', issuer: 'APAD', forDriver: true),
+  PermitType(country: 'Singapore', key: 'sg-x', name: 'SG permit'),
 ];
 
 final _regions = [
@@ -43,10 +56,10 @@ final _regions = [
 
 void main() {
   for (final b in Brightness.values) {
-    group('Partner Type rules editor (${b.name})', () {
+    group('Partner Service type rules editor (${b.name})', () {
       Future<_Admin> pump(WidgetTester tester) async {
         final admin = _Admin();
-        await tester.binding.setSurfaceSize(const Size(900, 2400));
+        await tester.binding.setSurfaceSize(const Size(900, 3600));
         addTearDown(() => tester.binding.setSurfaceSize(null));
         await tester.pumpWidget(
           ProviderScope(
@@ -59,6 +72,7 @@ void main() {
                 (ref, c) async => c.key == partnerTypeCategory.key ? _types : const <SettingEntry>[],
               ),
               regionsProvider.overrideWith((ref) async => _regions),
+              adminPermitTypesProvider.overrideWith((ref) async => _permitTypes),
             ],
             child: MaterialApp(theme: appTheme(b), home: const PartnerTypeScreen()),
           ),
@@ -70,7 +84,7 @@ void main() {
       Future<void> open(WidgetTester tester, String name) async {
         await tester.tap(find.text(name).first);
         await _settle(tester);
-        expect(find.text('Edit Partner Type'), findsOneWidget);
+        expect(find.text('Edit Partner Service type'), findsOneWidget);
       }
 
       Future<void> save(WidgetTester tester) async {
@@ -96,13 +110,127 @@ void main() {
         expect(find.text('Allow hail service'), findsNothing);
         expect(find.text('Service availability'), findsOneWidget);
 
-        final vehicle = find.widgetWithText(SwitchListTile, 'Vehicle required');
+        final vehicle = find.widgetWithText(SwitchListTile, 'Vehicle service: partners must register a vehicle');
         await tester.ensureVisible(vehicle);
         await tester.tap(vehicle);
         await _settle(tester);
         expect(find.text('Max vehicle age limit'), findsOneWidget);
         expect(find.text('Permit'), findsOneWidget);
         expect(find.text('Allow hail service'), findsOneWidget);
+      });
+
+      testWidgets('registration settings: no-vehicle types see only the partner ones', (tester) async {
+        await pump(tester);
+        await open(tester, 'Dealer');
+        expect(find.text('Partner registration'), findsOneWidget);
+        expect(find.text('Citizens only'), findsOneWidget);
+        expect(find.text('Business registration'), findsOneWidget);
+        expect(find.text('Driver permit'), findsOneWidget);
+        expect(find.text('Vehicle permit'), findsNothing);
+        expect(find.text("This type's age limit also covers"), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('registration settings are checked and saved as values keys', (tester) async {
+        final admin = await pump(tester);
+        await open(tester, 'Teksi');
+
+        // Citizens only in Malaysia.
+        await tapKey(tester, 'pst-citizens-required');
+        await tapKey(tester, 'citizens-scope');
+        await tester.tap(find.descendant(of: find.byKey(const ValueKey('citizens-scope')), matching: find.text('Selected')));
+        await _settle(tester);
+        await save(tester);
+        expect(find.textContaining('only citizens may join'), findsOneWidget);
+        expect(admin.saved, isEmpty);
+        await tapKey(tester, 'citizens-add');
+        await tester.tap(find.byKey(const ValueKey('region-country-')));
+        await _settle(tester);
+        await tester.tap(find.text('Malaysia').last);
+        await _settle(tester);
+        await tester.tap(find.byKey(const ValueKey('region-scope-ok')));
+        await _settle(tester);
+
+        // Business registration everywhere.
+        await tapKey(tester, 'pst-business-required');
+
+        // Driver permit in Malaysia, picked from the permit types.
+        await tapKey(tester, 'pst-driver-permit-required');
+        await save(tester);
+        expect(find.textContaining('region for the driver permit'), findsOneWidget);
+        await tapKey(tester, 'driver-permit-add');
+        await tester.tap(find.byKey(const ValueKey('region-scope-all')));
+        await _settle(tester);
+        await tester.tap(find.byKey(const ValueKey('region-country-')));
+        await _settle(tester);
+        await tester.tap(find.text('Malaysia').last);
+        await _settle(tester);
+        await tester.tap(find.byKey(const ValueKey('region-scope-ok')));
+        await _settle(tester);
+        await tapKey(tester, 'driver-permit-from-types-0');
+        expect(find.text('EVP'), findsNothing, reason: 'vehicle permits are not offered for the driver');
+        await tester.tap(find.text('Kad Pemandu').last);
+        await _settle(tester);
+        expect(
+          tester.widget<TextField>(find.byKey(const ValueKey('driver-permit-name-0'))).controller?.text,
+          'Kad Pemandu',
+        );
+
+        // Vehicle permit for All regions, typed by hand, also for eHailing
+        // vehicles.
+        await tapKey(tester, 'pst-vehicle-permit-required');
+        await tapKey(tester, 'vehicle-permit-add');
+        await tester.tap(find.byKey(const ValueKey('region-scope-ok')));
+        await _settle(tester);
+        await save(tester);
+        expect(find.text('Name the vehicle permit for All regions.'), findsOneWidget);
+        await tester.enterText(find.byKey(const ValueKey('vehicle-permit-name-0')), 'Taxi permit');
+        await tapKey(tester, 'vehicle-permit-also-ehailing');
+
+        // The age limit (20 years) covers eHailing everywhere.
+        await tapKey(tester, 'rule-age-required');
+        await tapKey(tester, 'age-rule-add');
+        await tester.tap(find.byKey(const ValueKey('region-scope-ok')));
+        await _settle(tester);
+        await tester.enterText(find.byKey(const ValueKey('age-rule-years-0')), '20');
+        await tapKey(tester, 'age-cover-add');
+        await tester.tap(find.byKey(const ValueKey('region-scope-ok')));
+        await _settle(tester);
+        await save(tester);
+        expect(find.textContaining('the age limit covers in All regions'), findsOneWidget);
+        await tapKey(tester, 'age-cover-0-ehailing');
+
+        await save(tester);
+        expect(admin.saved, hasLength(1));
+        final values = admin.saved.single.$2;
+        expect(values['citizensOnly'], {
+          'required': true,
+          'all': false,
+          'regions': [
+            {'country': 'Malaysia'},
+          ],
+        });
+        expect(values['businessRegistration'], {'required': true, 'all': true, 'regions': <Object>[]});
+        expect(values['driverPermit'], {
+          'required': true,
+          'rules': [
+            {'country': 'Malaysia', 'name': 'Kad Pemandu', 'issuer': 'APAD', 'permitType': 'kad-pemandu'},
+          ],
+        });
+        expect(values['vehiclePermit'], {
+          'required': true,
+          'rules': [
+            {'name': 'Taxi permit'},
+          ],
+        });
+        expect(values['vehiclePermitAlsoFor'], ['eHailing']);
+        expect(values['ageLimitCovers'], [
+          {
+            'types': ['eHailing'],
+          },
+        ]);
+        expect(values['vehicleRequired'], true);
+        expect(tester.takeException(), isNull);
       });
 
       testWidgets('ages are 1 to 50 and "required" needs a rule or a region; then it saves', (tester) async {
@@ -179,7 +307,7 @@ void main() {
         );
         await _settle(tester);
         await save(tester);
-        expect(find.textContaining('regions where this partner type is offered'), findsOneWidget);
+        expect(find.textContaining('regions where this Partner Service type is offered'), findsOneWidget);
 
         await tapKey(tester, 'availability-add');
         await tester.tap(find.byKey(const ValueKey('region-country-')));

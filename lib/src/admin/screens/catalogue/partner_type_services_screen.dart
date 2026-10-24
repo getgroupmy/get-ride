@@ -149,7 +149,7 @@ class _PartnerTypeServicesScreenState extends ConsumerState<PartnerTypeServicesS
     final d = _draft;
     if (d == null) return;
     if (_name.text.trim().isEmpty) {
-      showError(context, 'Enter a name for this partner type.');
+      showError(context, 'Enter a name for this Partner Service type.');
       return;
     }
     // Ticked services in the list's order.
@@ -191,12 +191,12 @@ class _PartnerTypeServicesScreenState extends ConsumerState<PartnerTypeServicesS
     if (!mounted) return;
     final free = typesWithoutRule(names, rules);
     if (free.isEmpty) {
-      showInfo(context, 'Every partner type in Partner Type already has a rule.');
+      showInfo(context, 'Every Partner Service type already has a rule.');
       return;
     }
     final picked = await showSearchPicker<String>(
       context,
-      title: 'Add a partner type',
+      title: 'Add a Partner Service type',
       choices: [for (final n in free) (value: n, label: n, subtitle: null, leading: null)],
     );
     if (picked == null || !mounted) return;
@@ -219,7 +219,7 @@ class _PartnerTypeServicesScreenState extends ConsumerState<PartnerTypeServicesS
     ];
     final typeNames = ref.watch(partnerTypeNamesForServicesProvider).value ?? const <String>[];
     return AdminPage(
-      title: 'Partner type services',
+      title: 'Partner Service type services',
       page: partnerTypeServicesPage,
       body: AsyncView(
         value: value,
@@ -243,7 +243,7 @@ class _PartnerTypeServicesScreenState extends ConsumerState<PartnerTypeServicesS
           final editor = selected == null
               ? const _Panel(
                   key: ValueKey('pts-editor'),
-                  child: Text('Pick a partner type, or add one.'),
+                  child: Text('Pick a Partner Service type, or add one.'),
                 )
               : _editor(context, selected, choices, canEdit);
           final tester = _Tester(
@@ -261,7 +261,7 @@ class _PartnerTypeServicesScreenState extends ConsumerState<PartnerTypeServicesS
               padding: const EdgeInsets.symmetric(vertical: 16),
               children: [
                 Text(
-                  'Choose which ride services each partner type sees in open requests. A partner with several '
+                  'Choose which ride services each Partner Service type sees in open requests. A partner with several '
                   "types sees everything any of their types allows. A type that isn't listed here sees every service.",
                   style: t.textTheme.bodyMedium?.copyWith(color: mutedTextColor(t)),
                 ),
@@ -481,7 +481,7 @@ class _TypeList extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text('Partner types', style: t.textTheme.titleMedium)),
+              Expanded(child: Text('Partner Service types', style: t.textTheme.titleMedium)),
               if (canEdit)
                 OutlinedButton.icon(
                   key: const ValueKey('pts-add'),
@@ -494,7 +494,7 @@ class _TypeList extends StatelessWidget {
           ListSearchFilter(
             count: rules.length,
             from: 1,
-            hint: 'Search partner types',
+            hint: 'Search Partner Service types',
             fieldKey: const ValueKey('pts-type-search'),
             builder: (context, q) {
               final shown = [for (final r in rules) if (ruleMatches(r, q)) r];
@@ -502,7 +502,7 @@ class _TypeList extends StatelessWidget {
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Text(
-                    rules.isEmpty ? 'No rules yet: every partner type sees every service.' : 'No partner type matches.',
+                    rules.isEmpty ? 'No rules yet: every Partner Service type sees every service.' : 'No Partner Service type matches.',
                     style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
                   ),
                 );
@@ -612,7 +612,7 @@ class _Tester extends StatelessWidget {
           Text('Who sees this request?', style: t.textTheme.titleMedium),
           const SizedBox(height: 4),
           Text(
-            'Pick a service to see which partner types get the open request.',
+            'Pick a service to see which Partner Service types get the open request.',
             style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
           ),
           ListSearchFilter(

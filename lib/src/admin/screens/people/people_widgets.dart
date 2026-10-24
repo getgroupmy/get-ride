@@ -422,10 +422,10 @@ class PartnerTypeField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final all = [...options, ...value.where((v) => !options.contains(v))];
-    if (all.isEmpty) return const Text('No partner types configured (Settings > Partner Type).');
+    if (all.isEmpty) return const Text('No Partner Service types configured (Settings > Partner Service type).');
     return ListSearchFilter(
   count: all.length,
-  hint: 'Search partner types',
+  hint: 'Search Partner Service types',
   builder: (context, q) => Wrap(spacing: 8, runSpacing: 8, children: [
       for (final t in all)
         if (q.isEmpty || searchSelectMatches(t, q) || value.contains(t))
