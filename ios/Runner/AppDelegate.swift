@@ -151,12 +151,45 @@ import flutter_callkit_incoming
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) {
     let type = userInfo["type"] as? String
+    if type == "partner_remote_action" {
+      showRemoteActionPrompt(application, userInfo, completionHandler)
+      return
+    }
     guard type == "location_ping" || type == "location_live" else {
       completionHandler(.noData)
       return
     }
     if type == "location_live" { _ = BackgroundLocationReporter.shared.startLive(until: nil) }
     BackgroundLocationReporter.shared.answerPing { sent in completionHandler(sent ? .newData : .noData) }
+  }
+
+  /// Edit Partner › Change status (migration 0286): a `partner_remote_action`
+  /// background push asks the partner's phone to go online, go offline, link
+  /// or unlink a vehicle. The open app runs it itself (Dart, through
+  /// firebase_messaging). In the background there is no screen to run the
+  /// driver's own checks on, so the push's words ("Support asked you to go
+  /// online", "Tap to confirm") are shown as a notification; it keeps the
+  /// push's data, so firebase_messaging hands the tap to the app like any
+  /// push's, and the app opens the Drive page that runs it. Nothing is done
+  /// without the tap.
+  private func showRemoteActionPrompt(
+    _ application: UIApplication,
+    _ userInfo: [AnyHashable: Any],
+    _ completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+  ) {
+    guard application.applicationState != .active, let id = userInfo["id"] as? String, !id.isEmpty else {
+      completionHandler(.noData)
+      return
+    }
+    let content = UNMutableNotificationContent()
+    content.title = String((userInfo["title"] as? String ?? "Support sent you a request").prefix(120))
+    content.body = String((userInfo["body"] as? String ?? "Tap to confirm").prefix(120))
+    content.sound = .default
+    content.userInfo = userInfo
+    let request = UNNotificationRequest(identifier: "partner_remote_action", content: content, trigger: nil)
+    UNUserNotificationCenter.current().add(request) { error in
+      completionHandler(error == nil ? .newData : .noData)
+    }
   }
 }
 

@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/partner_remote_action.dart';
 import 'partner_live.dart';
+import 'partner_remote_sheet.dart';
 import 'partner_screens.dart' show partnerLiveProvider, partnerVehicleHoldersProvider;
 
 /// The status's colour, light or dark.
@@ -47,11 +49,27 @@ class PartnerLivePill extends StatelessWidget {
 }
 
 /// Edit Partner: the driver's real status, refreshed with ride changes and
-/// every 20 s (an online phone goes quiet without a row changing).
+/// every 20 s (an online phone goes quiet without a row changing). With
+/// [canChange] (EDIT on Partners), Change status asks the phone to go online
+/// or offline or link or unlink a vehicle (0286); the request shows here,
+/// re-read every 3 s until the phone answers.
 class PartnerLiveCard extends ConsumerStatefulWidget {
-  const PartnerLiveCard({super.key, required this.userId, required this.hasVehicle});
+  const PartnerLiveCard({
+    super.key,
+    required this.userId,
+    required this.hasVehicle,
+    this.canChange = false,
+    this.partnerId,
+    this.plate,
+  });
   final String userId;
   final bool hasVehicle;
+  final bool canChange;
+
+  /// The partner row and its plate: their own vehicles come first in the
+  /// sheet's picker.
+  final String? partnerId;
+  final Object? plate;
 
   @override
   ConsumerState<PartnerLiveCard> createState() => _PartnerLiveCardState();
@@ -59,20 +77,65 @@ class PartnerLiveCard extends ConsumerStatefulWidget {
 
 class _PartnerLiveCardState extends ConsumerState<PartnerLiveCard> {
   Timer? _tick;
+  Timer? _poll;
+
+  /// The last request seen open: the status card is read again once it is
+  /// answered.
+  String? _openId;
+
+  void _refreshLive() {
+    ref.invalidate(partnerLiveProvider((uid: widget.userId, hasVehicle: widget.hasVehicle)));
+    ref.invalidate(partnerVehicleHoldersProvider(widget.userId));
+  }
+
+  /// Every 3 s while a request is open.
+  void _watch(RemoteActionRequest? r) {
+    final open = r != null && r.status.open;
+    if (open) {
+      _openId = r.id;
+      _poll ??= Timer.periodic(const Duration(seconds: 3), (_) {
+        if (mounted) ref.invalidate(partnerRemoteStatusProvider(widget.userId));
+      });
+      return;
+    }
+    _poll?.cancel();
+    _poll = null;
+    if (r != null && r.id == _openId) {
+      _openId = null;
+      if (r.status == RemoteStatus.done) _refreshLive();
+    }
+  }
+
+  Future<void> _change(PartnerLive? status) async {
+    final r = await showPartnerRemoteSheet(
+      context,
+      userId: widget.userId,
+      status: status,
+      hasVehicle: widget.hasVehicle,
+      isOwn: (v) => vehicleIsOwn(v, userId: widget.userId, partnerId: widget.partnerId, plate: widget.plate),
+    );
+    if (r == null || !mounted) return;
+    ref.invalidate(partnerRemoteStatusProvider(widget.userId));
+  }
 
   @override
   void initState() {
     super.initState();
     _tick = Timer.periodic(const Duration(seconds: 20), (_) {
       if (!mounted) return;
-      ref.invalidate(partnerLiveProvider((uid: widget.userId, hasVehicle: widget.hasVehicle)));
-      ref.invalidate(partnerVehicleHoldersProvider(widget.userId));
+      _refreshLive();
     });
+    if (widget.canChange) {
+      ref.listenManual(partnerRemoteStatusProvider(widget.userId), (_, next) {
+        if (next.hasValue) _watch(next.value);
+      }, fireImmediately: true);
+    }
   }
 
   @override
   void dispose() {
     _tick?.cancel();
+    _poll?.cancel();
     super.dispose();
   }
 
@@ -81,12 +144,23 @@ class _PartnerLiveCardState extends ConsumerState<PartnerLiveCard> {
     final t = Theme.of(context);
     final live = ref.watch(partnerLiveProvider((uid: widget.userId, hasVehicle: widget.hasVehicle)));
     final v = live.value;
+    final remote = widget.canChange ? ref.watch(partnerRemoteStatusProvider(widget.userId)).value : null;
+    final showRemote = remote != null && (remote.status.open || remote.id == _openId || _recent(remote));
     return Card(
       key: const ValueKey('partner-live'),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text("Driver's real status", style: t.textTheme.titleSmall),
+          Row(children: [
+            Expanded(child: Text("Driver's real status", style: t.textTheme.titleSmall)),
+            if (widget.canChange)
+              TextButton.icon(
+                key: const ValueKey('partner-change-status'),
+                onPressed: remote != null && remote.status.open ? null : () => _change(v?.status),
+                icon: const Icon(Icons.tune),
+                label: const Text('Change status'),
+              ),
+          ]),
           const SizedBox(height: 8),
           if (v == null)
             live.hasError
@@ -123,8 +197,18 @@ class _PartnerLiveCardState extends ConsumerState<PartnerLiveCard> {
               ]),
             ],
           ],
+          if (remote != null && showRemote) ...[
+            const SizedBox(height: 12),
+            PartnerRemoteLine(request: remote),
+          ],
         ]),
       ),
     );
+  }
+
+  /// An answer from the last 10 minutes still shows.
+  static bool _recent(RemoteActionRequest r) {
+    final at = r.answeredAt, now = r.serverNow;
+    return at != null && now != null && now.difference(at) < const Duration(minutes: 10);
   }
 }

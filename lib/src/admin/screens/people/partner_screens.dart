@@ -607,7 +607,13 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
               ),
             ),
             if (p['auth_user_id'] case final String uid when uid.isNotEmpty)
-              PartnerLiveCard(userId: uid, hasVehicle: '${p['plate'] ?? ''}'.trim().isNotEmpty),
+              PartnerLiveCard(
+                userId: uid,
+                hasVehicle: '${p['plate'] ?? ''}'.trim().isNotEmpty,
+                canChange: canEdit,
+                partnerId: '${p['id'] ?? ''}',
+                plate: p['plate'],
+              ),
             _PartnerDetailsForm(
               data: widget.data,
               area: _area,

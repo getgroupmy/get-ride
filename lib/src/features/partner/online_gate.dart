@@ -34,7 +34,8 @@ Future<List<PermissionBlock>> currentPermissionBlocks(PermissionProbe probe, Per
 }
 
 /// True when the driver may go online; shows the way to fix it when not.
-Future<bool> ensureOnlineReady(BuildContext context, WidgetRef ref) async {
+/// [onBlock] hears each block shown (support's "Go online" reports it, 0286).
+Future<bool> ensureOnlineReady(BuildContext context, WidgetRef ref, {ValueChanged<PermissionBlock>? onBlock}) async {
   final probe = ref.read(permissionProbeProvider);
   PermissionRules rules;
   try {
@@ -46,6 +47,7 @@ Future<bool> ensureOnlineReady(BuildContext context, WidgetRef ref) async {
     final blocks = await currentPermissionBlocks(probe, rules.partner);
     if (blocks.isEmpty) return true;
     final block = blocks.first;
+    onBlock?.call(block);
     if (!context.mounted) return false;
     final go = await showAppDialog<bool>(id: 'online-gate.ensure-online-ready',
       context: context,

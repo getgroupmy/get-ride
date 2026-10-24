@@ -387,6 +387,19 @@
                 <action android:name="com.google.android.c2dm.intent.RECEIVE"/>
             </intent-filter>
         </receiver>
+        <!-- Edit Partner > Change status (PartnerRemoteAction.kt, migration
+             0286): a partner_remote_action data push to a closed app shows
+             "Support asked you to go online. Tap to confirm"; the tap opens
+             the Drive page that runs it. Only Google Play services may send
+             it. -->
+        <receiver
+            android:name=".PartnerRemoteActionReceiver"
+            android:exported="true"
+            android:permission="com.google.android.c2dm.permission.SEND">
+            <intent-filter>
+                <action android:name="com.google.android.c2dm.intent.RECEIVE"/>
+            </intent-filter>
+        </receiver>
         <service
             android:name=".LocationPingJob"
             android:exported="false"

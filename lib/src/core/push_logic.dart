@@ -20,6 +20,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'partner_remote_action.dart' show remoteActionIdFromPush, remoteActionRoute;
+
 /// The Firebase client settings for one build, as passed with --dart-define.
 class FirebaseEnv {
   const FirebaseEnv({
@@ -110,6 +112,11 @@ String? pushRouteFor(Map<String, dynamic> data) {
     case 'wallet_transfer_request':
     case 'wallet_transfer_response':
       return '/wallet';
+    case 'partner_remote_action':
+      // Support asked the driver's phone to change their status (0286): the
+      // Drive page runs it; the line kept in Notifications opens Drive.
+      final id = remoteActionIdFromPush(data);
+      return id == null ? '/drive' : remoteActionRoute(id);
     case 'identity_check':
       // A dispatch ID's selfie or ID (0281): to the admin, the queue; to the
       // person, the decision on their sign-in steps.
