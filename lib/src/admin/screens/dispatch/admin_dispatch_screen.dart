@@ -25,6 +25,7 @@ import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../profile_search.dart';
 import 'identity_provider_fields.dart';
+import 'selfie_checks_settings.dart';
 import 'signin_checks_fields.dart';
 
 const dispatchConsolePage = 'admin-dispatch';
@@ -67,6 +68,8 @@ class AdminDispatchScreen extends ConsumerWidget {
       if (_level(ref, dispatchGroupsPage) != AccessLevel.none) ('Groups & fleets', const _GroupsTab()),
       if (_level(ref, dispatchAccountsPage) != AccessLevel.none) ('Accounts', const _AccountsTab()),
       if (_level(ref, dispatchStandsPage) != AccessLevel.none) ('Charges', const _ChargesTab()),
+      // A partner going online on a phone (0290).
+      if (_level(ref, dispatchSelfiePage) != AccessLevel.none) ('Partner selfie checks', const SelfieChecksSettingsTab()),
     ];
     if (tabs.isEmpty) {
       return Scaffold(

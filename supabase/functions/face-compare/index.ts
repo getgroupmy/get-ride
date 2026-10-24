@@ -22,6 +22,11 @@
 // selfie, asked by the database (x-push-secret) or an admin, and keeps the
 // score per document (document_face_checks).
 //
+// Going online (0290): POST { online_check: { id } } compares a partner's
+// live selfie with their profile photo and ID photo, asked by the database
+// (x-push-secret) or an admin, and keeps the better score
+// (online_selfie_check_store), which alerts on a low match.
+//
 // Deploy: supabase functions deploy face-compare
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -36,6 +41,8 @@ import {
   documentRequest,
   handleDocumentFaceCompare,
   handleFaceCompare,
+  handleOnlineFaceCompare,
+  ONLINE_FACE_PAGES,
 } from "../_shared/face_compare.ts";
 import { compareRequest, FACE_SERVER_TIMEOUT_MS } from "../_shared/face_server.ts";
 
@@ -95,6 +102,34 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return reply({ error: "Method not allowed" }, 405);
 
   const input = await req.json().catch(() => null);
+  if ((input as { online_check?: unknown } | null)?.online_check !== undefined) {
+    const online = await handleOnlineFaceCompare(input, {
+      authorization: req.headers.get("Authorization"),
+      secret: req.headers.get("x-push-secret"),
+    }, {
+      async webhookSecretOk(secret) {
+        const { data, error } = await db.rpc("push_webhook_secret_ok", { p_secret: secret });
+        if (error) console.log("[face-compare] secret check:", error.message);
+        return data === true;
+      },
+      canReview: (authorization) => callerCanEditHere(authorization, ONLINE_FACE_PAGES),
+      async source(id) {
+        const { data, error } = await db.rpc("online_selfie_face_source", { p_id: id });
+        if (error) throw error;
+        return data ?? null;
+      },
+      apiProviders: () => setting("api_providers"),
+      verifySettings: () => setting("dispatch_verify"),
+      download,
+      compare: awsCompare,
+      compareSelfHosted: serverCompare,
+      async store(id, result) {
+        const { error } = await db.rpc("online_selfie_check_store", { p_id: id, p: result });
+        if (error) throw error;
+      },
+    });
+    return reply(online.body, online.status);
+  }
   if (documentRequest(input) !== null || (input as { document?: unknown } | null)?.document !== undefined) {
     const doc = await handleDocumentFaceCompare(input, {
       authorization: req.headers.get("Authorization"),
