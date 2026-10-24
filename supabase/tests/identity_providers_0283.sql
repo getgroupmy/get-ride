@@ -93,14 +93,14 @@ select pg_temp.check((public.dispatch_set_verify_config(12)->>'idRead') = 'phone
 
 -- 3. What the phone read, then what Google Vision read ---------------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000283b1');
-insert into ids values ('id1', (public.identity_check_submit(jsonb_build_object('kind', 'id', 'doc_type', 'mykad',
+insert into ids values ('id1', ((public.identity_check_submit(jsonb_build_object('kind', 'id', 'doc_type', 'mykad',
   'file_url', 'https://x.supabase.co/storage/v1/object/public/ID_Image/' || auth.uid() || '/signin/front.jpg',
   'file_url_back', 'https://x.supabase.co/storage/v1/object/public/ID_Image/' || auth.uid() || '/signin/back.jpg',
   'read_name', 'SITI NURHALIZA')))->>'id')::uuid);
 select pg_temp.check((select mismatch = array['name'] and read_source = 'phone' and read_at is not null
                         from public.identity_checks where id = (select id from ids where k = 'id1')),
                      'the phone''s read, checked against the profile');
-insert into ids values ('id2', (public.identity_check_submit(jsonb_build_object('kind', 'id', 'doc_type', 'mykad',
+insert into ids values ('id2', ((public.identity_check_submit(jsonb_build_object('kind', 'id', 'doc_type', 'mykad',
   'file_url', 'https://x.supabase.co/storage/v1/object/public/ID_Image/' || auth.uid() || '/signin/front2.jpg',
   'file_url_back', 'https://x.supabase.co/storage/v1/object/public/ID_Image/' || auth.uid() || '/signin/back2.jpg')))->>'id')::uuid);
 select pg_temp.check((select read_source is null and mismatch = '{}' from public.identity_checks
