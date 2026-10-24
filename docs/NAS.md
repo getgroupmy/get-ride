@@ -1,0 +1,89 @@
+# Synology DS224+: what it can host for get.ride
+
+Notes from 24 Oct 2026. Nothing here is built yet; each item is a separate PR
+when the owner says go. The KIV list (`docs/KIV.md`) points here.
+
+## The box (checked 24 Oct 2026)
+
+| | Measured | Needed for the plans below |
+|---|---|---|
+| Memory | 18 GB (about 12 GB available) | about 2 GB for face match, 4–6 GB for maps |
+| CPU | Intel Celeron J4125, 4 cores | any x86-64; a face comparison takes about 1–2 s |
+| Docker (Container Manager) | 24.0.2 | 20 or newer |
+| Disk (volume1) | 7.0 TB, 4.6 TB free | about 3 GB face match, about 20 GB maps |
+
+Checked with: `free -m; nproc; cat /proc/cpuinfo | grep "model name" | head -1; sudo docker version --format '{{.Server.Version}}'; df -h /volume1 | tail -1`
+
+## The one rule
+
+get.ride must keep working when the NAS is off. Everything on it is a
+**fallback** (face match, maps) or a **side job** (backups, monitoring). Never
+the main database, payments, or the app itself: home internet and a single box
+are not reliable enough for what riders and drivers use every minute.
+
+Reached from the internet through **Cloudflare Tunnel** (free, getride.my is
+already on Cloudflare): no port opened on the router. Every service on it asks
+for a secret key that only get.ride's server functions hold (Admin → API Keys).
+
+## Face match (selfie against the ID photo)
+
+Used by Documents → Sign-in checks (migration 0281, `face-compare` function).
+The score only helps the admin decide: never an automatic approve or reject.
+
+| Option | Cost | Runs when | Notes |
+|---|---|---|---|
+| **DeepFace on the NAS** (planned first choice) | free | 24/7, on upload | Python + TensorFlow in Docker. Use the **SFace** model (OpenCV, Apache 2.0) and **Dlib** (public domain). Photos are compared and forgotten, never stored. |
+| **AWS Rekognition** CompareFaces | about USD 1 / 1,000; first-year free tier | 24/7, on upload | Key in API Keys → Amazon Web Services → Rekognition, saved as `ACCESS_KEY_ID:SECRET_ACCESS_KEY[:region]` (default ap-southeast-1). IAM user with only `rekognition:CompareFaces` and `rekognition:ListCollections`. Already built. |
+| **human** in the admin's browser ([vladmandic/human](https://github.com/vladmandic/human), MIT) | free | only while an admin has the queue open (scores everything waiting, saves it) | About 10 MB of model files downloaded once per browser. Photos never leave the admin page. Cannot run in the native phone apps. |
+
+Planned order in `face-compare`: NAS, then AWS (if a key is saved), then the
+browser. Below a set match (for example 60%) the check is marked "Needs a
+closer look" and sorted to the top.
+
+### Licences: what not to use
+
+- **DeepFace's default model, VGG-Face**: non-commercial only. Not for get.ride.
+- **ArcFace / InsightFace** models (also inside DeepFace): trained on data with
+  research-only terms. Avoid.
+- DeepFace's own code is MIT; the licence that matters is the model's. Check
+  the model's page before switching.
+
+### Not a face-match option
+
+- **Google Cloud Vision**: it finds faces (position, angle, expression) but does
+  not compare two faces, and Google does not sell face matching. It is good at
+  **reading text**: a possible server-side fallback for reading MyKad and
+  passports when the phone's ML Kit can't (and on web/desktop). First 1,000
+  reads a month free, then about USD 1.50 / 1,000. Uses the Google Cloud project
+  that already has Maps; enable the Vision API there.
+- Open-source alternative for reading ID cards on the NAS: **PaddleOCR** (Apache 2.0).
+
+## Other things worth hosting, best first
+
+1. **Nightly backups**: the database (pg_dump) and the storage buckets (permits,
+   IDs, media) copied every night, 30 days kept, plus an off-site copy with
+   Hyper Backup. Guards against a bad migration, a mistaken delete, or a
+   provider problem. *Top pick.*
+2. **Own maps routing and address search** for Malaysia, Singapore and Brunei
+   (OpenStreetMap): **OSRM** or **Valhalla** for routes and travel times,
+   **Photon** or **Nominatim** for search. A free first choice or fallback
+   before Google: fare estimates, God View "follow roads", ETAs. About 4–6 GB
+   memory; data refreshed weekly. One more provider in Admin → Maps.
+3. **Uptime monitor** (**Uptime Kuma**): checks getride.my, the admin, the
+   server functions and the SMS gateway phones every minute; alerts on
+   Telegram, WhatsApp or email. About 200 MB memory.
+4. **Face match** (above) and **ID reading** (PaddleOCR).
+5. **A test copy of the database** to try migrations on before the owner runs
+   them live. About 4 GB memory.
+6. **Website visitor stats** (**Umami** or **Plausible**): privacy-friendly, no
+   cookie banner.
+7. **Automations** (**n8n**): for example a daily summary on WhatsApp, an alert
+   when SOS fires.
+
+## Not a good fit
+
+- The main database, payments, or the app: not reliable enough at home.
+- **Call relay (TURN / coturn)**: needs UDP ports open to the internet;
+  Cloudflare Tunnel can't carry it.
+- **AI models for AI Reports**: the J4125 has no graphics chip; far too slow.
+  Keep the cloud AI providers.
