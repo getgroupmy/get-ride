@@ -290,6 +290,42 @@ void main() {
     expect(admin.regionCalls.single[godViewPage]?['country'], 'Malaysia');
   });
 
+  for (final b in Brightness.values) {
+    testWidgets('God View Everywhere: turned on, saved as everywhere; loaded back on (0284, ${b.name})', (tester) async {
+      final admin = _Admin(grants: [
+        {'id': 'g1', 'profile_id': 'p-aina', 'page': godViewPage, 'access_level': 'read', 'region': null},
+      ]);
+      await _pump(tester, admin, const AdminSubAdminsScreen(), b: b);
+      await tester.tap(find.byKey(const ValueKey('sub-admin-edit-p-aina')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.ancestor(of: find.text('Filter pages'), matching: find.byType(TextField)), 'god');
+      await tester.pumpAndSettle();
+      expect(find.text('Not set: they see nobody on God View until you pick one'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('grant-god-view-everywhere')));
+      await tester.tap(find.byKey(const ValueKey('grant-god-view-everywhere')));
+      await tester.pumpAndSettle();
+      expect(find.text('Everywhere: they see everyone on God View'), findsOneWidget);
+      expect(find.text('Pick'), findsNothing, reason: 'no region to pick while Everywhere is on');
+      await tester.tap(find.byKey(const ValueKey('grant-save')));
+      await tester.pumpAndSettle();
+      expect(admin.regionCalls.single[godViewPage], {'everywhere': true});
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('a God View grant saved as Everywhere opens with the switch on', (tester) async {
+    final admin = _Admin(grants: [
+      {'id': 'g1', 'profile_id': 'p-aina', 'page': godViewPage, 'access_level': 'read', 'region': {'everywhere': true}},
+    ]);
+    await _pump(tester, admin, const AdminSubAdminsScreen());
+    await tester.tap(find.byKey(const ValueKey('sub-admin-edit-p-aina')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.ancestor(of: find.text('Filter pages'), matching: find.byType(TextField)), 'god');
+    await tester.pumpAndSettle();
+    expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('grant-god-view-everywhere'))).value, isTrue);
+    expect(find.text('Everywhere: they see everyone on God View'), findsOneWidget);
+  });
+
   testWidgets('a Reports grant keeps its region too (0280)', (tester) async {
     final admin = _Admin(grants: [
       {
