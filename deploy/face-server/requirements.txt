@@ -1,0 +1,8 @@
+# SFace runs on OpenCV; DeepFace also loads TensorFlow (needs a CPU with AVX).
+deepface==0.0.93
+tensorflow-cpu==2.16.2
+tf-keras==2.16.0
+numpy==1.26.4
+pillow==10.4.0
+fastapi==0.115.0
+uvicorn==0.30.6

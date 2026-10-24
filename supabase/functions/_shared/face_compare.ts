@@ -1,13 +1,22 @@
 /**
- * face-compare (migration 0281): how alike the face in someone's selfie is
- * to the face on their ID photo, as a score for the admin who reviews them.
- * Never a decision: the admin approves or rejects.
+ * face-compare (migrations 0281, 0283): how alike the face in someone's
+ * selfie is to the face on their ID photo, as a score for the admin who
+ * reviews them. Never a decision: the admin approves or rejects.
  *
- * The service is AWS Rekognition CompareFaces, with the key from Admin → API
- * Keys (provider "aws", service "rekognition", the first active key, kept as
- * "ACCESS_KEY_ID:SECRET_ACCESS_KEY" or "...:region"). Without one the answer
- * is "not_checked". The photos are read from storage with the service role,
- * sent to the service and dropped: nothing is kept but the score.
+ * Who scores it is the admin's choice (Admin → Dispatch → Accounts, kept in
+ * app_settings 'dispatch_verify'.faceProvider):
+ *   off              nobody;
+ *   aws (default)    AWS Rekognition CompareFaces, with the key from Admin →
+ *                    API Keys (provider "aws", service "rekognition", the
+ *                    first active key, "ACCESS_KEY_ID:SECRET_ACCESS_KEY" or
+ *                    "...:region");
+ *   self_hosted      the self-hosted face server (_shared/face_server.ts);
+ *   self_hosted_aws  the self-hosted server, and AWS when it can't answer.
+ * Without a usable one the answer is "not_checked" with the reason (off,
+ * no_aws_key, no_server, no_provider), kept on the check for the queue. The
+ * score is kept with who gave it (face_provider). The photos are read from
+ * storage with the service role, sent and dropped: nothing is kept but the
+ * score.
  *
  * The pure half, tested with stand-ins; face-compare/index.ts does the I/O.
  *
@@ -15,6 +24,9 @@
  */
 
 import { type AwsKey, parseAwsKey } from "./aws_sigv4.ts";
+import { base64, type FaceServer, faceServerKey, readServerCompare } from "./face_server.ts";
+
+export { base64 };
 
 export const DOCUMENT_PAGES = ["admin-documents", "admin-documents-users", "admin-documents-partners"];
 export const AWS_PROVIDER = "aws";
@@ -23,6 +35,34 @@ export const REKOGNITION_SERVICE = "rekognition";
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 export type FaceState = "match" | "no_match" | "no_face" | "not_checked" | "error";
+export type FaceProvider = "aws" | "self_hosted";
+export type FaceSetting = "off" | "aws" | "self_hosted" | "self_hosted_aws";
+const SETTINGS: FaceSetting[] = ["off", "aws", "self_hosted", "self_hosted_aws"];
+
+/** The admin's choice from app_settings 'dispatch_verify'; AWS when unset. */
+export function faceSetting(dispatchVerify: unknown): FaceSetting {
+  const v = (dispatchVerify as { faceProvider?: unknown } | null)?.faceProvider;
+  return SETTINGS.includes(v as FaceSetting) ? v as FaceSetting : "aws";
+}
+
+/** Who to ask, in order, with what is set up; or why nobody. */
+export function providerPlan(setting: FaceSetting, hasAws: boolean, hasServer: boolean): {
+  order: FaceProvider[];
+  reason?: "off" | "no_aws_key" | "no_server" | "no_provider";
+} {
+  switch (setting) {
+    case "off":
+      return { order: [], reason: "off" };
+    case "self_hosted":
+      return hasServer ? { order: ["self_hosted"] } : { order: [], reason: "no_server" };
+    case "self_hosted_aws": {
+      const order: FaceProvider[] = [...(hasServer ? ["self_hosted" as const] : []), ...(hasAws ? ["aws" as const] : [])];
+      return order.length ? { order } : { order: [], reason: "no_provider" };
+    }
+    default:
+      return hasAws ? { order: ["aws"] } : { order: [], reason: "no_aws_key" };
+  }
+}
 
 export interface CheckRow {
   id: string;
@@ -77,15 +117,6 @@ export function readCompare(status: number, body: unknown): { state: FaceState; 
 
 const round = (n: number) => Math.round(n * 100) / 100;
 
-/** Base64 of [bytes], in chunks (a 5 MB photo is too big for one call). */
-export function base64(bytes: Uint8Array): string {
-  let s = "";
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(s);
-}
-
 export interface FaceCompareDeps {
   /** Whether the caller's token is an admin who edits a Documents page; null when not signed in. */
   canReview(authorization: string | null): Promise<boolean | null>;
@@ -93,9 +124,14 @@ export interface FaceCompareDeps {
   /** The selfie / ID front to compare [row] with: the newest of the other kind. */
   counterpart(row: CheckRow): Promise<CheckRow | null>;
   apiProviders(): Promise<unknown>;
+  /** app_settings 'dispatch_verify' (faceProvider). */
+  verifySettings(): Promise<unknown>;
   download(bucket: string, path: string): Promise<Uint8Array | null>;
+  /** AWS Rekognition CompareFaces. */
   compare(key: AwsKey, source: Uint8Array, target: Uint8Array): Promise<{ status: number; body: unknown }>;
-  save(id: string, state: FaceState, score: number | null): Promise<void>;
+  /** The self-hosted server's /compare (throws when it can't be reached in time). */
+  compareSelfHosted(server: FaceServer, selfie: Uint8Array, card: Uint8Array): Promise<{ status: number; body: unknown }>;
+  save(id: string, state: FaceState, score: number | null, provider: FaceProvider | null, reason: string | null): Promise<void>;
 }
 
 export interface Result {
@@ -119,10 +155,13 @@ export async function handleFaceCompare(input: unknown, authorization: string | 
     if (!row) return { status: 404, body: { error: "not_found" } };
     const other = await deps.counterpart(row);
     if (!other) return { status: 200, body: { state: "not_checked", reason: "no_pair" } };
-    const key = rekognitionKey(await deps.apiProviders());
-    if (!key) {
-      await deps.save(row.id, "not_checked", null);
-      return { status: 200, body: { state: "not_checked", reason: "no_key" } };
+    const [apiProviders, verify] = await Promise.all([deps.apiProviders(), deps.verifySettings()]);
+    const key = rekognitionKey(apiProviders);
+    const server = faceServerKey(apiProviders);
+    const plan = providerPlan(faceSetting(verify), key !== null, server !== null);
+    if (plan.reason) {
+      await deps.save(row.id, "not_checked", null, null, plan.reason);
+      return { status: 200, body: { state: "not_checked", reason: plan.reason } };
     }
     const selfie = row.kind === "selfie" ? row : other;
     const card = row.kind === "id" ? row : other;
@@ -135,11 +174,43 @@ export async function handleFaceCompare(input: unknown, authorization: string | 
     if (src.length > MAX_IMAGE_BYTES || dst.length > MAX_IMAGE_BYTES) {
       return { status: 200, body: { state: "not_checked", reason: "too_big" } };
     }
-    const answer = await deps.compare(key, src, dst);
-    const r = readCompare(answer.status, answer.body);
-    await deps.save(row.id, r.state, r.score);
-    if (other.id !== row.id) await deps.save(other.id, r.state, r.score);
-    return { status: 200, body: { state: r.state, score: r.score, ...(r.detail ? { detail: r.detail } : {}) } };
+    let r: { state: FaceState; score: number | null; detail?: string } = { state: "error", score: null };
+    let used: FaceProvider = plan.order[0];
+    let fellBack = false;
+    for (const provider of plan.order) {
+      if (provider !== used) fellBack = true;
+      used = provider;
+      if (provider === "self_hosted") {
+        const answer = await deps.compareSelfHosted(server!, src, dst)
+          .then((x) => readServerCompare(x.status, x.body))
+          .catch((e) => ({
+            state: "error" as const,
+            score: null,
+            failed: true,
+            detail: e instanceof Error && e.name === "TimeoutError"
+              ? "Self-hosted server: no answer within 15 s"
+              : "Self-hosted server: couldn't reach it",
+          }));
+        r = { state: answer.state, score: answer.score, ...(answer.detail ? { detail: answer.detail } : {}) };
+        if (answer.failed) continue;
+        break;
+      }
+      const answer = await deps.compare(key!, src, dst);
+      r = readCompare(answer.status, answer.body);
+      break;
+    }
+    await deps.save(row.id, r.state, r.score, used, null);
+    if (other.id !== row.id) await deps.save(other.id, r.state, r.score, used, null);
+    return {
+      status: 200,
+      body: {
+        state: r.state,
+        score: r.score,
+        provider: used,
+        ...(fellBack ? { fell_back: true } : {}),
+        ...(r.detail ? { detail: r.detail } : {}),
+      },
+    };
   } catch {
     return { status: 503, body: { error: "unavailable" } };
   }

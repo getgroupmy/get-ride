@@ -126,8 +126,8 @@ void main() {
     });
 
     test('face match, live check and mismatch words', () {
-      expect(faceMatchText('match', 97.4), 'Same person likely (97%)');
-      expect(faceMatchText('no_match', 12), 'Faces differ (12%)');
+      expect(faceMatchText('match', 97.4), '97% match');
+      expect(faceMatchText('no_match', 12), 'Faces differ: 12% match');
       expect(faceMatchText(null, null), 'Not checked');
       expect(livenessText('passed', 'blink'), 'Live: blinked');
       expect(livenessText('not_checked'), 'Live check: not checked');

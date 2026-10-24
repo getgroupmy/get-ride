@@ -360,17 +360,139 @@ String? mismatchWarning(Object? mismatch) {
   return "The $what read from the card doesn't match the profile.";
 }
 
-/// The admin's word for a face match.
-String faceMatchText(Object? state, Object? score) {
+/// Who gave a face match score (identity_checks.face_provider), as the
+/// admin reads it after the score.
+String? faceProviderText(Object? provider) => switch (provider) {
+  'self_hosted' => 'self-hosted',
+  'aws' => 'AWS',
+  _ => null,
+};
+
+/// Why a face isn't checked, in a few words (face-compare's reasons, 0283).
+String? faceReasonText(Object? reason) => switch (reason) {
+  'off' => 'Face match is off',
+  'no_aws_key' || 'no_key' => 'No AWS key yet',
+  'no_server' => 'Self-hosted server not set up',
+  'no_provider' => 'No face server or AWS key yet',
+  'no_pair' => 'No selfie and ID to compare yet',
+  'no_photo' => "A photo couldn't be read",
+  'too_big' => 'A photo is too big',
+  _ => null,
+};
+
+/// The admin's word for a face match: "82% match · self-hosted", "Faces
+/// differ: 12% match · AWS", "Not checked · No AWS key yet". [reason] says
+/// why it isn't checked when the check itself doesn't.
+String faceMatchText(Object? state, Object? score, {Object? provider, Object? reason}) {
   final s = (score as num?)?.toDouble();
+  final by = faceProviderText(provider);
+  String pct(String fallback) => '${s?.toStringAsFixed(0) ?? fallback}% match${by == null ? '' : ' · $by'}';
   return switch (state) {
-    'match' => 'Same person likely (${s?.toStringAsFixed(0) ?? '?'}%)',
-    'no_match' => 'Faces differ (${s?.toStringAsFixed(0) ?? '0'}%)',
+    'match' => pct('?'),
+    'no_match' => 'Faces differ: ${pct('0')}',
     'no_face' => 'No face found in one of the photos',
-    'error' => "Couldn't check",
-    _ => 'Not checked',
+    'error' => "Couldn't check${by == null ? '' : ' · $by'}",
+    _ => switch (faceReasonText(reason)) {
+      final String why => 'Not checked · $why',
+      null => 'Not checked',
+    },
   };
 }
+
+// ---- Who checks the face and reads the card (0283) ------------------------------------------------
+
+/// Admin → Dispatch → Accounts: who compares the selfie with the ID.
+const faceProviders = <String, String>{
+  'off': 'Off',
+  'aws': 'AWS Rekognition',
+  'self_hosted': 'Self-hosted server',
+  'self_hosted_aws': 'Self-hosted, then AWS',
+};
+
+/// Admin → Dispatch → Accounts: who reads the MyKad or passport.
+const idReadModes = <String, String>{
+  'phone': 'On the phone only',
+  'phone_vision': "Phone, then Google Vision if the phone can't read it",
+  'vision': 'Google Vision always',
+};
+
+/// dispatch_verify_config's answer: the renewal window, the two settings
+/// and, for an admin, whether each service has a key (never the key).
+class IdentityConfig {
+  const IdentityConfig({
+    this.renewDays = 30,
+    this.faceProvider = 'aws',
+    this.idRead = 'phone',
+    this.awsKey,
+    this.faceServer,
+    this.visionKey,
+  });
+
+  factory IdentityConfig.fromJson(Object? v) {
+    final m = v is Map ? v : const {};
+    final face = '${m['faceProvider'] ?? ''}';
+    final read = '${m['idRead'] ?? ''}';
+    bool? flag(Object? x) => x is bool ? x : null;
+    return IdentityConfig(
+      renewDays: (m['renewDays'] as num?)?.toInt() ?? 30,
+      faceProvider: faceProviders.containsKey(face) ? face : 'aws',
+      idRead: idReadModes.containsKey(read) ? read : 'phone',
+      awsKey: flag(m['awsKey']),
+      faceServer: flag(m['faceServer']),
+      visionKey: flag(m['visionKey']),
+    );
+  }
+
+  final int renewDays;
+  final String faceProvider;
+  final String idRead;
+
+  /// Null when not told (not an admin, or a database before 0283).
+  final bool? awsKey;
+  final bool? faceServer;
+  final bool? visionKey;
+
+  /// Why no face can be checked as things are set up, as face-compare would
+  /// say it; null when one can (or the keys aren't known here).
+  String? get faceUnusable {
+    final aws = awsKey, server = faceServer;
+    if (faceProvider == 'off') return 'off';
+    if (aws == null || server == null) return null;
+    return switch (faceProvider) {
+      'self_hosted' => server ? null : 'no_server',
+      'self_hosted_aws' => server || aws ? null : 'no_provider',
+      _ => aws ? null : 'no_aws_key',
+    };
+  }
+
+  /// A line under the face match setting about its keys, or null.
+  String? get faceNote => switch (faceUnusable) {
+    'no_aws_key' => 'Add the key in Admin, API Keys: Amazon Web Services, Rekognition.',
+    'no_server' => 'Add the server in Admin, API Keys: Face match server.',
+    'no_provider' => 'Add the face match server or an AWS key in Admin, API Keys.',
+    _ => null,
+  };
+
+  /// A line under the ID reading setting about its key, or null.
+  String? get visionNote => idRead != 'phone' && visionKey == false
+      ? 'Add the key in Admin, API Keys: Google, Cloud Vision (ID reading). Until then only the phone reads.'
+      : null;
+}
+
+/// Whether Google Vision reads the ID after it is sent: always, or when the
+/// phone read nothing (web and desktop read nothing on the phone's side).
+bool visionReadNeeded(String mode, CardRead? phoneRead) => switch (mode) {
+  'vision' => true,
+  'phone_vision' => phoneRead == null || (phoneRead.name == null && phoneRead.ic == null && phoneRead.expiry == null),
+  _ => false,
+};
+
+/// What the card was read by, for the admin.
+String? readSourceText(Object? source) => switch (source) {
+  'phone' => 'the phone',
+  'vision' => 'Google Vision',
+  _ => null,
+};
 
 /// The admin's word for a selfie's live check.
 String livenessText(Object? liveness, [Object? detail]) => switch (liveness) {

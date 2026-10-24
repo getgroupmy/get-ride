@@ -3,8 +3,10 @@
 // opens, re-check selfies from a new phone among them. "Waiting for
 // approval" first, with its count. Each shows how the selfie was taken
 // (live or not checked), what the phone read off the card against the
-// profile, the face match score (help, never the decision) and the
-// decision with a reason from the list.
+// profile, the face match score with who gave it (help, never the
+// decision; 0283: AWS or the self-hosted server, or why it isn't checked),
+// reading the card again with Google Vision, and the decision with a reason
+// from the list.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -78,6 +80,7 @@ class _SignInChecksReviewState extends ConsumerState<SignInChecksReview> {
   @override
   Widget build(BuildContext context) {
     final waiting = ref.watch(signInChecksWaitingProvider).value;
+    final config = ref.watch(identityConfigProvider).value;
     return Column(
       children: [
         FilterBar(
@@ -113,6 +116,12 @@ class _SignInChecksReviewState extends ConsumerState<SignInChecksReview> {
                         checkKindText(c),
                         if (c['kind'] == 'selfie') livenessText(c['liveness'], c['liveness_detail']),
                         ?warn,
+                        faceMatchText(
+                          c['face_state'],
+                          c['face_score'],
+                          provider: c['face_provider'],
+                          reason: c['face_reason'] ?? config?.faceUnusable,
+                        ),
                         dateText(c['created_at']),
                       ].where((s) => s.isNotEmpty).join(' · '),
                     ),
@@ -168,6 +177,7 @@ class SignInCheckSheet extends ConsumerStatefulWidget {
 class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
   late Map<String, dynamic> _row = widget.row;
   bool _comparing = false;
+  bool _reading = false;
 
   Future<void> _compare() async {
     setState(() => _comparing = true);
@@ -175,10 +185,48 @@ class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
     if (!mounted) return;
     setState(() {
       _comparing = false;
-      _row = {..._row, 'face_state': r['state'], 'face_score': r['score']};
+      _row = {
+        ..._row,
+        'face_state': r['state'],
+        'face_score': r['score'],
+        'face_provider': r['provider'],
+        'face_reason': r['reason'],
+      };
     });
-    if (r['reason'] == 'no_key') showInfo(context, 'Not checked: add an AWS Rekognition key in Admin, API Keys.');
-    if (r['reason'] == 'no_pair') showInfo(context, 'Not checked: there is no selfie and ID to compare yet.');
+    final why = faceReasonText(r['reason']);
+    if (why != null) showInfo(context, 'Not checked: $why.');
+    if (r['fell_back'] == true) showInfo(context, "The self-hosted server didn't answer, so AWS checked it.");
+    if (r['state'] == 'error' && r['detail'] != null) showInfo(context, "Couldn't check: ${r['detail']}");
+    widget.onChanged();
+  }
+
+  Future<void> _readAgain() async {
+    setState(() => _reading = true);
+    final r = await ref.read(identityRepositoryProvider).readCardWithVision('${_row['id']}');
+    if (!mounted) return;
+    setState(() {
+      _reading = false;
+      if (r['state'] == 'read' || r['reason'] == 'nothing_found') {
+        _row = {
+          ..._row,
+          'read_name': r['name'] ?? _row['read_name'],
+          'read_ic': r['ic'] ?? _row['read_ic'],
+          'read_passport': r['passport'] ?? _row['read_passport'],
+          'read_expiry': r['expiry'] ?? _row['read_expiry'],
+          'read_source': 'vision',
+          if (r['mismatch'] is List) 'mismatch': r['mismatch'],
+        };
+      }
+    });
+    showInfo(context, switch (r) {
+      {'state': 'read'} => 'Read with Google Vision.',
+      {'reason': 'nothing_found'} => 'Google Vision found no name or number on the card.',
+      {'reason': 'no_key'} => 'Not read: add a Google Cloud Vision key in Admin, API Keys.',
+      {'reason': 'no_photo'} => "Not read: the card's photo couldn't be opened.",
+      {'reason': 'too_big'} => "Not read: the card's photo is too big.",
+      {'detail': final String d} => "Couldn't read: $d",
+      _ => "Couldn't read the card. Try again.",
+    });
     widget.onChanged();
   }
 
@@ -238,6 +286,8 @@ class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
     final warn = mismatchWarning(c['mismatch']);
     final selfie = c['kind'] == 'selfie';
     final rejected = c['status'] == 'Rejected' ? rejectReasonText(c['reject_reason'], c['reject_note']) : null;
+    final config = ref.watch(identityConfigProvider).value;
+    final readBy = readSourceText(c['read_source']);
     return Column(
       key: const ValueKey('signin-check-sheet'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -278,21 +328,37 @@ class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
           'IC on profile': c['ic'],
           if (!selfie) 'Name read': c['read_name'] ?? 'Not read',
           if (!selfie) 'IC read': c['read_ic'] ?? 'Not read',
+          if (!selfie && c['read_passport'] != null) 'Passport no. read': c['read_passport'],
+          if (!selfie && readBy != null) 'Read by': readBy,
           if (!selfie && c['expiry_date'] != null) 'Expiry': formatStoredDateForUser(c['expiry_date']),
-          'Face match': faceMatchText(c['face_state'], c['face_score']),
+          'Face match': faceMatchText(
+            c['face_state'],
+            c['face_score'],
+            provider: c['face_provider'],
+            reason: c['face_reason'] ?? config?.faceUnusable,
+          ),
           'Phone': c['phone'],
           'Sent': dateText(c['created_at']),
           if (c['reviewed_at'] != null) 'Reviewed': '${dateText(c['reviewed_at'])} · ${c['reviewer'] ?? ''}',
           'Reason': ?rejected,
         }),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: BusyButton.text(
-            key: const ValueKey('signin-check-compare'),
-            onPressed: _comparing || !canEdit ? null : _compare,
-            icon: const Icon(Icons.face_retouching_natural_outlined),
-            child: Text(_comparing ? 'Comparing' : 'Compare selfie with ID'),
-          ),
+        Wrap(
+          spacing: 8,
+          children: [
+            BusyButton.text(
+              key: const ValueKey('signin-check-compare'),
+              onPressed: _comparing || !canEdit ? null : _compare,
+              icon: const Icon(Icons.face_retouching_natural_outlined),
+              child: Text(_comparing ? 'Comparing' : 'Compare selfie with ID'),
+            ),
+            if (!selfie && canEdit)
+              BusyButton.text(
+                key: const ValueKey('signin-check-read-again'),
+                onPressed: _reading ? null : _readAgain,
+                icon: const Icon(Icons.document_scanner_outlined),
+                child: Text(_reading ? 'Reading' : 'Read card again (Google Vision)'),
+              ),
+          ],
         ),
         Text(
           'The face match helps you decide. It never approves on its own.',

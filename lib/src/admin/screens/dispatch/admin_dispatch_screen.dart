@@ -24,6 +24,7 @@ import '../../../widgets/search_select.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../profile_search.dart';
+import 'identity_provider_fields.dart';
 import 'signin_checks_fields.dart';
 
 const dispatchConsolePage = 'admin-dispatch';
@@ -1139,6 +1140,11 @@ class _AccountsTabState extends ConsumerState<_AccountsTab> {
                       TextButton(key: const ValueKey('renew-days-save'), onPressed: _saveRenew, child: const Text('Save')),
                   ],
                 ),
+              ),
+            if (renewDays != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: IdentityProviderFields(enabled: canEdit),
               ),
             if (accounts.isLoading && accounts.value == null) const LinearProgressIndicator(),
             if (accounts.hasValue && accounts.value!.isEmpty) Text('No IDs yet.', style: muted),
