@@ -15,7 +15,6 @@ import 'package:get_ride/src/core/partner_status.dart';
 import 'package:get_ride/src/core/push_logic.dart' show pushRouteFor;
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/partner_review_repository.dart';
-import 'package:get_ride/src/features/partner/changes_needed.dart';
 import 'package:get_ride/src/features/partner/partner_status_panel.dart';
 import 'package:go_router/go_router.dart';
 
