@@ -32,12 +32,12 @@ The score only helps the admin decide: never an automatic approve or reject.
 
 | Option | Cost | Runs when | Notes |
 |---|---|---|---|
-| **DeepFace on the NAS** (planned first choice) | free | 24/7, on upload | Python + TensorFlow in Docker. Use the **SFace** model (OpenCV, Apache 2.0) and **Dlib** (public domain). Photos are compared and forgotten, never stored. |
+| **Self-hosted on the NAS** (built: `deploy/face-server/`) | free | 24/7, on upload | OpenCV only: YuNet finds the face, **SFace** (Apache 2.0) compares. No TensorFlow, so it runs on the J4125 (no AVX). About 200 MB memory. Photos are compared and forgotten, never stored. Setup: `deploy/face-server/README.md`. |
 | **AWS Rekognition** CompareFaces | about USD 1 / 1,000; first-year free tier | 24/7, on upload | Key in API Keys → Amazon Web Services → Rekognition, saved as `ACCESS_KEY_ID:SECRET_ACCESS_KEY[:region]` (default ap-southeast-1). IAM user with only `rekognition:CompareFaces` and `rekognition:ListCollections`. Already built. |
 | **human** in the admin's browser ([vladmandic/human](https://github.com/vladmandic/human), MIT) | free | only while an admin has the queue open (scores everything waiting, saves it) | About 10 MB of model files downloaded once per browser. Photos never leave the admin page. Cannot run in the native phone apps. |
 
-Planned order in `face-compare`: NAS, then AWS (if a key is saved), then the
-browser. Below a set match (for example 60%) the check is marked "Needs a
+Admin › Dispatch › Accounts › Face match picks the source: AWS (default),
+self-hosted, or self-hosted then AWS. The in-browser check is still parked. Below a set match (for example 60%) the check is marked "Needs a
 closer look" and sorted to the top.
 
 ### Licences: what not to use
