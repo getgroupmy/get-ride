@@ -56,6 +56,7 @@ import 'driver_wallet_pills.dart';
 import 'fare_offer.dart';
 import 'my_ride_badges.dart';
 import 'online_gate.dart';
+import 'online_selfie_check.dart';
 import 'partner_menu.dart';
 import 'partner_mode_picker.dart' show pendingPartnerModeProvider;
 import 'request_sheet.dart';
@@ -460,6 +461,13 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     if (v && !await _typeRulesCleared(teksi: false)) return _refusal ?? 'Your Partner Service type is not offered here.';
     if (!mounted) return gone;
     if (v && !await _vehiclePermitCleared()) return _refusal ?? "You can't go online yet.";
+    if (!mounted) return gone;
+    // Last, so nobody takes a selfie only to be held up by another check:
+    // the selfie check on a phone (0290). Once taken they go online
+    // whatever the match.
+    if (v && !await ensureOnlineSelfie(context, ref, onRefusal: (r) => _refusal = r)) {
+      return _refusal ?? 'A selfie check is waiting.';
+    }
     if (!mounted) return gone;
     if (v && _autoAccept) _markQueueSeen();
     // Requests already waiting are in the list; only new ones pop up.

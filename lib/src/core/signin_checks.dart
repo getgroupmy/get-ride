@@ -378,6 +378,9 @@ String? faceReasonText(Object? reason) => switch (reason) {
   'no_photo' => "A photo couldn't be read",
   'too_big' => 'A photo is too big',
   'no_live_selfie' => 'No live selfie yet',
+  // Going online (0290).
+  'not_sent' => "The face match couldn't be asked",
+  'no_selfie' => 'No selfie yet',
   _ => null,
 };
 

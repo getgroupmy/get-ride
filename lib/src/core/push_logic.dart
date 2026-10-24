@@ -121,6 +121,13 @@ String? pushRouteFor(Map<String, dynamic> data) {
       // A dispatch ID's selfie or ID (0281): to the admin, the queue; to the
       // person, the decision on their sign-in steps.
       return data['for'] == 'admin' ? '/admin/documents?kind=signin' : '/dispatch';
+    case 'online_selfie_check':
+      // A low selfie match when a partner went online (0290): to the admin,
+      // that check, with Call partner, Go offline and Add to watch list.
+      final check = data['check_id'];
+      return check is String && check.isNotEmpty
+          ? '/admin/m/online-selfie-check?id=${Uri.encodeComponent(check)}'
+          : '/admin/documents?kind=signin';
     case 'ride_message':
       // The chat over the recipient's own trip screen (migration 0129 says
       // which side they are on).

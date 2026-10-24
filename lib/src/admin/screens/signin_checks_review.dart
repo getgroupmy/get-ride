@@ -6,7 +6,10 @@
 // profile, the face match score with who gave it (help, never the
 // decision; 0283: AWS or the self-hosted server, or why it isn't checked),
 // reading the card again with Google Vision, and the decision with a reason
-// from the list.
+// from the list. 0290: the partners' selfies from going online are listed
+// too (why it was asked, the phone, the match, the live check); low matches
+// come first as "Needs a closer look", under Waiting and All, and all of them
+// under Going online.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,6 +25,7 @@ import '../admin_access.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import '../widgets/reject_reason.dart';
+import 'online_selfie_check_screen.dart';
 
 final signInChecksProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
   (ref, filter) => ref.watch(identityRepositoryProvider).list(filter),
@@ -31,7 +35,20 @@ final signInChecksWaitingProvider = FutureProvider.autoDispose<int>(
   (ref) => ref.watch(identityRepositoryProvider).waitingCount(),
 );
 
-const _filters = {'waiting': 'Waiting for approval', 'approved': 'Approved', 'rejected': 'Rejected', 'all': 'All'};
+const _filters = {
+  'waiting': 'Waiting for approval',
+  'online': 'Going online',
+  'approved': 'Approved',
+  'rejected': 'Rejected',
+  'all': 'All',
+};
+
+/// The list search for a going-online check: name, phone and phone model.
+bool onlineCheckMatches(Map<String, dynamic> c, String q) {
+  final s = q.trim().toLowerCase();
+  if (s.isEmpty) return true;
+  return [c['name'], c['phone'], c['device_model']].whereType<Object>().join(' ').toLowerCase().contains(s);
+}
 
 /// What was sent, in a word.
 String checkKindText(Map<String, dynamic> c) => switch ((c['kind'], c['purpose'], c['doc_type'])) {
@@ -64,6 +81,7 @@ bool checkMatches(Map<String, dynamic> c, String q) {
 void _refresh(WidgetRef ref) {
   ref.invalidate(signInChecksProvider);
   ref.invalidate(signInChecksWaitingProvider);
+  refreshOnlineSelfieChecks(ref);
 }
 
 class SignInChecksReview extends ConsumerStatefulWidget {
@@ -80,13 +98,28 @@ class _SignInChecksReviewState extends ConsumerState<SignInChecksReview> {
   @override
   Widget build(BuildContext context) {
     final waiting = ref.watch(signInChecksWaitingProvider).value;
+    final closerCount = ref.watch(onlineSelfieCloserCountProvider).value ?? 0;
     final config = ref.watch(identityConfigProvider).value;
+    // Going online (0290): those needing a closer look first; all of them
+    // under Going online and All. A database before 0290 has none.
+    final online = switch (_filter) {
+      'online' || 'all' => ref.watch(onlineSelfieChecksProvider('all')).value,
+      'waiting' => ref.watch(onlineSelfieChecksProvider('closer')).value,
+      _ => null,
+    } ?? const <Map<String, dynamic>>[];
+    final onlineShown = online.where((c) => onlineCheckMatches(c, _query)).toList();
+    final closer = [for (final c in onlineShown) if (c['closer'] == true) c];
+    final calm = [for (final c in onlineShown) if (c['closer'] != true) c];
     return Column(
       children: [
         FilterBar(
           filters: {
             for (final e in _filters.entries)
-              e.key: e.key == 'waiting' && waiting != null ? '${e.value} ($waiting)' : e.value,
+              e.key: switch (e.key) {
+                'waiting' when waiting != null => '${e.value} ($waiting)',
+                'online' when closerCount > 0 => '${e.value} ($closerCount to look at)',
+                _ => e.value,
+              },
           },
           selected: _filter,
           onSelected: (f) => setState(() => _filter = f),
@@ -95,17 +128,31 @@ class _SignInChecksReviewState extends ConsumerState<SignInChecksReview> {
         ),
         Expanded(
           child: AsyncView(
-            value: ref.watch(signInChecksProvider(_filter)),
+            value: ref.watch(signInChecksProvider(_filter == 'online' ? 'waiting' : _filter)),
             onRetry: () => _refresh(ref),
             data: (rows) {
-              final list = rows.where((c) => checkMatches(c, _query)).toList();
-              if (list.isEmpty) return const EmptyState(icon: Icons.task_alt, title: 'Nothing to show');
+              final list = _filter == 'online'
+                  ? const <Map<String, dynamic>>[]
+                  : rows.where((c) => checkMatches(c, _query)).toList();
+              // Low matches first; then the uploads, the newest first, the
+              // calm going-online checks among them.
+              final items = <(Map<String, dynamic>, bool)>[
+                for (final c in closer) (c, true),
+                ...[
+                  for (final c in list) (c, false),
+                  for (final c in calm) (c, true),
+                ]..sort((a, b) => '${b.$1['answered_at'] ?? b.$1['created_at']}'.compareTo(
+                      '${a.$1['answered_at'] ?? a.$1['created_at']}',
+                    )),
+              ];
+              if (items.isEmpty) return const EmptyState(icon: Icons.task_alt, title: 'Nothing to show');
               return ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: list.length,
+                itemCount: items.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (_, i) {
-                  final c = list[i];
+                  final (c, goingOnline) = items[i];
+                  if (goingOnline) return OnlineCheckTile(row: c);
                   final warn = mismatchWarning(c['mismatch']);
                   return ListTile(
                     key: ValueKey('signin-check-${c['id']}'),

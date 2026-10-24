@@ -2,6 +2,7 @@ import { assert, assertEquals } from "jsr:@std/assert@1.0.19";
 
 import {
   base64,
+  betterComparison,
   type CheckRow,
   type DocumentFaceDeps,
   documentRequest,
@@ -9,6 +10,10 @@ import {
   faceSetting,
   handleDocumentFaceCompare,
   handleFaceCompare,
+  handleOnlineFaceCompare,
+  onlineCheckRequest,
+  type OnlineFaceDeps,
+  type OnlineResult,
   providerPlan,
   readCompare,
   rekognitionKey,
@@ -288,4 +293,117 @@ Deno.test("document: no live selfie, or no provider, is not checked", async () =
   const o = await handleDocumentFaceCompare(body("driver_permit"), { authorization: null, secret: "db-secret" }, off.d);
   assertEquals(o.body, { state: "not_checked", score: null, reason: "off" });
   assert(off.stored[0].startsWith("driver_permit"));
+});
+
+// ---- 0290: the selfie when going online -----------------------------------------------------------
+
+const ONLINE = "00000000-0000-0000-0000-000000000290";
+const AVATARS = "https://x.supabase.co/storage/v1/object/public/avatars";
+function onlineDeps(over: Partial<OnlineFaceDeps> = {}, scores: Record<string, number> = {}) {
+  const stored: OnlineResult[] = [];
+  const d: OnlineFaceDeps = {
+    webhookSecretOk: (s) => Promise.resolve(s === "db-secret"),
+    canReview: (a) => Promise.resolve(a === "Bearer admin" ? true : a === "Bearer rider" ? false : null),
+    source: (id) =>
+      Promise.resolve(id === ONLINE
+        ? {
+          user_id: "u1",
+          selfie_url: `${URL}/u1/online/selfie_1.jpg`,
+          photo_url: `${AVATARS}/u1/me.jpg`,
+          id_url: `${URL}/u1/id_front.jpg`,
+        }
+        : null),
+    apiProviders: () => Promise.resolve(providers),
+    verifySettings: () => Promise.resolve(null),
+    // The bytes say which photo it is: 1 the selfie, 2 the profile photo, 3 the ID.
+    download: (_b, path) =>
+      Promise.resolve(new Uint8Array([path.includes("selfie") ? 1 : path.includes("me.jpg") ? 2 : 3])),
+    compare: (_k, _s, target) =>
+      Promise.resolve({
+        status: 200,
+        body: { FaceMatches: [{ Similarity: target[0] === 2 ? (scores.photo ?? 41) : (scores.id ?? 30) }] },
+      }),
+    compareSelfHosted: () => Promise.resolve({ status: 200, body: { similarity: 0.9 } }),
+    store: (_id, r) => {
+      stored.push(r);
+      return Promise.resolve();
+    },
+    ...over,
+  };
+  return { d, stored };
+}
+const onlineBody = (id = ONLINE) => ({ online_check: { id } });
+
+Deno.test("online: the request names a check", () => {
+  assertEquals(onlineCheckRequest(onlineBody()), { id: ONLINE });
+  assertEquals(onlineCheckRequest(onlineBody("x")), null);
+  assertEquals(onlineCheckRequest({ document: { kind: "national_id", id: ONLINE } }), null);
+});
+
+Deno.test("online: only the database's secret or an admin may ask", async () => {
+  const { d } = onlineDeps();
+  assertEquals((await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: null }, d)).status, 401);
+  assertEquals((await handleOnlineFaceCompare(onlineBody(), { authorization: "Bearer rider", secret: null }, d)).status, 403);
+  assertEquals((await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "wrong" }, d)).status, 403);
+  assertEquals((await handleOnlineFaceCompare(onlineBody(), { authorization: "Bearer admin", secret: null }, d)).status, 200);
+  assertEquals((await handleOnlineFaceCompare(onlineBody("00000000-0000-0000-0000-000000000000"),
+    { authorization: null, secret: "db-secret" }, d)).status, 404);
+});
+
+Deno.test("online: compared with the profile photo and the ID; the better score counts", async () => {
+  const { d, stored } = onlineDeps({}, { photo: 41, id: 30 });
+  const r = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, d);
+  assertEquals(r.body, {
+    state: "no_match",
+    score: 41,
+    provider: "aws",
+    photo: { state: "no_match", score: 41 },
+    id: { state: "no_match", score: 30 },
+  });
+  assertEquals(stored.length, 1);
+  const good = onlineDeps({}, { photo: 20, id: 92.5 });
+  const g = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, good.d);
+  assertEquals([g.body.state, g.body.score], ["match", 92.5]);
+});
+
+Deno.test("online: only one photo to compare with", async () => {
+  const { d } = onlineDeps({
+    source: () => Promise.resolve({ user_id: "u1", selfie_url: `${URL}/u1/online/selfie_1.jpg`, photo_url: null, id_url: `${URL}/u1/id.jpg` }),
+  }, { id: 77 });
+  const r = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, d);
+  assertEquals(r.body, { state: "no_match", score: 77, provider: "aws", id: { state: "no_match", score: 77 } });
+});
+
+Deno.test("online: no provider, or nothing to compare with, is kept as not checked", async () => {
+  const off = onlineDeps({ verifySettings: () => Promise.resolve({ faceProvider: "off" }) });
+  const o = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, off.d);
+  assertEquals(o.body, { state: "not_checked", score: null, reason: "off" });
+  assertEquals(off.stored[0].reason, "off");
+  const none = onlineDeps({
+    source: () => Promise.resolve({ user_id: "u1", selfie_url: `${URL}/u1/s.jpg`, photo_url: null, id_url: null }),
+  });
+  const n = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, none.d);
+  assertEquals(n.body, { state: "not_checked", score: null, reason: "no_pair" });
+  const noKey = onlineDeps({ apiProviders: () => Promise.resolve([]) });
+  const k = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, noKey.d);
+  assertEquals(k.body.reason, "no_aws_key");
+});
+
+Deno.test("online: self-hosted, then AWS when the server fails", async () => {
+  const { d } = onlineDeps({
+    verifySettings: () => Promise.resolve({ faceProvider: "self_hosted_aws" }),
+    compareSelfHosted: () => Promise.reject(new Error("down")),
+  }, { photo: 88, id: 70 });
+  const r = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, d);
+  assertEquals([r.body.state, r.body.score, r.body.provider], ["match", 88, "aws"]);
+});
+
+Deno.test("online: the better of two comparisons", () => {
+  assertEquals(betterComparison(undefined, { state: "match", score: 90 }), { state: "match", score: 90 });
+  assertEquals(betterComparison({ state: "no_face", score: null }, { state: "no_match", score: 12 }),
+    { state: "no_match", score: 12 });
+  assertEquals(betterComparison({ state: "match", score: 81 }, { state: "match", score: 95 }), { state: "match", score: 95 });
+  assertEquals(betterComparison({ state: "error", score: null }, { state: "no_face", score: null }),
+    { state: "no_face", score: null });
+  assert(betterComparison(undefined, undefined) === undefined);
 });

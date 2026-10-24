@@ -333,3 +333,157 @@ export async function handleDocumentFaceCompare(
     return { status: 503, body: { error: "unavailable" } };
   }
 }
+
+// ---- The selfie when going online (migration 0290) ------------------------------------------------
+//
+// A partner's live selfie taken on Go online is compared with their approved
+// profile photo and their ID photo. The database asks when the selfie is in
+// (online_selfie_face_kick, x-push-secret); an admin may ask again. The
+// match is the better of the two, kept with each (online_selfie_check_store),
+// and a low one alerts the admin's chosen recipients there. Never a
+// decision: the partner is online either way.
+//
+// Request:  POST { online_check: { id } }
+// Response: 200 { state, score?, provider?, reason?, photo?, id? }
+//           400 bad_request · 401 not_signed_in · 403 not_authorized
+//           404 not_found · 503 unavailable
+
+/** Admin pages that may ask again: Documents, Partners and Dispatch › Partner selfie checks. */
+export const ONLINE_FACE_PAGES = [...DOCUMENT_PAGES, "admin-partners", "admin-partner-edit", "admin-dispatch-selfie-checks"];
+
+export interface OnlineSource {
+  user_id: string;
+  selfie_url: string | null;
+  photo_url: string | null;
+  id_url: string | null;
+}
+
+export interface OneComparison {
+  state: FaceState;
+  score: number | null;
+}
+
+export interface OnlineResult {
+  state: FaceState;
+  score: number | null;
+  provider: FaceProvider | null;
+  reason: string | null;
+  photo?: OneComparison;
+  id?: OneComparison;
+}
+
+export interface OnlineFaceDeps {
+  webhookSecretOk(secret: string): Promise<boolean>;
+  canReview(authorization: string | null): Promise<boolean | null>;
+  source(id: string): Promise<OnlineSource | null>;
+  apiProviders(): Promise<unknown>;
+  verifySettings(): Promise<unknown>;
+  download(bucket: string, path: string): Promise<Uint8Array | null>;
+  compare(key: AwsKey, source: Uint8Array, target: Uint8Array): Promise<{ status: number; body: unknown }>;
+  compareSelfHosted(server: FaceServer, selfie: Uint8Array, card: Uint8Array): Promise<{ status: number; body: unknown }>;
+  store(id: string, result: OnlineResult): Promise<void>;
+}
+
+export function onlineCheckRequest(input: unknown): { id: string } | null {
+  const o = (input as { online_check?: { id?: unknown } } | null)?.online_check;
+  if (!o || typeof o.id !== "string" || !/^[0-9a-f-]{36}$/i.test(o.id)) return null;
+  return { id: o.id };
+}
+
+/** The better of two comparisons: a score beats none, the higher score wins. */
+export function betterComparison(a: OneComparison | undefined, b: OneComparison | undefined): OneComparison | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  if (a.score === null) return b.score === null ? (a.state === "error" ? b : a) : b;
+  if (b.score === null) return a;
+  return b.score > a.score ? b : a;
+}
+
+export async function handleOnlineFaceCompare(
+  input: unknown,
+  headers: { authorization: string | null; secret: string | null },
+  deps: OnlineFaceDeps,
+): Promise<Result> {
+  const req = onlineCheckRequest(input);
+  if (!req) return { status: 400, body: { error: "bad_request" } };
+  try {
+    const secret = (headers.secret ?? "").trim();
+    let allowed = secret ? await deps.webhookSecretOk(secret) : false;
+    if (!allowed) {
+      const admin = await deps.canReview(headers.authorization);
+      if (admin === null && !secret) return { status: 401, body: { error: "not_signed_in" } };
+      allowed = admin === true;
+    }
+    if (!allowed) return { status: 403, body: { error: "not_authorized" } };
+    const src = await deps.source(req.id);
+    if (!src) return { status: 404, body: { error: "not_found" } };
+    const done = async (r: OnlineResult) => {
+      await deps.store(req.id, r);
+      return {
+        status: 200,
+        body: {
+          state: r.state,
+          score: r.score,
+          ...(r.provider ? { provider: r.provider } : {}),
+          ...(r.reason ? { reason: r.reason } : {}),
+          ...(r.photo ? { photo: r.photo } : {}),
+          ...(r.id ? { id: r.id } : {}),
+        },
+      };
+    };
+    const notChecked = (reason: string) => done({ state: "not_checked", score: null, provider: null, reason });
+    if (!src.selfie_url) return await notChecked("no_selfie");
+    if (!src.photo_url && !src.id_url) return await notChecked("no_pair");
+    const [apiProviders, verify] = await Promise.all([deps.apiProviders(), deps.verifySettings()]);
+    const key = rekognitionKey(apiProviders);
+    const server = faceServerKey(apiProviders);
+    const plan = providerPlan(faceSetting(verify), key !== null, server !== null);
+    if (plan.reason) return await notChecked(plan.reason);
+    const at = (url: string | null) => {
+      const o = storageObject(url);
+      return o ? deps.download(o.bucket, o.path) : Promise.resolve(null);
+    };
+    const [selfie, photo, card] = await Promise.all([at(src.selfie_url), at(src.photo_url), at(src.id_url)]);
+    if (!selfie || (!photo && !card)) return await notChecked("no_photo");
+    if (selfie.length > MAX_IMAGE_BYTES) return await notChecked("too_big");
+
+    let used: FaceProvider = plan.order[0];
+    let detail: string | undefined;
+    const one = async (other: Uint8Array | null): Promise<OneComparison | undefined> => {
+      if (!other || other.length > MAX_IMAGE_BYTES) return undefined;
+      let r: OneComparison = { state: "error", score: null };
+      for (const provider of plan.order) {
+        used = provider;
+        if (provider === "self_hosted") {
+          const answer = await deps.compareSelfHosted(server!, selfie, other)
+            .then((x) => readServerCompare(x.status, x.body))
+            .catch(() => ({ state: "error" as const, score: null, failed: true, detail: "Self-hosted server: no answer" }));
+          r = { state: answer.state, score: answer.score };
+          if (answer.detail) detail = answer.detail;
+          if (answer.failed) continue;
+          break;
+        }
+        const res = await deps.compare(key!, selfie, other);
+        const answer = readCompare(res.status, res.body);
+        r = { state: answer.state, score: answer.score };
+        if (answer.detail) detail = answer.detail;
+        break;
+      }
+      return r;
+    };
+    const photoResult = await one(photo);
+    const idResult = await one(card);
+    const best = betterComparison(photoResult, idResult);
+    if (!best) return await notChecked("too_big");
+    return await done({
+      state: best.state,
+      score: best.score,
+      provider: used,
+      reason: best.state === "error" ? (detail ?? "error").slice(0, 160) : null,
+      ...(photoResult ? { photo: photoResult } : {}),
+      ...(idResult ? { id: idResult } : {}),
+    });
+  } catch {
+    return { status: 503, body: { error: "unavailable" } };
+  }
+}

@@ -107,6 +107,8 @@ final adminModules = <String, AdminModule>{
   // Order dispatch (0251): the console, stands, groups and fleets, IDs.
   'dispatch': const AdminModule('dispatch', 'Dispatch', [
     'admin-dispatch', 'admin-dispatch-stands', 'admin-dispatch-groups', 'admin-dispatch-accounts',
+    // Partner selfie checks when going online, and the watch list (0290).
+    'admin-dispatch-selfie-checks',
   ]),
   // Telematics (0255): km and trips per driver, vehicle and pair.
   'telematics': const AdminModule('telematics', 'Telematics', ['admin-telematics']),
