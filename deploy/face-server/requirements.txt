@@ -1,8 +1,6 @@
-# SFace runs on OpenCV; DeepFace also loads TensorFlow (needs a CPU with AVX).
-deepface==0.0.93
-tensorflow-cpu==2.16.2
-tf-keras==2.16.0
+# OpenCV only: cv2.dnn runs the two ONNX models without AVX (no TensorFlow,
+# no onnxruntime), so it runs on a Celeron J4125.
+opencv-python-headless==4.10.0.84
 numpy==1.26.4
-pillow==10.4.0
 fastapi==0.115.0
 uvicorn==0.30.6

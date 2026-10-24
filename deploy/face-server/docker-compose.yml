@@ -3,23 +3,18 @@
 # (copy .env.example): FACE_API_KEY and TUNNEL_TOKEN. See README.md.
 services:
   face-server:
-    build:
-      context: .
-      args:
-        WITH_DLIB: ${WITH_DLIB:-0}
-    image: getride-face-server:1
+    build: .
+    platform: linux/amd64
+    image: getride-face-server:2
     container_name: face-server
     restart: unless-stopped
     environment:
       FACE_API_KEY: ${FACE_API_KEY:?Set FACE_API_KEY in .env}
-      FACE_MODEL: ${FACE_MODEL:-SFace}
       FACE_MAX_IMAGE_MB: ${FACE_MAX_IMAGE_MB:-6}
-    volumes:
-      - face-weights:/root/.deepface
     # Only the tunnel reaches it: no port on the NAS.
     expose:
       - "8000"
-    mem_limit: 2g
+    mem_limit: 512m
 
   cloudflared:
     image: cloudflare/cloudflared:2024.10.1
@@ -30,6 +25,3 @@ services:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN in .env}
     depends_on:
       - face-server
-
-volumes:
-  face-weights:

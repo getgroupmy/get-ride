@@ -1,30 +1,27 @@
-# get.ride face match server (see README.md). x86-64 with AVX.
-FROM python:3.11-slim
-
-# OpenCV's libraries.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
- && rm -rf /var/lib/apt/lists/*
+# get.ride face match server (see README.md). linux/amd64, no AVX needed:
+# OpenCV's cv2.dnn runs YuNet and SFace (opencv_zoo, Apache 2.0).
+FROM python:3.11.10-slim-bookworm
 
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Dlib is optional (docker compose build --build-arg WITH_DLIB=1): it is
-# compiled here, which takes a while and needs cmake.
-ARG WITH_DLIB=0
-RUN if [ "$WITH_DLIB" = "1" ]; then \
-      apt-get update && apt-get install -y --no-install-recommends build-essential cmake \
-      && pip install --no-cache-dir dlib==19.24.6 \
-      && apt-get purge -y build-essential cmake && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*; \
-    fi
+# The two models, from opencv_zoo at a fixed commit, checked by sha256: the
+# build stops if either is not exactly the file expected. (Python fetches
+# them: the slim image has no curl, and Synology's builder may not know
+# ADD --checksum.)
+ARG ZOO=https://media.githubusercontent.com/media/opencv/opencv_zoo/48b10fa505aeb51fbd127fc60a5c660040e823b7/models
+COPY fetch_models.py /tmp/
+RUN python /tmp/fetch_models.py "$ZOO" /app/models && rm /tmp/fetch_models.py
 
 COPY core.py app.py ./
 
-# The model's weights are fetched once into /root/.deepface (a volume).
-ENV PYTHONUNBUFFERED=1 TF_CPP_MIN_LOG_LEVEL=2
+RUN useradd --system --no-create-home face
+USER face
+
+ENV PYTHONUNBUFFERED=1 FACE_MODELS_DIR=/app/models
 EXPOSE 8000
-HEALTHCHECK --interval=60s --timeout=10s --start-period=120s \
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
-# One worker: one copy of the model in memory.
+# One worker: one copy of the models in memory.
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-server-header"]

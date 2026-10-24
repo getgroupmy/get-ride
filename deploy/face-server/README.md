@@ -8,19 +8,32 @@ check, unlike AWS Rekognition.
 
 The score only helps the admin. Nothing is approved on it.
 
-- Python, FastAPI and [DeepFace](https://github.com/serengil/deepface) with
-  the **SFace** model (Apache 2.0). **Dlib** (Boost licence) is optional.
-  VGG-Face, ArcFace, Facenet and the other DeepFace models are not allowed:
-  their weights are for non-commercial use only.
+- Python, FastAPI and OpenCV only (`opencv-python-headless`; no TensorFlow,
+  no DeepFace, no onnxruntime). Two models from
+  [opencv_zoo](https://github.com/opencv/opencv_zoo), both Apache 2.0, run by
+  OpenCV's own `cv2.dnn`: **YuNet** finds the face (`cv2.FaceDetectorYN`,
+  `face_detection_yunet_2023mar.onnx`) and **SFace** compares them
+  (`cv2.FaceRecognizerSF`, `face_recognition_sface_2021dec.onnx`). The image
+  build fetches both from a fixed opencv_zoo commit and stops if either's
+  sha256 differs (`fetch_models.py`).
 - `GET /health`: `{"status": "ok", "model": "SFace"}`. With an `x-api-key`
   header it also checks the key (401 when it is wrong). Admin → API Keys →
   Test uses this.
 - `POST /compare` with `x-api-key: FACE_API_KEY` and
   `{"image1": "<base64>", "image2": "<base64>"}` →
-  `{"similarity": 0.82, "model": "SFace", "verified": true}`. On this scale
-  0.8 is the model's own threshold for "same person". `422 {"error": "no_face"}`
-  when a photo has no face; `413` over the size limit (6 MB a photo); `401` for
-  a wrong key.
+  `{"similarity": 0.87, "model": "SFace", "verified": true, "cosine": 0.6}`.
+  `422 {"error": "no_face"}` when a photo has no face (an answer, not a
+  failure: get.ride doesn't then ask AWS); `413` over the size limit (6 MB a
+  photo); `400` for something that isn't a photo; `401` for a wrong key. On an
+  ID photo the biggest face is used (the main photo, not a MyKad's small ghost
+  picture).
+- **The similarity scale.** SFace gives a cosine score from -1 to 1
+  (`FaceRecognizerSF.match` with `FR_COSINE`); OpenCV suggests 0.363 or more
+  for the same person. `similarity` puts that on 0 to 1 with 0.363 at 0.8, the
+  point get.ride reads as "match": from 0.363 to 1 it runs straight from 0.8 to
+  1.0, from 0 to 0.363 straight from 0 to 0.8, and below 0 it is 0. So a cosine
+  of 0.6 shows as 87%, 0.2 as 44%. `verified` is cosine ≥ 0.363; `cosine` is the
+  raw score. (`core.similarity`, tested in `test_core.py`.)
 - The key is compared in constant time. The photos are decoded in memory,
   compared and dropped: nothing is written to disk or logged.
 - Reached only through a Cloudflare Tunnel: no port is opened on the NAS or
@@ -28,13 +41,12 @@ The score only helps the admin. Nothing is approved on it.
 
 ## What the NAS needs
 
-- Synology DSM 7.2 or later with **Container Manager** (Package Center).
-- An x86-64 CPU **with AVX**: DeepFace loads TensorFlow, which needs it. AMD
-  Ryzen models (DS923+, DS1522+, DS1621+) have it. Many Celeron models
-  (DS920+, DS720+, J4125) do not. To check, turn on SSH (Control Panel →
-  Terminal & SNMP), sign in and run `grep -c avx /proc/cpuinfo`: more than 0
-  is fine.
-- 2 GB of free memory and about 3 GB of disk.
+- Synology DSM 7.2 or later with **Container Manager** (Package Center), on an
+  x86-64 model. It runs on the **DS224+ (Intel Celeron J4125)**: that CPU has
+  no AVX, and nothing here needs it (OpenCV's and NumPy's wheels are built for
+  SSE3 and only use AVX where the CPU has it).
+- About 420 MB of disk for the image and about 200 MB of memory while it runs
+  (the compose file caps it at 512 MB). A check takes well under a second.
 
 ## 1. Make the secret key
 
@@ -60,7 +72,7 @@ The tunnel shows **Healthy** once the containers are up (step 3).
 
 1. **File Station**: make the folder `docker/face-server` and upload this
    folder's files into it (`Dockerfile`, `docker-compose.yml`, `app.py`,
-   `core.py`, `requirements.txt`, `.env.example`).
+   `core.py`, `fetch_models.py`, `requirements.txt`, `.env.example`).
 2. Copy `.env.example` to `.env` in the same folder (File Station → right
    click → Copy, then rename; or make it in a text editor) and fill in
    `FACE_API_KEY` and `TUNNEL_TOKEN`.
@@ -71,14 +83,11 @@ The tunnel shows **Healthy** once the containers are up (step 3).
      docker-compose.yml** and paste this folder's `docker-compose.yml`).
    - **Next** → leave Web Station off → **Done**.
 
-   The first build takes 10 to 20 minutes (it downloads TensorFlow and the
-   SFace weights). The project then shows both containers, `face-server` and
+   The first build takes a few minutes (it downloads OpenCV and the two
+   models). The project then shows both containers, `face-server` and
    `face-tunnel`, running.
 4. Check it: open `https://face.getride.my/health` in a browser. It shows
    `{"status":"ok","model":"SFace"}`.
-
-To use Dlib instead, set `FACE_MODEL=Dlib` and `WITH_DLIB=1` in `.env`, then
-in the project **Action** → **Build** (compiling dlib adds about 20 minutes).
 
 To update after a change here: upload the files again, then **Action** →
 **Build**, then **Start**.
@@ -96,9 +105,9 @@ To update after a change here: upload the files again, then **Action** →
    server**, or **Self-hosted, then AWS** to fall back to AWS Rekognition when
    the NAS is off (needs the AWS key too).
 4. Admin → Documents → **Sign-in checks** → an upload → **Compare selfie
-   with ID** shows e.g. "82% match · self-hosted".
+   with ID** shows e.g. "87% match · self-hosted".
 
 ## Tests
 
 `pytest deploy/face-server/test_core.py` checks the key check, the size
-limit and the similarity scale without DeepFace.
+limit and the similarity scale without OpenCV or the models.

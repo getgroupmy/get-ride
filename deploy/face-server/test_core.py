@@ -1,5 +1,5 @@
 """pytest deploy/face-server/test_core.py: the key check, the size limit and
-the similarity scale, without DeepFace."""
+the similarity scale, without OpenCV or the models."""
 
 import base64
 
@@ -47,8 +47,15 @@ def test_photos_over_the_limit_are_refused_before_decoding():
 
 
 def test_the_similarity_scale():
-    assert similarity(0, 0.593) == 1.0
-    assert similarity(0.593, 0.593) == 0.8
-    assert similarity(2, 0.593) == 0.0
-    assert 0.8 < similarity(0.3, 0.593) < 1.0
-    assert 0 < similarity(0.8, 0.593) < 0.8
+    # OpenCV's same-person threshold for SFace's cosine score is 0.8 here.
+    assert similarity(0.363) == 0.8
+    assert similarity(1.0) == 1.0
+    assert similarity(0.0) == 0.0
+    assert similarity(-0.4) == 0.0
+    assert 0.8 < similarity(0.6) < 1.0
+    assert 0.0 < similarity(0.2) < 0.8
+    assert similarity(0.6) == 0.8744
+    # Higher cosine, higher similarity, all the way.
+    scores = [similarity(c / 100) for c in range(-100, 101)]
+    assert scores == sorted(scores)
+    assert all(0.0 <= s <= 1.0 for s in scores)
