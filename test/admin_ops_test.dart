@@ -1,12 +1,18 @@
 // Batch 2 admin operations: sub-admin grants (lib/src/admin/sub_admin_grants.dart,
 // screens/sub_admins_screen.dart) and document review (screens/documents_screen.dart).
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/admin_repository.dart';
+import 'package:get_ride/src/admin/god_view_people.dart';
 import 'package:get_ride/src/admin/screens/documents_screen.dart';
 import 'package:get_ride/src/admin/screens/sub_admins_screen.dart';
 import 'package:get_ride/src/admin/profile_search.dart';
@@ -39,8 +45,31 @@ class _Admin extends AdminRepository {
   @override
   Future<List<Map<String, dynamic>>> searchPeople(String query, {int limit = 20}) async {
     searches.add(query);
-    return [_aina];
+    return found;
   }
+
+  /// What a people search finds.
+  List<Map<String, dynamic>> found = const [_aina];
+
+  // God View: who the grant shows (0285).
+  GodViewPeople godPeople = GodViewPeople.none;
+  bool failPeopleRead = false;
+  Set<String> partnerIds = const {};
+  final peopleReads = <String>[];
+  final peopleSaves = <(String, GodViewPeople)>[];
+
+  @override
+  Future<GodViewPeople> godViewPeople(String profileId) async {
+    peopleReads.add(profileId);
+    if (failPeopleRead) throw Exception('offline');
+    return godPeople;
+  }
+
+  @override
+  Future<void> saveGodViewPeople(String profileId, GodViewPeople people) async => peopleSaves.add((profileId, people));
+
+  @override
+  Future<Set<String>> partnerProfileIds(Iterable<String> ids) async => {for (final i in ids) if (partnerIds.contains(i)) i};
 
   @override
   Future<void> setGrants({
@@ -118,10 +147,50 @@ Future<GoRouter> _pump(
       adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
       adminRepositoryProvider.overrideWithValue(admin),
     ],
-    child: MaterialApp.router(theme: appTheme(b), routerConfig: router),
+    child: MaterialApp.router(
+      theme: appTheme(b),
+      routerConfig: router,
+      builder: (_, child) => RepaintBoundary(key: _screen, child: child),
+    ),
   ));
   await tester.pumpAndSettle();
   return router;
+}
+
+/// The whole app, for a screenshot.
+final _screen = GlobalKey();
+
+/// With `--dart-define=GV_PEOPLE_SHOTS=<dir>`: where [_shoot] saves PNGs.
+const _shotsDir = String.fromEnvironment('GV_PEOPLE_SHOTS');
+
+/// Real letters and icons for the screenshots (tests draw boxes otherwise),
+/// from the Flutter SDK's own fonts. Only when shots are asked for, so the
+/// other tests keep the test font's sizes.
+Future<void> _loadShotFonts() async {
+  final root = Platform.environment['FLUTTER_ROOT'] ?? '';
+  final dir = '$root/bin/cache/artifacts/material_fonts';
+  Future<void> load(String family, List<String> files) async {
+    final loader = FontLoader(family);
+    for (final f in files) {
+      final file = File('$dir/$f');
+      if (file.existsSync()) loader.addFont(Future.value(ByteData.sublistView(file.readAsBytesSync())));
+    }
+    await loader.load();
+  }
+  await load('Roboto', ['Roboto-Regular.ttf', 'Roboto-Medium.ttf', 'Roboto-Bold.ttf']);
+  await load('MaterialIcons', ['MaterialIcons-Regular.otf']);
+}
+
+/// Saves the screen as `<dir>/<name>.png` when [_shotsDir] is set.
+Future<void> _shoot(WidgetTester tester, String name) async {
+  if (_shotsDir.isEmpty) return;
+  final boundary = _screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  await tester.runAsync(() async {
+    final image = await boundary.toImage();
+    final png = (await image.toByteData(format: ui.ImageByteFormat.png))!;
+    File('$_shotsDir/$name.png').writeAsBytesSync(png.buffer.asUint8List());
+    image.dispose();
+  });
 }
 
 void main() {
@@ -312,6 +381,259 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  group('God View: who they see (0285)', () {
+    const siti = {'id': 'p-siti', 'name': 'Siti', 'phone': '+60111234321', 'display_id': 'GR7'};
+    const hafiz = {'id': 'p-hafiz', 'name': 'Hafiz', 'phone': '+60135557777', 'display_id': 'GP3'};
+    Map<String, dynamic> gv([Map<String, dynamic>? region]) =>
+        {'id': 'g1', 'profile_id': 'p-aina', 'page': godViewPage, 'access_level': 'read', 'region': region};
+
+    Future<void> openGodView(WidgetTester tester, _Admin admin, Brightness b, {Size size = const Size(1000, 1600)}) async {
+      await _pump(tester, admin, const AdminSubAdminsScreen(), b: b, size: size);
+      await tester.tap(find.byKey(const ValueKey('sub-admin-edit-p-aina')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.ancestor(of: find.text('Filter pages'), matching: find.byType(TextField)), 'god');
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> add(WidgetTester tester, String list, String query, String id) async {
+      await tester.ensureVisible(find.byKey(ValueKey('grant-god-view-$list-add')));
+      await tester.tap(find.byKey(ValueKey('grant-god-view-$list-add')));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(const ValueKey('gv-person-search')), query);
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey('gv-person-result-$id')));
+      await tester.pumpAndSettle();
+    }
+
+    for (final b in Brightness.values) {
+      testWidgets('Nobody: no region to pick, saved after the grant (${b.name})', (tester) async {
+        final admin = _Admin(grants: [gv({'country': 'Malaysia'})]);
+        await openGodView(tester, admin, b);
+        expect(admin.peopleReads, ['p-aina']);
+        expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('grant-god-view-mode-region'))).selected, isTrue);
+        expect(find.byKey(const ValueKey('grant-god-view-region')), findsOneWidget);
+        expect(find.byKey(const ValueKey('grant-god-view-hide-add')), findsOneWidget);
+        await tester.ensureVisible(find.byKey(const ValueKey('grant-god-view-mode-nobody')));
+        await tester.tap(find.byKey(const ValueKey('grant-god-view-mode-nobody')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('grant-god-view-region')), findsNothing);
+        expect(find.byKey(const ValueKey('grant-god-view-everywhere')), findsNothing);
+        expect(find.byKey(const ValueKey('grant-god-view-hide-add')), findsNothing);
+        expect(find.text('Nobody: they keep the God View page but see no one on it'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('grant-save')));
+        await tester.pumpAndSettle();
+        expect(admin.peopleSaves.single.$1, 'p-aina');
+        expect(admin.peopleSaves.single.$2.mode, GodViewPeopleMode.nobody);
+        // The region is kept on the grant, for when they go back to Region.
+        expect(admin.regionCalls.single[godViewPage], {'country': 'Malaysia'});
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('Only these people: add a partner and a user, remove one, save the list (${b.name})', (tester) async {
+        final admin = _Admin(grants: [gv()])
+          ..found = const [siti, hafiz]
+          ..partnerIds = const {'p-hafiz'};
+        await openGodView(tester, admin, b);
+        await tester.ensureVisible(find.byKey(const ValueKey('grant-god-view-mode-only')));
+        await tester.tap(find.byKey(const ValueKey('grant-god-view-mode-only')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('grant-god-view-region')), findsNothing);
+        expect(find.text('No one listed: they see no one until you add someone.'), findsOneWidget);
+        await add(tester, 'only', 'ha', 'p-hafiz');
+        expect(admin.searches.last, 'ha');
+        final row = find.byKey(const ValueKey('grant-god-view-only-p-hafiz'));
+        expect(row, findsOneWidget);
+        expect(find.descendant(of: row, matching: find.text('Partner')), findsOneWidget);
+        expect(find.descendant(of: row, matching: find.textContaining('+6013•••7777')), findsOneWidget);
+        expect(find.descendant(of: row, matching: find.textContaining('5557')), findsNothing, reason: 'the phone is masked');
+        await add(tester, 'only', 'si', 'p-siti');
+        expect(find.descendant(of: find.byKey(const ValueKey('grant-god-view-only-p-siti')), matching: find.text('User')),
+            findsOneWidget);
+        expect(find.text('Only 2 people'), findsOneWidget);
+        // Someone already listed can't be added twice.
+        await tester.tap(find.byKey(const ValueKey('grant-god-view-only-add')));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const ValueKey('gv-person-search')), 'si');
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpAndSettle();
+        expect(tester.widget<ListTile>(find.byKey(const ValueKey('gv-person-result-p-siti'))).enabled, isFalse);
+        expect(find.textContaining('Already listed'), findsWidgets);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('grant-god-view-only-remove-p-siti')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('grant-god-view-only-p-siti')), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('grant-save')));
+        await tester.pumpAndSettle();
+        final saved = admin.peopleSaves.single.$2;
+        expect(saved.mode, GodViewPeopleMode.only);
+        expect(saved.only.map((p) => p.id), ['p-hafiz']);
+        expect(saved.hide, isEmpty);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('Hide these people: the saved list opens, one removed, Everywhere kept (${b.name})', (tester) async {
+        final admin = _Admin(grants: [gv({'everywhere': true})])
+          ..godPeople = const GodViewPeople(hide: [
+            GodViewListedPerson(id: 'p-siti', name: 'Siti', phone: '+60111234321'),
+            GodViewListedPerson(id: 'p-hafiz', name: 'Hafiz', phone: '+60135557777', partner: true),
+          ]);
+        await openGodView(tester, admin, b);
+        expect(find.byKey(const ValueKey('grant-god-view-hide-p-siti')), findsOneWidget);
+        expect(find.byKey(const ValueKey('grant-god-view-hide-p-hafiz')), findsOneWidget);
+        expect(find.text('Everyone in their region but 2 people'), findsOneWidget);
+        await tester.ensureVisible(find.byKey(const ValueKey('grant-god-view-hide-remove-p-hafiz')));
+        await tester.tap(find.byKey(const ValueKey('grant-god-view-hide-remove-p-hafiz')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('grant-save')));
+        await tester.pumpAndSettle();
+        final saved = admin.peopleSaves.single.$2;
+        expect(saved.mode, GodViewPeopleMode.region);
+        expect(saved.hide.map((p) => p.id), ['p-siti']);
+        expect(admin.regionCalls.single[godViewPage], {'everywhere': true});
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    // On a phone, light and dark: the lists fit, with the person's kind and
+    // remove button beside a long name.
+    group('at phone width', () {
+      setUpAll(() async {
+        if (_shotsDir.isNotEmpty) await _loadShotFonts();
+      });
+      const phone = Size(390, 844);
+      const listed = [
+        GodViewListedPerson(id: 'p-siti', name: 'Siti Nurhaliza binti Abdullah', phone: '+60111234321', displayId: 'GR7'),
+        GodViewListedPerson(id: 'p-hafiz', name: 'Hafiz', phone: '+60135557777', displayId: 'GP3', partner: true),
+        GodViewListedPerson(id: 'p-mei', name: 'Mei Ling', phone: '+60172223333', displayId: 'GR9'),
+      ];
+
+      for (final b in Brightness.values) {
+        testWidgets('Only these people (${b.name})', (tester) async {
+          final admin = _Admin(grants: [gv({'country': 'Malaysia'})])
+            ..godPeople = const GodViewPeople(mode: GodViewPeopleMode.only, only: listed);
+          await openGodView(tester, admin, b, size: phone);
+          await tester.ensureVisible(find.byKey(const ValueKey('grant-god-view-mode-region')));
+          await tester.pumpAndSettle();
+          await tester.drag(find.byType(Scrollable).first, const Offset(0, -120));
+          await tester.pumpAndSettle();
+          expect(find.text('Only 3 people'), findsOneWidget);
+          for (final p in listed) {
+            expect(find.byKey(ValueKey('grant-god-view-only-${p.id}')), findsOneWidget);
+          }
+          expect(find.byKey(const ValueKey('grant-god-view-region')), findsNothing);
+          expect(tester.getRect(find.byKey(const ValueKey('grant-god-view-only-remove-p-siti'))).right,
+              lessThanOrEqualTo(phone.width));
+          await _shoot(tester, 'gv_people_only_${b.name}');
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('Region with a hide list (${b.name})', (tester) async {
+          final admin = _Admin(grants: [gv({'country': 'Malaysia', 'state': 'Selangor'})])
+            ..godPeople = GodViewPeople(hide: listed.take(2).toList());
+          await openGodView(tester, admin, b, size: phone);
+          await tester.ensureVisible(find.byKey(const ValueKey('grant-god-view-hide-add')));
+          await tester.pumpAndSettle();
+          expect(find.text('Everyone in their region but 2 people'), findsOneWidget);
+          expect(find.byKey(const ValueKey('grant-god-view-hide-p-hafiz')), findsOneWidget);
+          await _shoot(tester, 'gv_people_hide_${b.name}');
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the add dialog (${b.name})', (tester) async {
+          final admin = _Admin(grants: [gv()])
+            ..found = const [
+              {'id': 'p-siti', 'name': 'Siti', 'phone': '+60111234321', 'display_id': 'GR7'},
+              {'id': 'p-hafiz', 'name': 'Hafiz', 'phone': '+60135557777', 'display_id': 'GP3'},
+            ]
+            ..partnerIds = const {'p-hafiz'}
+            ..godPeople = const GodViewPeople(hide: [GodViewListedPerson(id: 'p-siti', name: 'Siti')]);
+          await openGodView(tester, admin, b, size: phone);
+          await tester.ensureVisible(find.byKey(const ValueKey('grant-god-view-hide-add')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const ValueKey('grant-god-view-hide-add')));
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byKey(const ValueKey('gv-person-search')), 'hafiz');
+          await tester.pump(const Duration(milliseconds: 400));
+          await tester.pumpAndSettle();
+          expect(find.byKey(const ValueKey('gv-person-result-p-hafiz')), findsOneWidget);
+          await _shoot(tester, 'gv_people_add_${b.name}');
+          expect(tester.takeException(), isNull);
+        });
+      }
+    });
+
+    testWidgets('nothing changed: nothing saved', (tester) async {
+      final admin = _Admin(grants: [gv({'country': 'Malaysia'})])
+        ..godPeople = const GodViewPeople(mode: GodViewPeopleMode.only, only: [GodViewListedPerson(id: 'p-siti')]);
+      await openGodView(tester, admin, Brightness.light);
+      expect(find.byKey(const ValueKey('grant-god-view-only-p-siti')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('grant-save')));
+      await tester.pumpAndSettle();
+      expect(admin.peopleSaves, isEmpty);
+      expect(admin.setCalls, isEmpty);
+    });
+
+    testWidgets("the lists can't be read: the region still edits, the lists are left alone", (tester) async {
+      final admin = _Admin(grants: [gv()])..failPeopleRead = true;
+      await openGodView(tester, admin, Brightness.dark);
+      expect(find.byKey(const ValueKey('grant-god-view-people-error')), findsOneWidget);
+      expect(find.byKey(const ValueKey('grant-god-view-region')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('grant-god-view-everywhere')));
+      await tester.tap(find.byKey(const ValueKey('grant-god-view-everywhere')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('grant-save')));
+      await tester.pumpAndSettle();
+      expect(admin.regionCalls.single[godViewPage], {'everywhere': true});
+      expect(admin.peopleSaves, isEmpty);
+    });
+
+    testWidgets('a new God View grant: the lists saved with it, none read first', (tester) async {
+      final admin = _Admin(grants: [
+        {'id': 'g2', 'profile_id': 'p-aina', 'page': 'admin-users', 'access_level': 'read'},
+      ]);
+      await openGodView(tester, admin, Brightness.light);
+      await tester.tap(find.descendant(of: find.byKey(const ValueKey('grant-level-$godViewPage')), matching: find.text('View')));
+      await tester.pumpAndSettle();
+      expect(admin.peopleReads, isEmpty);
+      await tester.ensureVisible(find.byKey(const ValueKey('grant-god-view-mode-nobody')));
+      await tester.tap(find.byKey(const ValueKey('grant-god-view-mode-nobody')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('grant-save')));
+      await tester.pumpAndSettle();
+      expect(admin.setCalls.single.upserts, contains((page: godViewPage, edit: false)));
+      expect(admin.peopleSaves.single.$2.mode, GodViewPeopleMode.nobody);
+    });
+
+    test('changes and the summary', () {
+      const a = GodViewListedPerson(id: 'a', name: 'Aina', phone: '+60123456789', displayId: 'GR1');
+      const b = GodViewListedPerson(id: 'b');
+      expect(const GodViewPeople().differsFrom(GodViewPeople.none), isFalse);
+      expect(const GodViewPeople(hide: [a, b]).differsFrom(const GodViewPeople(hide: [b, a])), isFalse);
+      expect(const GodViewPeople(hide: [a]).differsFrom(const GodViewPeople(only: [a])), isTrue);
+      expect(const GodViewPeople(mode: GodViewPeopleMode.nobody).differsFrom(GodViewPeople.none), isTrue);
+      expect(addListedPerson(const [a], a), hasLength(1));
+      expect(removeListedPerson(const [a, b], 'a').map((p) => p.id), ['b']);
+      expect(listedPersonMatches(a, 'ain'), isTrue);
+      expect(listedPersonMatches(a, '456'), isTrue);
+      expect(listedPersonMatches(a, 'gr1'), isTrue);
+      expect(listedPersonMatches(a, 'zz'), isFalse);
+      final read = GodViewPeople.fromJson(const {
+        'mode': 'only',
+        'people': [
+          {'id': 'a', 'name': 'Aina', 'list': 'only', 'partner': false},
+          {'id': 'b', 'name': 'Bob', 'list': 'hide', 'partner': true},
+        ],
+      });
+      expect(read.mode, GodViewPeopleMode.only);
+      expect(read.only.single.id, 'a');
+      expect(read.hide.single.partner, isTrue);
+      expect(GodViewPeopleMode.parse('weird'), GodViewPeopleMode.region);
+      expect(const GodViewPeople(mode: GodViewPeopleMode.only, only: [a]).summary, 'Only 1 person');
+    });
+  });
 
   testWidgets('a God View grant saved as Everywhere opens with the switch on', (tester) async {
     final admin = _Admin(grants: [

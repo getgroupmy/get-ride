@@ -25,6 +25,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:admin.driver-service-locks.drivers', SurfaceKind.modal, 'Admin · Drivers', 'lib/src/admin/screens/catalogue/driver_service_locks_screen.dart'),
   SurfaceEntry('modal:admin.driver-service-locks.remove', SurfaceKind.modal, 'Admin · Remove', 'lib/src/admin/screens/catalogue/driver_service_locks_screen.dart'),
   SurfaceEntry('modal:admin.form-panel', SurfaceKind.modal, 'Admin · Form panel', 'lib/src/admin/widgets/admin_widgets.dart'),
+  SurfaceEntry('modal:admin.god-view-person-add', SurfaceKind.modal, 'Admin · God view person add', 'lib/src/admin/widgets/god_view_people_section.dart'),
   SurfaceEntry('modal:admin.media-upload', SurfaceKind.modal, 'Admin · Media upload', 'lib/src/admin/screens/meterapp/media_upload_dialog.dart'),
   SurfaceEntry('modal:admin.promo-code', SurfaceKind.modal, 'Admin · Promo code', 'lib/src/admin/screens/promo_codes_screen.dart'),
   SurfaceEntry('modal:admin.promo-code-redemptions', SurfaceKind.modal, 'Admin · Promo code redemptions', 'lib/src/admin/screens/promo_codes_screen.dart'),

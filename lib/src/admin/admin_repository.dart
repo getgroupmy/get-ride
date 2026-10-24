@@ -7,6 +7,7 @@ import '../core/fare_tariff.dart' show fareTariffRowWithoutServices;
 import 'admin_access.dart';
 import 'admin_filters.dart' show RowsPage, adminPeoplePageSize, rowsPage, searchOrFilter, userSearchColumns;
 import 'admin_settings_models.dart';
+import 'god_view_people.dart';
 import 'profile_search.dart';
 import 'push_composer.dart' show PushSchedule;
 import 'saved_push.dart';
@@ -90,6 +91,31 @@ class AdminRepository {
       await _db.from('admin_access').update({'region': e.value}).eq('profile_id', profileId).eq('page', e.key);
     }
     if (deletes.isNotEmpty) await _db.from('admin_access').delete().inFilter('id', deletes);
+  }
+
+  /// Who [profileId]'s God View grant shows (migration 0285): the mode and
+  /// both lists. Full admins and the Sub-admins page's grants.
+  Future<GodViewPeople> godViewPeople(String profileId) async {
+    final r = await _db.rpc('admin_god_view_people_get', params: {'p_profile_id': profileId});
+    return r is Map ? GodViewPeople.fromJson(Map<String, dynamic>.from(r)) : GodViewPeople.none;
+  }
+
+  /// Sets who [profileId]'s God View grant shows, replacing both lists; the
+  /// server logs the change. The grant must exist (save it first).
+  Future<void> saveGodViewPeople(String profileId, GodViewPeople people) =>
+      _db.rpc('admin_god_view_people_save', params: {
+        'p_profile_id': profileId,
+        'p_mode': people.mode.wire,
+        'p_only': [for (final p in people.only) p.id],
+        'p_hide': [for (final p in people.hide) p.id],
+      });
+
+  /// Of [ids], the profiles that are partners.
+  Future<Set<String>> partnerProfileIds(Iterable<String> ids) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return {};
+    final rows = await _db.from('partners').select('auth_user_id').inFilter('auth_user_id', list);
+    return {for (final r in rows) '${r['auth_user_id']}'};
   }
 
   Future<Map<String, dynamic>?> profileByPhone(String phone) async {

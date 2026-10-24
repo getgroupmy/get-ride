@@ -14,7 +14,9 @@ import '../sub_admin_grants.dart';
 import 'catalogue/driver_service_locks_screen.dart' show driverServiceLocksPage;
 import 'catalogue/partner_type_services_screen.dart' show partnerTypeServicesPage;
 import 'geo/place_types_screen.dart' show placeTypesPage;
+import '../god_view_people.dart';
 import '../widgets/admin_widgets.dart';
+import '../widgets/god_view_people_section.dart';
 import '../widgets/region_scope_picker.dart' show pickRegionScope;
 import '../../core/partner_type_rules.dart' show RegionScope;
 import '../../data/live_tables.dart';
@@ -342,6 +344,14 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
   RegionScope get _savedReportsRegion =>
       RegionScope.fromJson(_existing.where((g) => g.page == reportsPage).firstOrNull?.region);
 
+  /// Who God View shows them: the region less a hide list, only a list, or
+  /// nobody (0285). Read from the server for a grant that exists.
+  GodViewPeople _godPeople = GodViewPeople.none;
+  GodViewPeople _savedGodPeople = GodViewPeople.none;
+  bool _godPeopleLoading = false;
+  String? _godPeopleError;
+  int _godPeopleTicket = 0;
+
   void _load() {
     final existing = _existing;
     _godRegion = _savedGodRegion;
@@ -349,6 +359,40 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
     _reportsRegion = _savedReportsRegion;
     _levels = initialGrantLevels(grantablePages.keys, existing);
     _notes.text = existing.map((g) => g.notes).whereType<String>().firstOrNull ?? '';
+    _loadGodPeople();
+  }
+
+  void _loadGodPeople() {
+    final id = _person?['id'];
+    final ticket = ++_godPeopleTicket;
+    _godPeople = _savedGodPeople = GodViewPeople.none;
+    _godPeopleError = null;
+    _godPeopleLoading = id != null && _existing.any((g) => g.page == godViewPage);
+    if (!_godPeopleLoading) return;
+    ref.read(adminRepositoryProvider).godViewPeople('$id').then(
+      (v) {
+        if (!mounted || ticket != _godPeopleTicket) return;
+        setState(() {
+          _godPeople = _savedGodPeople = v;
+          _godPeopleLoading = false;
+        });
+      },
+      onError: (Object e) {
+        if (!mounted || ticket != _godPeopleTicket) return;
+        setState(() {
+          _godPeopleError = errorText(e);
+          _godPeopleLoading = false;
+        });
+      },
+    );
+  }
+
+  /// People to add to a God View list, each marked user or partner.
+  Future<List<GodViewListedPerson>> _searchGodPeople(String q) async {
+    final repo = ref.read(adminRepositoryProvider);
+    final rows = await repo.searchPeople(q);
+    final partners = await repo.partnerProfileIds(rows.map((r) => '${r['id']}'));
+    return [for (final r in rows) GodViewListedPerson.fromRow(r, partner: partners.contains('${r['id']}'))];
   }
 
   @override
@@ -392,7 +436,13 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
     final godView = (_levels[godViewPage] ?? GrantLevel.none) != GrantLevel.none;
     final reports = (_levels[reportsPage] ?? GrantLevel.none) != GrantLevel.none;
     final regionChanged = (godView && (_godRegion != _savedGodRegion || _godEverywhere != _savedGodEverywhere)) || (reports && _reportsRegion != _savedReportsRegion);
-    if (plan.upserts.isEmpty && plan.deletes.isEmpty && !regionChanged) {
+    // Who God View shows them: a sub-admin's only, once read (0285).
+    final peopleChanged = godView &&
+        (_levels['*'] ?? GrantLevel.none) == GrantLevel.none &&
+        !_godPeopleLoading &&
+        _godPeopleError == null &&
+        _godPeople.differsFrom(_savedGodPeople);
+    if (plan.upserts.isEmpty && plan.deletes.isEmpty && !regionChanged && !peopleChanged) {
       _close(false);
       return;
     }
@@ -408,20 +458,24 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
       if (!ok || !mounted) return;
     }
     final notes = _notes.text.trim();
+    final repo = ref.read(adminRepositoryProvider);
+    final godPeople = _godPeople;
     final saved = await runAdminAction(
       context,
-      () => ref
-          .read(adminRepositoryProvider)
-          .setGrants(
-            profileId: id,
-            upserts: plan.upserts,
-            deletes: plan.deletes,
-            notes: notes.isEmpty ? null : notes,
-            regions: {
-              if (godView) godViewPage: _godEverywhere ? const {'everywhere': true} : (_godRegion.isAll ? null : _godRegion.toJson()),
-              if (reports) reportsPage: _reportsRegion.isAll ? null : _reportsRegion.toJson(),
-            },
-          ),
+      () async {
+        await repo.setGrants(
+          profileId: id,
+          upserts: plan.upserts,
+          deletes: plan.deletes,
+          notes: notes.isEmpty ? null : notes,
+          regions: {
+            if (godView) godViewPage: _godEverywhere ? const {'everywhere': true} : (_godRegion.isAll ? null : _godRegion.toJson()),
+            if (reports) reportsPage: _reportsRegion.isAll ? null : _reportsRegion.toJson(),
+          },
+        );
+        // After the grant, which the lists hang on.
+        if (peopleChanged) await repo.saveGodViewPeople(id, godPeople);
+      },
       success: 'Access saved for ${_personLabel(person, id)}',
     );
     if (saved && mounted) {
@@ -592,42 +646,50 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
                   ],
                 ),
               ),
-            // God View shows a sub-admin the people in this region only.
+            // God View shows a sub-admin the people in this region only, less
+            // a hide list; or only a list of people; or nobody (0285).
             if (pages.any((e) => e.key == godViewPage) &&
                 (_levels[godViewPage] ?? GrantLevel.none) != GrantLevel.none &&
                 (_levels['*'] ?? GrantLevel.none) == GrantLevel.none)
-              ListTile(
-                key: const ValueKey('grant-god-view-region'),
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.public),
-                title: const Text('God View region'),
-                subtitle: Text(
-                  _godEverywhere
-                      ? 'Everywhere: they see everyone on God View'
-                      : _godRegion.isAll
-                      ? 'Not set: they see nobody on God View until you pick one'
-                      : _godRegion.label,
-                ),
-                trailing: _godEverywhere
-                    ? null
-                    : TextButton(
-                        onPressed: () async {
-                          final picked = await pickRegionScope(context, title: 'God View region', initial: _godRegion);
-                          if (picked != null && mounted) setState(() => _godRegion = picked);
-                        },
-                        child: Text(_godRegion.isAll ? 'Pick' : 'Change'),
-                      ),
-              ),
-            if (pages.any((e) => e.key == godViewPage) &&
-                (_levels[godViewPage] ?? GrantLevel.none) != GrantLevel.none &&
-                (_levels['*'] ?? GrantLevel.none) == GrantLevel.none)
-              SwitchListTile(
-                key: const ValueKey('grant-god-view-everywhere'),
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Everywhere'),
-                subtitle: const Text('No region limit: every person on God View'),
-                value: _godEverywhere,
-                onChanged: (v) => setState(() => _godEverywhere = v),
+              GodViewPeopleSection(
+                key: const ValueKey('grant-god-view-people'),
+                people: _godPeople,
+                loading: _godPeopleLoading,
+                error: _godPeopleError,
+                search: _searchGodPeople,
+                onChanged: (v) => setState(() => _godPeople = v),
+                regionChildren: [
+                  ListTile(
+                    key: const ValueKey('grant-god-view-region'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.public),
+                    title: const Text('God View region'),
+                    subtitle: Text(
+                      _godEverywhere
+                          ? 'Everywhere: they see everyone on God View'
+                          : _godRegion.isAll
+                          ? 'Not set: they see nobody on God View until you pick one'
+                          : _godRegion.label,
+                    ),
+                    trailing: _godEverywhere
+                        ? null
+                        : TextButton(
+                            onPressed: () async {
+                              final picked = await pickRegionScope(context, title: 'God View region', initial: _godRegion);
+                              if (picked != null && mounted) setState(() => _godRegion = picked);
+                            },
+                            child: Text(_godRegion.isAll ? 'Pick' : 'Change'),
+                          ),
+                  ),
+                  SwitchListTile(
+                    key: const ValueKey('grant-god-view-everywhere'),
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Everywhere'),
+                    subtitle: const Text('No region limit: every person on God View'),
+                    value: _godEverywhere,
+                    onChanged: (v) => setState(() => _godEverywhere = v),
+                  ),
+                ],
               ),
             // Reports show a sub-admin the rides, partners and SOS in this region only.
             if (pages.any((e) => e.key == reportsPage) &&

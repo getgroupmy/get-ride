@@ -115,6 +115,9 @@ class _FakeRepo extends GodViewRepository {
   bool onTrip = true;
 
   GodViewSettings settings = const GodViewSettings(editable: true);
+
+  /// Who the caller's grant shows (0285).
+  String? peopleMode;
   final saved = <GodViewSettings>[];
   final pinged = <String>[];
   GodViewPingResult pingResult = GodViewPingResult(phones: 1, sent: 1, posted: true, sentAt: _now);
@@ -183,6 +186,7 @@ class _FakeRepo extends GodViewRepository {
       total: _people.length,
       query: query,
       settings: settings,
+      peopleMode: peopleMode,
     );
   }
 
@@ -956,6 +960,38 @@ void main() {
       expect(find.byKey(const ValueKey('god-view-settings-save')), findsNothing);
       expect(tester.widget<Slider>(find.byKey(const ValueKey('god-view-settings-hours'))).onChanged, isNull);
       expect(fake.saved, isEmpty);
+    });
+  });
+
+  group('who a sub-admin sees (0285)', () {
+    test('the snapshot says which applies', () {
+      expect(GodViewSnapshot.fromJson(const {'people_mode': 'only'}).peopleMode, 'only');
+      expect(GodViewSnapshot.fromJson(const {'people_mode': 'nobody', 'scoped': true}).peopleMode, 'nobody');
+      expect(GodViewSnapshot.fromJson(const {}).peopleMode, isNull);
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('Only these people and Nobody say so on the map (${b.name})', (tester) async {
+        final fake = _FakeRepo()..peopleMode = 'only';
+        await _pump(tester, b: b, fake: fake, grants: const [AdminGrant(page: godViewPage, edit: false)]);
+        expect(find.byKey(const ValueKey('god-view-people-only')), findsOneWidget);
+        expect(find.byKey(const ValueKey('god-view-people-nobody')), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('Nobody: the note', (tester) async {
+      final fake = _FakeRepo()..peopleMode = 'nobody';
+      await _pump(tester, fake: fake, grants: const [AdminGrant(page: godViewPage, edit: false)]);
+      expect(find.byKey(const ValueKey('god-view-people-nobody')), findsOneWidget);
+      expect(find.byKey(const ValueKey('god-view-people-only')), findsNothing);
+    });
+
+    testWidgets('a region grant or a full admin: no note', (tester) async {
+      final fake = _FakeRepo()..peopleMode = 'region';
+      await _pump(tester, fake: fake);
+      expect(find.byKey(const ValueKey('god-view-people-only')), findsNothing);
+      expect(find.byKey(const ValueKey('god-view-people-nobody')), findsNothing);
     });
   });
 }
