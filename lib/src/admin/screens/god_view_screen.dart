@@ -949,6 +949,16 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
               key: ValueKey('god-view-scope-missing'),
               text: 'Your God View access has no region yet. A full admin sets it under Sub-admins.',
             ),
+          if (snap?.peopleMode == 'only')
+            const _Note(
+              key: ValueKey('god-view-people-only'),
+              text: 'You see only the people an admin listed for you.',
+            ),
+          if (snap?.peopleMode == 'nobody')
+            const _Note(
+              key: ValueKey('god-view-people-nobody'),
+              text: 'An admin has set your God View to show no one.',
+            ),
         ]),
       ),
       Positioned(

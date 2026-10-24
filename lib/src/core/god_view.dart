@@ -314,6 +314,7 @@ class GodViewSnapshot {
     this.omittedLastKnown = 0,
     this.scoped = false,
     this.scopeMissing = false,
+    this.peopleMode,
     this.query = '',
     this.settings = const GodViewSettings(),
   });
@@ -330,6 +331,7 @@ class GodViewSnapshot {
     omittedLastKnown: (j['omitted_last_known'] as num?)?.toInt() ?? 0,
     scoped: j['scoped'] == true,
     scopeMissing: j['scope_missing'] == true,
+    peopleMode: j['people_mode'] as String?,
     query: query,
     settings: j['settings'] is Map
         ? GodViewSettings.fromJson(Map<String, dynamic>.from(j['settings'] as Map))
@@ -346,6 +348,10 @@ class GodViewSnapshot {
   final int omittedLastKnown;
   final bool scoped;
   final bool scopeMissing;
+
+  /// Who a sub-admin's grant shows (0285): 'region', 'only' (a list a full
+  /// admin keeps) or 'nobody'; null for a full admin.
+  final String? peopleMode;
 
   /// The search the server filtered these rows by.
   final String query;
