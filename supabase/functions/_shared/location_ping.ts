@@ -18,7 +18,16 @@
  * answers it as a ping, then sends its position every 5 seconds
  * (push_live_location) until the share ends.
  *
+ * Edit Partner's "Change status" (0286, reason "remote_action") sends
+ * `{ type: "partner_remote_action", id, title, body }` the same way to the
+ * partner's phones (partner_remote_action_targets): the open app runs the
+ * request through the driver's own code; a closed one shows title / body
+ * ("Support asked you to go online", "Tap to confirm") natively
+ * (PartnerRemoteActionReceiver.kt, AppDelegate.swift). Once one phone has
+ * it, partner_remote_action_sent marks the request sent.
+ *
  *   POST { tokenIds: uuid[], reason?: "scheduled" | "manual" | "live" }  ->  { sent, failed, pruned }
+ *   POST { actionId: uuid, reason: "remote_action" }                       ->  { sent, failed, pruned }
  *
  * The database decides who is due and claims the rows (location_ping_due,
  * god_view_ping: the admin's minutes, the 2-minute limit, God View's access
@@ -46,6 +55,12 @@ export const PING_TTL_SECONDS = 300;
 /** A live share that has not started in a minute is shown as not answered. */
 export const LIVE_TTL_SECONDS = 60;
 
+/** Edit Partner's "Change status" (0286): ask the partner's phone. */
+export const PARTNER_REMOTE_ACTION = "partner_remote_action";
+
+/** A request expires in 2 minutes; the push is worth nothing after. */
+export const REMOTE_ACTION_TTL_SECONDS = 120;
+
 /** At most this many tokens a call (location_ping_due claims 500 a run). */
 export const MAX_TOKENS = 1000;
 
@@ -56,6 +71,12 @@ export interface PingTarget {
   id?: string | null;
   token: string;
   platform?: string | null;
+}
+
+/** A phone of the partner a "Change status" request is for, with what its notification says. */
+export interface RemoteActionTarget extends PingTarget {
+  title?: string | null;
+  body?: string | null;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -117,14 +138,74 @@ export function locationPingMessage(
 
 export type LocationPingMessage = NonNullable<ReturnType<typeof locationPingMessage>>;
 
+/** The body's request id (0286), or null. */
+export function actionIdOf(raw: unknown): string | null {
+  return typeof raw === "string" && UUID.test(raw.trim()) ? raw.trim().toLowerCase() : null;
+}
+
+/** Plain one-line text for a data field, at most [max] characters. */
+function line(v: unknown, fallback: string, max = 120): string {
+  const s = typeof v === "string" ? v.replace(/\s+/g, " ").trim() : "";
+  return (s || fallback).slice(0, max);
+}
+
+/**
+ * The FCM v1 message asking one phone to run a "Change status" request:
+ * data only, as a ping (an iPhone a background push, Android high priority),
+ * with the request's id and the words the phone shows if it must ask the
+ * driver. Null for a token FCM cannot reach this way.
+ */
+export function remoteActionMessage(t: RemoteActionTarget, actionId: string, now: Date) {
+  if (typeof t.token !== "string" || t.token === "" || isExpoToken(t.token)) return null;
+  const data = {
+    type: PARTNER_REMOTE_ACTION,
+    id: actionId,
+    title: line(t.title, "Support sent you a request"),
+    body: line(t.body, "Tap to confirm"),
+  };
+  if (t.platform === "ios") {
+    return {
+      message: {
+        token: t.token,
+        data,
+        apns: {
+          headers: {
+            "apns-push-type": "background",
+            "apns-priority": "5",
+            "apns-expiration": String(Math.floor(now.getTime() / 1000) + REMOTE_ACTION_TTL_SECONDS),
+            "apns-collapse-id": PARTNER_REMOTE_ACTION,
+          },
+          payload: { aps: { "content-available": 1 } },
+        },
+      },
+    };
+  }
+  if (t.platform === "android") {
+    return {
+      message: {
+        token: t.token,
+        data,
+        android: { priority: "HIGH", ttl: `${REMOTE_ACTION_TTL_SECONDS}s`, collapse_key: PARTNER_REMOTE_ACTION },
+      },
+    };
+  }
+  return null;
+}
+
+export type RemoteActionMessage = NonNullable<ReturnType<typeof remoteActionMessage>>;
+
 export interface LocationPingDeps {
   auth: PushAuthDeps;
   /** location_ping_targets: the claimed rows that may still be pinged. */
   targets(ids: string[]): Promise<PingTarget[]>;
   /** Sends one FCM message; "unregistered" when FCM says the token is gone. */
-  send(message: LocationPingMessage): Promise<"sent" | "unregistered" | "failed">;
+  send(message: LocationPingMessage | RemoteActionMessage): Promise<"sent" | "unregistered" | "failed">;
   prune(tokens: string[]): Promise<void>;
   now(): Date;
+  /** partner_remote_action_targets (0286): the phones of an open request. */
+  actionTargets?(actionId: string): Promise<RemoteActionTarget[]>;
+  /** partner_remote_action_sent (0286): the push reached [sent] phones' FCM. */
+  actionSent?(actionId: string, sent: number): Promise<void>;
 }
 
 const reply = (body: unknown, status = 200) =>
@@ -149,26 +230,37 @@ export async function handleLocationPing(req: Request, deps: LocationPingDeps): 
   const auth = await authorizePush(req, { ...deps.auth, callerCanPush: () => Promise.resolve(null) });
   if (!auth.ok) return reply({ error: auth.error }, auth.status);
 
-  let body: { tokenIds?: unknown; reason?: unknown };
+  let body: { tokenIds?: unknown; reason?: unknown; actionId?: unknown };
   try {
     body = await req.json();
   } catch {
     return reply({ error: "Invalid JSON body" }, 400);
   }
-  const ids = tokenIdsOf(body?.tokenIds);
-  if (ids.length === 0) return reply({ error: "tokenIds is required" }, 400);
-
-  const type = pingTypeOf(body?.reason);
-  const targets = await deps.targets(ids);
   const now = deps.now();
   const seen = new Set<string>();
-  const messages: LocationPingMessage[] = [];
-  for (const t of targets) {
-    if (seen.has(t.token)) continue;
-    const m = locationPingMessage(t, now, type);
-    if (!m) continue;
-    seen.add(t.token);
-    messages.push(m);
+  const messages: Array<LocationPingMessage | RemoteActionMessage> = [];
+  let actionId: string | null = null;
+  if (body?.reason === "remote_action") {
+    actionId = actionIdOf(body?.actionId);
+    if (!actionId || !deps.actionTargets) return reply({ error: "actionId is required" }, 400);
+    for (const t of await deps.actionTargets(actionId)) {
+      if (seen.has(t.token)) continue;
+      const m = remoteActionMessage(t, actionId, now);
+      if (!m) continue;
+      seen.add(t.token);
+      messages.push(m);
+    }
+  } else {
+    const ids = tokenIdsOf(body?.tokenIds);
+    if (ids.length === 0) return reply({ error: "tokenIds is required" }, 400);
+    const type = pingTypeOf(body?.reason);
+    for (const t of await deps.targets(ids)) {
+      if (seen.has(t.token)) continue;
+      const m = locationPingMessage(t, now, type);
+      if (!m) continue;
+      seen.add(t.token);
+      messages.push(m);
+    }
   }
 
   let sent = 0, failed = 0;
@@ -187,5 +279,6 @@ export async function handleLocationPing(req: Request, deps: LocationPingDeps): 
     }
   });
   if (dead.length > 0) await deps.prune(dead);
+  if (actionId && sent > 0 && deps.actionSent) await deps.actionSent(actionId, sent);
   return reply({ sent, failed, pruned: dead.length });
 }

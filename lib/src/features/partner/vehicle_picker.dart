@@ -10,6 +10,53 @@ import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart';
 
+/// What the card's Select / Change runs for a vehicle picked from the
+/// driver's list: null once it is theirs, else what the card shows. Support's
+/// "Link vehicle" (0286) runs the same.
+Future<String?> driverClaimVehicle(VehicleAssignmentRepository repo, String vehicleId) async {
+  try {
+    await repo.claim(vehicleId);
+    return null;
+  } catch (e) {
+    return claimVehicleErrorMessage(e);
+  }
+}
+
+/// [driverClaimVehicle] for a vehicle not picked from the list: only one the
+/// picker would offer ([AssignableVehicle.selectable]) is claimed.
+Future<String?> driverTakeVehicle(VehicleAssignmentRepository repo, String vehicleId) async {
+  final List<AssignableVehicle> list;
+  try {
+    list = await repo.assignable();
+  } catch (_) {
+    return "Couldn't load your vehicles. Please try again.";
+  }
+  final v = list.where((v) => v.id == vehicleId).firstOrNull;
+  if (v == null) return "You're not assigned to this vehicle.";
+  if (v.inUseByMe) return null;
+  if (!v.selectable) return v.blockedReason ?? assignableStatusLabel(v.status);
+  return driverClaimVehicle(repo, v.id);
+}
+
+/// What the card's Hand back runs: null once handed back, else what it shows.
+Future<String?> driverHandBackVehicle(VehicleAssignmentRepository repo) async {
+  try {
+    await repo.release();
+    return null;
+  } catch (e) {
+    return releaseVehicleErrorMessage(e);
+  }
+}
+
+/// Why going online waits for a vehicle, as the question about it says
+/// (what support's "Go online" reports while it is asked, 0286).
+String vehicleNeededReason(List<AssignableVehicle> vehicles) => switch (vehicleGateFor(vehicles).kind) {
+      VehicleGateKind.finish => "Your vehicle isn't set up yet. Finish it before you can go online.",
+      VehicleGateKind.waiting => 'You need a vehicle before you can go online, and none of yours can be driven yet.',
+      VehicleGateKind.add => 'You need a vehicle before you can go online. Add the vehicle you drive.',
+      _ => 'You need a vehicle before you can go online. Pick the one you are driving.',
+    };
+
 /// The vehicle this driver is driving right now (Drive tab), with the
 /// picker to take one and the button to hand it back for a co-driver
 /// (Expo `VehicleSelectModal` + `claimVehicle`).
@@ -30,7 +77,7 @@ class _CurrentVehicleCardState extends ConsumerState<CurrentVehicleCard> {
       builder: (_) => VehiclePickerSheet(vehicles: list),
     );
     if (picked == null || picked.inUseByMe || !mounted) return;
-    await _run(() => ref.read(vehicleAssignmentRepositoryProvider).claim(picked.id), claim: true);
+    await _run(() => driverClaimVehicle(ref.read(vehicleAssignmentRepositoryProvider), picked.id));
   }
 
   Future<void> _handBack(AssignableVehicle v) async {
@@ -46,17 +93,14 @@ class _CurrentVehicleCardState extends ConsumerState<CurrentVehicleCard> {
       ),
     );
     if (ok != true || !mounted) return;
-    await _run(() => ref.read(vehicleAssignmentRepositoryProvider).release());
+    await _run(() => driverHandBackVehicle(ref.read(vehicleAssignmentRepositoryProvider)));
   }
 
-  Future<void> _run(Future<void> Function() action, {bool claim = false}) async {
+  Future<void> _run(Future<String?> Function() action) async {
     setState(() => _busy = true);
     try {
-      await action();
-    } catch (e) {
-      if (mounted) {
-        showInfo(context, claim ? claimVehicleErrorMessage(e) : releaseVehicleErrorMessage(e));
-      }
+      final why = await action();
+      if (why != null && mounted) showInfo(context, why);
     } finally {
       ref.invalidate(assignableVehiclesProvider);
       if (mounted) setState(() => _busy = false);

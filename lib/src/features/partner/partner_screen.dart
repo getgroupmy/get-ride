@@ -63,6 +63,8 @@ import 'ride_extras_parts.dart';
 import 'partner_status_panel.dart';
 import 'scheduled_jobs_screen.dart' show PartnerUpcomingBookingCard;
 import 'vehicle_picker.dart';
+import 'remote_action.dart';
+import '../../core/partner_remote_action.dart' show DriverRemoteActions;
 import '../../core/partner_modes.dart';
 import '../../core/vehicle_assignment.dart';
 import '../../core/vehicle_onboarding.dart' show firstVehicleStep;
@@ -109,7 +111,11 @@ const wideDriverPanelScrollBelow = 640.0;
 /// Driver mode: go online, see open requests live, accept one.
 
 class PartnerScreen extends ConsumerStatefulWidget {
-  const PartnerScreen({super.key});
+  const PartnerScreen({super.key, this.remoteActionId});
+
+  /// Support's request (Edit Partner › Change status, 0286) the driver
+  /// tapped to confirm: run through this screen's own switch once it is up.
+  final String? remoteActionId;
 
   @override
   ConsumerState<PartnerScreen> createState() => _PartnerScreenState();
@@ -170,6 +176,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
 
   /// A vehicle question is on screen ([_askForVehicle]).
   bool _askingVehicle = false;
+
+  /// Why the last check held the driver offline, in the words its dialog
+  /// showed: what support's "Go online" reports back (0286).
+  String? _refusal;
+
+  /// This screen's own buttons, for support's requests (remote_action.dart).
+  late final DriverScreenActions _remoteSlot;
+  late final _ScreenRemoteActions _remote = _ScreenRemoteActions(this);
   bool _autoAccept = false;
   bool _allowOfferMe = true;
 
@@ -216,6 +230,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     _meFix.dispose();
     // Online stays as the driver left it (driverOnlineProvider): a trip
     // that ends comes back to the Drive screen still online.
+    final slot = _remoteSlot, mine = _remote;
+    unawaited(Future.microtask(() => slot.clear(mine)));
     super.dispose();
   }
 
@@ -314,6 +330,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     _alertClock = ValueNotifier(ref.read(requestAlertClockProvider)());
     _onlineState = ref.read(driverOnlineProvider.notifier);
     _online = _restoredOnline = ref.read(driverOnlineProvider);
+    _remoteSlot = ref.read(driverScreenActionsProvider.notifier);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _remoteSlot.set(_remote);
+      _runRemote(widget.remoteActionId);
+    });
     _resume();
     _locate();
     // A saved OBD-II reader comes up with the driver home, as Expo's did on
@@ -326,6 +348,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
     // Live: the map follows the driver as they move.
     _fixes = ref.read(driverPositionStreamProvider)().listen(_onFix, onError: (_) {});
+  }
+
+  @override
+  void didUpdateWidget(PartnerScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.remoteActionId != old.remoteActionId) _runRemote(widget.remoteActionId);
+  }
+
+  /// Support's request [id], tapped to confirm: this screen is up, so it
+  /// runs through the switch itself.
+  void _runRemote(String? id) {
+    if (id == null || id.isEmpty) return;
+    unawaited(ref.read(remoteActionHandlerProvider).handle(id).then((_) {}, onError: (Object _) {}));
   }
 
   /// A GPS fix: the map, the request sheet and the cards' distances follow
@@ -384,38 +419,48 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     _accept(open.firstWhere((r) => r.id == pick), partner);
   }
 
-  Future<void> _toggle(bool v) async {
+  /// The Drive switch. Null once it is where it was asked to be, else why
+  /// it stayed offline (what support's "Go online" reports, 0286).
+  Future<String?> _toggle(bool v) async {
+    _refusal = null;
+    const gone = 'The Drive screen was closed.';
     // Each check below lets the driver through when it cannot be answered;
     // [goOnlineCheckTimeout] makes a check that hangs (a slow API) count as
     // one that could not be answered, instead of a switch that spins on.
     if (v && await ref.read(deviceBlockedProvider.future).timeout(goOnlineCheckTimeout, onTimeout: () => false)) {
-      if (mounted) showInfo(context, '$serviceNotAvailable. This device cannot go online.');
-      return;
+      const why = '$serviceNotAvailable. This device cannot go online.';
+      if (mounted) showInfo(context, why);
+      return why;
     }
     if (v) {
       // Location on (Always on an iPhone) and notifications allowed, first.
-      if (!mounted || !await ensureOnlineReady(context, ref)) return;
-      if (!mounted) return;
+      if (!mounted) return gone;
+      if (!await ensureOnlineReady(context, ref, onBlock: (b) => _refusal = 'To go online: ${b.message}')) {
+        return _refusal ?? 'Location or notifications are not set up to go online.';
+      }
+      if (!mounted) return gone;
       final partner = ref.read(partnerProvider).value;
-      if (partner != null && !await _documentsCleared(partner, teksi: false)) return;
-      if (!mounted) return;
+      if (partner != null && !await _documentsCleared(partner, teksi: false)) {
+        return _refusal ?? 'Required documents need updating before going online.';
+      }
+      if (!mounted) return gone;
       if (partner != null) {
         final needed = await _vehicleNeeded(partner, teksi: false);
-        if (!mounted) return;
+        if (!mounted) return gone;
         if (needed != null) {
           // Asked once the switch has settled back (no spinner behind the
           // dialog); a vehicle picked there turns it on.
           unawaited(_askForVehicle(needed, teksi: false).then((ok) {
             if (ok && mounted) unawaited(_toggle(true));
           }));
-          return;
+          return vehicleNeededReason(needed);
         }
       }
     }
-    if (v && !await _typeRulesCleared(teksi: false)) return;
-    if (!mounted) return;
-    if (v && !await _vehiclePermitCleared()) return;
-    if (!mounted) return;
+    if (v && !await _typeRulesCleared(teksi: false)) return _refusal ?? 'Your partner type is not offered here.';
+    if (!mounted) return gone;
+    if (v && !await _vehiclePermitCleared()) return _refusal ?? "You can't go online yet.";
+    if (!mounted) return gone;
     if (v && _autoAccept) _markQueueSeen();
     // Requests already waiting are in the list; only new ones pop up.
     if (v) _alertSeen.addAll(ref.read(openRequestsProvider).value?.map((r) => r.id) ?? const <String>[]);
@@ -429,6 +474,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     // Online, calls may come: ask for the microphone now, on screen, if it
     // was never asked (a call answered from the phone's call screen can't).
     if (v) unawaited(primeMicForCalls(ref).catchError((_) {}));
+    return null;
   }
 
   /// Expo's check before a service mode: compulsory documents that are
@@ -446,6 +492,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     }
     if (blocking.isEmpty) return true;
     if (!mounted) return false;
+    _refusal = 'Before you can ${teksi ? 'start the meter' : 'go online'}, please update the following: '
+        '${summarizeDocIssues(blocking)}';
     final update = await showAppDialog<bool>(id: 'partner.documents-cleared',
       context: context,
       builder: (ctx) => AlertDialog(
@@ -485,6 +533,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final String? why = teksi && check.hailBlocked ? hailNotOfferedMessage : (check.ok ? null : check.reason);
     if (why == null && check.ok) return true;
     if (!mounted) return false;
+    _refusal = why ?? 'Your partner type is not offered here.';
     await showAppDialog<void>(
       id: 'partner.type-rules-blocked',
       context: context,
@@ -518,6 +567,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final why = problem;
     if (why == null) return true;
     if (!mounted) return false;
+    _refusal = why;
     final open = await showAppDialog<bool>(
       id: 'partner.vehicle-permit-blocked',
       context: context,
@@ -1877,4 +1927,31 @@ String acceptLabel(RideRequest r) {
   final f = r.effectiveFare;
   if (f != null) return 'Accept ${r.fareText(f)}';
   return '${r.raw['fare_mode']}' == 'meter' ? 'Accept · by meter' : 'Accept';
+}
+
+/// The Drive screen's own buttons, for support's requests (0286): the switch
+/// with every check it makes, and the vehicle card's Select / Hand back.
+class _ScreenRemoteActions implements DriverRemoteActions {
+  _ScreenRemoteActions(this._screen);
+  final _PartnerScreenState _screen;
+
+  @override
+  Future<String?> goOnline() => _screen._toggle(true);
+
+  @override
+  Future<String?> goOffline() => _screen._toggle(false);
+
+  @override
+  Future<String?> linkVehicle(String vehicleId) async {
+    final why = await driverTakeVehicle(_screen.ref.read(vehicleAssignmentRepositoryProvider), vehicleId);
+    if (_screen.mounted) _screen.ref.invalidate(assignableVehiclesProvider);
+    return why;
+  }
+
+  @override
+  Future<String?> unlinkVehicle() async {
+    final why = await driverHandBackVehicle(_screen.ref.read(vehicleAssignmentRepositoryProvider));
+    if (_screen.mounted) _screen.ref.invalidate(assignableVehiclesProvider);
+    return why;
+  }
 }

@@ -418,6 +418,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:obd-reader.add', SurfaceKind.sheet, 'Obd reader · Add', 'lib/src/features/meter/obd_reader_screen.dart'),
   SurfaceEntry('sheet:obd-reader.pick-ble-reader', SurfaceKind.sheet, 'Obd reader · Ble reader', 'lib/src/features/meter/obd_reader_screen.dart'),
   SurfaceEntry('sheet:obd-reader.pick-mfi-reader', SurfaceKind.sheet, 'Obd reader · Mfi reader', 'lib/src/features/meter/obd_reader_screen.dart'),
+  SurfaceEntry('sheet:partner-remote.change-status', SurfaceKind.sheet, 'Partner remote · Change status', 'lib/src/admin/screens/people/partner_remote_sheet.dart'),
   SurfaceEntry('sheet:partner-trip.my-permits', SurfaceKind.sheet, 'Partner trip · My permits', 'lib/src/features/partner/my_permits_screen.dart'),
   SurfaceEntry('sheet:partner.choose-destination', SurfaceKind.sheet, 'Partner · Choose destination', 'lib/src/features/partner/partner_screen.dart'),
   SurfaceEntry('sheet:partner.vehicle-ready-2', SurfaceKind.sheet, 'Partner · Vehicle ready', 'lib/src/features/partner/partner_screen.dart'),

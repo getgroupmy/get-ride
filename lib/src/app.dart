@@ -31,6 +31,8 @@ import 'data/app_connection.dart';
 import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/trip_card.dart' show tripCardLinkLocation;
+import 'core/partner_remote_action.dart' show RemoteActionRequest, remoteActionIdFromPush, remoteActionLinkLocation, remoteActionRoute;
+import 'features/partner/remote_action.dart' show remoteActionAskProvider, remoteActionHandlerProvider;
 import 'data/trip_card_controller.dart' show tripCardControllerProvider;
 import 'core/push_logic.dart';
 import 'core/ride_bidding.dart' show BiddingRegion, pushPlaceAt;
@@ -256,6 +258,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       // (core/trip_card.dart) opens the trip, to run it there.
       final cardLink = tripCardLinkLocation(state.uri);
       if (cardLink != null) return cardLink;
+      // getride://remote/<id>: support's request the driver tapped on the
+      // Android notification (0286) opens the Drive page that runs it.
+      final remoteLink = remoteActionLinkLocation(state.uri);
+      if (remoteLink != null) return remoteLink;
       final signedIn = db.auth.currentSession != null;
       final loc = state.matchedLocation;
       // The first app page of this run, for the launch-only rules.
@@ -392,7 +398,8 @@ final routerProvider = Provider<GoRouter>((ref) {
                 routes: [
                   GoRoute(
                     path: '/drive',
-                    builder: (_, _) => const PartnerScreen(),
+                    // ?remote=<id>: support's request the driver confirmed (0286).
+                    builder: (_, s) => PartnerScreen(remoteActionId: s.uri.queryParameters['remote']),
                     // The driver's own pages, in the same shell as the
                     // rider's /account, /wallet and /trips: the navigation
                     // rail beside them on a wide screen.
@@ -661,6 +668,13 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     _startAlwaysOn();
     _startMessagingPresence();
     _startPushLocation();
+    ref.listenManual(remoteActionAskProvider, (_, r) {
+      if (r != null) _askRemoteAction(r);
+    });
+    // In driver mode: a request from support may be waiting (0286).
+    ref.listenManual(appModeProvider, (_, mode) {
+      if (mode == 'partner') _runRemoteAction(null);
+    }, fireImmediately: true);
     // The trip card on the lock screen (data/trip_card_controller.dart).
     ref.listenManual(tripCardControllerProvider, (_, _) {}, fireImmediately: true);
     // Admin → Settings → Maps: this user's and device's tiles and lookups.
@@ -687,6 +701,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       if (data['request_id'] != null) unawaited(ref.read(tripCardControllerProvider.notifier).refresh());
       // God View asked for fresh phone details (0282); the closed app answers natively.
       if (data['type'] == 'location_ping' || data['type'] == 'location_live') unawaited(_tracker?.pinged());
+      // Support asked this phone to change the driver's status (0286).
+      final remote = remoteActionIdFromPush(data);
+      if (remote != null) _runRemoteAction(remote);
     }));
     _startNotificationsWarning(push);
     // Notifications are asked for at launch, as soon as the splash is gone.
@@ -800,6 +817,8 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         unawaited(_reportPushLocation());
         unawaited(PushService.instance?.recheckPermission());
         unawaited(ref.read(tripCardControllerProvider.notifier).refresh());
+        // A driver back in the app: a request from support waiting (0286).
+        if (ref.read(appModeProvider) == 'partner') _runRemoteAction(null);
         ref.invalidate(appIconRegionsProvider);
         unawaited(ref.read(appIconSyncProvider).sync());
       },
@@ -1032,6 +1051,38 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   }
 
   void _open(String route) => ref.read(routerProvider).go(route);
+
+  /// Support's request [id] (Edit Partner › Change status, 0286), or the
+  /// driver's open one: run through the driver's own buttons
+  /// (features/partner/remote_action.dart). Never throws.
+  void _runRemoteAction(String? id) {
+    if (ref.read(supabaseProvider).auth.currentUser == null) return;
+    unawaited(ref.read(remoteActionHandlerProvider).handle(id).then((_) {}, onError: (Object _) {}));
+  }
+
+  /// Requests already given a second try on the Drive page.
+  final _remoteRetried = <String>{};
+
+  /// Going online needs the Drive page: the driver is asked first, and the
+  /// request waits for the tap.
+  void _askRemoteAction(RemoteActionRequest r) {
+    final route = remoteActionRoute(r.id);
+    // On the Drive page already (still coming up): once it is, it runs it.
+    if (ref.read(routerProvider).routerDelegate.currentConfiguration.uri.path == '/drive' && _remoteRetried.add(r.id)) {
+      Future<void>.delayed(const Duration(milliseconds: 600), () {
+        if (mounted) _runRemoteAction(r.id);
+      });
+      return;
+    }
+    _messenger.currentState?.showSnackBar(
+      SnackBar(
+        key: const ValueKey('remote-action-ask'),
+        content: Text('${r.action.prompt}. Tap to confirm'),
+        duration: const Duration(seconds: 30),
+        action: SnackBarAction(label: 'Confirm', onPressed: () => _open(route)),
+      ),
+    );
+  }
 
   /// Android does not show a notification that arrives while the app is open,
   /// so it is shown as a banner instead. iOS shows its own.

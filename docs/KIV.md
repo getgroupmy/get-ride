@@ -40,3 +40,8 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 - Own maps routing and address search for Malaysia (OSRM or Valhalla, Photon or Nominatim) as a provider before Google.
 - Uptime monitor (Uptime Kuma) with alerts.
 - ID card reading on the NAS (PaddleOCR) instead of Google Vision.
+
+## Not built here (start a new session)
+
+- Family module (rider side menu: family members, children, up to 6 with an admin increase request, location sharing set per family). Not built in this session. To try again, start a new session with the sample (https://claude.ai/artifact/DjAj1VtyL6eJrZsNbTsiAo) and the three disclosed options only: a visible Family viewer the members can see, a logged admin view in God View, and admin-set location visibility. No hidden or covert viewing.
+- A God View page in the rider app. Not built; God View stays in the admin.

@@ -8,10 +8,13 @@
 // god_view_ping) and calls this with the rows it claimed; this sends each
 // one an FCM message (an iPhone a background push, Android a data-only high
 // priority message). God View's "Live now" (0282, god_view_live_start)
-// calls it with reason "live", which sends `location_live` instead. See
-// _shared/location_ping.ts.
+// calls it with reason "live", which sends `location_live` instead. Edit
+// Partner's "Change status" (0286, partner_remote_action_request) calls it
+// with { actionId, reason: "remote_action" }: `partner_remote_action` to the
+// partner's phones. See _shared/location_ping.ts.
 //
 //   POST { tokenIds, reason }  ->  { sent, failed, pruned }
+//   POST { actionId, reason: "remote_action" }  ->  { sent, failed, pruned }
 //
 // Callers: the database (`x-push-secret`, the push webhook's existing Vault
 // secret, checked by push_webhook_secret_ok) or the service role.
@@ -25,7 +28,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { googleAccessToken } from "../_shared/google_auth.ts";
-import { handleLocationPing, type PingTarget } from "../_shared/location_ping.ts";
+import { handleLocationPing, type PingTarget, type RemoteActionTarget } from "../_shared/location_ping.ts";
 import { FCM_SCOPE, fcmOutcome, fcmSendUrl, parseServiceAccount } from "../_shared/push.ts";
 import { livePushAuthDeps } from "../_shared/push_auth.ts";
 
@@ -61,6 +64,21 @@ Deno.serve(async (req) => {
           return [];
         }
         return (data ?? []) as PingTarget[];
+      },
+      // Edit Partner's "Change status" (0286): the partner's phones, then sent.
+      async actionTargets(id) {
+        const { data, error } = await db
+          .rpc("partner_remote_action_targets", { p_id: id })
+          .order("id", { ascending: true });
+        if (error) {
+          console.log("[location-ping] remote action targets:", error.message);
+          return [];
+        }
+        return (data ?? []) as RemoteActionTarget[];
+      },
+      async actionSent(id, sent) {
+        const { error } = await db.rpc("partner_remote_action_sent", { p_id: id, p_sent: sent });
+        if (error) console.log("[location-ping] remote action sent:", error.message);
       },
       async send(message) {
         let creds: { token: string; projectId: string } | null;
