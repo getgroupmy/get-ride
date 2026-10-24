@@ -1,0 +1,27 @@
+# get.ride face match server on the NAS, reached through a Cloudflare Tunnel
+# (no port opened on the router). Values come from .env next to this file
+# (copy .env.example): FACE_API_KEY and TUNNEL_TOKEN. See README.md.
+services:
+  face-server:
+    build: .
+    platform: linux/amd64
+    image: getride-face-server:2
+    container_name: face-server
+    restart: unless-stopped
+    environment:
+      FACE_API_KEY: ${FACE_API_KEY:?Set FACE_API_KEY in .env}
+      FACE_MAX_IMAGE_MB: ${FACE_MAX_IMAGE_MB:-6}
+    # Only the tunnel reaches it: no port on the NAS.
+    expose:
+      - "8000"
+    mem_limit: 512m
+
+  cloudflared:
+    image: cloudflare/cloudflared:2024.10.1
+    container_name: face-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN in .env}
+    depends_on:
+      - face-server

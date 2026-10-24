@@ -187,6 +187,9 @@ final defaultApiProviders = <ApiProviderDef>[
     _svc('directions', 'Directions', 'Routing, ETAs & navigation'),
     _svc('distance_matrix', 'Distance Matrix', 'Travel time & distance between points'),
     _svc('roads', 'Roads', 'Snap-to-roads & speed limits'),
+    // The id-read function (0283): MyKad and passport text for the sign-in checks.
+    _svc('vision', 'Cloud Vision (ID reading)',
+        'Reads MyKad and passport photos for the sign-in checks. Enable Cloud Vision API in the key\'s project'),
   ]),
   ApiProviderDef(id: 'openstreetmap', name: 'OpenStreetMap', description: 'OSM-based open services', category: 'Mapping', services: [
     _svc('nominatim', 'Nominatim', 'Geocoding & boundary lookup'),
@@ -257,6 +260,12 @@ final defaultApiProviders = <ApiProviderDef>[
   ApiProviderDef(id: 'aws', name: 'Amazon Web Services', description: 'AWS services used by the server', category: 'Identity', services: [
     _svc('rekognition', 'Rekognition (face compare)',
         'Compares a selfie with the ID photo. Save as ACCESS_KEY_ID:SECRET_ACCESS_KEY, or add :region (ap-southeast-1 if not)'),
+  ]),
+  // The self-hosted face server (0283, deploy/face-server): face-compare asks
+  // it first when Admin > Dispatch > Accounts says so.
+  ApiProviderDef(id: 'face_match', name: 'Face match server', description: 'Self-hosted face compare (deploy/face-server)', category: 'Identity', services: [
+    _svc('server', 'Self-hosted server',
+        "Compares a selfie with the ID photo on your own server. Save as the server's https address, a colon, then its key: https://face.getride.my:FACE_API_KEY"),
   ]),
 ];
 

@@ -29,11 +29,14 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 ## Owner setup
 
 - AI Reports email: add the Resend key in Admin › Settings › API Keys (Email › Resend) and verify the getride.my domain in Resend. Until then scheduled report emails don't send; downloads work.
+- Sign-in checks face match, AWS Rekognition (later): add the key in Admin › Settings › API Keys (Amazon Web Services › Rekognition) as `ACCESS_KEY_ID:SECRET_ACCESS_KEY` (or add `:region`), an IAM user allowed `rekognition:CompareFaces` and `rekognition:ListCollections` only. Until then Admin › Documents › Sign-in checks shows "Not checked · No AWS key yet". AWS is the default in Admin › Dispatch › Accounts › Face match.
+- Sign-in checks face match, self-hosted server (later): run `deploy/face-server` on the Synology NAS behind a Cloudflare Tunnel (face.getride.my), then add it in API Keys (Face match server) and pick Self-hosted server or Self-hosted, then AWS. Steps in [deploy/face-server/README.md](../deploy/face-server/README.md).
+- Sign-in checks ID reading, Google Cloud Vision (optional): enable Cloud Vision API in a Google Cloud project with billing, make an API key kept to that API, add it in API Keys (Google › Cloud Vision (ID reading)) and test it, then pick Phone, then Google Vision (or Google Vision always) in Admin › Dispatch › Accounts › ID card reading. First 1,000 reads a month are free. Deploy the `id-read` function and apply migration 0283 first.
 
 ## Synology DS224+ (see docs/NAS.md)
 
-- Face match on the NAS: DeepFace (SFace / Dlib models) in Docker behind Cloudflare Tunnel; `face-compare` tries the NAS, then AWS, then the in-browser check (human); low matches flagged "Needs a closer look".
+- Face match on the NAS: built (`deploy/face-server`, OpenCV SFace, runs on the J4125); setting it up is under Owner setup. Still parked: the in-browser check (human) as a last fallback, and flagging low matches "Needs a closer look".
 - Nightly backups of the database and storage buckets to the NAS.
 - Own maps routing and address search for Malaysia (OSRM or Valhalla, Photon or Nominatim) as a provider before Google.
 - Uptime monitor (Uptime Kuma) with alerts.
-- ID card reading fallback: Google Cloud Vision or PaddleOCR on the NAS.
+- ID card reading on the NAS (PaddleOCR) instead of Google Vision.

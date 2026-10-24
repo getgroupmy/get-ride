@@ -92,6 +92,8 @@ class IdentityRepository {
   }
 
   /// Sends MyKad or passport, front and back, with what the phone read.
+  /// Then, as the admin's ID card reading setting says (0283), Google Vision
+  /// reads the front: always, or when the phone read nothing (web, desktop).
   Future<List<String>> sendId({
     required String docType,
     required Uint8List front,
@@ -116,7 +118,28 @@ class IdentityRepository {
         },
       }),
     );
-    return [for (final m in (res['mismatch'] as List?) ?? const []) '$m'];
+    var mismatch = [for (final m in (res['mismatch'] as List?) ?? const []) '$m'];
+    final id = res['id'] as String?;
+    if (id != null && visionReadNeeded((await config()).idRead, read)) {
+      final v = await readCardWithVision(id);
+      if (v['mismatch'] is List) mismatch = [for (final m in v['mismatch'] as List) '$m'];
+    }
+    return mismatch;
+  }
+
+  /// The id-read function: Google Vision reads the ID's front and the check
+  /// keeps it. {state: read | not_read | error, name?, ic?, passport?,
+  /// expiry?, mismatch?, reason?, detail?}. Never throws: the ID is sent
+  /// either way.
+  Future<Map<String, dynamic>> readCardWithVision(String checkId) async {
+    try {
+      final res = await _db.functions.invoke('id-read', body: {'check_id': checkId});
+      return _map(res.data);
+    } on FunctionException catch (e) {
+      return {'state': 'error', 'reason': '${_map(e.details)['error'] ?? e.status}'};
+    } catch (_) {
+      return const {'state': 'error'};
+    }
   }
 
   /// Keeps how a profile photo was taken (live or not), for the admin. Best
@@ -170,7 +193,7 @@ class IdentityRepository {
     },
   );
 
-  /// The face-compare function's answer: {state, score?, reason?}.
+  /// The face-compare function's answer: {state, score?, provider?, reason?}.
   Future<Map<String, dynamic>> compareFaces(String id) async {
     try {
       final res = await _db.functions.invoke('face-compare', body: {'check_id': id});
@@ -189,6 +212,21 @@ class IdentityRepository {
     params: {'p_user': userId, 'p_kind': kind, 'p_selfie': asks.selfie, 'p_id': asks.id, 'p_days': asks.days},
   );
 
+  /// The renewal window, who compares the faces and who reads the card
+  /// (with, for an admin, which keys are there). The defaults when it can't
+  /// be read.
+  Future<IdentityConfig> config() async {
+    try {
+      return IdentityConfig.fromJson(await _db.rpc('dispatch_verify_config'));
+    } catch (_) {
+      return const IdentityConfig();
+    }
+  }
+
+  /// Null leaves a setting as it is.
+  Future<IdentityConfig> setProviders({String? face, String? idRead}) async =>
+      IdentityConfig.fromJson(await _db.rpc('identity_set_providers', params: {'p_face': face, 'p_id_read': idRead}));
+
   Future<int> renewDays() async {
     try {
       return ((_map(await _db.rpc('dispatch_verify_config'))['renewDays']) as num?)?.toInt() ?? 30;
@@ -201,6 +239,12 @@ class IdentityRepository {
 }
 
 final identityRepositoryProvider = Provider((ref) => IdentityRepository(ref.watch(supabaseProvider)));
+
+/// Who compares the faces and who reads the card (0283), for the admin's
+/// settings and the Sign-in checks queue.
+final identityConfigProvider = FutureProvider.autoDispose<IdentityConfig>(
+  (ref) => ref.watch(identityRepositoryProvider).config(),
+);
 
 /// After a profile photo is saved: how it was taken, for the admin. Never
 /// in the way of the photo itself.

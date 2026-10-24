@@ -1,16 +1,18 @@
 // ============================================================================
 // face-compare — Supabase Edge Function
 // ----------------------------------------------------------------------------
-// Admin → Documents → Sign-in checks (migration 0281): how alike a selfie and
-// the person's ID photo are, as a score that helps the admin decide. Never an
-// approval. Only for an admin who edits a Documents page. The key is read here
-// from Admin → API Keys (AWS → Rekognition) with the service role and never
-// returned; without one the answer is "not_checked". See
-// _shared/face_compare.ts.
+// Admin → Documents → Sign-in checks (migrations 0281, 0283): how alike a
+// selfie and the person's ID photo are, as a score that helps the admin
+// decide. Never an approval. Only for an admin who edits a Documents page.
+// Who scores it is the admin's setting: AWS Rekognition, the self-hosted face
+// server, the server then AWS, or nobody. The keys are read here from Admin →
+// API Keys (AWS → Rekognition, Face match server) with the service role and
+// never returned; without a usable one the answer is "not_checked" with the
+// reason. See _shared/face_compare.ts and _shared/face_server.ts.
 //
 // Request:  POST { check_id } with the admin's session token.
 // Response: 200 { state: "match" | "no_match" | "no_face" | "not_checked" | "error",
-//                 score?, reason? }
+//                 score?, provider?: "aws" | "self_hosted", fell_back?, reason?, detail? }
 //           400 bad_request · 401 not_signed_in · 403 not_authorized
 //           404 not_found · 503 unavailable
 //
@@ -21,6 +23,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { callerCanEditHere } from "../_shared/admin_page.ts";
 import { signedJsonPost } from "../_shared/aws_sigv4.ts";
 import { base64, type CheckRow, DOCUMENT_PAGES, handleFaceCompare } from "../_shared/face_compare.ts";
+import { compareRequest, FACE_SERVER_TIMEOUT_MS } from "../_shared/face_server.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -65,6 +68,11 @@ Deno.serve(async (req) => {
       if (error) throw error;
       return data?.value ?? null;
     },
+    async verifySettings() {
+      const { data, error } = await db.from("app_settings").select("value").eq("key", "dispatch_verify").maybeSingle();
+      if (error) throw error;
+      return data?.value ?? null;
+    },
     async download(bucket, path) {
       const { data, error } = await db.storage.from(bucket).download(path);
       if (error || !data) return null;
@@ -85,9 +93,24 @@ Deno.serve(async (req) => {
       });
       return { status: res.status, body: await res.json().catch(() => null) };
     },
-    async save(id, state, score) {
-      const { error } = await db.from("identity_checks")
-        .update({ face_state: state, face_score: score, face_checked_at: new Date().toISOString() }).eq("id", id);
+    async compareSelfHosted(server, selfie, card) {
+      const r = compareRequest(server, selfie, card);
+      const res = await fetch(r.url, {
+        method: r.method,
+        headers: r.headers,
+        body: r.body,
+        signal: AbortSignal.timeout(FACE_SERVER_TIMEOUT_MS),
+      });
+      return { status: res.status, body: await res.json().catch(() => null) };
+    },
+    async save(id, state, score, provider, reason) {
+      const { error } = await db.from("identity_checks").update({
+        face_state: state,
+        face_score: score,
+        face_provider: provider,
+        face_reason: reason,
+        face_checked_at: new Date().toISOString(),
+      }).eq("id", id);
       if (error) throw error;
     },
   });

@@ -1,0 +1,50 @@
+{
+  "about": "What is read off a MyKad's or passport's text, held to both readers: the phone's (readCard in lib/src/core/signin_checks.dart, test/id_card_cases_test.dart) and Google Vision's in the id-read function (readCardText in supabase/functions/_shared/id_read.ts, id_read_test.ts). expect is the name, the IC as printed, the passport number (the server's reader only) and the expiry (yyyy-mm-dd), null for what can't be read. Change the rules in both readers and here together.",
+  "cases": [
+    {
+      "name": "a MyKad front: the IC, then the name under it",
+      "text": "KAD PENGENALAN\nMyKad\nMALAYSIA\n880202-10-1234\nAINA BINTI AHMAD\nNO 12 JALAN SS2/24\n47300 PETALING JAYA\nSELANGOR\nWARGANEGARA\nISLAM PEREMPUAN",
+      "expect": { "name": "AINA BINTI AHMAD", "ic": "880202-10-1234", "passport": null, "expiry": null }
+    },
+    {
+      "name": "an IC read with spaces",
+      "text": "880202 10 1234\nSITI NURHALIZA",
+      "expect": { "name": "SITI NURHALIZA", "ic": "880202-10-1234", "passport": null, "expiry": null }
+    },
+    {
+      "name": "an IC read without dashes",
+      "text": "MALAYSIA\n880202101234",
+      "expect": { "name": null, "ic": "880202-10-1234", "passport": null, "expiry": null }
+    },
+    {
+      "name": "the address and the card's own words are never the name",
+      "text": "KAD PENGENALAN MALAYSIA\n900101-14-5678\nNO 3 JALAN BUKIT\nTAMAN MELATI\nMUHAMMAD HAFIZ BIN ALI\nKUALA LUMPUR",
+      "expect": { "name": "MUHAMMAD HAFIZ BIN ALI", "ic": "900101-14-5678", "passport": null, "expiry": null }
+    },
+    {
+      "name": "a single word is not a name",
+      "text": "750505-08-4321\nRAVI\nRAVI A/L KUMAR",
+      "expect": { "name": "RAVI A/L KUMAR", "ic": "750505-08-4321", "passport": null, "expiry": null }
+    },
+    {
+      "name": "a Malaysian passport's machine lines: name, number, expiry and IC",
+      "text": "PASPORT MALAYSIA\nP<MYSAHMAD<<AINA<BINTI<<<<<<<<<<<<<<<<<<<<<<<\nA123456786MYS8802021F3105147880202101234<<26",
+      "expect": { "name": "AINA BINTI AHMAD", "ic": "880202-10-1234", "passport": "A12345678", "expiry": "2031-05-14" }
+    },
+    {
+      "name": "machine lines read with spaces in them",
+      "text": "P<MYSAHMAD<<AINA<BINTI<<<<<<<<<<<<<<<< <<<<<<<\nA12345678 6MYS8802021F3105147880202101234<<26",
+      "expect": { "name": "AINA BINTI AHMAD", "ic": "880202-10-1234", "passport": "A12345678", "expiry": "2031-05-14" }
+    },
+    {
+      "name": "another country's passport: no IC",
+      "text": "PASSPORT\nP<GBRSMITH<<JOHN<PAUL<<<<<<<<<<<<<<<<<<<<<<<\n9876543210GBR7501011M2908156<<<<<<<<<<<<<<04",
+      "expect": { "name": "JOHN PAUL SMITH", "ic": null, "passport": "987654321", "expiry": "2029-08-15" }
+    },
+    {
+      "name": "nothing to read",
+      "text": "a blurry photo\nof a table",
+      "expect": { "name": null, "ic": null, "passport": null, "expiry": null }
+    }
+  ]
+}

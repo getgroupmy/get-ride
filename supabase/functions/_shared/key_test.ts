@@ -16,6 +16,7 @@
  */
 
 import { parseAwsKey, signedJsonPost } from "./aws_sigv4.ts";
+import { healthRequest, parseFaceServer } from "./face_server.ts";
 
 export const APP_ID = "com.taxxee.teksi";
 export const SITE = "https://getride.my/";
@@ -60,6 +61,8 @@ const json = (url: string, body: unknown, headers: Record<string, string> = {}):
   headers: { "Content-Type": "application/json", ...headers },
   body: JSON.stringify(body),
 });
+/** A 1×1 transparent PNG. */
+const PIXEL_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
 const latLng = (p: { lat: number; lng: number }) => ({ latLng: { latitude: p.lat, longitude: p.lng } });
 
 export const TESTS: KeyTest[] = [
@@ -205,6 +208,16 @@ export const TESTS: KeyTest[] = [
     request: (k) => ({ url: `https://roads.googleapis.com/v1/nearestRoads?points=${KL.lat},${KL.lng}&key=${enc(k)}` }),
   },
   // ---- Google Gemini -------------------------------------------------------------------------
+  {
+    id: "google_vision",
+    provider: "google",
+    label: "Cloud Vision · read text",
+    about: "Reads the text of a blank 1×1 picture, as the sign-in checks read a MyKad or passport.",
+    services: ["vision"],
+    request: (k) => json("https://vision.googleapis.com/v1/images:annotate", {
+      requests: [{ image: { content: PIXEL_PNG }, features: [{ type: "TEXT_DETECTION" }] }],
+    }, { "X-Goog-Api-Key": k }),
+  },
   {
     id: "gemini_models",
     provider: "google_gemini",
@@ -481,6 +494,19 @@ export const TESTS: KeyTest[] = [
       return { url: signed.url, method: "POST", headers: signed.headers, body };
     },
   },
+  // ---- The self-hosted face match server (sign-in checks, 0283) ------------------------------
+  {
+    id: "face_server_health",
+    provider: "face_match",
+    label: "Face match server · health",
+    about: "Asks the server whether it is up and takes this key. No photos are sent.",
+    services: ["server"],
+    request: (k) => {
+      const server = parseFaceServer(k);
+      if (!server) throw new Error("not a face server key");
+      return healthRequest(server);
+    },
+  },
 ];
 
 /** A self-hosted server's address saved as a key: https only, no trailing slash. */
@@ -581,7 +607,18 @@ export function verdictOf(test: KeyTest, status: number, body: J, text: string):
   const google = test.provider === "google" || test.provider === "google_gemini";
   if (google) {
     // The newer APIs: { error: { status, message, details: [{ reason }] } }.
-    const err = body?.error;
+    const err = body?.error ?? (test.id === "google_vision" ? body?.responses?.[0]?.error : null);
+    if (test.id === "google_vision" && err && typeof err === "object") {
+      const reasons = [err.status, ...(Array.isArray(err.details) ? err.details.map((d: J) => d?.reason) : [])];
+      if (reasons.includes("SERVICE_DISABLED") || /has not been used|is disabled/i.test(String(err.message ?? ""))) {
+        return {
+          result: "fail",
+          title: "Cloud Vision API isn't enabled",
+          detail: "Enable Cloud Vision API in Google Cloud > APIs & Services > Library, in the project the key belongs to. " +
+            "Then wait a few minutes and test again.",
+        };
+      }
+    }
     if (err && typeof err === "object") {
       const reasons: string[] = [err.status, ...(Array.isArray(err.details) ? err.details.map((d: J) => d?.reason) : [])]
         .filter((r): r is string => typeof r === "string");
@@ -609,6 +646,21 @@ export function verdictOf(test: KeyTest, status: number, body: J, text: string):
     return verified.length
       ? { result: "ok", title: "Works", detail: `Resend accepts the key. Verified to send from: ${verified.join(", ")}.` }
       : { result: "warn", title: "The key works, but no domain is verified", detail: "Verify the sender's domain (e.g. getride.my) in Resend, or the emails will be refused." };
+  }
+  if (test.provider === "face_match") {
+    if (status === 401 || status === 403) {
+      return { result: "fail", title: "The server refused the key", detail: "Use the FACE_API_KEY set on the server." };
+    }
+    if (okStatus && body?.status === "ok") {
+      return {
+        result: "ok",
+        title: "Works",
+        detail: `The face match server is up${typeof body?.model === "string" ? ` (${body.model})` : ""} and takes the key.`,
+      };
+    }
+    if (status === 530 || status === 502 || status === 503) {
+      return { result: "fail", title: "The server isn't answering", detail: "Check the NAS is on and both containers (face-server, cloudflared) are running." };
+    }
   }
   if (!okStatus) {
     if (status === 401 || status === 403) {
@@ -703,6 +755,14 @@ export async function runKeyTest(input: unknown, deps: KeyTestDeps): Promise<Tes
       status: 200,
       body: test.provider === "aws"
         ? { result: "fail", title: "Not an AWS key", detail: "Save it as ACCESS_KEY_ID:SECRET_ACCESS_KEY, or add :region.", http: 0, ms: 0 }
+        : test.provider === "face_match"
+        ? {
+          result: "fail",
+          title: "Not a face server key",
+          detail: "Save it as the server's https:// address, a colon, then its secret key (16 characters or more).",
+          http: 0,
+          ms: 0,
+        }
         : { result: "fail", title: "Not a server address", detail: "Save the server's https:// address as this key.", http: 0, ms: 0 },
     };
   }

@@ -203,3 +203,65 @@ Deno.test("AWS: a signed Rekognition call, and a key that isn't one", async () =
   const bad = await runKeyTest({ provider: "aws", service: "rekognition", key: "a2", test: "aws_rekognition" }, d);
   assertEquals((bad.body as { title: string }).title, "Not an AWS key");
 });
+
+Deno.test("Cloud Vision (ID reading): a 1×1 picture, and the API not enabled in plain words", async () => {
+  const t = test("google_vision");
+  assertEquals([t.provider, t.services], ["google", ["vision"]]);
+  const r = await t.request!("vision-key", "");
+  assertEquals(r.url, "https://vision.googleapis.com/v1/images:annotate");
+  assertEquals(r.headers?.["X-Goog-Api-Key"], "vision-key");
+  assert(!r.url.includes("vision-key"), "the key goes in a header");
+  const png = JSON.parse(r.body!).requests[0].image.content as string;
+  const bytes = Uint8Array.from(atob(png), (c) => c.charCodeAt(0));
+  assertEquals([...bytes.slice(1, 4)].map((c) => String.fromCharCode(c)).join(""), "PNG");
+  assertEquals(verdictOf(t, 200, { responses: [{}] }, "").result, "ok");
+  const off = verdictOf(t, 403, {
+    error: { status: "PERMISSION_DENIED", message: "Cloud Vision API has not been used in project 1 before or it is disabled." },
+  }, "");
+  assertEquals([off.result, off.title], ["fail", "Cloud Vision API isn't enabled"]);
+  assert(!off.detail.includes("→"));
+  assertEquals(
+    verdictOf(t, 403, { error: { status: "PERMISSION_DENIED", details: [{ reason: "SERVICE_DISABLED" }] } }, "").title,
+    "Cloud Vision API isn't enabled",
+  );
+  assertEquals(verdictOf(t, 400, { error: { details: [{ reason: "API_KEY_INVALID" }] } }, "").title, "Google doesn't know this key");
+  assertEquals(verdictOf(t, 200, { responses: [{ error: { code: 3, message: "Bad image data." } }] }, "").result, "fail");
+  assertEquals(testsFor("google", "vision")[0].id, "google_vision");
+});
+
+Deno.test("the face match server: /health with the key, and a key that isn't one", async () => {
+  const keys = [{
+    id: "face_match",
+    services: [{
+      id: "server",
+      keys: [
+        { id: "f1", value: "https://face.getride.my:0123456789abcdef0123" },
+        { id: "f2", value: "https://face.getride.my" },
+      ],
+    }],
+  }];
+  const sent: HttpRequest[] = [];
+  const d = (status: number, text: string): KeyTestDeps => ({
+    settings: () => Promise.resolve({ apiProviders: keys, config: null }),
+    fetch: (r) => {
+      sent.push(r);
+      return Promise.resolve({ status, text });
+    },
+    now: () => 0,
+  });
+  const ok = await runKeyTest({ provider: "face_match", service: "server", key: "f1", test: "face_server_health" },
+    d(200, '{"status":"ok","model":"SFace","key":"ok"}'));
+  assertEquals((ok.body as { result: string }).result, "ok");
+  assertEquals(sent[0].url, "https://face.getride.my/health");
+  assertEquals(sent[0].headers?.["x-api-key"], "0123456789abcdef0123");
+  assert(!JSON.stringify(ok.body).includes("0123456789abcdef0123"), "the key is never shown");
+  const refused = await runKeyTest({ provider: "face_match", service: "server", key: "f1", test: "face_server_health" },
+    d(401, '{"error":"bad_key"}'));
+  assertEquals((refused.body as { title: string }).title, "The server refused the key");
+  const down = await runKeyTest({ provider: "face_match", service: "server", key: "f1", test: "face_server_health" },
+    d(530, "error code: 1033"));
+  assertEquals((down.body as { title: string }).title, "The server isn't answering");
+  const bad = await runKeyTest({ provider: "face_match", service: "server", key: "f2", test: "face_server_health" },
+    d(200, "{}"));
+  assertEquals((bad.body as { title: string }).title, "Not a face server key");
+});
