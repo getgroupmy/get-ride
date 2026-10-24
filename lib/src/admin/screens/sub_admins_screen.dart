@@ -330,6 +330,12 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
   RegionScope get _savedGodRegion =>
       RegionScope.fromJson(_existing.where((g) => g.page == godViewPage).firstOrNull?.region);
 
+  /// God View with no region limit, set on purpose ({"everywhere": true}, 0284).
+  bool _godEverywhere = false;
+
+  bool get _savedGodEverywhere =>
+      _existing.where((g) => g.page == godViewPage).firstOrNull?.region?['everywhere'] == true;
+
   /// The region Reports is limited to for this person (0280).
   RegionScope _reportsRegion = RegionScope.all;
 
@@ -339,6 +345,7 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
   void _load() {
     final existing = _existing;
     _godRegion = _savedGodRegion;
+    _godEverywhere = _savedGodEverywhere;
     _reportsRegion = _savedReportsRegion;
     _levels = initialGrantLevels(grantablePages.keys, existing);
     _notes.text = existing.map((g) => g.notes).whereType<String>().firstOrNull ?? '';
@@ -384,7 +391,7 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
     final plan = planGrantChanges(_existing, _levels, notes: _notes.text);
     final godView = (_levels[godViewPage] ?? GrantLevel.none) != GrantLevel.none;
     final reports = (_levels[reportsPage] ?? GrantLevel.none) != GrantLevel.none;
-    final regionChanged = (godView && _godRegion != _savedGodRegion) || (reports && _reportsRegion != _savedReportsRegion);
+    final regionChanged = (godView && (_godRegion != _savedGodRegion || _godEverywhere != _savedGodEverywhere)) || (reports && _reportsRegion != _savedReportsRegion);
     if (plan.upserts.isEmpty && plan.deletes.isEmpty && !regionChanged) {
       _close(false);
       return;
@@ -411,7 +418,7 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
             deletes: plan.deletes,
             notes: notes.isEmpty ? null : notes,
             regions: {
-              if (godView) godViewPage: _godRegion.isAll ? null : _godRegion.toJson(),
+              if (godView) godViewPage: _godEverywhere ? const {'everywhere': true} : (_godRegion.isAll ? null : _godRegion.toJson()),
               if (reports) reportsPage: _reportsRegion.isAll ? null : _reportsRegion.toJson(),
             },
           ),
@@ -595,15 +602,32 @@ class _GrantEditorScreenState extends ConsumerState<GrantEditorScreen> {
                 leading: const Icon(Icons.public),
                 title: const Text('God View region'),
                 subtitle: Text(
-                  _godRegion.isAll ? 'Not set: they see nobody on God View until you pick one' : _godRegion.label,
+                  _godEverywhere
+                      ? 'Everywhere: they see everyone on God View'
+                      : _godRegion.isAll
+                      ? 'Not set: they see nobody on God View until you pick one'
+                      : _godRegion.label,
                 ),
-                trailing: TextButton(
-                  onPressed: () async {
-                    final picked = await pickRegionScope(context, title: 'God View region', initial: _godRegion);
-                    if (picked != null && mounted) setState(() => _godRegion = picked);
-                  },
-                  child: Text(_godRegion.isAll ? 'Pick' : 'Change'),
-                ),
+                trailing: _godEverywhere
+                    ? null
+                    : TextButton(
+                        onPressed: () async {
+                          final picked = await pickRegionScope(context, title: 'God View region', initial: _godRegion);
+                          if (picked != null && mounted) setState(() => _godRegion = picked);
+                        },
+                        child: Text(_godRegion.isAll ? 'Pick' : 'Change'),
+                      ),
+              ),
+            if (pages.any((e) => e.key == godViewPage) &&
+                (_levels[godViewPage] ?? GrantLevel.none) != GrantLevel.none &&
+                (_levels['*'] ?? GrantLevel.none) == GrantLevel.none)
+              SwitchListTile(
+                key: const ValueKey('grant-god-view-everywhere'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Everywhere'),
+                subtitle: const Text('No region limit: every person on God View'),
+                value: _godEverywhere,
+                onChanged: (v) => setState(() => _godEverywhere = v),
               ),
             // Reports show a sub-admin the rides, partners and SOS in this region only.
             if (pages.any((e) => e.key == reportsPage) &&
