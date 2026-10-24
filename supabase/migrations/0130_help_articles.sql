@@ -441,7 +441,7 @@ Already signed in? Go to Settings → Change sign-in PIN and choose Forgot PIN? 
    'all', 'Payments & wallet', 'Invite friends', '/account/referral', 420),
   ('68656c70-0000-4000-8000-000000000043', 'How do I become a driver?',
    array['Become a partner', 'Drive with GET.ride', 'Sign up as driver', 'Jadi pemandu']::text[],
-   'Open the Drive tab and tap Get started. The application has six steps: profile photo, ID number, address, service area, partner type, then the documents required for those types and areas. It resumes where you left off. Once submitted, an admin reviews it; you can take jobs once your account is approved.',
+   'Open the Drive tab and tap Get started. The application has six steps: profile photo, ID number, address, service area, Partner Service type, then the documents required for those types and areas. It resumes where you left off. Once submitted, an admin reviews it; you can take jobs once your account is approved.',
    array['driver', 'partner', 'become', 'apply', 'onboarding', 'pemandu', 'rakan', 'mohon']::text[],
    'all', 'Driving', 'Start your application', '/drive/onboarding', 430),
   ('68656c70-0000-4000-8000-000000000044', 'My partner application was rejected',

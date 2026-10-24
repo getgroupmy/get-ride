@@ -8,10 +8,12 @@ import '../../admin/screens/meterapp/pick_image.dart';
 import '../../admin/screens/people/people_data.dart';
 import '../../admin/screens/people/people_logic.dart';
 import '../../admin/screens/people/people_widgets.dart';
+import '../../core/app_display.dart' show partnerRegistrationPausedMessage, partnerRegistrationPausedTitle;
 import '../../core/partner_doc_check.dart' show renewalWindowDays;
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_type_rules.dart' show EffectiveTypeRules, partnerTypesAvailableIn;
 import '../../core/vehicle_onboarding.dart';
+import '../../data/app_display_repository.dart' show appDisplayProvider;
 import '../../data/identity_repository.dart' show recordProfileSelfie;
 import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
@@ -120,7 +122,14 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       if (mounted && _s == null && _loadError == null) setState(() => _slow = true);
     });
     try {
-      final s = await _repo.load();
+      // A new application only while Admin → Display allows new drivers;
+      // one already started may be finished. Unreadable settings: let the
+      // server decide.
+      var mayStart = true;
+      try {
+        mayStart = (await ref.read(appDisplayProvider.future).timeout(const Duration(seconds: 5))).driverSignUpOpen;
+      } catch (_) {}
+      final s = await _repo.load(mayStart: mayStart);
       final people = ref.read(peopleRepositoryProvider);
       final area = ServiceArea.fromRow(s.partner);
       final settled = await Future.wait<Object>([
@@ -255,7 +264,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
   }
 
   Future<void> _saveTypes() async {
-    if (_types.isEmpty) return showError(context, 'Please select at least one partner type.');
+    if (_types.isEmpty) return showError(context, 'Please select at least one Partner Service type.');
     final entries = _typeEntries.map((e) => e.values);
     final unavailable = _types.where((t) => !EffectiveTypeRules.of(t, entries).availableIn(_area)).toList();
     if (unavailable.isNotEmpty) {
@@ -292,7 +301,15 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     ], () => unawaited(_refresh()));
     final s = _s;
     Widget body;
-    if (_loadError != null) {
+    if (_loadError is PartnerRegistrationPaused) {
+      // Driver sign-up closed and no application started: no wizard.
+      body = const EmptyState(
+        key: ValueKey('partner-registration-paused'),
+        icon: Icons.pause_circle_outline,
+        title: partnerRegistrationPausedTitle,
+        message: partnerRegistrationPausedMessage,
+      );
+    } else if (_loadError != null) {
       body = EmptyState(
         icon: Icons.cloud_off,
         title: 'Could not load your partner profile',

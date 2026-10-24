@@ -46,7 +46,7 @@ enum LockScope {
   driver('driver', 'One driver'),
   fleet('fleet', 'Fleet'),
   region('region', 'Region'),
-  partnerType('partner_type', 'Partner type'),
+  partnerType('partner_type', 'Partner Service type'),
   everyone('everyone', 'Everyone');
 
   const LockScope(this.id, this.label);
@@ -457,7 +457,7 @@ ServiceTab serviceTabFor(String name, Iterable<String> typeNames) {
 /// while the service order applies to every booking ([orderEnforced]),
 /// as the server only refuses them then.
 String? ineligibleReason(ServiceFacts s, {ServiceFacts? own, bool orderEnforced = false, bool regionOk = true}) {
-  if (!s.partnerOk) return 'Not in your partner type';
+  if (!s.partnerOk) return 'Not in your Partner Service type';
   if (orderEnforced && !s.orderOk) {
     if (own == null) return "Your car's service isn't approved yet";
     final mine = own.maxPax, theirs = s.maxPax;
@@ -607,7 +607,7 @@ const lockedServiceMessage = 'Set by get.ride. Contact support to change it.';
 
 /// The page's footer.
 const servicesFooter =
-    "You only get requests for services that are on. Services greyed out don't fit this car, your partner type or "
+    "You only get requests for services that are on. Services greyed out don't fit this car, your Partner Service type or "
     'your permits. Changes apply straight away.';
 
 /// Street hail as the meter checks it before a hire: whether each kind may

@@ -117,7 +117,7 @@ final lockServiceChoicesProvider = Provider.autoDispose<List<LockServiceChoice>>
 enum _Who {
   one('One driver'),
   several('Several drivers'),
-  partnerType('Partner type'),
+  partnerType('Partner Service type'),
   fleet('Fleet'),
   region('Region'),
   everyone('Everyone');
@@ -217,7 +217,7 @@ class _DriverServiceLocksScreenState extends ConsumerState<DriverServiceLocksScr
     if (!mounted) return;
     final picked = await showSearchPicker<String>(
       context,
-      title: 'Partner type',
+      title: 'Partner Service type',
       choices: [for (final n in names) (value: n, label: n, subtitle: null, leading: null)],
       selected: _partnerType,
     );
@@ -300,7 +300,7 @@ class _DriverServiceLocksScreenState extends ConsumerState<DriverServiceLocksScr
       showError(context, switch (_who) {
         _Who.one => 'Choose a driver.',
         _Who.several => 'Add the drivers.',
-        _Who.partnerType => 'Choose a partner type.',
+        _Who.partnerType => 'Choose a Partner Service type.',
         _Who.fleet => 'Choose a fleet.',
         _Who.region => 'Choose a region.',
         _Who.everyone => 'Choose who the locks are for.',
@@ -617,7 +617,7 @@ class _DriverServiceLocksScreenState extends ConsumerState<DriverServiceLocksScr
           ),
         ],
       ),
-      _Who.partnerType => pick('dsl-pick-type', _partnerType ?? 'Choose a partner type', _pickPartnerType),
+      _Who.partnerType => pick('dsl-pick-type', _partnerType ?? 'Choose a Partner Service type', _pickPartnerType),
       _Who.fleet => pick('dsl-pick-fleet', _fleet?.name ?? 'Choose a fleet', _pickFleet),
       _Who.region => pick('dsl-pick-region', _region == null ? 'Choose a region' : _placeLabel(_region!), _pickRegion),
       _Who.everyone => Text('All drivers', key: const ValueKey('dsl-everyone'), style: t.textTheme.bodyMedium),
@@ -702,7 +702,7 @@ class _RuleRow extends StatelessWidget {
 /// A target in words.
 String _targetLabel(LockTarget t, Map<String, String> names) => switch (t.scope) {
   LockScope.driver => names[t.driverId] ?? 'A driver',
-  LockScope.partnerType => names['pt:${t.partnerType}'] ?? t.partnerType ?? 'Partner type',
+  LockScope.partnerType => names['pt:${t.partnerType}'] ?? t.partnerType ?? 'Partner Service type',
   LockScope.fleet => names['fleet:${t.fleetId}'] ?? 'A fleet',
   LockScope.region => t.regionLabel,
   LockScope.everyone => 'Everyone',

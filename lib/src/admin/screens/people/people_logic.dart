@@ -395,11 +395,11 @@ String? validatePartnerForm({
 }) {
   if (!hasUser) return 'Please select a user to add as partner.';
   if (!area.complete) {
-    return 'Please pick at least one country, state and city of service before choosing a partner type.';
+    return 'Please pick at least one country, state and city of service before choosing a Partner Service type.';
   }
-  if (partnerTypes.isEmpty) return 'Please select at least one partner type.';
+  if (partnerTypes.isEmpty) return 'Please select at least one Partner Service type.';
   if (vehicleRequired && !hasVehicle) {
-    return 'The selected partner type requires a vehicle. Pick one from the list or add a new vehicle.';
+    return 'The selected Partner Service type requires a vehicle. Pick one from the list or add a new vehicle.';
   }
   return null;
 }

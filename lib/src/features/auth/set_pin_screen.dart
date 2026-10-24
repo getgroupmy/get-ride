@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/app_display.dart';
 import '../../core/auth_utils.dart';
 import '../../core/referral.dart';
+import '../../data/app_display_repository.dart';
 import '../../data/auth_repository.dart';
 import '../../data/referral_repository.dart';
 import '../../providers.dart';
@@ -14,7 +16,16 @@ import '../../data/coin_trade_repository.dart';
 import 'signup_photo_screen.dart' show signupLanding;
 
 /// Under Passenger/Driver when Driver is picked: what comes after.
-const driverSignupNote = 'Drivers add their documents and vehicle after signing in.';
+const driverSignupNote =
+    'After your photo you will set up your partner account: ID, the service you offer and your documents.';
+
+/// The roles a new account may pick, as Admin → Display → Sign-in Screen
+/// allows them: both while both are open (or both closed, when the server
+/// has the last word), else the open one.
+List<String> signupRoles(AppDisplay d) => [
+      if (d.passengerSignUpOpen || !d.anySignUpOpen) 'passenger',
+      if (d.driverSignUpOpen || !d.anySignUpOpen) 'driver',
+    ];
 
 /// Choose the 6-digit sign-in PIN after an SMS sign-in (a new account, or
 /// a forgotten PIN). Requires an active session. Changing it from Settings
@@ -38,6 +49,11 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   /// Expo `role-selection`: where a brand-new account lands. Either mode
   /// stays a tap away later.
   String _role = 'passenger';
+
+  /// [_role] if it may still be picked, else the role that may.
+  String _roleIn(List<String> roles) => roles.contains(_role) ? _role : roles.first;
+
+  List<String> get _roles => signupRoles(ref.read(appDisplayProvider).value ?? const AppDisplay());
 
   @override
   void dispose() {
@@ -82,7 +98,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
           return;
         }
       }
-      await ref.read(authRepositoryProvider).setPin(_pin.text);
+      await ref.read(authRepositoryProvider).setPin(_pin.text, role: isNew ? _roleIn(_roles) : null);
       final name = capitaliseName(_name.text);
       if (name.isNotEmpty) await ref.read(accountRepositoryProvider).updateProfile(name: name);
       AuthRepository.pinSetupPending = false;
@@ -102,7 +118,7 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   /// page asked for before sign-in, or home).
   String _nextRoute({required bool isNew, required bool hasPhoto, String again = '/'}) {
     if (!isNew) return again;
-    final landing = signupLanding(_role);
+    final landing = signupLanding(_roleIn(_roles));
     return hasPhoto ? landing : Uri(path: '/signup/photo', queryParameters: {'next': landing}).toString();
   }
 
@@ -127,6 +143,8 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final needsName = ref.watch(profileProvider).value?.name?.trim().isNotEmpty != true;
+    final roles = signupRoles(ref.watch(appDisplayProvider).value ?? const AppDisplay());
+    final role = _roleIn(roles);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Set your PIN'),
@@ -145,16 +163,24 @@ class _SetPinScreenState extends ConsumerState<SetPinScreen> {
               const SizedBox(height: 8),
               SegmentedButton<String>(
                 key: const ValueKey('signup-role'),
-                segments: const [
-                  ButtonSegment(value: 'passenger', icon: Icon(Icons.person_outline), label: Text('Passenger')),
-                  ButtonSegment(value: 'driver', icon: Icon(Icons.local_taxi_outlined), label: Text('Driver')),
+                segments: [
+                  if (roles.contains('passenger'))
+                    const ButtonSegment(value: 'passenger', icon: Icon(Icons.person_outline), label: Text('Passenger')),
+                  if (roles.contains('driver'))
+                    const ButtonSegment(value: 'driver', icon: Icon(Icons.local_taxi_outlined), label: Text('Driver')),
                 ],
-                selected: {_role},
+                selected: {role},
                 onSelectionChanged: (v) => setState(() => _role = v.first),
               ),
               const SizedBox(height: 4),
-              Text('You can change the mode later', style: t.textTheme.bodySmall),
-              if (_role == 'driver') ...[
+              if (roles.length > 1) Text('You can change the mode later', style: t.textTheme.bodySmall),
+              if (roles.length == 1)
+                Text(
+                  role == 'driver' ? passengerSignUpPausedNote : driverSignUpPausedNote,
+                  key: const ValueKey('signup-role-paused'),
+                  style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
+                ),
+              if (role == 'driver') ...[
                 const SizedBox(height: 4),
                 Text(
                   driverSignupNote,

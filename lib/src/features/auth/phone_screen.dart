@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -76,15 +78,27 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
       if (!lookup.hasProfile) {
         final display = await ref.read(appDisplayProvider.future);
         if (!mounted) return;
+        // Passenger and driver sign-up both closed: no SMS code at all
+        // (the server's sign-up hook refuses one too, migration 0287).
         if (!mayContinueSignIn(hasAccount: false, display: display)) {
-          context.push(signInStepPath('/login/closed', phone));
+          setState(() => _busy = false);
+          // Not awaited: Next stops spinning while the modal is up.
+          unawaited(_noAccount(phone));
           return;
         }
         // No SMS (and no account) until they say this is a new account.
         setState(() => _busy = false);
         if (!await _confirmNewAccount(phone) || !mounted) return;
         setState(() => _busy = true);
-        await auth.sendOtp(phone, createUser: true);
+        try {
+          await auth.sendOtp(phone, createUser: true);
+        } catch (e) {
+          // Closed since this page read the settings: the server said so.
+          if (!isRegistrationClosed('$e')) rethrow;
+          if (mounted) setState(() => _busy = false);
+          if (mounted) unawaited(_noAccount(phone));
+          return;
+        }
         if (!mounted) return;
         // The number stays in memory, not in the address (signInStepPath).
         context.push(signInStepPath('/login/otp', phone, {'next': 'set-pin', 'new': '1'}));
@@ -100,6 +114,33 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// A number with no account while new sign-ups are closed: a modal
+  /// instead of an SMS code, back to the number to try another.
+  Future<void> _noAccount(String phone) async {
+    await showAppDialog<void>(
+      id: 'phone.no-account',
+      context: context,
+      builder: (c) => AlertDialog(
+        key: const ValueKey('no-account'),
+        icon: const Icon(Icons.person_off_outlined),
+        title: const Text(noAccountTitle),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(phone, key: const ValueKey('no-account-phone'), style: Theme.of(c).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          const Text(noAccountMessage, textAlign: TextAlign.center),
+        ]),
+        actions: [
+          FilledButton(
+            key: const ValueKey('no-account-try-another'),
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Try another number'),
+          ),
+        ],
+      ),
+    );
+    if (mounted) _number.clear();
   }
 
   /// Expo's "Create a new account?" sheet: the number isn't known, so say so

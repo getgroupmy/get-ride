@@ -75,7 +75,7 @@ const catalogueEntries = <AdminScreenEntry>[
   ),
   AdminScreenEntry(
     section: 'Services & catalogue',
-    title: 'Partner Type',
+    title: 'Partner Service type',
     subtitle: 'Categories & nested sub-services',
     path: '/admin/m/partner-type',
     pages: ['admin-settings-partner-type'],
@@ -83,8 +83,8 @@ const catalogueEntries = <AdminScreenEntry>[
   ),
   AdminScreenEntry(
     section: 'Services & catalogue',
-    title: 'Partner type services',
-    subtitle: 'Which ride services each partner type sees in open requests',
+    title: 'Partner Service type services',
+    subtitle: 'Which ride services each Partner Service type sees in open requests',
     path: partnerTypeServicesPath,
     pages: [partnerTypeServicesPage, 'admin-settings-partner-type'],
     icon: Icons.rule_outlined,

@@ -337,6 +337,8 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'serviceBoxBadge': true,
       'serviceEnabled': true,
       'registrationEnabled': true,
+      'passengerRegistrationEnabled': true,
+      'driverRegistrationEnabled': true,
       'signInLogo': true,
       // Off unless stored on, as the apps read them (DemoSettings): a
       // default of on showed mocks as running when they weren't, and a save
@@ -468,6 +470,25 @@ bool displayBool(Map<String, dynamic> s, String key) {
 num displayNum(Map<String, dynamic> s, String key) {
   final v = s[key];
   return v is num ? v : (defaultDisplaySettings()[key] as num? ?? 0);
+}
+
+/// Whether new [role] ('passenger' or 'driver') sign-up is on, as the apps
+/// read it (`AppDisplay`): the old single switch off closes both.
+bool registrationOpen(Map<String, dynamic> s, String role) =>
+    displayBool(s, 'registrationEnabled') &&
+    displayBool(s, role == 'driver' ? 'driverRegistrationEnabled' : 'passengerRegistrationEnabled');
+
+/// Turns [role]'s sign-up on or off, keeping the other as it reads now, and
+/// the old single switch as "either is open" for apps that only know it.
+Map<String, dynamic> setRegistrationOpen(Map<String, dynamic> s, String role, bool on) {
+  final passenger = role == 'driver' ? registrationOpen(s, 'passenger') : on;
+  final driver = role == 'driver' ? on : registrationOpen(s, 'driver');
+  return {
+    ...s,
+    'passengerRegistrationEnabled': passenger,
+    'driverRegistrationEnabled': driver,
+    'registrationEnabled': passenger || driver,
+  };
 }
 
 Map<String, dynamic> setDisplayValue(Map<String, dynamic> s, String key, Object? value) => {...s, key: value};

@@ -116,7 +116,7 @@ void main() {
       // Greyed out with the reason, switch off and disabled.
       expect(find.byKey(const ValueKey('driver-service-reason-6seater')), findsOneWidget);
       expect(find.text('This car has 4 seats'), findsOneWidget);
-      expect(find.text('Not in your partner type'), findsOneWidget);
+      expect(find.text('Not in your Partner Service type'), findsOneWidget);
       expect(_switch(tester, '6seater').value, isFalse);
       expect(_switch(tester, '6seater').onChanged, isNull);
 

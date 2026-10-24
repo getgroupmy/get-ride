@@ -16,7 +16,7 @@ class _FakeAuth implements AuthRepository {
   final pins = <String>[];
 
   @override
-  Future<void> setPin(String pin) async => pins.add(pin);
+  Future<void> setPin(String pin, {String? role}) async => pins.add(pin);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

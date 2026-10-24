@@ -250,7 +250,7 @@ void main() {
       expect(row['send_at'], '2026-10-25T01:00:00.000Z');
       expect(row['repeat'], 'weekly');
       expect(pushScheduleRow(title: 't', body: 'b', audience: 'users', sendAt: _now, repeat: PushRepeat.once,
-          partnerTypes: ['x'])['partner_types'], isEmpty, reason: 'partner types only for partners');
+          partnerTypes: ['x'])['partner_types'], isEmpty, reason: 'Partner Service types only for partners');
       final s = PushSchedule.fromRow({...row, 'id': 's1', 'next_at': '2026-11-01T01:00:00Z', 'status': 'active'});
       expect(s.when, my(2026, 11, 1, 9));
       expect(s.toText, 'Partners: eHailing in Kajang, Malaysia');

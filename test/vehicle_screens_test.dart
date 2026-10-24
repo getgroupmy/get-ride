@@ -39,7 +39,7 @@ const _partner = {
 class _FakeOnboarding extends PartnerOnboardingRepository {
   _FakeOnboarding() : super(_db);
   @override
-  Future<OnboardingState> load() async => const OnboardingState(profile: {}, partner: _partner);
+  Future<OnboardingState> load({bool mayStart = true}) async => const OnboardingState(profile: {}, partner: _partner);
 }
 
 class _FakeVehicles extends VehicleOnboardingRepository {

@@ -4,9 +4,10 @@ import 'package:go_router/go_router.dart';
 import '../../core/app_display.dart';
 import '../../widgets/common.dart';
 
-/// What a phone number with no account sees while Admin → Display Settings →
-/// Sign-in Screen → Allow new registrations is off: a page of its own rather
-/// than a passing message, with the way back to try another number. The
+/// `/login/closed`: what closed sign-up means, kept for links to it. The
+/// phone screen itself now shows the "No account found" modal instead
+/// (both passenger and driver sign-up off, migration 0287). A page of its
+/// own rather than a passing message, with the way back to try another number. The
 /// number lives only in memory (`SignInPhone`): reloaded, the page still
 /// says what closed means, without it.
 class RegistrationClosedScreen extends StatelessWidget {

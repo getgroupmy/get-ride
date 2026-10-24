@@ -141,7 +141,7 @@ Future<void> _tap(WidgetTester tester, Finder f) async {
 }
 
 void main() {
-  test('listed under Services & catalogue after Partner type services, grantable, followed live', () {
+  test('listed under Services & catalogue after Partner Service type services, grantable, followed live', () {
     final i = allAdminEntries.indexWhere((e) => e.path == partnerTypeServicesPath);
     final e = allAdminEntries[i + 1];
     expect(e.path, driverServiceLocksPath);
@@ -158,7 +158,7 @@ void main() {
       final repo = await _pump(tester, b);
       expect(tester.takeException(), isNull);
 
-      for (final w in ['One driver', 'Several drivers', 'Partner type', 'Fleet', 'Region', 'Everyone']) {
+      for (final w in ['One driver', 'Several drivers', 'Partner Service type', 'Fleet', 'Region', 'Everyone']) {
         expect(find.descendant(of: find.byKey(const ValueKey('dsl-form')), matching: find.text(w)), findsOneWidget, reason: w);
       }
       // A row per service, street hail and add-on (the guide dog too), with the off counts.

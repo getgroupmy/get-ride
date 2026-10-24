@@ -18,7 +18,7 @@ enum OnboardingStep {
   id('id', 'ID number'),
   address('address', 'Address'),
   serviceArea('service-area', 'Service area'),
-  partnerType('partner-type', 'Partner type'),
+  partnerType('partner-type', 'Partner Service type'),
   requirements('requirements', 'Documents'),
   done('done', 'Submitted');
 

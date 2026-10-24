@@ -132,11 +132,11 @@ class _PartnerDetailsForm extends ConsumerWidget {
           child: Padding(
             padding: EdgeInsets.all(12),
             child: Text(
-                'Pick at least one country, state and city above to continue with partner type and documents.'),
+                'Pick at least one country, state and city above to continue with Partner Service type and documents.'),
           ),
         )
       else ...[
-        const SectionTitle('Partner Type'),
+        const SectionTitle('Partner Service type'),
         PartnerTypeField(
             options: partnerTypeOptions(data.typeValues), value: types, onChanged: onTypes, enabled: enabled),
       ],

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/auth_utils.dart';
+import '../core/app_display.dart' show isRegistrationClosed, registrationClosedPinMessage;
 import '../features/auth/passkey/passkey.dart' as pk;
 import 'meter_session_store.dart';
 import 'session_guard.dart';
@@ -236,11 +237,20 @@ class AuthRepository {
   /// Saves the PIN server-side (bcrypt via `set_login_pin`) and syncs the
   /// derived Auth password so future PIN logins mint a real session.
   /// Requires an active session (call after OTP verification).
-  Future<void> setPin(String pin) async {
+  ///
+  /// A new account says which [role] it signs up as ('passenger' or
+  /// 'driver'): the server refuses a role whose sign-up the admin closed
+  /// (`REGISTRATION_CLOSED`, migration 0287).
+  Future<void> setPin(String pin, {String? role}) async {
     final deviceId = await deviceIdentifier();
     try {
-      await _db.rpc('set_login_pin', params: {'p_pin': pin, 'p_device_id': deviceId});
+      await _db.rpc('set_login_pin', params: {
+        'p_pin': pin,
+        'p_device_id': deviceId,
+        'p_role': ?role,
+      });
     } on PostgrestException catch (e) {
+      if (isRegistrationClosed(e.message)) throw AuthException(registrationClosedPinMessage(role));
       if (isRegistrationBlocked(e.message)) {
         throw AuthException(
           deviceGuardMessage(emulator: RegExp('EMULATOR', caseSensitive: false).hasMatch(e.message)),

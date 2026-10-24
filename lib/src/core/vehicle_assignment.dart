@@ -140,7 +140,7 @@ String claimVehicleErrorMessage(Object error) {
     try {
       hint = (error as dynamic).hint as String?;
     } catch (_) {}
-    return (hint ?? '').trim().isNotEmpty ? hint!.trim() : 'This vehicle is too old for your partner type here.';
+    return (hint ?? '').trim().isNotEmpty ? hint!.trim() : 'This vehicle is too old for your Partner Service type here.';
   }
   return "Couldn't select this vehicle. Please try again.";
 }

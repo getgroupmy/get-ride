@@ -10,6 +10,7 @@ import '../../widgets/admin_widgets.dart';
 import 'catalogue_data.dart';
 import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
+import 'partner_service_settings_editor.dart';
 import 'partner_type_rules_editor.dart';
 import 'partner_type_services_screen.dart' show partnerTypeServicesPath;
 import '../../../core/partner_type_rules.dart';
@@ -44,7 +45,7 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
     if (!mounted) return;
     final values = await openEditor<Map<String, dynamic>>(
       context,
-      e == null ? 'Add Partner Type' : 'Edit Partner Type',
+      e == null ? 'Add Partner Service type' : 'Edit Partner Service type',
       _PartnerTypeEditor(entries: all, entry: e, docTypes: docTypes, canEdit: canEditPage(ref, _page)),
     );
     if (values == null || !mounted) return;
@@ -67,10 +68,10 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
 
   Future<void> _delete(SettingEntry e) async {
     if (jsBool(e.values['isDefault'])) {
-      showInfo(context, 'Default partner types cannot be deleted, only edited.');
+      showInfo(context, 'Default Partner Service types cannot be deleted, only edited.');
       return;
     }
-    if (!await confirm(context, 'Delete partner type', 'Remove "${str(e.values['name'])}"?', ok: 'Delete') || !mounted) {
+    if (!await confirm(context, 'Delete Partner Service type', 'Remove "${str(e.values['name'])}"?', ok: 'Delete') || !mounted) {
       return;
     }
     if (await runAdminAction(context, () => ref.read(adminRepositoryProvider).deleteSetting(c, e.id), success: 'Deleted')) {
@@ -116,7 +117,7 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
     final canEdit = canEditPage(ref, _page);
     final entries = ref.watch(catalogueEntriesProvider(c));
     return AdminPage(
-      title: 'Partner Type',
+      title: 'Partner Service type',
       page: _page,
       actions: [
         IconButton(
@@ -129,7 +130,7 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
       addAction: PageAddAction(
         onPressed: () => _edit(entries.value ?? []),
         icon: const Icon(Icons.add),
-        label: const Text('Add partner type'),
+        label: const Text('Add Partner Service type'),
       ),
       body: AsyncView(
         value: entries,
@@ -142,12 +143,12 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
             maxWidth: 820,
             child: Column(children: [
               CatalogueSearch(
-                hint: 'Search partner types or sub-services',
+                hint: 'Search Partner Service types or sub-services',
                 onChanged: (v) => setState(() => _query = v),
               ),
               Expanded(
                 child: rows.isEmpty
-                    ? const EmptyState(icon: Icons.inbox_outlined, title: 'No partner types', message: 'Categories & nested sub-services')
+                    ? const EmptyState(icon: Icons.inbox_outlined, title: 'No Partner Service types', message: 'Categories & nested sub-services')
                     : ListView.builder(
                         padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)),
                         itemCount: rows.length,
@@ -243,6 +244,8 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
   late List<String> _docTypes = parsePartnerDocTypes(v['docTypes']);
   late PartnerTypeRules _rules = PartnerTypeRules.fromValues(v);
   bool _rulesTouched = false;
+  late PartnerServiceSettings _settings = PartnerServiceSettings.fromValues(v);
+  bool _settingsTouched = false;
   bool _tried = false;
   String? _error;
 
@@ -261,7 +264,7 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
       kind: MediaKind.icon,
       alsoKinds: const {MediaKind.image, MediaKind.logo},
       current: _icon,
-      title: 'Partner type icon',
+      title: 'Partner Service type icon',
       offerDefault: false,
       builtIns: false,
       store: MediaStore.url,
@@ -346,6 +349,8 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
       // Untouched rules on an entry that never had any are left unset
       // (today's behaviour), not written out as defaults.
       rules: _rulesTouched || v['rules'] != null ? _rules : null,
+      // The same for the registration settings: untouched, kept as stored.
+      settings: _settingsTouched ? _settings : null,
     );
     if (r.error != null) {
       return setState(() {
@@ -359,7 +364,7 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
   @override
   Widget build(BuildContext context) => EditorBody(
         error: _error,
-        saveLabel: widget.entry == null ? 'Add partner type' : 'Save changes',
+        saveLabel: widget.entry == null ? 'Add Partner Service type' : 'Save changes',
         onSave: widget.canEdit ? _save : null,
         children: [
           if (jsBool(v['isDefault']))
@@ -367,7 +372,7 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
               padding: EdgeInsets.only(bottom: 12),
               child: Text('Default type — name & sub-services can be edited.'),
             ),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name *', hintText: 'Partner type name')),
+          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name *', hintText: 'Partner Service type name')),
           const SizedBox(height: 12),
           TextField(
             controller: _info,
@@ -377,7 +382,7 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
             decoration: const InputDecoration(
               labelText: 'Short Information (optional)',
               hintText: 'Shown as subtitle in the Select your service popup',
-              helperText: 'Appears below the partner type name when users pick a service.',
+              helperText: 'Appears below the Partner Service type name when users pick a service.',
             ),
           ),
           const SectionLabel('Icon (optional)', hint: 'Square image. Shown globally in the "Select your service" popup.'),
@@ -411,8 +416,8 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Vehicle required'),
-            subtitle: const Text('Partners of this type must register a vehicle.'),
+            title: const Text('Vehicle service: partners must register a vehicle'),
+            subtitle: const Text('Registration asks for the vehicle, its documents and its permits.'),
             value: _vehicle,
             onChanged: (x) => setState(() => _vehicle = x),
           ),
@@ -424,6 +429,19 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
             onChanged: (r) => setState(() {
               _rules = r;
               _rulesTouched = true;
+            }),
+          ),
+          PartnerServiceSettingsEditor(
+            settings: _settings,
+            vehicleRequired: _vehicle,
+            ageRequired: _rules.ageRequired,
+            otherTypes: [
+              for (final e in sortByPriority(widget.entries, byName: true))
+                if (e.id != widget.entry?.id && str(e.values['name']).trim().isNotEmpty) str(e.values['name']).trim(),
+            ],
+            onChanged: (x) => setState(() {
+              _settings = x;
+              _settingsTouched = true;
             }),
           ),
           SwitchListTile(

@@ -515,7 +515,7 @@ const helpKnowledgeBase = <HelpArticle>[
     id: '68656c70-0000-4000-8000-000000000043',
     title: 'How do I become a driver?',
     questionVariants: ['Become a partner', 'Drive with GET.ride', 'Sign up as driver', 'Jadi pemandu'],
-    answer: 'Open the Drive tab and tap Get started. The application has six steps: profile photo, ID number, address, service area, partner type, then the documents required for those types and areas. It resumes where you left off. Once submitted, an admin reviews it; you can take jobs once your account is approved.',
+    answer: 'Open the Drive tab and tap Get started. The application has six steps: profile photo, ID number, address, service area, Partner Service type, then the documents required for those types and areas. It resumes where you left off. Once submitted, an admin reviews it; you can take jobs once your account is approved.',
     keywords: ['driver', 'partner', 'become', 'apply', 'onboarding', 'pemandu', 'rakan', 'mohon'],
     audience: 'all',
     category: 'Driving',

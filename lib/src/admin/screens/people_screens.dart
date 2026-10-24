@@ -641,7 +641,7 @@ class AdminPartnersScreen extends ConsumerWidget {
                 'Owner': p['owner_name'],
                 'Owner phone': p['owner_phone'],
                 'Owner partner': p['owner_partner_display_id'],
-                'Partner types': (p['partner_types'] as List?)?.map((e) => capitaliseName('$e')).join(', '),
+                'Partner Service types': (p['partner_types'] as List?)?.map((e) => capitaliseName('$e')).join(', '),
                 'Service area': (p['service_cities'] as List?)?.join(', '),
                 'Onboarding step': p['onboarding_step'],
                 'Documents OK': p['documents_ok'] == true ? 'Yes' : 'No',
@@ -653,7 +653,7 @@ class AdminPartnersScreen extends ConsumerWidget {
                 'Email': p['email'],
                 'IC': p['ic'],
                 'Vehicle': [p['vehicle'], p['plate']].whereType<String>().join(' · '),
-                'Partner types': ((p['partner_types'] as List?)?.map((e) => '$e') ??
+                'Partner Service types': ((p['partner_types'] as List?)?.map((e) => '$e') ??
                         [if (p['partner_type'] != null) '${p['partner_type']}'])
                     .map(capitaliseName)
                     .join(', '),

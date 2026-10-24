@@ -7,6 +7,8 @@ import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/partner_onboarding.dart';
 import 'package:get_ride/src/core/partner_type_rules.dart';
 import 'package:get_ride/src/core/vehicle_assignment.dart';
+import 'package:get_ride/src/core/app_display.dart' show AppDisplay;
+import 'package:get_ride/src/data/app_display_repository.dart' show appDisplayProvider;
 import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/partner_doc_check.dart';
@@ -326,7 +328,7 @@ class _Onboarding extends PartnerOnboardingRepository {
   _Onboarding([this.partner = _partner]) : super(_db);
   final Map<String, dynamic> partner;
   @override
-  Future<OnboardingState> load() async => OnboardingState(profile: const {}, partner: partner);
+  Future<OnboardingState> load({bool mayStart = true}) async => OnboardingState(profile: const {}, partner: partner);
 }
 
 class _Vehicles extends VehicleOnboardingRepository {
@@ -413,6 +415,7 @@ Future<void> _pumpOnboarding(WidgetTester tester, Brightness b) async {
       partnerOnboardingRepositoryProvider.overrideWithValue(_Onboarding(partner)),
       peopleRepositoryProvider.overrideWithValue(_People()),
       partnerProvider.overrideWith((_) async => null),
+      appDisplayProvider.overrideWith((_) async => const AppDisplay()),
       liveTablesProvider.overrideWith(_QuietLive.new),
     ],
     child: MaterialApp(theme: appTheme(b), home: const PartnerOnboardingScreen()),

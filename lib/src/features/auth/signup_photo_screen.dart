@@ -10,9 +10,18 @@ import '../../widgets/common.dart';
 import '../../widgets/live_selfie.dart';
 import '../../widgets/net_image.dart';
 
-/// Where a new account lands after sign-up: Driver opens the Drive tab, where
-/// partner onboarding starts; Passenger (and anything unknown) the map.
-String signupLanding(String? role) => role == 'driver' ? '/drive' : '/';
+/// Where a new account lands after sign-up: Driver goes straight into
+/// partner registration (after the photo step, taken or skipped);
+/// Passenger (and anything unknown) the map.
+String signupLanding(String? role) => role == 'driver' ? driverSignupLanding : '/';
+
+const driverSignupLanding = '/drive/onboarding';
+
+/// Where the photo step goes on, from its `?next=`: one of the two sign-up
+/// landings, never an arbitrary route from the URL ('/drive' is how links
+/// made before partner registration said Driver).
+String signupPhotoNext(String? next) =>
+    signupLanding(const {'/drive', driverSignupLanding}.contains(next) ? 'driver' : null);
 
 /// The optional sign-up photo step (Expo `profile-photo.tsx`): the photo
 /// becomes the avatar. Skip goes on without one; it can be added later from

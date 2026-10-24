@@ -293,7 +293,7 @@ String _pathLabel(String key, String path) => path.isEmpty || path == key ? key 
 const _categoryPages = <String, (String, String)>{
   'vehicle-services': ('Vehicle Services', '/admin/m/vehicle-services'),
   'service-settings': ('Service Settings', '/admin/m/service-settings'),
-  'partner-type': ('Partner Type', '/admin/m/partner-type'),
+  'partner-type': ('Partner Service type', '/admin/m/partner-type'),
   'advertisement-banners': ('Advertisement Banners', '/admin/settings/advertisement-banners'),
   'payment-type': ('Payment Type', '/admin/m/payment-type'),
 };

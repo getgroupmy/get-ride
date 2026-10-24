@@ -55,7 +55,7 @@ void main() {
       expect(firstIncompleteStep(null, p), OnboardingStep.serviceArea);
     });
 
-    test('then partner type, documents, done', () {
+    test('then Partner Service type, documents, done', () {
       final area = _partner(
         avatar: 'a',
         ic: 'i',
@@ -141,7 +141,7 @@ void main() {
     });
   });
 
-  test('required documents follow the partner type and service area', () {
+  test('required documents follow the Partner Service type and service area', () {
     final entries = [
       (id: 'all', values: <String, dynamic>{'name': 'IC copy'}),
       (id: 'teksi', values: <String, dynamic>{'name': 'Taxi permit', 'partnerTypes': ['TEKSI']}),

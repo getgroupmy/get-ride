@@ -71,7 +71,7 @@ const peopleEntries = <AdminScreenEntry>[
   AdminScreenEntry(
     section: 'People',
     title: 'Edit partner',
-    subtitle: 'Service area, partner types, vehicle and documents',
+    subtitle: 'Service area, Partner Service types, vehicle and documents',
     path: '/admin/m/partner-edit',
     pages: ['admin-partner-edit'],
     icon: Icons.badge,

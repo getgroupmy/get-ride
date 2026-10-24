@@ -353,7 +353,7 @@ class _RequiredDocumentsScreenState extends ConsumerState<RequiredDocumentsScree
     final v = e.values;
     final types = docTypeLabels(parseLooseList(v['docTypes']), docTypes);
     final pTypes = parseLooseList(v['partnerTypes']);
-    final partnerLabels = pTypes.contains(allToken) ? ['All partner types'] : pTypes;
+    final partnerLabels = pTypes.contains(allToken) ? ['All Partner Service types'] : pTypes;
     final summary = regionSummary(v);
     Iterable<Widget> tags(List<String> l) => [
           for (final t in l.take(5)) Pill(t),
@@ -498,11 +498,11 @@ class _RequiredDocEditorState extends State<_RequiredDocEditor> {
             emptyText: 'No document types yet. Add some in Document Type settings.',
             onChanged: (l) => setState(() => f.docTypes = l),
           ),
-          const SectionLabel('Partner Types *', hint: 'Choose "All" or pick specific partner types'),
+          const SectionLabel('Partner Service types *', hint: 'Choose "All" or pick specific Partner Service types'),
           AllTokenChips(
             options: {for (final n in widget.partnerTypes) n: n},
             selected: f.partnerTypes,
-            emptyText: 'No partner types yet. Add some in Partner Type settings.',
+            emptyText: 'No Partner Service types yet. Add some in Partner Service type settings.',
             onChanged: (l) => setState(() => f.partnerTypes = l),
           ),
           const SectionLabel('Applies to *'),

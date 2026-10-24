@@ -291,10 +291,10 @@ class _PermitTypeFormState extends State<PermitTypeForm> {
         const SizedBox(height: 12),
         ListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('For partner types'),
+          title: const Text('For Partner Service types'),
           subtitle: Text(_types.isEmpty ? 'All' : _types.join(', ')),
           trailing: e ? const Icon(Icons.edit_outlined) : null,
-          onTap: e ? () => _pickMany('Partner types', typeChoices, _types, (s) => _types = s) : null,
+          onTap: e ? () => _pickMany('Partner Service types', typeChoices, _types, (s) => _types = s) : null,
         ),
         ListTile(
           contentPadding: EdgeInsets.zero,
@@ -586,7 +586,7 @@ class _PlateColoursEditorState extends State<PlateColoursEditor> {
   Future<PlateColourRule?> _edit(PlateColourRule? r, {required String what}) => showAppDialog<PlateColourRule>(
     id: 'vehicle-permits.plate-colour',
     context: context,
-    builder: (_) => _PlateColourDialog(rule: r, what: what, suggestions: what == 'Partner type' ? widget.partnerTypes : const []),
+    builder: (_) => _PlateColourDialog(rule: r, what: what, suggestions: what == 'Partner Service type' ? widget.partnerTypes : const []),
   );
 
   Widget _row(PlateColourRule r, String label, {VoidCallback? onTap, VoidCallback? onRemove, Key? key}) {
@@ -618,12 +618,12 @@ class _PlateColoursEditorState extends State<PlateColoursEditor> {
           value: _own,
           onChanged: widget.edit ? (v) => setState(() => _own = v) : null,
         ),
-        Text('By partner type (first match wins)', style: t.textTheme.titleSmall),
+        Text('By Partner Service type (first match wins)', style: t.textTheme.titleSmall),
         for (final (i, r) in _types.indexed)
           _row(r, r.match,
               key: ValueKey('plate-type-${r.match}'),
               onTap: () async {
-                final n = await _edit(r, what: 'Partner type');
+                final n = await _edit(r, what: 'Partner Service type');
                 if (n != null) setState(() => _types = [..._types]..[i] = n);
               },
               onRemove: () => setState(() => _types = [..._types]..removeAt(i))),
@@ -631,11 +631,11 @@ class _PlateColoursEditorState extends State<PlateColoursEditor> {
           TextButton.icon(
             key: const ValueKey('plate-type-add'),
             onPressed: () async {
-              final n = await _edit(null, what: 'Partner type');
+              final n = await _edit(null, what: 'Partner Service type');
               if (n != null) setState(() => _types = [..._types, n]);
             },
             icon: const Icon(Icons.add),
-            label: const Text('Add partner type'),
+            label: const Text('Add Partner Service type'),
           ),
         const SizedBox(height: 8),
         Text('By energy', style: t.textTheme.titleSmall),
@@ -711,7 +711,7 @@ class _PlateColourDialogState extends State<_PlateColourDialog> {
               key: const ValueKey('plate-colour-match'),
               controller: _match,
               decoration: InputDecoration(
-                labelText: widget.what == 'Energy' ? 'Energy, as in the make & model list' : 'Partner type',
+                labelText: widget.what == 'Energy' ? 'Energy, as in the make & model list' : 'Partner Service type',
                 helperText: widget.suggestions.isEmpty ? null : widget.suggestions.join(', '),
               ),
             ),

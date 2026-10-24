@@ -557,8 +557,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/signup/photo',
         // Only the two sign-up landings, never an arbitrary route from the URL.
-        builder: (_, s) =>
-            SignupPhotoScreen(next: signupLanding(s.uri.queryParameters['next'] == '/drive' ? 'driver' : null)),
+        builder: (_, s) => SignupPhotoScreen(next: signupPhotoNext(s.uri.queryParameters['next'])),
       ),
       GoRoute(path: '/diagnostics', builder: (_, _) => const AuthDiagnosticsScreen()),
       GoRoute(
