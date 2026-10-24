@@ -18,6 +18,7 @@ import 'package:get_ride/src/providers.dart' show supabaseProvider;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
@@ -147,6 +148,7 @@ void main() {
     expect(store.saved.single.id, 'm1');
     expect(store.saved.single.autoLaunch, isTrue);
 
+    await closeNotice(tester);
     await _openGlobal(tester);
     expect(tester.widget<SwitchListTile>(_launchSwitch()).value, isTrue, reason: 'the reopened card shows the save');
   });

@@ -39,6 +39,7 @@ import '../../data/trip_card_controller.dart' show tripCardControllerProvider;
 import '../../core/trip_card.dart' show TripCardAction;
 import '../../data/push_service.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/ble_handshake_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
@@ -660,30 +661,24 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final r = widget.ride;
     final next = _target;
     if (next <= (r.fare ?? 0)) return;
-    final messenger = ScaffoldMessenger.of(context);
     var raised = false;
     await _run(() async {
       final updated = await _raiseFare(r.id, next);
       raised = updated != null;
       if (updated == null && mounted) showInfo(context, 'This request is no longer open.');
     });
-    if (!raised) return;
-    if (mounted) {
-      setState(() {
-        _fareTarget = null;
-        _nudgeFrom = _now;
-      });
-    }
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(
-        key: ValueKey('fare-raised'),
-        content: Row(children: [
-          Icon(Icons.check_circle, color: Colors.white),
-          SizedBox(width: 12),
-          Text('You raised the fare'),
-        ]),
-      ));
+    if (!raised || !mounted) return;
+    setState(() {
+      _fareTarget = null;
+      _nudgeFrom = _now;
+    });
+    unawaited(showAppNotice(
+      id: 'notice.ride-tracking',
+      key: const ValueKey('fare-raised'),
+      context: context,
+      message: 'You raised the fare',
+      kind: NoticeKind.success,
+    ));
   }
 
   Future<void> _acceptOffer(RideOffer o) async {
@@ -793,7 +788,6 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     final choice = await showSearchCancelSheet(context);
     if (choice == null || !mounted) return;
     final r = widget.ride;
-    final messenger = ScaffoldMessenger.of(context);
     var done = false;
     await _run(() async {
       if (_isDemo) {
@@ -804,9 +798,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       done = true;
     });
     if (!done || !mounted) return;
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(key: ValueKey('request-cancelled'), content: Text('Request cancelled')));
+    unawaited(showAppNotice(
+      id: 'notice.ride-tracking',
+      key: const ValueKey('request-cancelled'),
+      context: context,
+      message: 'Request cancelled',
+    ));
     GoRouter.maybeOf(context)?.go('/');
   }
 

@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/dispatch_repository.dart' show dispatchRepositoryProvider;
+import '../../widgets/app_notice.dart';
 import '../dispatch/dispatch_console.dart' show MeterFareDialog;
 import '../../data/active_location.dart';
 import '../../core/early_end.dart';
@@ -654,9 +655,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       canPop: !onTrip,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !onTrip) return;
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text('Finish the trip to leave this screen.')));
+        unawaited(showAppNotice(
+          id: 'notice.partner-trip',
+          context: context,
+          message: 'Finish the trip to leave this screen.',
+        ));
       },
       child: _scaffold(ride, onTrip),
     );
@@ -672,11 +675,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       onPressed: () {
         ref.read(readAloudProvider.notifier).set(!on);
         if (on) unawaited(_speaker.stop());
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(
-            SnackBar(content: Text(on ? 'Messages won\'t be read aloud.' : 'Passenger messages will be read aloud.')),
-          );
+        unawaited(showAppNotice(
+          id: 'notice.partner-trip',
+          context: context,
+          message: on ? 'Messages won\'t be read aloud.' : 'Passenger messages will be read aloud.',
+        ));
       },
     );
   }

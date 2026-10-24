@@ -15,6 +15,7 @@ import 'package:get_ride/src/core/date_order.dart';
 import 'package:get_ride/src/core/document_ai.dart';
 import 'package:get_ride/src/data/document_ai_repository.dart';
 import 'package:get_ride/src/widgets/page_style_host.dart';
+import 'notice.dart';
 
 final _png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
@@ -127,6 +128,7 @@ void main() {
         await save(tester);
         expect(people.saved, isEmpty);
 
+        await closeNotice(tester);
         await tester.enterText(_box('day'), '28');
         await tester.pump();
         expect(find.byKey(const ValueKey('date-box-error')), findsNothing);

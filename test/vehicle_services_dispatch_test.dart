@@ -175,7 +175,7 @@ void main() {
   });
 }
 
-/// Lets the "Saved" snackbar's timer run out.
+/// Lets the "Saved" notice's timers run out.
 Future<void> _drain(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox());
   await tester.pump(const Duration(minutes: 1));

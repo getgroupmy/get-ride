@@ -21,6 +21,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 const _services = [
   ServiceOption(id: 'r', name: 'Ride'),
@@ -192,6 +193,7 @@ void main() {
       expect(table.rows['teksi']!['services'], ['Ride', 'Comfort', '6-seater', 'Teksi', 'Delivery']);
       expect(_inTile('teksi', '5 of 8'), findsOneWidget);
 
+      await closeNotice(tester);
       // All services greys the ticks out and saves as All.
       await tester.tap(find.byKey(const ValueKey('pts-all')));
       await tester.pumpAndSettle();
@@ -202,6 +204,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(table.rows['teksi']!['all_services'], isTrue);
 
+      await closeNotice(tester);
       // Remove asks on the page first; Cancel keeps it.
       await tester.ensureVisible(find.byKey(const ValueKey('pts-remove')));
       await tester.tap(find.byKey(const ValueKey('pts-remove')));
@@ -218,6 +221,7 @@ void main() {
       expect(find.byKey(const ValueKey('pts-type-teksi')), findsNothing);
 
       // Add type: the Partner Type names without a rule (TEKSI again now).
+      await closeAnyNotice(tester);
       await tester.tap(find.byKey(const ValueKey('pts-add')));
       await tester.pumpAndSettle();
       final picker = find.byWidgetPredicate((w) => w.runtimeType.toString().startsWith('_SearchDialog'));

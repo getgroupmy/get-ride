@@ -257,7 +257,7 @@ void main() {
   });
 }
 
-/// Lets the "Tariff saved" snackbar's timer run out.
+/// Lets the "Tariff saved" notice's timers run out.
 Future<void> _drain(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox());
   await tester.pump(const Duration(minutes: 1));

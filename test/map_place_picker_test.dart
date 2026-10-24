@@ -14,6 +14,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
+import 'notice.dart';
 
 const _start = LatLng(2.9300, 101.8300);
 const _here = LatLng(3.1579, 101.7116);
@@ -162,7 +163,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('map-picker-my-location')));
     await tester.pump();
     await tester.pump();
+    await pumpNotice(tester);
     expect(find.text(MapPlacePicker.noFixMessage), findsOneWidget);
+    await closeNotice(tester);
     expect(const Distance()(_camera(tester).center, _start), lessThan(1));
   });
 }

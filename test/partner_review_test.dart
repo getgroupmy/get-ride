@@ -363,7 +363,6 @@ void main() {
       expect(repo.calls.last, 'send back');
       // Told in a modal, not a bar.
       expect(find.byKey(const ValueKey('notice')), findsOneWidget);
-      expect(find.byType(SnackBar), findsNothing);
     });
 
     testWidgets('edit a field: the new value and a note', (tester) async {
@@ -516,7 +515,6 @@ void main() {
       await _settle(tester);
       expect(repo.calls, ['resubmit']);
       expect(find.text('Sent for review'), findsOneWidget);
-      expect(find.byType(SnackBar), findsNothing);
     });
   });
 }

@@ -2,6 +2,7 @@
 // deductions and net, then the same per day and the last eight weeks. The
 // server works the totals out (migration 0201), the same calculation as the
 // partner statements; the CSV export lists the trips themselves.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -18,6 +19,7 @@ import '../../data/models.dart';
 import '../../data/partner_statement_repository.dart';
 import '../../platform/web_download.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/image_share.dart' show shareOriginOf;
 import '../../widgets/side_menu_host.dart';
@@ -210,10 +212,13 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
     // The week starts as the totals' does (Admin → statement settings).
     final sunday = ref.read(statementSettingsProvider).value?.weekStartsSunday ?? false;
     final csv = earningsCsv(rides, driverId: uid, period: _period, now: now, sunday: sunday);
-    final messenger = ScaffoldMessenger.of(context);
     // Only the header line: nothing to hand an accountant.
     if (csv.split('\r\n').where((l) => l.isNotEmpty).length <= 1) {
-      messenger.showSnackBar(SnackBar(content: Text('No completed trips ${_period.label.toLowerCase()} to export.')));
+      unawaited(showAppNotice(
+        id: 'notice.earnings',
+        context: context,
+        message: 'No completed trips ${_period.label.toLowerCase()} to export.',
+      ));
       return;
     }
     final outcome = await ref.read(earningsCsvSharerProvider)(
@@ -227,7 +232,14 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
       CsvShareOutcome.copied => 'Couldn\'t open sharing; the CSV is on your clipboard.',
       CsvShareOutcome.failed => 'Couldn\'t export the CSV.',
     };
-    if (note != null) messenger.showSnackBar(SnackBar(content: Text(note)));
+    if (note != null && mounted) {
+      unawaited(showAppNotice(
+        id: 'notice.earnings',
+        context: context,
+        message: note,
+        kind: outcome == CsvShareOutcome.failed ? NoticeKind.error : NoticeKind.info,
+      ));
+    }
   }
 
   static String _trips(int n) => n == 1 ? '1 trip' : '$n trips';

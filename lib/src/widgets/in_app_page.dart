@@ -11,6 +11,7 @@ import '../config.dart';
 import '../core/backend_network.dart' show backendAllowedDomain;
 import '../core/link_view.dart';
 import '../data/storage_links.dart';
+import 'app_notice.dart';
 import 'page_style_host.dart';
 
 /// Opens [url] inside the app on a screen with a back button: a web page in a
@@ -38,9 +39,12 @@ Future<void> _open(BuildContext context, String link, {String? title, required b
     return;
   }
   if (stored && !isOwnStorageLink(uri, projectUrl: AppConfig.supabaseUrl, allowedDomain: backendAllowedDomain)) {
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('This file is not stored by GET.ride, so it was not opened.')),
-    );
+    unawaited(showAppNotice(
+      id: 'notice.in-app-link',
+      context: context,
+      message: 'This file is not stored by GET.ride, so it was not opened.',
+      kind: NoticeKind.error,
+    ));
     return;
   }
   final name = title ?? linkTitle(uri);
@@ -89,9 +93,11 @@ Future<void> openPaymentPage(
     return;
   }
   if (url == null) {
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('This payment method opens in the GET.ride phone app.')),
-    );
+    unawaited(showAppNotice(
+      id: 'notice.in-app-link',
+      context: context,
+      message: 'This payment method opens in the GET.ride phone app.',
+    ));
     return;
   }
   var ok = false;
@@ -112,8 +118,9 @@ String paymentFormHtml(String action, Map<String, String> fields) {
       '<form method="post" action="${esc(action)}">$inputs</form></body></html>';
 }
 
-void _couldNotOpen(BuildContext context, String url) =>
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Could not open $url')));
+void _couldNotOpen(BuildContext context, String url) => unawaited(
+  showAppNotice(id: 'notice.in-app-link', context: context, message: 'Could not open $url', kind: NoticeKind.error),
+);
 
 /// Whether this build can show a web page inside the app.
 bool get webViewSupported =>

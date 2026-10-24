@@ -74,3 +74,7 @@ animates on its own.
 Don't build an item from it until the owner asks. When a PR ships an item,
 remove that item from `docs/KIV.md` in the same PR. Add a new item only when
 the owner parks one.
+
+## Popups are modals
+
+Every message to the user is a modal with an OK, never a bar at the bottom: use `showInfo` / `showError` or `showAppNotice(id: 'notice.<area>', ...)` (`lib/src/widgets/app_notice.dart`), never `SnackBar` / `showSnackBar` — `test/app_notice_test.dart` fails otherwise.

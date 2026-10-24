@@ -5,8 +5,9 @@
 //
 // - Router pages: every `GoRoute` with a builder, at its full address.
 // - Pushed pages: `AppPageRoute(id: '...')`.
-// - Sheets: `showAppSheet(id: '...')`; modals: `showAppDialog(id: '...')` and
-//   `showAppGeneralDialog(id: '...')`.
+// - Sheets: `showAppSheet(id: '...')`; modals: `showAppDialog(id: '...')`,
+//   `showAppGeneralDialog(id: '...')` and the messages of
+//   `showAppNotice(id: 'notice.<area>')` (one per area, used many times).
 import 'page_surfaces.dart';
 
 /// Every surface in [files] (path → Dart source), sorted by id. Pure.
@@ -39,7 +40,7 @@ List<SurfaceEntry> scanSurfaces(Map<String, String> files) {
 }
 
 final _calls = RegExp(
-  r"\b(AppPageRoute|showAppSheet|showAppDialog|showAppGeneralDialog)\s*(?:<[^(]*>)?\(\s*id:\s*'([^']+)'",
+  r"\b(AppPageRoute|showAppSheet|showAppDialog|showAppGeneralDialog|showAppNotice)\s*(?:<[^(]*>)?\(\s*id:\s*'([^']+)'",
 );
 
 /// Titles for ids that would read the same as another's (a "-2" id), so

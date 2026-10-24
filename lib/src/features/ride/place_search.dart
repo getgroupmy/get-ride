@@ -21,6 +21,7 @@ import '../../data/place_types_repository.dart';
 import '../../core/saved_places.dart';
 import '../../data/saved_places_repository.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart' show mutedTextColor;
 import '../../widgets/map_pick_icon.dart';
 import '../../widgets/place_type_badge.dart';
@@ -774,12 +775,15 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     return null;
   }
 
+  void _notFound() => unawaited(
+    showAppNotice(id: 'notice.place-search', context: context, message: "Couldn't find that place. Try another."),
+  );
+
   /// The bookmark: [p] saved as one of the rider's places (looked up first
   /// when it is a suggestion), or the saved one opened.
   Future<void> _savePlace(Place p, SavedPlace? saved) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     if (ref.read(currentUserIdProvider) == null) {
-      messenger?.showSnackBar(const SnackBar(content: Text('Sign in to save your places')));
+      unawaited(showAppNotice(id: 'notice.place-search', context: context, message: 'Sign in to save your places'));
       return;
     }
     if (saved != null) {
@@ -795,7 +799,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
         if (mounted) setState(() => _picking = false);
       }
       if (place.pending) {
-        messenger?.showSnackBar(const SnackBar(content: Text("Couldn't find that place. Try another.")));
+        if (mounted) _notFound();
         return;
       }
     }
@@ -877,13 +881,12 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// address checked by Google with smart address C, then handed back.
   Future<void> _pick(Place p, GateCatalogue? catalogue, SmartAddress smart) async {
     final geo = ref.read(geoServiceProvider);
-    final messenger = ScaffoldMessenger.maybeOf(context);
     setState(() => _picking = true);
     try {
       var place = await geo.resolve(p);
       if (!mounted) return;
       if (place == null) {
-        messenger?.showSnackBar(const SnackBar(content: Text("Couldn't find that place. Try another.")));
+        _notFound();
         return;
       }
       if (p.pending && catalogue != null) {
@@ -900,16 +903,18 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       }
       if (smart.check && isStreetAddress(place)) place = await geo.checkAddress(place);
       if (!mounted) return;
-      _done(PlacePick.place(place));
       if (place.verified) {
-        messenger?.showSnackBar(
-          SnackBar(
-            key: const ValueKey('place-verified'),
-            // No ✓ on the web: the browser would fetch a symbol font for it.
-            content: Text('${kIsWeb ? '' : '✓ '}Address confirmed by Google: ${place.address}'),
-          ),
-        );
+        // Opened over the page this hands back to.
+        unawaited(showAppNotice(
+          id: 'notice.place-search',
+          key: const ValueKey('place-verified'),
+          context: context,
+          // No ✓ on the web: the browser would fetch a symbol font for it.
+          message: '${kIsWeb ? '' : '✓ '}Address confirmed by Google: ${place.address}',
+          kind: NoticeKind.success,
+        ));
       }
+      _done(PlacePick.place(place));
     } finally {
       if (mounted) setState(() => _picking = false);
     }

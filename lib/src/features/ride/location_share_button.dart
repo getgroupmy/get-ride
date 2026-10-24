@@ -3,12 +3,15 @@
 // driver can see where they are waiting. Tapping it explains the sharing;
 // turning it off asks whether for this ride only or for all rides (Settings
 // → Show location to your driver).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import 'confirm_parts.dart' show accentFill, confirmAccent;
 import '../../widgets/page_style_host.dart';
 
@@ -28,11 +31,8 @@ class LocationShareButton extends ConsumerWidget {
       (r.status == RideStatus.accepted || r.status == RideStatus.arrived) && !r.id.startsWith('demo');
 
   Future<void> _tap(BuildContext context, WidgetRef ref, bool on) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     void say(String text) {
-      messenger
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text(text)));
+      if (context.mounted) unawaited(showAppNotice(id: 'notice.location-share', context: context, message: text));
     }
 
     final choice = await showLocationShareSheet(context, on: on);

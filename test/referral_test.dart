@@ -9,6 +9,7 @@ import 'package:get_ride/src/features/auth/set_pin_screen.dart';
 import 'package:get_ride/src/features/profile/referral_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
+import 'notice.dart';
 
 const _me = 'a1b2c3d4-e5f6-7890-abcd-ef0123456789';
 
@@ -194,6 +195,7 @@ void main() {
       expect(find.text('Invited by Aisyah'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('referral-copy-invite')));
       await tester.pump();
+      await pumpNotice(tester);
       expect(find.textContaining('Invite copied'), findsOneWidget);
     });
   });

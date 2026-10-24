@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/inbox.dart';
 import '../../data/notifications_repository.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart' show openAppRoute;
 import '../../widgets/offline_strip.dart';
@@ -32,7 +33,12 @@ class NotificationsScreen extends ConsumerWidget {
         await action();
       } catch (_) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't update. Try again.")));
+          unawaited(showAppNotice(
+            id: 'notice.notifications',
+            context: context,
+            message: "Couldn't update. Try again.",
+            kind: NoticeKind.error,
+          ));
         }
       }
     }

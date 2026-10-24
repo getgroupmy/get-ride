@@ -25,6 +25,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
+import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 final _now = DateTime.now().toUtc();
@@ -119,6 +120,8 @@ Future<_Admin> _pumpAdmin(WidgetTester tester, Brightness b, {List<AdminGrant>? 
 }
 
 Future<void> _tapKey(WidgetTester tester, String key) async {
+  // A message from the last step is closed first, as the user would.
+  await closeAnyNotice(tester);
   final f = find.byKey(ValueKey(key));
   await tester.ensureVisible(f);
   await tester.pumpAndSettle();

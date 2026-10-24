@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/obd_adapters.dart';
 import '../../core/printers.dart';
 import '../../data/printer/classic_bluetooth.dart';
+import '../../widgets/app_notice.dart';
 
 /// Lists the devices paired with this phone and returns the one the driver
 /// taps, for a classic Bluetooth (SPP) receipt printer. A classic printer is
@@ -73,9 +76,11 @@ class _ClassicPairedSheetState extends ConsumerState<ClassicPairedSheet> {
   Future<void> _openSettings() async {
     final opened = await ref.read(classicBluetoothProvider).openSettings();
     if (opened || !mounted) return;
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(content: Text('Open Settings > Bluetooth on this phone to pair the printer.')),
-    );
+    unawaited(showAppNotice(
+      id: 'notice.printer',
+      context: context,
+      message: 'Open Settings > Bluetooth on this phone to pair the printer.',
+    ));
   }
 
   @override

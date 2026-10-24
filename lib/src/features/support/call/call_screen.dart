@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/support_call.dart';
 import '../../../data/support_call_repository.dart';
 import '../../../providers.dart';
+import '../../../widgets/app_notice.dart';
 import 'call_session.dart';
 import 'mic_gate.dart';
 
@@ -265,8 +266,12 @@ Future<void> callSupport(BuildContext context, WidgetRef ref, {String? ticketId,
     if (context.mounted) unawaited(context.push('/call/${c.id}'));
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Couldn't place the call. Please try again.")));
+      unawaited(showAppNotice(
+        id: 'notice.support-call',
+        context: context,
+        message: "Couldn't place the call. Please try again.",
+        kind: NoticeKind.error,
+      ));
     }
   }
 }
@@ -292,8 +297,12 @@ Future<void> callUser(
     }
   } catch (_) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Couldn't place the call. Please try again.")));
+      unawaited(showAppNotice(
+        id: 'notice.support-call',
+        context: context,
+        message: "Couldn't place the call. Please try again.",
+        kind: NoticeKind.error,
+      ));
     }
   }
 }

@@ -20,6 +20,7 @@ import 'package:get_ride/src/widgets/map_pick_icon.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
+import 'notice.dart';
 
 const _me = LatLng(3.1390, 101.6869);
 const _klcc = Place(name: 'KLCC', address: 'Jalan Ampang, KL', point: LatLng(3.1579, 101.7116));
@@ -416,6 +417,7 @@ void main() {
       await open(tester, [8.587, null]);
       await tester.tap(find.byKey(const ValueKey('result-save-3.1579,101.7116')));
       await tester.pump();
+      await pumpNotice(tester);
       expect(find.text('Sign in to save your places'), findsOneWidget);
     });
 

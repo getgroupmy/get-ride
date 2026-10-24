@@ -18,6 +18,7 @@ import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/features/support/call/mic_gate.dart';
 
 import 'fake_mic.dart';
+import 'notice.dart';
 
 const user = 'user-1', agent = 'agent-1';
 
@@ -237,7 +238,9 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('incoming-answer')));
     await tester.pump();
     await tester.pump();
+    await pumpNotice(tester);
     expect(find.text('Another agent answered this call.'), findsOneWidget);
+    await closeNotice(tester);
     expect(find.byKey(const ValueKey('call-peer')), findsNothing);
   });
 

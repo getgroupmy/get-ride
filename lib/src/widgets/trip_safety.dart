@@ -2,6 +2,8 @@
 // lib/src/core/trip_safety.dart): the passenger's "Are you in the car?" /
 // "Are you still on your trip?" banner, their lost item reports, and the
 // driver's list of reports to answer.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +11,7 @@ import '../core/trip_safety.dart';
 import '../data/models.dart';
 import '../data/reliability_repository.dart';
 import '../data/trip_safety_repository.dart';
+import 'app_notice.dart';
 import 'common.dart';
 import 'page_style_host.dart';
 
@@ -122,12 +125,21 @@ class LostItemCard extends ConsumerWidget {
       await ref.read(tripSafetyRepositoryProvider).reportLostItem(ride.id, text);
       ref.invalidate(rideLostItemsProvider(ride.id));
       if (context.mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Your driver has been told. You\'ll hear back here.')));
+        unawaited(showAppNotice(
+          id: 'notice.trip-safety',
+          context: context,
+          message: 'Your driver has been told. You\'ll hear back here.',
+          kind: NoticeKind.success,
+        ));
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(lostItemError(e))));
+        unawaited(showAppNotice(
+          id: 'notice.trip-safety',
+          context: context,
+          message: lostItemError(e),
+          kind: NoticeKind.error,
+        ));
       }
     }
   }

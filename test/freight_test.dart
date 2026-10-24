@@ -46,6 +46,7 @@ import 'package:get_ride/src/widgets/page_style_host.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'text_contrast.dart';
+import 'notice.dart';
 
 final _png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
@@ -595,9 +596,8 @@ void main() {
       await tester.pumpAndSettle(const Duration(seconds: 5));
       expect(find.text('3-tonne lorry (L)'), findsOneWidget);
       expect(find.byKey(const ValueKey('freight-option-ride-along')), findsNothing);
-      // Its note goes before the photo and the offer below it are tapped.
-      await tester.pump(const Duration(seconds: 5));
-      await tester.pumpAndSettle();
+      // Its note is closed before the photo and the offer below it are tapped.
+      await closeNotice(tester);
 
       // The photo, uploaded into the rider's folder.
       await tester.ensureVisible(find.byKey(const ValueKey('freight-photo')));

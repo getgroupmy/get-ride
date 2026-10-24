@@ -8,6 +8,7 @@ import 'package:get_ride/src/data/ev_order_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ev/ev_order_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'notice.dart';
 
 /// An in-memory `ev_orders`, with the production catalogue.
 class _FakeRepo implements EvOrderRepository {
@@ -207,11 +208,13 @@ void main() {
     expect(repo.active, 'o1');
     expect(find.text('Step 4 of 9'), findsOneWidget);
 
-    // Ownership.
+    // Ownership: the "order placed" message is closed first.
+    await closeNotice(tester);
     await tester.tap(find.text('Confirm owner details'));
-    // The "order placed" message makes way first.
     await tester.pumpAndSettle();
+    await pumpNotice(tester);
     expect(find.text('Please fill in the full name, ID number, address.'), findsOneWidget);
+    await closeNotice(tester);
     await tester.enterText(find.widgetWithText(TextField, 'Full name (as on the ID)'), 'Aina Binti Ali');
     await tester.enterText(find.widgetWithText(TextField, 'ID number'), '900101-14-5678');
     await tester.enterText(find.widgetWithText(TextField, 'Address'), 'Jalan Ampang, KL');
@@ -247,6 +250,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(repo.orders['o1']!['advisorName'], 'Siti');
     expect(repo.orders['o1']!['status'], 'assigned');
+    await closeAnyNotice(tester);
     await _next(tester);
 
     // Schedule.

@@ -34,6 +34,7 @@ import 'package:get_ride/src/features/safety/ride_sos.dart' show RideSosFab;
 import 'package:get_ride/src/widgets/call_number.dart' show callNumber, canDialHere;
 import 'package:get_ride/src/widgets/map_sheet_layout.dart';
 import 'package:get_ride/src/widgets/search_select.dart';
+import 'notice.dart';
 
 /// A phone the testers used.
 class Phone {
@@ -676,6 +677,7 @@ void _sheets() {
       await tester.tap(find.text('Call'));
       await tester.pump();
       expect(tried, isEmpty, reason: 'a desktop browser reports success with nothing happening');
+      await pumpNotice(tester);
       expect(find.byKey(const ValueKey('call-fallback')), findsOneWidget);
       expect(find.textContaining('+60 12-345 6789'), findsOneWidget);
       expect(find.text('Copy'), findsOneWidget);

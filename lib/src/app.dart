@@ -135,6 +135,7 @@ import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
 import 'platform/web_favicon.dart';
 import 'widgets/app_icon_changed.dart';
+import 'widgets/app_notice.dart';
 import 'widgets/connection_status_dialog.dart';
 import 'widgets/android_nav_bar_inset.dart';
 import 'widgets/keyboard_dismiss.dart';
@@ -1073,18 +1074,20 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       });
       return;
     }
-    _messenger.currentState?.showSnackBar(
-      SnackBar(
-        key: const ValueKey('remote-action-ask'),
-        content: Text('${r.action.prompt}. Tap to confirm'),
-        duration: const Duration(seconds: 30),
-        action: SnackBarAction(label: 'Confirm', onPressed: () => _open(route)),
-      ),
-    );
+    final ctx = ref.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+    if (ctx == null) return;
+    unawaited(showAppNotice(
+      id: 'notice.remote-action',
+      key: const ValueKey('remote-action-ask'),
+      context: ctx,
+      message: '${r.action.prompt}. Tap to confirm',
+      actionLabel: 'Confirm',
+      onAction: () => _open(route),
+    ));
   }
 
   /// Android does not show a notification that arrives while the app is open,
-  /// so it is shown as a banner instead. iOS shows its own.
+  /// so it is shown as a modal instead. iOS shows its own.
   void _showForeground(RemoteMessage message) {
     final title = message.notification?.title ?? '';
     final body = message.notification?.body ?? '';
@@ -1094,13 +1097,16 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     final route = pushRouteFor(message.data);
     // A chat message while that chat is on screen is already in front of them.
     if (route != null && route == ref.read(routerProvider).routerDelegate.currentConfiguration.uri.path) return;
-    _messenger.currentState?.showSnackBar(
-      SnackBar(
-        content: Text([title, body].where((s) => s.isNotEmpty).join('\n')),
-        duration: const Duration(seconds: 6),
-        action: route == null ? null : SnackBarAction(label: 'Open', onPressed: () => _open(route)),
-      ),
-    );
+    final ctx = ref.read(routerProvider).routerDelegate.navigatorKey.currentContext;
+    if (ctx == null) return;
+    unawaited(showAppNotice(
+      id: 'notice.push-message',
+      context: ctx,
+      title: title.isEmpty || body.isEmpty ? null : title,
+      message: title.isEmpty || body.isEmpty ? '$title$body' : body,
+      actionLabel: route == null ? null : 'Open',
+      onAction: route == null ? null : () => _open(route),
+    ));
   }
 
   @override

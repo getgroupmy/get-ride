@@ -18,6 +18,7 @@ import 'package:get_ride/src/features/partner/partner_trip_screen.dart';
 import 'package:get_ride/src/features/ride/ride_tracking_screen.dart' show rideStreamProvider;
 import 'package:get_ride/src/providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'notice.dart';
 
 RideMessage msg(String id, String from, {String? body, RideMessageType type = RideMessageType.text}) => RideMessage(
   id: id,
@@ -121,7 +122,9 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('read-aloud-toggle')));
       await tester.pump();
+      await pumpNotice(tester);
       expect(find.text("Messages won't be read aloud."), findsOneWidget);
+      await closeNotice(tester);
       expect(speaker.stops, 1);
       thread.add([...history, msg('m2', 'rider', body: 'At the gate'), msg('m4', 'rider', body: 'Blue shirt')]);
       await tester.pump();

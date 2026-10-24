@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +11,7 @@ import '../../data/ble.dart';
 import '../../data/obd/obd_session.dart' show obdAdapterStoreProvider;
 import '../../data/printer/classic_bluetooth.dart';
 import '../../data/printer/printer_service.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/back_or_go_button.dart';
 import '../../widgets/page_add_action.dart';
 import '../../widgets/busy.dart';
@@ -70,9 +73,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
     await _reload();
   }
 
-  void _say(String message) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
+  void _say(String message) => unawaited(showAppNotice(id: 'notice.printer', context: context, message: message));
 
   Future<void> _test(SavedPrinter p) => _print(p, buildTestPrintEscpos(paper: p.paper), 'Test page sent to ${p.name}.');
 
@@ -171,7 +172,7 @@ class _PrinterScreenState extends ConsumerState<PrinterScreen> {
     );
     if (d == null || !mounted) return null;
     if (isObdReaderDevice(d.deviceId, readers)) {
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text(printerIsReaderMessage)));
+      unawaited(showAppNotice(id: 'notice.printer', context: context, message: printerIsReaderMessage));
       return null;
     }
     return showAppDialog<SavedPrinter>(id: 'printer.pick-ble-printer-2',

@@ -10,6 +10,7 @@ import 'package:get_ride/src/data/partner_statement_repository.dart';
 import 'package:get_ride/src/features/partner/earnings_chart.dart';
 import 'package:get_ride/src/features/partner/earnings_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'notice.dart';
 
 RideRequest ride(String id, DateTime completed, double fare, {double? commission}) => RideRequest({
   'id': id,
@@ -290,6 +291,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('earnings-export')));
     await tester.pump();
     expect(shared, isEmpty);
+    await pumpNotice(tester);
     expect(find.text('No completed trips today to export.'), findsOneWidget);
   });
 

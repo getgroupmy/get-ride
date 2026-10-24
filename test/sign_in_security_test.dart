@@ -19,6 +19,7 @@ import 'package:get_ride/src/features/settings/passkeys_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show Passkey;
+import 'notice.dart';
 
 class _Auth implements AuthRepository {
   int passkeySignIns = 0;
@@ -254,12 +255,13 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('passkey-sign-in')));
         await tester.pumpAndSettle();
         expect(auth.passkeySignIns, 1);
-        expect(find.byType(SnackBar), findsNothing);
+        expect(find.byKey(const ValueKey('notice')), findsNothing);
 
         auth.next = (outcome: pk.PasskeyOutcome.failed, message: 'There is no passkey saved on this device.');
         await tester.tap(find.byKey(const ValueKey('passkey-sign-in')));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
+        await pumpNotice(tester);
         expect(find.text('There is no passkey saved on this device.'), findsOneWidget);
       });
 

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +14,7 @@ import '../../core/picked_contact.dart';
 import '../../platform/web_contacts.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/page_add_action.dart';
 import '../../widgets/call_number.dart';
@@ -119,15 +122,20 @@ class EmergencyContactsScreen extends ConsumerWidget {
                           setDialog(() => country = picked.country);
                           phone.text = picked.local;
                         } else if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            const SnackBar(content: Text('The selected contact has no phone number.')),
-                          );
+                          unawaited(showAppNotice(
+                            id: 'notice.emergency-contacts',
+                            context: ctx,
+                            message: 'The selected contact has no phone number.',
+                          ));
                         }
                       } catch (_) {
                         if (ctx.mounted) {
-                          ScaffoldMessenger.of(ctx).showSnackBar(
-                            const SnackBar(content: Text("Couldn't open your contacts. Please try again.")),
-                          );
+                          unawaited(showAppNotice(
+                            id: 'notice.emergency-contacts',
+                            context: ctx,
+                            message: "Couldn't open your contacts. Please try again.",
+                            kind: NoticeKind.error,
+                          ));
                         }
                       }
                     },

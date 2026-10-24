@@ -13,6 +13,7 @@ import 'package:get_ride/src/core/session_access.dart';
 import 'package:get_ride/src/data/messaging_repository.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 // No token refresh: its timer would outlive the test.
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
@@ -291,6 +292,7 @@ void main() {
       expect(repo.created, isEmpty);
       expect(find.textContaining('Give the session a name'), findsOneWidget);
 
+      await closeNotice(tester);
       await tester.enterText(find.byKey(const ValueKey('session-label')), 'Claude cloud session');
       await tester.enterText(find.byKey(const ValueKey('session-phone')), '+60 12 345 6789');
       await tester.tap(find.byKey(const ValueKey('session-scope-proxy')));
@@ -299,6 +301,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('session-add-confirm')));
       await tester.pumpAndSettle();
       expect(find.textContaining('Pick the gateway phone'), findsOneWidget, reason: 'internet needs a phone');
+      await closeNotice(tester);
       await tester.tap(find.byKey(const ValueKey('session-proxy-device')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Office gateway').last);

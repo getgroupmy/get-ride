@@ -28,6 +28,7 @@ import 'package:get_ride/src/features/ride/freight_parts.dart';
 import 'package:get_ride/src/providers.dart';
 
 import 'text_contrast.dart';
+import 'notice.dart';
 
 final _png = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
@@ -220,6 +221,7 @@ void main() {
       );
       expect(find.byKey(const ValueKey('freight-proof-dropoff-take')), findsOneWidget);
       expect(find.text('Waiting 18 min: + RM3 on the fare'), findsOneWidget);
+      await closeAnyNotice(tester);
       await tester.tap(find.byKey(const ValueKey('freight-driver-cancel')));
       await tester.pumpAndSettle();
       expect(find.textContaining("If they don't answer in 5 min"), findsOneWidget);
@@ -305,9 +307,11 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('freight-cancel-minutes-up')));
       await tester.pumpAndSettle();
       expect(freight.saved.cancelApproveMinutes, 6);
+      await closeAnyNotice(tester);
       await tester.tap(find.byKey(const ValueKey('freight-channel-whatsapp')));
       await tester.pumpAndSettle();
       expect(freight.saved.recipientChannels, {'sms', 'whatsapp'});
+      await closeAnyNotice(tester);
       await tester.enterText(find.byKey(const ValueKey('freight-prohibited-new')), 'Batteries');
       await tester.tap(find.byKey(const ValueKey('freight-prohibited-add')));
       await tester.pumpAndSettle();

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_ble_scanner.dart';
 import 'support/fake_printer.dart';
+import 'notice.dart';
 
 void main() {
   testWidgets('a Wi-Fi printer is added, selected and test-printed', (tester) async {
@@ -46,9 +47,12 @@ void main() {
     expect(printer.jobs.single, contains('80mm (48 cols)'));
     expect(find.text('Test page sent to Dash printer.'), findsOneWidget);
 
+    await closeNotice(tester);
     await tester.tap(find.text('Print last receipt'));
     await tester.pumpAndSettle();
+    await pumpNotice(tester);
     expect(find.text('No hires on this device yet.'), findsOneWidget);
+    await closeNotice(tester);
     expect(printer.jobs, hasLength(1));
   });
 

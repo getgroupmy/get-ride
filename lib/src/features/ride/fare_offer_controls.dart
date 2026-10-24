@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/fare_offer.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/page_style_host.dart';
 
 /// One −/+ press on the rider's offer: [onAdjust] with the new adjustment.
@@ -20,11 +23,11 @@ void stepFareOffer(
   if (next == null && onLimit != null) return onLimit();
   if (next == null) {
     final range = fareOfferRange(recommended);
-    ScaffoldMessenger.maybeOf(context)
-      ?..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(step < 0 ? 'Minimum fare is ${money(range.min)}' : "That's the most you can add here")),
-      );
+    unawaited(showAppNotice(
+      id: 'notice.fare-offer',
+      context: context,
+      message: step < 0 ? 'Minimum fare is ${money(range.min)}' : "That's the most you can add here",
+    ));
     return;
   }
   onAdjust(next);

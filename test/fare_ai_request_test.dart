@@ -6,6 +6,7 @@ import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/security/fare_ai_logic.dart';
 import 'package:get_ride/src/admin/screens/security/fare_ai_request_screen.dart';
 import 'package:get_ride/src/admin/screens/security/security_data.dart';
+import 'notice.dart';
 
 // What ai-route-proxy sent before the request was editable, word for word
 // (the same string supabase/functions/_shared/fare_ai_request_test.ts pins).
@@ -222,6 +223,7 @@ void main() {
       expect(repo.saved, hasLength(1));
       expect(repo.config.request.includeSummary, isFalse);
       expect(repo.config.keysFor('gemini').single.key, 'AIza');
+      await closeNotice(tester);
 
       await tester.tap(find.byKey(const ValueKey('fare-ai-request-reset')));
       await tester.pump();

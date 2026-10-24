@@ -14,6 +14,7 @@ import 'package:get_ride/src/features/auth/signup_photo_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:get_ride/src/widgets/live_selfie.dart' show LiveSelfie;
 import 'package:go_router/go_router.dart';
+import 'notice.dart';
 
 class _FakeAuth implements AuthRepository {
   _FakeAuth({this.device = DeviceRegistration.unknown});
@@ -224,6 +225,7 @@ void main() {
       await save(tester);
       expect(find.text('Please enter your name.'), findsOneWidget);
       expect(auth.pins, isEmpty);
+      await closeNotice(tester);
       await save(tester, name: '  siti   aminah ');
       expect(auth.pins, ['123456']);
       expect(account.names, ['Siti Aminah']);

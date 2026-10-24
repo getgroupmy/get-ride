@@ -21,6 +21,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'notice.dart';
 
 class _FakeMyRide implements MyRideRepository {
   _FakeMyRide({List<FavouriteRider>? riders}) : riders = riders ?? [];
@@ -177,6 +178,7 @@ void main() {
       expect(tester.widget<Switch>(find.byKey(const ValueKey('my-ride-hide-r1'))).value, isTrue);
       expect(find.textContaining('Hidden ·'), findsOneWidget);
 
+      await closeAnyNotice(tester);
       await tester.tap(find.byKey(const ValueKey('my-ride-hide-r1')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('my-ride-hide-confirm')), findsNothing);

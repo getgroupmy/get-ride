@@ -7,6 +7,7 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ride/location_share_button.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'notice.dart';
 
 RideRequest _ride(String status) => RideRequest({'id': 'r1', 'status': status});
 
@@ -32,6 +33,8 @@ void main() {
   }
 
   Future<void> tapKey(WidgetTester tester, String key) async {
+    // A message from the last step is closed first, as the user would.
+    await closeAnyNotice(tester);
     await tester.tap(find.byKey(ValueKey(key)));
     await tester.pumpAndSettle();
   }
@@ -90,7 +93,7 @@ void main() {
     await tapKey(tester, 'location-share-button');
     await tapKey(tester, 'location-share-turn-off'); // "Not now"
     expect(find.byKey(const ValueKey('location-share-off')), findsOneWidget);
-    expect(find.byType(SnackBar), findsNothing);
+    expect(find.byKey(const ValueKey('notice')), findsNothing);
   });
 
   testWidgets('Only this ride is kept on the phone: closing and reopening the app keeps it off', (tester) async {

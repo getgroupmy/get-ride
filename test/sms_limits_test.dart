@@ -9,6 +9,7 @@ import 'package:get_ride/src/data/messaging_repository.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
+import 'notice.dart';
 
 void main() {
   _cardTests();
@@ -164,7 +165,9 @@ void _cardTests() {
       await tester.ensureVisible(save);
       await tester.tap(save);
       await tester.pump();
+      await pumpNotice(tester);
       expect(find.textContaining('5–60 seconds'), findsOneWidget);
+      await closeNotice(tester);
       expect(repo.saved, isEmpty);
 
       await tester.enterText(field, '30');

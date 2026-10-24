@@ -22,6 +22,7 @@ import 'package:get_ride/src/providers.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 const _services = [
   ServiceOption(id: 'r', name: 'Ride'),
@@ -136,6 +137,8 @@ ButtonStyleButton _saveButton(WidgetTester tester) => tester.widget<ButtonStyleB
 bool _canSave(WidgetTester tester) => _saveButton(tester).onPressed != null;
 
 Future<void> _tap(WidgetTester tester, Finder f) async {
+  // A message from the last step is closed first, as the user would.
+  await closeAnyNotice(tester);
   await tester.ensureVisible(f);
   await tester.pumpAndSettle();
   await tester.tap(f);

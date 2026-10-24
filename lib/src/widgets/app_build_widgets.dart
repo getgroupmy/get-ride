@@ -1,6 +1,8 @@
 // The latest downloadable build: fetching it from the `app-install` edge
 // function, and the Download / Share install link / QR code actions that
 // Admin → App Release and the public install page share.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,6 +17,7 @@ import '../core/format.dart';
 import '../data/branding_cache.dart' show readBrandingRow;
 import '../platform/device_abis.dart';
 import '../providers.dart';
+import 'app_notice.dart';
 import 'common.dart' show BrandMark;
 import 'net_image.dart';
 import 'page_style_host.dart';
@@ -149,7 +152,12 @@ Future<void> _open(BuildContext context, WidgetRef ref, String url) async {
     ok = await ref.read(appLinkOpenerProvider)(url);
   } catch (_) {}
   if (!ok && context.mounted) {
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('Could not open $url')));
+    unawaited(showAppNotice(
+      id: 'notice.app-build',
+      context: context,
+      message: 'Could not open $url',
+      kind: NoticeKind.error,
+    ));
   }
 }
 
@@ -222,7 +230,12 @@ Future<void> showAppInstallQr(BuildContext context, AppBuild b) {
           onPressed: () async {
             await Clipboard.setData(ClipboardData(text: url));
             if (context.mounted) {
-              ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('Link copied')));
+              unawaited(showAppNotice(
+                id: 'notice.app-build',
+                context: context,
+                message: 'Link copied',
+                kind: NoticeKind.success,
+              ));
             }
           },
           child: const Text('Copy link'),

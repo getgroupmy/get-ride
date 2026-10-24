@@ -15,6 +15,7 @@ import 'package:get_ride/src/features/ride/ride_tracking_screen.dart';
 import 'package:get_ride/src/features/ride/searching_parts.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:latlong2/latlong.dart';
+import 'notice.dart';
 
 const _me = '11111111-1111-1111-1111-111111111111';
 const _other = '22222222-2222-2222-2222-222222222222';
@@ -311,6 +312,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('accept-offer')));
       await tester.pump();
       expect(rides.calls, ['accept $_other 25.0']);
+      await pumpNotice(tester);
       expect(find.text('That offer changed before you accepted it.'), findsOneWidget);
     });
 
@@ -332,6 +334,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('search-fare-confirm')));
       await tester.pump();
       expect(rides.calls, ['decline $_other', 'raise 25.0']);
+      await pumpNotice(tester);
       expect(find.text('You raised the fare'), findsOneWidget);
     });
 

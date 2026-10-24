@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'app_notice.dart';
 import 'loading_skeleton.dart';
 import 'page_style_host.dart';
 
@@ -193,17 +194,14 @@ String _errorText(Object e) => switch (e) {
       _ => e.toString().replaceFirst('Exception: ', ''),
     };
 
-void showError(BuildContext context, Object e) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(errorText(e))));
-}
+/// [e] in plain words, as a modal with an OK ([showAppNotice]).
+void showError(BuildContext context, Object e) => unawaited(
+  showAppNotice(id: 'notice.error', context: context, message: errorText(e), kind: NoticeKind.error),
+);
 
-void showInfo(BuildContext context, String message) {
-  ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(message)));
-}
+/// [message] as a modal with an OK ([showAppNotice]).
+void showInfo(BuildContext context, String message) =>
+    unawaited(showAppNotice(id: 'notice.info', context: context, message: message));
 
 /// A message the rider has to acknowledge: a modal with one OK.
 Future<void> showNotice(BuildContext context, {String? title, required String message}) => showAppDialog<void>(id: 'common.show-info',

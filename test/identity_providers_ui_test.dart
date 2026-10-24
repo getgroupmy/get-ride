@@ -19,6 +19,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'quiet_live.dart';
 import 'text_contrast.dart';
+import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
@@ -88,6 +89,8 @@ Future<void> _pump(WidgetTester tester, Widget child, _Identity identity, Bright
 }
 
 Future<void> _tap(WidgetTester tester, Finder f) async {
+  // A message from the last step is closed first, as the user would.
+  await closeAnyNotice(tester);
   await tester.ensureVisible(f);
   await tester.pumpAndSettle();
   await tester.tap(f);

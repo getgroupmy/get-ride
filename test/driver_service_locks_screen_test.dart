@@ -25,6 +25,7 @@ import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/data/ride_option_providers.dart';
 import 'package:get_ride/src/data/ride_pet_repository.dart' show petConfigProvider;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'notice.dart';
 
 class _QuietLive extends LiveTables {
   @override
@@ -134,6 +135,8 @@ SegmentedButton<LockChoice> _seg(WidgetTester tester, String key) =>
     tester.widget<SegmentedButton<LockChoice>>(find.byKey(ValueKey('dsl-seg-$key')));
 
 Future<void> _tap(WidgetTester tester, Finder f) async {
+  // A message from the last step is closed first, as the user would.
+  await closeAnyNotice(tester);
   await tester.ensureVisible(f);
   await tester.pumpAndSettle();
   await tester.tap(f);

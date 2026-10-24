@@ -1,12 +1,15 @@
 // After a trip: "Rate your driver" — 1–5 stars and an optional comment,
 // saved through rate_ride (migration 0159), then shown as given with an Edit
 // key while the rating window is open.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/ride_rating.dart';
 import '../data/models.dart';
 import '../data/ride_rating_repository.dart';
+import 'app_notice.dart';
 
 class RideRatingCard extends ConsumerStatefulWidget {
   const RideRatingCard({super.key, required this.ride, this.now});
@@ -44,7 +47,8 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
     final stars = _stars;
     if (!validStars(stars) || _busy) return;
     setState(() => _busy = true);
-    final messenger = ScaffoldMessenger.of(context);
+    void say(String message, [NoticeKind kind = NoticeKind.info]) =>
+        unawaited(showAppNotice(id: 'notice.ride-rating', context: context, message: message, kind: kind));
     try {
       final res = await ref.read(rideRatingRepositoryProvider).rate(widget.ride.id, stars!, comment: _comment.text);
       if (!mounted) return;
@@ -55,12 +59,12 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
             _editing = false;
           });
           ref.invalidate(myRideRatingProvider((requestId: widget.ride.id, riderId: widget.ride.riderId ?? '')));
-          messenger.showSnackBar(const SnackBar(content: Text('Thanks — your rating is saved.')));
+          say('Thanks — your rating is saved.', NoticeKind.success);
         case RatingUnavailable():
-          messenger.showSnackBar(const SnackBar(content: Text('Ratings aren\'t available yet.')));
+          say('Ratings aren\'t available yet.');
       }
     } catch (e) {
-      if (mounted) messenger.showSnackBar(SnackBar(content: Text(rideRatingError(e))));
+      if (mounted) say(rideRatingError(e), NoticeKind.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }

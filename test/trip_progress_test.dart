@@ -21,6 +21,7 @@ import 'package:get_ride/src/features/ride/ride_tracking_screen.dart' show rideS
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
+import 'notice.dart';
 
 const pickup = LatLng(3.1579, 101.7116);
 const drop = LatLng(3.1340, 101.6860);
@@ -437,7 +438,9 @@ void main() {
       expect(find.byType(BackButton), findsNothing);
       await tester.binding.handlePopRoute();
       await tester.pump();
+      await pumpNotice(tester);
       expect(find.text('Finish the trip to leave this screen.'), findsOneWidget);
+      await closeNotice(tester);
       expect(find.byType(PartnerTripScreen), findsOneWidget, reason: 'the system back did not leave');
       rows.add(ride('completed'));
       await tester.pump();
