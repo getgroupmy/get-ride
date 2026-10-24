@@ -17,6 +17,7 @@ import '../../widgets/date_boxes.dart';
 import '../../core/signin_checks.dart' show faceMatchText, faceNeedsCloserLook, livenessText, rejectNotes;
 import '../../data/identity_repository.dart' show identityRepositoryProvider;
 import '../widgets/reject_reason.dart';
+import 'online_selfie_check_screen.dart' show onlineSelfieCloserCountProvider;
 import 'signin_checks_review.dart';
 
 final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dynamic>>, String>(
@@ -453,8 +454,11 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
                 ),
                 ButtonSegment(
                   value: 'signin',
-                  label: Text(switch (ref.watch(signInChecksWaitingProvider).value) {
-                    final n? when n > 0 => 'Sign-in checks ($n)',
+                  // Waiting uploads, and going-online selfies that need a
+                  // closer look (0290).
+                  label: Text(switch ((ref.watch(signInChecksWaitingProvider).value ?? 0) +
+                      (ref.watch(onlineSelfieCloserCountProvider).value ?? 0)) {
+                    final n when n > 0 => 'Sign-in checks ($n)',
                     _ => 'Sign-in checks',
                   }),
                   icon: const Icon(Icons.verified_user_outlined),

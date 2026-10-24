@@ -19,6 +19,7 @@ import 'people_data.dart';
 import 'people_logic.dart';
 import 'people_widgets.dart';
 import 'driver_extras_card.dart';
+import '../online_selfie_check_screen.dart' show PartnerSelfieChecksCard;
 import '../../../data/live_tables.dart';
 
 /// Everything the partner forms look up.
@@ -648,6 +649,8 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
               DriverExtrasOffCard(driverId: uid),
               const SizedBox(height: 12),
               PhoneCard(profileId: uid),
+              const SizedBox(height: 12),
+              PartnerSelfieChecksCard(userId: uid, name: name.isEmpty ? 'This partner' : name),
             ],
             const SizedBox(height: 16),
             if (canEdit)
