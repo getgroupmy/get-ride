@@ -1,11 +1,12 @@
 // What the Drive tab tells a partner who cannot take jobs yet, by their
 // account status (migration 0118): an application still being filled in,
-// one with an admin, one the admin needs documents for, one rejected (with
-// the admin's reason, and a way to send it back for review), or a blocked
-// account (with the reason, and support). Pure.
+// one with an admin, one the admin needs documents for, one sent back with
+// changes needed (0289), one rejected (with the admin's reason, and a way to
+// send it back for review), or a blocked account (with the reason, and
+// support). Pure.
 import 'partner_onboarding.dart';
 
-enum PartnerStatusKind { active, incomplete, underReview, docsNeeded, rejected, blocked }
+enum PartnerStatusKind { active, incomplete, underReview, docsNeeded, changesNeeded, rejected, blocked }
 
 class PartnerStatusView {
   const PartnerStatusView({
@@ -62,6 +63,15 @@ PartnerStatusView partnerStatusView(Map<String, dynamic> partner) {
           'An admin could not approve your application. Fix what they pointed out, '
           'then send it back for review.',
       reason: reason,
+    );
+  }
+  // An admin checked each line and sent it back (0289): the lines say what
+  // to fix.
+  if (status == 'changes-needed') {
+    return const PartnerStatusView(
+      kind: PartnerStatusKind.changesNeeded,
+      title: 'Changes needed',
+      message: 'An admin checked your application. Tap a line marked below to see why and fix it.',
     );
   }
   if (partnerSetupIncomplete(partner)) {

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -231,6 +232,21 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
                 onPressed: () => openStoredFile(context, d[key] as String),
               ),
         ]),
+        // The whole application, line by line (0289).
+        if ('${d['partner_id'] ?? ''}'.isNotEmpty &&
+            ref.read(pageAccessProvider('admin-partner-edit')) != AccessLevel.none)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('doc-open-review'),
+              icon: const Icon(Icons.rule),
+              label: const Text('Review the whole application'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                context.push('/admin/m/partner-review?id=${d['partner_id']}');
+              },
+            ),
+          ),
         if (ai != null) ...[
           const SizedBox(height: 12),
           ExpansionTile(

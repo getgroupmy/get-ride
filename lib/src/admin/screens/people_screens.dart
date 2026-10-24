@@ -706,6 +706,21 @@ class AdminPartnersScreen extends ConsumerWidget {
           value: p['documents_ok'] == true,
           onChanged: canEdit ? (v) => patch(ctx, {'documents_ok': v}) : null,
         ),
+        // The application line by line (0289): approve, reject or edit each
+        // detail and document, then send back or approve.
+        if (!vehicles && ref.read(pageAccessProvider('admin-partner-edit')) != AccessLevel.none) ...[
+          OutlinedButton.icon(
+            key: const ValueKey('partner-open-review'),
+            icon: const Icon(Icons.rule),
+            label: const Text('Review application'),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await context.push('/admin/m/partner-review?id=$id');
+              ref.invalidate(adminPartnersProvider);
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
         vehicles
             ? _editButton(ctx, ref, 'admin-vehicle-edit', '/admin/m/vehicle-edit', id, () => ref.invalidate(adminVehiclesProvider))
             : _editButton(ctx, ref, 'admin-partner-edit', '/admin/m/partner-edit', id, () => ref.invalidate(adminPartnersProvider)),

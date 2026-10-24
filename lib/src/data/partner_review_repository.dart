@@ -1,0 +1,145 @@
+// Reads and writes for the partner application review (migration 0289):
+// the admin's page loads every row of one application and decides lines
+// through the partner_review_* functions; the driver reads their own lines
+// once sent back, keeps an admin's edit and sends the application again.
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../core/partner_review.dart';
+import '../providers.dart';
+
+/// Everything one application's review page shows.
+class ReviewApplication {
+  const ReviewApplication({
+    required this.partner,
+    this.profile,
+    this.vehicle,
+    this.providerDocs = const [],
+    this.vehicleDocs = const [],
+    this.serviceStatuses = const [],
+    this.faces = const {},
+    this.items = const {},
+  });
+
+  final Map<String, dynamic> partner;
+  final Map<String, dynamic>? profile;
+  final Map<String, dynamic>? vehicle;
+  final List<Map<String, dynamic>> providerDocs;
+  final List<Map<String, dynamic>> vehicleDocs;
+  final List<Map<String, dynamic>> serviceStatuses;
+
+  /// document_face_checks rows by `doc_kind:doc_id`.
+  final Map<String, Map<String, dynamic>> faces;
+
+  /// The admin's decisions by line key.
+  final Map<String, ReviewItem> items;
+
+  String get partnerId => '${partner['id']}';
+  String get status => '${partner['status'] ?? 'unapproved'}';
+
+  List<ReviewLine> get lines => applicationReviewLines(
+        profile: profile,
+        partner: partner,
+        vehicle: vehicle,
+        providerDocs: providerDocs,
+        vehicleDocs: vehicleDocs,
+        serviceStatuses: serviceStatuses,
+      );
+}
+
+class PartnerReviewRepository {
+  PartnerReviewRepository(this._db);
+  final SupabaseClient _db;
+
+  List<Map<String, dynamic>> _rows(Object? v) => List<Map<String, dynamic>>.from(v as List);
+
+  /// One application with its rows (admin).
+  Future<ReviewApplication?> application(String partnerId) async {
+    final partner = await _db.from('partners').select().eq('id', partnerId).maybeSingle();
+    if (partner == null) return null;
+    final uid = '${partner['auth_user_id'] ?? ''}';
+    final vehicleId = '${partner['registration_vehicle_id'] ?? ''}';
+    final results = await Future.wait<Object?>([
+      uid.isEmpty ? Future.value(null) : _db.from('profiles').select().eq('id', uid).maybeSingle(),
+      vehicleId.isEmpty ? Future.value(null) : _db.from('vehicle').select().eq('id', vehicleId).maybeSingle(),
+      _db.from('provider_documents').select().eq('partner_id', partnerId).order('uploaded_at', ascending: false),
+      vehicleId.isEmpty
+          ? Future.value(const <Map<String, dynamic>>[])
+          : _db.from('vehicle_documents').select().eq('vehicle_id', vehicleId).order('uploaded_at', ascending: false),
+      vehicleId.isEmpty
+          ? Future.value(const <Map<String, dynamic>>[])
+          : _db.from('vehicle_service_status').select().eq('vehicle_id', vehicleId).order('service', ascending: true),
+      uid.isEmpty
+          ? Future.value(const <Map<String, dynamic>>[])
+          : _db.from('document_face_checks').select().eq('user_id', uid).order('checked_at', ascending: false),
+      _db.from('partner_review_items').select().eq('partner_id', partnerId).order('decided_at', ascending: true),
+    ]);
+    return ReviewApplication(
+      partner: partner,
+      profile: results[0] as Map<String, dynamic>?,
+      vehicle: results[1] as Map<String, dynamic>?,
+      providerDocs: _rows(results[2]),
+      vehicleDocs: _rows(results[3]),
+      serviceStatuses: _rows(results[4]),
+      faces: {for (final f in _rows(results[5])) '${f['doc_kind']}:${f['doc_id']}': f},
+      items: {for (final r in _rows(results[6])) '${r['item_key']}': ReviewItem.fromRow(r)},
+    );
+  }
+
+  /// Approves, rejects (with [note] as the reason) or edits (with [note]
+  /// and the new [value], written to the real column) one line.
+  Future<void> setItem({
+    required String partnerId,
+    required ReviewLine line,
+    required ReviewState state,
+    String? note,
+    Object? value,
+  }) =>
+      _db.rpc('partner_review_set', params: {
+        'p_partner': partnerId,
+        'p_key': line.key,
+        'p_group': line.group.key,
+        'p_label': line.label,
+        'p_state': state.name,
+        'p_note': note,
+        'p_value': value,
+      });
+
+  /// Forgets the decision on a line (an edit stays where it was written).
+  Future<void> clearItem({required String partnerId, required ReviewLine line}) => _db.rpc('partner_review_set', params: {
+        'p_partner': partnerId,
+        'p_key': line.key,
+        'p_group': line.group.key,
+        'p_label': line.label,
+        'p_state': 'clear',
+      });
+
+  /// Sends the application back to the driver ('changes-needed').
+  Future<void> sendBack(String partnerId) => _db.rpc('partner_review_send_back', params: {'p_partner': partnerId});
+
+  /// Approves the partner and their registration vehicle together.
+  Future<void> approve(String partnerId) => _db.rpc('partner_review_approve', params: {'p_partner': partnerId});
+
+  /// The driver's own lines (only those sent back are readable).
+  Future<List<ReviewItem>> myItems(String partnerId) async => [
+        for (final r in _rows(await _db
+            .from('partner_review_items')
+            .select()
+            .eq('partner_id', partnerId)
+            .order('decided_at', ascending: true)))
+          ReviewItem.fromRow(r),
+      ];
+
+  /// "Keep and close" on an admin's edit.
+  Future<void> keep(String key) => _db.rpc('partner_review_keep', params: {'p_key': key});
+
+  /// "Send for review again".
+  Future<void> resubmit() => _db.rpc('partner_review_resubmit');
+}
+
+final partnerReviewRepositoryProvider = Provider((ref) => PartnerReviewRepository(ref.watch(supabaseProvider)));
+
+/// The signed-in driver's lines on "Changes needed".
+final myReviewItemsProvider = FutureProvider.autoDispose.family<List<ReviewItem>, String>(
+  (ref, partnerId) => ref.watch(partnerReviewRepositoryProvider).myItems(partnerId),
+);

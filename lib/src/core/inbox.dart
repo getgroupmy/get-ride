@@ -124,7 +124,7 @@ InboxIcon inboxIconFor(String? kind) => switch (kind) {
   'ride_call_end' ||
   'lost_item' => InboxIcon.ride,
   'wallet_transfer_request' || 'wallet_transfer_response' => InboxIcon.wallet,
-  'partner_status' || 'vehicle_status' || 'document_status' => InboxIcon.approval,
+  'partner_status' || 'vehicle_status' || 'document_status' || 'partner_review' => InboxIcon.approval,
   'trip_start_check' || 'trip_separation' => InboxIcon.safety,
   _ => InboxIcon.other,
 };
