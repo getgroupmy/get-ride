@@ -852,6 +852,12 @@ as $$
 $$;
 revoke all on function public.ptr_partner_has_permit(uuid) from public, anon, authenticated;
 
+-- The help article on becoming a driver says the new order (only while it
+-- still has the old wording an admin hasn't changed).
+update public.help_articles
+   set answer = 'Open the Drive tab and tap Get started. The application goes in order: a live selfie if you have no profile photo yet, your service area, the Partner Service types you will offer, your national ID (MyKad, MyPR or passport) and the details read from it, then, where your services need them, your company, your driver permit and your vehicle with its documents, and last the service documents. It resumes where you left off. Once submitted, an admin reviews it; you can take jobs once your account is approved.'
+ where id = '68656c70-0000-4000-8000-000000000043' and answer like '%The application has six steps%';
+
 -- Backfill the server's flags on existing rows.
 update public.partners set updated_at = updated_at;
 
