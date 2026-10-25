@@ -1289,107 +1289,131 @@ class _TopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final b = t.brightness;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-          FilterChip(
-            key: const ValueKey('god-view-partners'),
-            avatar: const Icon(Icons.directions_car, size: 16),
-            label: const Text('Partners'),
-            selected: filters.partners,
-            showCheckmark: false,
-            onSelected: (v) => onFilters(filters.copyWith(partners: v)),
-          ),
-          FilterChip(
-            key: const ValueKey('god-view-users'),
-            avatar: const Icon(Icons.person, size: 16),
-            label: const Text('Users'),
-            selected: filters.users,
-            showCheckmark: false,
-            onSelected: (v) => onFilters(filters.copyWith(users: v)),
-          ),
-          // "Show offline" and "Last known" in one: everyone without a live
-          // position, where they last were (up to 7 days).
-          Tooltip(
-            message: 'Show offline / last known: everyone without a live position, where they last were (up to 7 days)',
-            child: FilterChip(
-              key: const ValueKey('god-view-last-known'),
-              avatar: const Icon(Icons.history, size: 16),
-              label: const Text('Last known'),
-              selected: filters.lastKnown,
-              showCheckmark: false,
-              onSelected: (v) => onFilters(filters.copyWith(lastKnown: v), reload: true),
-            ),
-          ),
-          if (filters.users)
-            SegmentedButton<GodViewUserFilter>(
-              key: const ValueKey('god-view-user-filter'),
-              showSelectedIcon: false,
-              style: const ButtonStyle(visualDensity: VisualDensity.compact),
-              segments: [
-                for (final f in GodViewUserFilter.values) ButtonSegment(value: f, label: Text(f.label)),
-              ],
-              selected: {filters.userFilter},
-              onSelectionChanged: (s) => onFilters(filters.copyWith(userFilter: s.first)),
-            ),
-        ]),
-        const SizedBox(height: 8),
-        Row(children: [
-          Expanded(
-            child: TextField(
-              key: const ValueKey('god-view-search'),
-              controller: search,
-              onChanged: onSearch,
-              textInputAction: TextInputAction.search,
-              decoration: InputDecoration(
-                isDense: true,
-                prefixIcon: const Icon(Icons.search),
-                hintText: 'Search name, phone, plate or ride code',
-                suffixIcon: search.text.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Clear',
-                        icon: const Icon(Icons.close),
-                        onPressed: () {
-                          search.clear();
-                          onSearch('');
-                        },
-                      ),
+    final searchField = TextField(
+      key: const ValueKey('god-view-search'),
+      controller: search,
+      onChanged: onSearch,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        isDense: true,
+        prefixIcon: const Icon(Icons.search),
+        hintText: 'Search name, phone, plate or ride code',
+        suffixIcon: search.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear',
+                icon: const Icon(Icons.close),
+                onPressed: () {
+                  search.clear();
+                  onSearch('');
+                },
               ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            flex: 0,
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: liveOk ? godViewStatusColor(GodViewStatus.free, b) : t.colorScheme.error,
-                ),
-              ),
-              const SizedBox(width: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 220),
-                child: Text(
-                  live,
-                  key: const ValueKey('god-view-live'),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.textTheme.bodySmall?.copyWith(
-                    color: t.colorScheme.onSurfaceVariant,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
-            ]),
-          ),
-        ]),
-      ]),
+      ),
     );
+    final liveLine = Row(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: liveOk ? godViewStatusColor(GodViewStatus.free, b) : t.colorScheme.error,
+        ),
+      ),
+      const SizedBox(width: 6),
+      Flexible(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 220),
+          child: Text(
+            live,
+            key: const ValueKey('god-view-live'),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: t.textTheme.bodySmall?.copyWith(
+              color: t.colorScheme.onSurfaceVariant,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ),
+      ),
+    ]);
+    // On a phone the Users filter gets its own full-width row of equal
+    // segments; each label stays on one line and shrinks to fit.
+    Widget userFilter(bool narrowFilter) => SegmentedButton<GodViewUserFilter>(
+          key: const ValueKey('god-view-user-filter'),
+          showSelectedIcon: false,
+          expandedInsets: narrowFilter ? EdgeInsets.zero : null,
+          style: ButtonStyle(
+            visualDensity: VisualDensity.compact,
+            padding: narrowFilter ? const WidgetStatePropertyAll(EdgeInsets.symmetric(horizontal: 4)) : null,
+          ),
+          segments: [
+            for (final f in GodViewUserFilter.values)
+              ButtonSegment(
+                value: f,
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(f.label, maxLines: 1, softWrap: false),
+                ),
+              ),
+          ],
+          selected: {filters.userFilter},
+          onSelectionChanged: (s) => onFilters(filters.copyWith(userFilter: s.first)),
+        );
+    return LayoutBuilder(builder: (context, c) {
+      final narrow = c.maxWidth < 600;
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            FilterChip(
+              key: const ValueKey('god-view-partners'),
+              avatar: const Icon(Icons.directions_car, size: 16),
+              label: const Text('Partners'),
+              selected: filters.partners,
+              showCheckmark: false,
+              onSelected: (v) => onFilters(filters.copyWith(partners: v)),
+            ),
+            FilterChip(
+              key: const ValueKey('god-view-users'),
+              avatar: const Icon(Icons.person, size: 16),
+              label: const Text('Users'),
+              selected: filters.users,
+              showCheckmark: false,
+              onSelected: (v) => onFilters(filters.copyWith(users: v)),
+            ),
+            // "Show offline" and "Last known" in one: everyone without a live
+            // position, where they last were (up to 7 days).
+            Tooltip(
+              message: 'Show offline / last known: everyone without a live position, where they last were (up to 7 days)',
+              child: FilterChip(
+                key: const ValueKey('god-view-last-known'),
+                avatar: const Icon(Icons.history, size: 16),
+                label: const Text('Last known'),
+                selected: filters.lastKnown,
+                showCheckmark: false,
+                onSelected: (v) => onFilters(filters.copyWith(lastKnown: v), reload: true),
+              ),
+            ),
+            if (filters.users && !narrow) userFilter(false),
+          ]),
+          if (filters.users && narrow) ...[
+            const SizedBox(height: 8),
+            userFilter(true),
+          ],
+          const SizedBox(height: 8),
+          if (narrow) ...[
+            searchField,
+            const SizedBox(height: 6),
+            liveLine,
+          ] else
+            Row(children: [
+              Expanded(child: searchField),
+              const SizedBox(width: 10),
+              Flexible(flex: 0, child: liveLine),
+            ]),
+        ]),
+      );
+    });
   }
 }
 

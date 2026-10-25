@@ -352,6 +352,9 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'connectedPopupEnabled': true,
       'connectionFailedPopupEnabled': true,
       'recentLocationsCount': 4,
+      // Seconds before a popup message closes by itself; 0 keeps it open
+      // (core/app_display.dart, widgets/app_notice.dart).
+      'popupAutoCloseSeconds': 0,
       // Seconds with no offer before the search sheet offers a raise
       // (core/raise_nudge.dart).
       'raiseFareAfterSeconds': 45,

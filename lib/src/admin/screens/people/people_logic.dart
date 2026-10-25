@@ -9,6 +9,7 @@ library;
 import 'dart:convert';
 
 import '../../../core/avatar.dart';
+import '../../../core/ride_bidding.dart' show RegionBlock, regionBlockOf;
 
 /// Token a required-document / partner-type list uses for "every type".
 const allToken = '__ALL__';
@@ -294,6 +295,10 @@ class GeoOptions {
     final c = <String>{}, s = <String>{}, ci = <String>{};
     String t(Object? v) => '${v ?? ''}'.trim();
     for (final r in countryRows) {
+      // A country blocked for pickups and drop-offs isn't served (most of
+      // the world's, listed for the admin to open, migration 0291).
+      final v = r['values'];
+      if (v is Map && regionBlockOf(Map<String, dynamic>.from(v)) == RegionBlock.both) continue;
       if (t(r['name']).isNotEmpty) c.add(t(r['name']));
     }
     for (final r in stateRows) {

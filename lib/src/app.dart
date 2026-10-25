@@ -686,6 +686,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     // profile's, else the phone's): DD/MM/YYYY, MM/DD/YYYY or YYYY/MM/DD.
     ref.listenManual(profileProvider, (_, next) => setProfileDateCountry(next.value?.nationality),
         fireImmediately: true);
+    // Admin → Display → Popups: how long a popup message stays open (live).
+    ref.listenManual(appDisplayProvider, (_, next) {
+      final d = next.value;
+      if (d != null) noticeAutoClose.value = Duration(seconds: d.popupAutoCloseSeconds);
+    }, fireImmediately: true);
     // The home-screen icon: the admin's season or the passenger's choice.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(ref.read(appIconSyncProvider).sync());
@@ -829,9 +834,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   bool _notificationsDismissed = false;
 
   /// Notifications switched off for the app: calls and new rides can't reach
-  /// a closed app, so the rider's and driver's screens say so, with the way
-  /// to Settings. Gone once they are switched back on, or after "Not now"
-  /// until the next launch.
+  /// a closed app, so the rider's and driver's screens say so in a popup,
+  /// with the way to Settings. Once closed it stays away until the next
+  /// launch.
   void _startNotificationsWarning(PushService push) {
     final router = ref.read(routerProvider);
     void sync() {
@@ -844,20 +849,20 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       );
       if (warn == _notificationsWarned) return;
       _notificationsWarned = warn;
-      final messenger = _messenger.currentState;
-      if (!warn) {
-        messenger?.hideCurrentMaterialBanner();
+      if (!warn) return;
+      final ctx = router.routerDelegate.navigatorKey.currentContext;
+      if (ctx == null) {
+        // No page yet: the next route change tries again.
+        _notificationsWarned = false;
         return;
       }
-      messenger?.showMaterialBanner(
-        notificationsOffBanner(
-          onSettings: () => unawaited(ref.read(permissionProbeProvider).openNotificationSettings()),
-          onDismiss: () {
-            _notificationsDismissed = true;
-            sync();
-          },
-        ),
-      );
+      unawaited(showNotificationsOffNotice(
+        context: ctx,
+        onSettings: () => unawaited(ref.read(permissionProbeProvider).openNotificationSettings()),
+      ).then((_) {
+        _notificationsDismissed = true;
+        sync();
+      }));
     }
 
     push.notificationsOff.addListener(sync);

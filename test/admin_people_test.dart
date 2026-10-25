@@ -195,6 +195,22 @@ void main() {
       expect(more.countries, contains('Thailand'));
       expect(more.states, g.states);
     });
+
+    test("geo options leave out countries that aren't served, unless in use", () {
+      final g = GeoOptions.build(
+        countryRows: [
+          {'name': 'Japan', 'values': <String, dynamic>{}},
+          {'name': 'Norway', 'values': {'blockAt': 'both', 'blocked': true}},
+          {'name': 'Peru', 'values': {'blocked': true}},
+          {'name': 'Chile', 'values': {'blockAt': 'pickup'}},
+          {'name': 'Singapore', 'values': {'blockAt': 'both'}},
+        ],
+        stateRows: const [],
+        cityRows: const [],
+        inUse: [area],
+      );
+      expect(g.countries, ['Chile', 'Japan', 'Malaysia', 'Singapore']);
+    });
   });
 
   group('partners', () {

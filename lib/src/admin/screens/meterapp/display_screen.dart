@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/app_display.dart' show popupAutoCloseMaxSeconds, popupAutoCloseMinSeconds;
 import '../../../core/option_charge.dart';
 import '../../../core/ride_assistance.dart';
 import '../../../core/ride_option_settings.dart';
@@ -277,6 +278,23 @@ class _DisplayBody extends ConsumerWidget {
                   displayBool(s, 'connectionFailedPopupEnabled'), (v) => set('connectionFailedPopupEnabled', v)),
             ]),
           ),
+          const _Section('Popups'),
+          Card(
+            child: _StepperTile(
+              key: const ValueKey('display-popup-auto-close'),
+              label: 'Close popups after (seconds)',
+              description: 'Every popup message has an (x) and closes by itself after this many seconds '
+                  '($popupAutoCloseMinSeconds-$popupAutoCloseMaxSeconds). 0 keeps it open until closed.',
+              value: displayNum(s, 'popupAutoCloseSeconds'),
+              min: popupAutoCloseMinSeconds,
+              max: popupAutoCloseMaxSeconds,
+              step: 1,
+              onChanged: canEdit
+                  ? (v) => applyDisplay(context, ref,
+                      (x) => setDisplayNumber(x, 'popupAutoCloseSeconds', v, popupAutoCloseMinSeconds, popupAutoCloseMaxSeconds))
+                  : null,
+            ),
+          ),
           const _Section('Recent Locations'),
           Card(
             child: _StepperTile(
@@ -523,6 +541,7 @@ class _SpotlightState extends State<Spotlight> {
 
 class _StepperTile extends StatelessWidget {
   const _StepperTile({
+    super.key,
     required this.label,
     required this.description,
     required this.value,
