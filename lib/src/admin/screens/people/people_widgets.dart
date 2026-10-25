@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/doc_kinds.dart' show docKindAsk;
+import '../../../core/photo_quality.dart' show PhotoQuality;
 import '../../../core/document_ai.dart';
 import '../../../core/partner_doc_check.dart';
 import '../../../data/document_ai_repository.dart';
@@ -16,6 +18,7 @@ import 'doc_pdf.dart';
 import 'people_data.dart';
 import 'partner_live.dart';
 import 'partner_live_card.dart' show PartnerLivePill;
+import 'doc_read_fields.dart';
 import 'people_logic.dart';
 import '../../../widgets/net_image.dart';
 import '../../../data/live_tables.dart';
@@ -898,6 +901,11 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
   List<String> _aiFilled = const [];
   int _aiRun = 0;
 
+  // Document reading (part 3): the photo check, and the fields read off it.
+  PhotoQuality? _quality;
+  DocReadFields? _read;
+  int _qualityRun = 0;
+
   @override
   void initState() {
     super.initState();
@@ -913,7 +921,18 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
     _number.dispose();
     _start.dispose();
     _expiry.dispose();
+    _read?.dispose();
     super.dispose();
+  }
+
+  /// Sharp, no glare, all four corners: hints, never a block.
+  Future<void> _checkPhoto(Uint8List bytes) async {
+    final run = ++_qualityRun;
+    PhotoQuality? q;
+    try {
+      q = await ref.read(photoQualityCheckProvider)(bytes);
+    } catch (_) {}
+    if (mounted && run == _qualityRun) setState(() => _quality = q);
   }
 
   Future<void> _save() async {
@@ -982,6 +1001,9 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
         aiVerification: permitPhotoUrl == null ? _ai?.raw : docAiWithPermitPhoto(_ai!.raw, permitPhotoUrl),
         issuanceCountry: _ai?.issuanceCountry,
         detectedDocumentName: _ai?.detectedDocumentName,
+        readFields: _read?.toJson(photo: _frontIsPdf ? null : _quality) ??
+            (_quality == null || _frontIsPdf ? null : {'photo': _quality!.toJson()}),
+        readExpiry: _read?.validUntil,
       );
       if (vehicleId == null) {
         await repo.saveProviderDocument(payload);
@@ -1003,8 +1025,10 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
       } else {
         _front = file;
         _frontIsPdf = false;
+        _quality = null;
       }
     });
+    if (!back) unawaited(_checkPhoto(file.bytes));
     unawaited(_runAi());
   }
 
@@ -1030,6 +1054,8 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
       _front = (bytes: png, name: pdfPreviewName(pdf!.name));
       _frontIsPdf = true;
       _back = null;
+      _quality = null;
+      _qualityRun++;
     });
     unawaited(_runAi());
   }
@@ -1095,6 +1121,11 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
       if (fill.insurerId != null) _insurerId = fill.insurerId;
       if (fill.isPwd != null) _pwd = fill.isPwd!;
       _aiFilled = fill.filled;
+      // Every field of the kind it is read as, to check and fix.
+      _read?.dispose();
+      final kind = f.readAs;
+      final read = kind == null ? null : DocReadFields(kind, r.permitFields);
+      _read = read == null || read.isEmpty ? null : read;
     });
   }
 
@@ -1200,7 +1231,9 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
                   ),
                 ),
               ),
+            if (_quality != null && !_frontIsPdf) PhotoQualityChips(quality: _quality!),
             _aiCard(context),
+            if (_read != null) DocReadFieldsForm(key: ObjectKey(_read), fields: _read!),
             const SizedBox(height: 12),
             if (f.requireDocumentNumber)
               PeopleField(controller: _number, label: 'Document number', capitalization: TextCapitalization.characters),

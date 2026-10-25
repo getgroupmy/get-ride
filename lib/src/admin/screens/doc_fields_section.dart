@@ -26,11 +26,39 @@ DocKind? docKindOfUpload(Map<String, dynamic> doc, Map<String, DocKind?> kinds) 
 }
 
 /// The fields the AI read off [doc] (`ai_verification.extracted.permitFields`).
-Map<String, dynamic> docFieldsRead(Map<String, dynamic> doc) {
+Map<String, dynamic> docFieldsByAi(Map<String, dynamic> doc) {
   final ai = doc['ai_verification'];
   final ex = ai is Map ? ai['extracted'] : null;
   final f = ex is Map ? ex['permitFields'] : null;
   return f is Map ? Map<String, dynamic>.from(f) : const {};
+}
+
+/// The fields as the partner confirmed them at upload (`read_fields`, 0294),
+/// else as the AI read them.
+Map<String, dynamic> docFieldsRead(Map<String, dynamic> doc) {
+  final rf = doc['read_fields'];
+  final f = rf is Map ? rf['fields'] : null;
+  return f is Map && f.isNotEmpty ? Map<String, dynamic>.from(f) : docFieldsByAi(doc);
+}
+
+/// The fields the partner changed from what was read.
+Set<String> docFieldsChanged(Map<String, dynamic> doc) {
+  final rf = doc['read_fields'];
+  final c = rf is Map ? rf['changed'] : null;
+  return c is List ? {for (final k in c) '$k'} : const {};
+}
+
+/// The photo check at upload, in words; null when there was none.
+String? docPhotoCheckText(Map<String, dynamic> doc) {
+  final rf = doc['read_fields'];
+  final p = rf is Map ? rf['photo'] : null;
+  if (p is! Map) return null;
+  final bad = [
+    if (p['sharp'] == false) 'blurred',
+    if (p['glare'] == true) 'glare',
+    if (p['corners'] == false) 'an edge cut off',
+  ];
+  return bad.isEmpty ? 'Photo check: sharp, no glare, all four corners.' : 'Photo check: ${bad.join(', ')}.';
 }
 
 class DocFieldsSection extends ConsumerWidget {
@@ -47,6 +75,9 @@ class DocFieldsSection extends ConsumerWidget {
     if (kind == null) return const SizedBox.shrink();
     final t = Theme.of(context);
     final read = docFieldsRead(doc);
+    final byAi = docFieldsByAi(doc);
+    final changed = docFieldsChanged(doc);
+    final photo = docPhotoCheckText(doc);
     final onFile = doc['_onFile'] is DocOnFile ? doc['_onFile'] as DocOnFile : const DocOnFile();
     final rows = checkDocFields(kind, read, onFile, today: today ?? DateTime.now());
     return Padding(
@@ -62,6 +93,7 @@ class DocFieldsSection extends ConsumerWidget {
           key: const ValueKey('doc-fields-summary'),
           style: t.textTheme.bodySmall,
         ),
+        if (photo != null) Text(photo, key: const ValueKey('doc-photo-check'), style: t.textTheme.bodySmall),
         if (read.isNotEmpty) ...[
           const SizedBox(height: 6),
           Table(
@@ -82,7 +114,15 @@ class DocFieldsSection extends ConsumerWidget {
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: SelectableText(r.read ?? '–', style: t.textTheme.bodySmall),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        SelectableText(r.read ?? '–', style: t.textTheme.bodySmall),
+                        if (changed.contains(r.field.key))
+                          Text(
+                            'Changed by the partner (read as ${'${byAi[r.field.key] ?? ''}'.trim().isEmpty ? 'nothing' : byAi[r.field.key]})',
+                            key: ValueKey('doc-field-changed-${r.field.key}'),
+                            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.tertiary),
+                          ),
+                      ]),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
