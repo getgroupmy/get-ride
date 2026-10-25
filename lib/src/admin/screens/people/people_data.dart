@@ -264,7 +264,7 @@ class PeopleRepository {
     }
 
     final r = await Future.wait([
-      rows('countries', 'name'),
+      rows('countries', 'name, values'),
       rows('states', 'country, name'),
       rows('cities', 'country, state, name'),
     ]);
