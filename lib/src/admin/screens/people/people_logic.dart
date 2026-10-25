@@ -929,6 +929,8 @@ Map<String, dynamic> providerDocPayload({
   Map<String, dynamic>? aiVerification,
   String? issuanceCountry,
   String? detectedDocumentName,
+  Map<String, dynamic>? readFields,
+  String? readExpiry,
 }) =>
     {
       'partner_id': partnerId,
@@ -940,7 +942,9 @@ Map<String, dynamic> providerDocPayload({
       'insurance_provider_name': flags.requireInsuranceProvider ? insuranceProviderName : null,
       'is_pwd': flags.isPwd && isPwd,
       'start_date': flags.requireStartDate ? _blankToNull(startDate) : null,
-      'expiry_date': flags.requireExpiryDate ? _blankToNull(expiryDate) : null,
+      // Without an expiry on the form, the one read off the document and
+      // confirmed (document reading), while still to come, for reminders.
+      'expiry_date': flags.requireExpiryDate ? _blankToNull(expiryDate) : _futureDate(readExpiry),
       'file_url': fileUrl,
       'file_url_back': flags.requireFrontBack ? fileUrlBack : null,
       'ai_verification': aiVerification,
@@ -951,4 +955,15 @@ Map<String, dynamic> providerDocPayload({
       'reviewer_notes': null,
       'reviewed_at': null,
       'uploaded_at': uploadedAt,
+      // The fields read off the photo as the partner confirmed them, and the
+      // photo check (document reading, migration 0294).
+      'read_fields': ?readFields,
     };
+
+/// [iso] (yyyy-mm-dd) when it is after today; else null.
+String? _futureDate(String? iso) {
+  final d = iso == null ? null : DateTime.tryParse(iso);
+  if (d == null) return null;
+  final now = DateTime.now();
+  return d.isAfter(DateTime(now.year, now.month, now.day)) ? iso : null;
+}
