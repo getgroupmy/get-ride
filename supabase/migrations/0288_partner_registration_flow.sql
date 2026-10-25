@@ -56,6 +56,18 @@ alter table public.profiles
   add column if not exists id_name text,
   add column if not exists id_image_back text;
 
+-- id_type was free text before (0005 wrote 'national_id' for a detected MyKad).
+-- Map the old values onto the new ones before the check is added.
+update public.profiles
+   set id_type = case lower(btrim(id_type))
+                   when 'national_id' then 'mykad'
+                   when 'mykad' then 'mykad'
+                   when 'mypr' then 'mypr'
+                   when 'passport' then 'passport'
+                 end
+ where id_type is not null
+   and id_type not in ('mykad', 'mypr', 'passport');
+
 do $$
 begin
   if not exists (select 1 from pg_constraint where conname = 'profiles_id_type_check') then
