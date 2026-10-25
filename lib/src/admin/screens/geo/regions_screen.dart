@@ -13,6 +13,7 @@ import '../../widgets/admin_widgets.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
+import 'country_phone_screen.dart';
 import 'region_rules_editor.dart';
 import '../../../widgets/chip_button.dart';
 
@@ -250,6 +251,10 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
                           canEdit: canEdit,
                           onOpen: () => _open(rows[i]),
                           onMap: () => _map(rows[i], canEdit),
+                          onPhone: countryIsoOf(rows[i]) == null
+                              ? null
+                              : () => openCountryPhoneRules(context,
+                                  iso: countryIsoOf(rows[i])!, name: rows[i].name, canEdit: canEdit),
                           onEdit: () => _edit(entries, row: rows[i]),
                           onDelete: () => _delete(rows[i]),
                         ),
@@ -271,10 +276,14 @@ class _RegionTile extends StatelessWidget {
     required this.onMap,
     required this.onEdit,
     required this.onDelete,
+    this.onPhone,
   });
   final RegionRow row;
   final bool canEdit;
   final VoidCallback onOpen, onMap;
+
+  /// A country with an ISO code: its phone numbers and sign-in (0292).
+  final VoidCallback? onPhone;
   final Future<void> Function() onEdit, onDelete;
 
   @override
@@ -328,6 +337,13 @@ class _RegionTile extends StatelessWidget {
             ]),
       onTap: row.level == RegionLevel.suburb ? null : onOpen,
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (onPhone != null)
+          IconButton(
+            key: ValueKey('region-phone-${row.key}'),
+            tooltip: 'Phone numbers and sign-in',
+            icon: const Icon(Icons.smartphone),
+            onPressed: onPhone,
+          ),
         IconButton(
           tooltip: 'Boundary on a map',
           icon: Icon(Icons.map_outlined, color: hasBoundary ? scheme.primary : null),

@@ -14,6 +14,7 @@ import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider
 import 'core/always_on.dart';
 import 'core/app_branding.dart';
 import 'core/date_order.dart' show setProfileDateCountry;
+import 'core/dial_countries.dart' show setDialCountries;
 import 'core/launch_destination.dart' show AppLaunch;
 import 'core/auth_utils.dart'
     show
@@ -40,6 +41,7 @@ import 'data/app_icon_service.dart';
 import 'data/app_version_repository.dart' show appUpdateProvider, recordAppVersion;
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
+import 'data/phone_rules_repository.dart';
 import 'data/branding_cache.dart';
 import 'data/live_share.dart';
 import 'data/live_tables.dart';
@@ -686,6 +688,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     // profile's, else the phone's): DD/MM/YYYY, MM/DD/YYYY or YYYY/MM/DD.
     ref.listenManual(profileProvider, (_, next) => setProfileDateCountry(next.value?.nationality),
         fireImmediately: true);
+    // The phone screen's countries: the admin's phone rules (0292).
+    ref.listenManual(phoneRuleCountriesProvider, (_, next) {
+      final list = next.value;
+      if (list != null) setDialCountries(list);
+    }, fireImmediately: true);
     // Admin → Display → Popups: how long a popup message stays open (live).
     ref.listenManual(appDisplayProvider, (_, next) {
       final d = next.value;

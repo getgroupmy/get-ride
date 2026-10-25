@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../core/auth_utils.dart';
 import '../core/app_display.dart' show isRegistrationClosed, registrationClosedPinMessage;
+import '../core/phone_rules.dart';
 import '../features/auth/passkey/passkey.dart' as pk;
 import 'meter_session_store.dart';
 import 'session_guard.dart';
@@ -105,6 +106,9 @@ class AuthRepository {
     } on PostgrestException catch (e) {
       final wait = parseRateLimitSeconds(e.message);
       if (wait != null) throw PhoneLookupRateLimited(wait);
+      // The country's phone rules (0292): blocked, wrong length, a landline.
+      final refusal = parsePhoneRuleRefusal(e.message);
+      if (refusal != null) throw refusal;
       throw const PhoneLookupFailed();
     } catch (_) {
       throw const PhoneLookupFailed();
