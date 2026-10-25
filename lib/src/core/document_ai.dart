@@ -199,6 +199,7 @@ docAiAutofill(
 /// Why there is no verdict, in words for the partner.
 String docAiUnavailableText(String? reason) => switch (reason) {
   'disabled' || 'no_keys' || 'provider_no_vision' => 'AI checks are not set up. An admin will review it.',
+  'off' => 'An admin will review it.',
   'image_too_large' => 'The photo is too large to check automatically. An admin will review it.',
   'not_deployed' => 'AI checks are not available yet. An admin will review it.',
   'signed_out' => 'Sign in again to check documents automatically. An admin will review it.',

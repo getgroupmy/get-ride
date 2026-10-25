@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../admin_registry.dart';
 import 'assign_service_screens.dart';
 import 'catalogue_logic.dart';
+import 'document_reading_screen.dart';
 import 'document_screens.dart';
 import 'driver_service_locks_screen.dart';
 import 'make_model_screen.dart';
@@ -40,6 +41,7 @@ final catalogueRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/driver-service-locks', builder: (_, _) => const DriverServiceLocksScreen()),
   GoRoute(path: '/admin/m/document-type', builder: (_, _) => const DocumentTypeScreen()),
   GoRoute(path: '/admin/m/required-documents', builder: (_, _) => const RequiredDocumentsScreen()),
+  GoRoute(path: documentReadingPath, builder: (_, _) => const DocumentReadingScreen()),
   GoRoute(path: '/admin/m/vehicle-make-model', builder: (_, _) => const VehicleMakeModelScreen()),
   GoRoute(path: '/admin/m/assign-service', builder: (_, _) => const AssignServiceScreen()),
   GoRoute(
@@ -112,6 +114,14 @@ const catalogueEntries = <AdminScreenEntry>[
     path: '/admin/m/required-documents',
     pages: ['admin-settings-required-documents'],
     icon: Icons.fact_check_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'Services & catalogue',
+    title: 'Document reading',
+    subtitle: 'Who reads document photos, in what order: phone, office NAS, cloud',
+    path: documentReadingPath,
+    pages: [documentReadingPage],
+    icon: Icons.document_scanner_outlined,
   ),
   AdminScreenEntry(
     section: 'Services & catalogue',
