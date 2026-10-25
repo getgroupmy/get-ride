@@ -94,7 +94,7 @@ class DispatchScreen extends ConsumerWidget {
         ),
         body: Column(
           children: [
-            if (checks.renewDue) RenewIdBanner(checks: checks),
+            if (checks.renewDue) RenewIdNotice(checks: checks),
             Expanded(
               child: TabBarView(
                 children: [

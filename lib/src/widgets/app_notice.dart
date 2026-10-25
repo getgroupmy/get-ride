@@ -15,6 +15,12 @@ enum NoticeKind { info, success, error }
 /// The notice on screen, replaced by the next one so repeats never stack.
 Route<void>? _shown;
 
+/// Admin → Display → Popups → Close popups after (`popupAutoCloseSeconds`):
+/// every notice closes itself this long after it opens, as if its (x) was
+/// tapped. Zero keeps it open until it is closed. The app sets it from the
+/// display settings (app.dart), live as the admin changes it.
+final noticeAutoClose = ValueNotifier<Duration>(Duration.zero);
+
 /// [message] as a modal with an OK (and [actionLabel] as a second button,
 /// running [onAction] once the modal is closed). [id] is the notice's area,
 /// `notice.<area>`, listed in App Page Settings; [key] is the dialog's, for
@@ -57,6 +63,7 @@ Future<void> showAppNotice({
         message: message,
         title: title,
         kind: kind,
+        autoClose: noticeAutoClose.value,
         actionLabel: actionLabel,
         onAction: actionLabel == null
             ? null
@@ -83,13 +90,16 @@ Future<void> showAppNotice({
   return done.future;
 }
 
-/// The notice itself: an icon by [kind], the message, OK.
-class NoticeDialog extends StatelessWidget {
+/// The notice itself: an icon by [kind] with an (x) beside it, the message,
+/// OK. With [autoClose] it closes itself after that long, a bar under the
+/// message showing the time left.
+class NoticeDialog extends StatefulWidget {
   const NoticeDialog({
     super.key = const ValueKey('notice'),
     required this.message,
     this.title,
     this.kind = NoticeKind.info,
+    this.autoClose = Duration.zero,
     this.actionLabel,
     this.onAction,
   });
@@ -97,28 +107,84 @@ class NoticeDialog extends StatelessWidget {
   final String message;
   final String? title;
   final NoticeKind kind;
+  final Duration autoClose;
   final String? actionLabel;
   final VoidCallback? onAction;
 
   @override
+  State<NoticeDialog> createState() => _NoticeDialogState();
+}
+
+class _NoticeDialogState extends State<NoticeDialog> with SingleTickerProviderStateMixin {
+  /// The time left, 1 to 0, while it closes by itself.
+  AnimationController? _left;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.autoClose > Duration.zero) {
+      _left = AnimationController(vsync: this, duration: widget.autoClose, value: 1)
+        ..addStatusListener((s) {
+          if (s == AnimationStatus.dismissed && mounted) Navigator.maybePop(context);
+        })
+        ..reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _left?.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final (icon, color) = switch (kind) {
+    final (icon, color) = switch (widget.kind) {
       NoticeKind.info => (Icons.info_outline, cs.primary),
       NoticeKind.success => (Icons.check_circle_outline, cs.primary),
       NoticeKind.error => (Icons.error_outline, cs.error),
     };
+    final left = _left;
+    final action = widget.actionLabel != null && widget.onAction != null;
     return AlertDialog(
-      icon: Icon(icon, color: color),
-      title: title == null ? null : Text(title!, textAlign: TextAlign.center),
-      content: SingleChildScrollView(child: Text(message)),
+      // The kind's icon in the middle, the (x) at the end.
+      icon: Row(children: [
+        const SizedBox(width: 40),
+        Expanded(child: Icon(icon, color: color)),
+        IconButton(
+          key: const ValueKey('notice-close'),
+          tooltip: 'Close',
+          visualDensity: VisualDensity.compact,
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ]),
+      iconPadding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+      title: widget.title == null ? null : Text(widget.title!, textAlign: TextAlign.center),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Flexible(child: SingleChildScrollView(child: Text(widget.message))),
+        if (left != null) ...[
+          const SizedBox(height: 16),
+          AnimatedBuilder(
+            animation: left,
+            builder: (_, _) => LinearProgressIndicator(
+              key: const ValueKey('notice-time-left'),
+              value: left.value,
+              minHeight: 3,
+              borderRadius: BorderRadius.circular(2),
+              semanticsLabel: 'Closes by itself',
+            ),
+          ),
+        ],
+      ]),
       actions: [
-        if (actionLabel != null && onAction != null)
-          TextButton(key: const ValueKey('notice-action'), onPressed: onAction, child: Text(actionLabel!)),
+        if (action)
+          TextButton(key: const ValueKey('notice-action'), onPressed: widget.onAction, child: Text(widget.actionLabel!)),
         FilledButton(
           key: const ValueKey('notice-ok'),
           onPressed: () => Navigator.pop(context),
-          child: Text(actionLabel != null && onAction != null ? 'Close' : 'OK'),
+          child: Text(action ? 'Close' : 'OK'),
         ),
       ],
     );

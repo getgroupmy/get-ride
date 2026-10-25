@@ -1,5 +1,7 @@
 // Calls that didn't ring a closed iPhone: the "Notifications are off"
 // warning and the VoIP token retries (push_service.dart).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/push_logic.dart';
@@ -26,26 +28,35 @@ void main() {
   });
 
   for (final dark in [false, true]) {
-    testWidgets('the banner offers Settings and Not now (${dark ? 'dark' : 'light'})', (tester) async {
-      final messenger = GlobalKey<ScaffoldMessengerState>();
-      var settings = 0, dismissed = 0;
+    testWidgets('a popup with an (x) and Open Settings (${dark ? 'dark' : 'light'})', (tester) async {
+      late BuildContext ctx;
+      var settings = 0, closed = 0;
       await tester.pumpWidget(
         MaterialApp(
-          scaffoldMessengerKey: messenger,
           theme: dark ? ThemeData.dark() : ThemeData.light(),
-          home: const Scaffold(body: SizedBox()),
+          home: Scaffold(body: Builder(builder: (c) {
+            ctx = c;
+            return const SizedBox();
+          })),
         ),
       );
-      messenger.currentState!.showMaterialBanner(
-        notificationsOffBanner(onSettings: () => settings++, onDismiss: () => dismissed++),
-      );
+      unawaited(showNotificationsOffNotice(context: ctx, onSettings: () => settings++).then((_) => closed++));
       await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text(notificationsOffTitle), findsOneWidget);
       expect(find.text(notificationsOffText), findsOneWidget);
-      final icon = tester.widget<Icon>(find.byIcon(Icons.notifications_off_outlined));
+      final icon = tester.widget<Icon>(find.byIcon(Icons.error_outline));
       expect(icon.color, Theme.of(tester.element(find.byType(Scaffold))).colorScheme.error);
-      await tester.tap(find.byKey(const ValueKey('notifications-off-settings')));
-      await tester.tap(find.byKey(const ValueKey('notifications-off-later')));
-      expect((settings, dismissed), (1, 1));
+      await tester.tap(find.text('Open Settings'));
+      await tester.pumpAndSettle();
+      expect((settings, closed), (1, 1));
+      expect(find.byType(AlertDialog), findsNothing);
+      // Again, closed by its (x): no Settings.
+      unawaited(showNotificationsOffNotice(context: ctx, onSettings: () => settings++).then((_) => closed++));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('notice-close')));
+      await tester.pumpAndSettle();
+      expect((settings, closed), (1, 2));
     });
   }
 }

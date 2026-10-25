@@ -4,6 +4,7 @@
 // passport, then "Waiting for approval" until the ID is approved. The server
 // decides what is left (dispatch_my_checks) and holds the role shut; these
 // pages only show it. User mode keeps working throughout.
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/signin_checks.dart';
 import '../../data/auth_repository.dart';
 import '../../data/identity_repository.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/date_boxes.dart';
@@ -531,22 +533,40 @@ Future<void> openRenewIdPage(BuildContext context, DispatchChecks checks) => Nav
   ),
 );
 
-/// Above the role's own pages while the ID runs out soon.
-class RenewIdBanner extends StatelessWidget {
-  const RenewIdBanner({super.key, required this.checks});
+/// The ID expiries already told about in this run of the app: the popup
+/// opens once per expiry, not on every visit to the role's pages.
+final _renewIdShown = <String>{};
+
+/// While the ID runs out soon: a popup over the role's own pages, with an
+/// (x) and Upload new ID, once per run of the app. Draws nothing itself.
+class RenewIdNotice extends StatefulWidget {
+  const RenewIdNotice({super.key, required this.checks});
   final DispatchChecks checks;
 
   @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
+  State<RenewIdNotice> createState() => _RenewIdNoticeState();
+}
+
+class _RenewIdNoticeState extends State<RenewIdNotice> {
+  @override
+  void initState() {
+    super.initState();
+    final checks = widget.checks;
+    if (!_renewIdShown.add('${checks.id.expiry}')) return;
     final when = checks.id.expiry == null ? 'soon' : 'on ${formatDateForUser(checks.id.expiry)}';
-    return MaterialBanner(
+    unawaited(showAppNotice(
+      id: 'notice.dispatch-renew-id',
+      context: context,
       key: const ValueKey('renew-id'),
-      leading: Icon(Icons.badge_outlined, color: t.colorScheme.primary),
-      content: Text('Your ID runs out $when. Send a new one.'),
-      actions: [
-        TextButton(onPressed: () => openRenewIdPage(context, checks), child: const Text('Upload new ID')),
-      ],
-    );
+      title: 'Your ID runs out $when',
+      message: 'Send a new one so you can keep working.',
+      actionLabel: 'Upload new ID',
+      onAction: () {
+        if (mounted) openRenewIdPage(context, checks);
+      },
+    ));
   }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

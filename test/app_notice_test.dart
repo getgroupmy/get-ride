@@ -29,6 +29,21 @@ void main() {
     expect(offenders, isEmpty, reason: 'use showAppNotice / showInfo / showError (lib/src/widgets/app_notice.dart)');
   });
 
+  test('no banners at the top of the app: they are popups too', () {
+    // The admin's "Read-only" line is a label on the page, not a message.
+    const allowed = {'lib/src/admin/widgets/admin_widgets.dart'};
+    final banner = RegExp(r'\b(MaterialBanner\s*\(|showMaterialBanner\b)');
+    final offenders = <String>[];
+    _libLines().forEach((path, lines) {
+      if (allowed.contains(path)) return;
+      for (var i = 0; i < lines.length; i++) {
+        if (lines[i].trimLeft().startsWith('//')) continue;
+        if (banner.hasMatch(lines[i])) offenders.add('$path:${i + 1}');
+      }
+    });
+    expect(offenders, isEmpty, reason: 'use showAppNotice (lib/src/widgets/app_notice.dart)');
+  });
+
   test("notice ids are 'notice.<area>' and listed in App Page Settings", () {
     final call = RegExp(r"\bshowAppNotice\s*\(\s*id:\s*'([^']+)'");
     final ids = <String>{};
@@ -93,6 +108,32 @@ void main() {
         await tester.tap(find.text('Undo'));
         await tester.pumpAndSettle();
         expect(undone, 1);
+        expect(find.byType(AlertDialog), findsNothing);
+      });
+
+      testWidgets('the (x) closes it', (tester) async {
+        final ctx = await pump(tester);
+        showInfo(ctx, 'Saved');
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('notice-time-left')), findsNothing, reason: 'stays open by default');
+        await tester.tap(find.byKey(const ValueKey('notice-close')));
+        await tester.pumpAndSettle();
+        expect(find.byType(AlertDialog), findsNothing);
+      });
+
+      testWidgets('closes by itself after the seconds the admin set', (tester) async {
+        final ctx = await pump(tester);
+        noticeAutoClose.value = const Duration(seconds: 5);
+        addTearDown(() => noticeAutoClose.value = Duration.zero);
+        showInfo(ctx, 'Saved');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.text('Saved'), findsOneWidget);
+        expect(find.byKey(const ValueKey('notice-time-left')), findsOneWidget);
+        await tester.pump(const Duration(seconds: 4));
+        expect(find.text('Saved'), findsOneWidget);
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
         expect(find.byType(AlertDialog), findsNothing);
       });
 

@@ -18,6 +18,7 @@ class AppDisplay {
     this.connectionFailedPopup = true,
     this.recentLocations = true,
     this.recentLocationsCount = 4,
+    this.popupAutoCloseSeconds = 0,
   });
 
   /// Master service switch. Off: booking shows "coming soon" instead of
@@ -73,6 +74,11 @@ class AppDisplay {
   final bool recentLocations;
   final int recentLocationsCount;
 
+  /// Admin → Display → Popups → Close popups after: every popup message
+  /// closes itself this many seconds after it opens (0-60). 0 keeps it open
+  /// until its (x) or OK is tapped.
+  final int popupAutoCloseSeconds;
+
   /// Reads the stored blob. Anything missing or unreadable keeps its default,
   /// so a half-written or older row never switches the service off.
   static AppDisplay fromSettings(Object? raw) {
@@ -102,6 +108,7 @@ class AppDisplay {
       connectionFailedPopup: flag('connectionFailedPopupEnabled'),
       recentLocations: flag('recentLocations'),
       recentLocationsCount: _count(raw['recentLocationsCount']),
+      popupAutoCloseSeconds: _seconds(raw['popupAutoCloseSeconds']),
     );
   }
 }
@@ -111,6 +118,16 @@ int _count(Object? v) {
   if (n == null) return 4;
   return n.round().clamp(0, 8);
 }
+
+int _seconds(Object? v) {
+  final n = v is num ? v : num.tryParse('${v ?? ''}');
+  if (n == null) return 0;
+  return n.round().clamp(popupAutoCloseMinSeconds, popupAutoCloseMaxSeconds);
+}
+
+/// Admin → Display → Popups → Close popups after: the seconds it allows.
+const popupAutoCloseMinSeconds = 0;
+const popupAutoCloseMaxSeconds = 60;
 
 /// Shown instead of a booking while the service switch is off (Expo's
 /// "Coming Soon" popup).
