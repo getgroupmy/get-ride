@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/doc_kinds.dart' show docKindAsk;
 import '../../../core/document_ai.dart';
 import '../../../core/partner_doc_check.dart';
 import '../../../data/document_ai_repository.dart';
@@ -1064,6 +1065,7 @@ class _DocUploadDialogState extends ConsumerState<DocUploadDialog> {
         startDate: f.requireStartDate ? _start.text : null,
         expiryDate: f.requireExpiryDate ? _expiry.text : null,
         isTaxiPermit: f.isTaxiPermit,
+        permitFields: f.readAs == null ? const [] : docKindAsk(f.readAs!),
       ));
     }
     if (!mounted || run != _aiRun) return;

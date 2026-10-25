@@ -14,9 +14,11 @@ import '../../widgets/in_app_page.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/date_boxes.dart';
+import '../../core/doc_kinds.dart' show DocOnFile;
 import '../../core/signin_checks.dart' show faceMatchText, faceNeedsCloserLook, livenessText, rejectNotes;
 import '../../data/identity_repository.dart' show identityRepositoryProvider;
 import '../widgets/reject_reason.dart';
+import 'doc_fields_section.dart';
 import 'online_selfie_check_screen.dart' show onlineSelfieCloserCountProvider;
 import 'signin_checks_review.dart';
 
@@ -59,7 +61,23 @@ Map<String, dynamic> withDocumentOwner(
 
   final partner = partners['${d['partner_id']}'];
   final vehicle = vehicles['${d['vehicle_id']}'];
-  return {...d, '_owner': text(partner?['name']) ?? text(partner?['phone']), '_plate': text(vehicle?['plate'])};
+  return {
+    ...d,
+    '_owner': text(partner?['name']) ?? text(partner?['phone']),
+    '_plate': text(vehicle?['plate']),
+    // What is on file, to check the fields read off the document against.
+    '_onFile': DocOnFile(
+      name: text(partner?['name']),
+      ic: text(partner?['ic']),
+      plate: text(vehicle?['plate']),
+      chassis: text(vehicle?['vin']),
+      engine: text(vehicle?['engine_number']),
+      make: text(vehicle?['make']),
+      model: text(vehicle?['model']),
+      year: text(vehicle?['year']),
+      ownerName: text(vehicle?['grant_owner_name']),
+    ),
+  };
 }
 
 /// The list search: document name and number, whose it is, and the plate.
@@ -248,6 +266,8 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
               },
             ),
           ),
+        // Every field printed on it, read and checked (document reading, part 2).
+        DocFieldsSection(doc: d),
         if (ai != null) ...[
           const SizedBox(height: 12),
           ExpansionTile(

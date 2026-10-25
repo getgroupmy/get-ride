@@ -8,6 +8,7 @@ library;
 
 import 'dart:convert';
 
+import '../../../core/doc_kinds.dart' show DocKind, docKindFor;
 import '../../../core/avatar.dart';
 import '../../../core/ride_bidding.dart' show RegionBlock, regionBlockOf;
 
@@ -681,6 +682,7 @@ class DocFlags {
     this.allowPdfUpload = false,
     this.isTaxiPermit = false,
     this.hasPhoto = false,
+    this.readAs,
   });
 
   factory DocFlags.fromValues(Map<String, dynamic> v) => DocFlags(
@@ -693,6 +695,7 @@ class DocFlags {
         allowPdfUpload: _truthy(v['allowPdfUpload'], false),
         isTaxiPermit: _truthy(v['isTaxiPermit'], false),
         hasPhoto: requiredDocHasPhoto(v),
+        readAs: docKindFor(v),
       );
 
   final bool requireStartDate, requireExpiryDate, requireDocumentNumber, requireInsuranceProvider, isPwd,
@@ -705,6 +708,10 @@ class DocFlags {
   /// The admin's "Has the person's photo" (0288): the upload is face-matched
   /// against the person's live selfie, which they take first on a phone.
   final bool hasPhoto;
+
+  /// What the document is read as (document reading, part 2): every field
+  /// printed on it is asked of the AI check. Null: the number and dates only.
+  final DocKind? readAs;
 }
 
 /// Names that carry the holder's photo: licences, permits, IDs (0288).
