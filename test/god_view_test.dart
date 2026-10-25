@@ -616,6 +616,28 @@ void main() {
       }
     }
 
+    for (final b in Brightness.values) {
+      testWidgets('phone: the Users filter has its own row, one line per label, in ${b.name}', (tester) async {
+        await _pump(tester, b: b, size: const Size(320, 844));
+        expect(tester.takeException(), isNull);
+        final bar = find.byKey(const ValueKey('god-view-user-filter'));
+        final chips = tester.getRect(find.byKey(const ValueKey('god-view-partners')));
+        final row = tester.getRect(bar);
+        expect(row.top, greaterThan(chips.bottom), reason: 'under the chips');
+        expect(row.width, greaterThan(320 - 2 * 12 - 1), reason: 'full width');
+        final one = tester.getSize(find.descendant(of: bar, matching: find.text('All'))).height;
+        for (final f in GodViewUserFilter.values) {
+          final h = tester.getSize(find.descendant(of: bar, matching: find.text(f.label))).height;
+          expect(h, lessThanOrEqualTo(one + 0.5), reason: '${f.label} on one line');
+        }
+        // The search box takes the width; the live line sits under it.
+        final search = tester.getRect(find.byKey(const ValueKey('god-view-search')));
+        final live = tester.getRect(find.byKey(const ValueKey('god-view-live')));
+        expect(search.width, greaterThan(320 - 2 * 12 - 1));
+        expect(live.top, greaterThan(search.bottom));
+      });
+    }
+
     testWidgets('SOS first in the list, last known after the live ones; Last known asks the server again',
         (tester) async {
       final repo = await _pump(tester, size: const Size(1400, 2400));
