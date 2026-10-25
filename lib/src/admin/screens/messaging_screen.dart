@@ -26,6 +26,7 @@ import 'reliability_card.dart';
 import 'session_access_card.dart';
 import 'sms_fallback_card.dart';
 import 'sms_limits_card.dart';
+import 'otp_safe_numbers_card.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart';
 
@@ -153,6 +154,8 @@ class AdminMessagingScreen extends ConsumerWidget {
                       ),
                     const SizedBox(height: 16),
                     SmsLimitsCard(canEdit: canEdit),
+                    const SizedBox(height: 12),
+                    OtpSafeNumbersCard(canEdit: canEdit),
                     const SizedBox(height: 16),
                     SmsFallbackCard(canEdit: canEdit),
                     const SizedBox(height: 16),

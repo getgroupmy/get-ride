@@ -10,10 +10,12 @@ import '../../core/app_display.dart';
 import '../../core/auth_utils.dart';
 import '../../core/dial_countries.dart';
 import '../../core/phone_input.dart';
+import '../../core/phone_rules.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/device_access.dart';
 import '../../data/session_guard.dart';
 import '../../providers.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/dial_country_picker.dart';
@@ -93,6 +95,9 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
         try {
           await auth.sendOtp(phone, createUser: true);
         } catch (e) {
+          // The country's rules (0292), checked again as the code is sent.
+          final refusal = parsePhoneRuleRefusal(e);
+          if (refusal != null) throw refusal;
           // Closed since this page read the settings: the server said so.
           if (!isRegistrationClosed('$e')) rethrow;
           if (mounted) setState(() => _busy = false);
@@ -105,9 +110,27 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
       } else if (lookup.hasPin) {
         context.push(signInStepPath('/login/pin', phone));
       } else {
-        await auth.sendOtp(phone, createUser: false);
+        try {
+          await auth.sendOtp(phone, createUser: false);
+        } catch (e) {
+          throw parsePhoneRuleRefusal(e) ?? e;
+        }
         if (!mounted) return;
         context.push(signInStepPath('/login/otp', phone, {'next': 'set-pin'}));
+      }
+    } on PhoneRuleRefusal catch (r) {
+      if (!mounted) return;
+      if (r.inline) {
+        setState(() => _numberError = r.message);
+      } else {
+        unawaited(showAppNotice(
+          id: 'notice.phone-rule',
+          context: context,
+          key: ValueKey('phone-rule-${r.code}'),
+          title: r.title,
+          message: r.message,
+          kind: NoticeKind.error,
+        ));
       }
     } catch (e) {
       if (mounted) showError(context, e);
