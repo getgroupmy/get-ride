@@ -7,6 +7,8 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:account-deletion-section.edit-retention', SurfaceKind.modal, 'Account deletion section · Edit retention', 'lib/src/admin/screens/people/account_deletion_section.dart'),
   SurfaceEntry('modal:account.confirm-sign-out', SurfaceKind.modal, 'Account · Confirm sign out', 'lib/src/features/profile/account_screen.dart'),
   SurfaceEntry('modal:admin-dispatch.account-checks', SurfaceKind.modal, 'Admin dispatch · Account checks', 'lib/src/admin/screens/dispatch/signin_checks_fields.dart'),
+  SurfaceEntry('modal:admin-doc-reading.code', SurfaceKind.modal, 'Admin doc reading · Code', 'lib/src/admin/screens/catalogue/document_reading_screen.dart'),
+  SurfaceEntry('modal:admin-doc-reading.connect', SurfaceKind.modal, 'Admin doc reading · Connect', 'lib/src/admin/screens/catalogue/document_reading_screen.dart'),
   SurfaceEntry('modal:admin-documents.edit-details', SurfaceKind.modal, 'Admin documents · Edit details', 'lib/src/admin/screens/documents_screen.dart'),
   SurfaceEntry('modal:admin-meter.discard-changes', SurfaceKind.modal, 'Admin meter · Discard changes', 'lib/src/admin/screens/meterapp/meter_digital_screen.dart'),
   SurfaceEntry('modal:admin-meter.saved-partly', SurfaceKind.modal, 'Admin meter · Saved partly', 'lib/src/admin/screens/meterapp/meter_digital_screen.dart'),
