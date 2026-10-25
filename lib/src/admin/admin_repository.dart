@@ -214,15 +214,20 @@ class AdminRepository {
     }
   }
 
-  /// Whose documents these are: partner names (by partner id) and, for
-  /// vehicle documents, plates (by vehicle id). One query per kind.
+  /// Whose documents these are: partner names and IC (by partner id) and,
+  /// for vehicle documents, the vehicle's plate, make, model, year, chassis,
+  /// engine and grant owner (by vehicle id), to check what was read against.
+  /// One query per kind.
   Future<({Map<String, Map<String, dynamic>> partners, Map<String, Map<String, dynamic>> vehicles})> documentOwners(
     Iterable<String> partnerIds,
     Iterable<String> vehicleIds,
   ) async {
     final p = partnerIds.toSet().toList(), v = vehicleIds.toSet().toList();
-    final partners = p.isEmpty ? const [] : await _db.from('partners').select('id, name, phone').inFilter('id', p);
-    final vehicles = v.isEmpty ? const [] : await _db.from('vehicle').select('id, plate').inFilter('id', v);
+    final partners = p.isEmpty ? const [] : await _db.from('partners').select('id, name, phone, ic').inFilter('id', p);
+    final vehicles = v.isEmpty ? const [] : await _db
+            .from('vehicle')
+            .select('id, plate, make, model, year, vin, engine_number, grant_owner_name')
+            .inFilter('id', v);
     return (
       partners: {for (final r in partners) '${r['id']}': Map<String, dynamic>.from(r as Map)},
       vehicles: {for (final r in vehicles) '${r['id']}': Map<String, dynamic>.from(r as Map)},

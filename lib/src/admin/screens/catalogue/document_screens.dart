@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/doc_kinds.dart' show docKindById, docKinds;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/search_select.dart';
 import '../../admin_providers.dart';
 import '../../admin_settings_models.dart';
 import '../../widgets/admin_widgets.dart';
@@ -536,6 +538,26 @@ class _RequiredDocEditorState extends State<_RequiredDocEditor> {
               subtitle: Text(o.desc),
               value: f.options[o.key] ?? false,
               onChanged: (x) => setState(() => f.options[o.key] = x),
+            ),
+          const SectionLabel('Read as', hint: 'Which document this is, so every field printed on it is read and checked'),
+          SearchableDropdownFormField<String>(
+            key: const ValueKey('required-doc-read-as'),
+            initialValue: f.effectiveReadAs,
+            decoration: const InputDecoration(labelText: 'Read as'),
+            items: [
+              const DropdownMenuItem(value: 'none', child: Text('None (read the number and dates only)')),
+              for (final k in docKinds) DropdownMenuItem(value: k.id, child: Text(k.name)),
+            ],
+            onChanged: (x) => setState(() => f.readAs = x),
+          ),
+          if (docKindById(f.effectiveReadAs) case final k?)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Reads: ${[for (final x in k.fields) x.label].join(', ')}.'
+                '${k.notKept.isEmpty ? '' : ' Never kept: ${k.notKept.join(', ')}.'}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
           const SectionLabel('Taxi Driver Permit', hint: 'For partner-teksi driver permit'),
           SwitchListTile(

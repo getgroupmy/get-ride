@@ -9,6 +9,7 @@ library;
 
 import 'dart:convert';
 
+import '../../../core/doc_kinds.dart' show guessDocKind;
 import '../../../core/my_ride.dart';
 import '../../../core/partner_type_rules.dart' show PartnerServiceSettings, PartnerTypeRules;
 import '../../../core/service_tree.dart';
@@ -880,6 +881,7 @@ class RequiredDocForm {
     Map<String, bool>? options,
     this.isTaxiPermit = false,
     this.hasPhoto,
+    this.readAs,
   })  : docTypes = docTypes ?? [],
         partnerTypes = partnerTypes ?? [],
         regions = regions ?? [],
@@ -902,6 +904,7 @@ class RequiredDocForm {
       options: {for (final o in requiredDocOptions) o.key: jsBool(v[o.key])},
       isTaxiPermit: jsBool(v['isTaxiPermit']),
       hasPhoto: v['hasPhoto'] is bool ? v['hasPhoto'] as bool : null,
+      readAs: v['readAs'] is String && '${v['readAs']}'.isNotEmpty ? v['readAs'] as String : null,
     );
   }
 
@@ -922,6 +925,13 @@ class RequiredDocForm {
   bool? hasPhoto;
 
   bool get effectiveHasPhoto => hasPhoto ?? (isTaxiPermit || defaultDocHasPhoto(name));
+
+  /// "Read as" (document reading, part 2): a kind's id from core/doc_kinds,
+  /// 'none' for none, or null to guess from the name.
+  String? readAs;
+
+  /// The kind the document is read as: the admin's pick, else the guess.
+  String get effectiveReadAs => readAs ?? guessDocKind(name)?.id ?? 'none';
 
   void toggleRegion(RegionSelection r) {
     regions = regions.any((x) => x.key == r.key)
@@ -960,6 +970,7 @@ ValuesResult buildRequiredDocValues({
     for (final o in requiredDocOptions) o.key: form.options[o.key] ?? false,
     'isTaxiPermit': form.isTaxiPermit,
     'hasPhoto': form.effectiveHasPhoto,
+    'readAs': form.effectiveReadAs,
   };
   // Expo merges onto the existing values so unknown keys survive.
   return (values: {...?editing?.values, ...values}, error: null);
