@@ -234,6 +234,20 @@ class AdminRepository {
     );
   }
 
+  /// What the office NAS read off each of these documents (0295), by
+  /// document id: the newest finished reading per side. Empty before 0295.
+  Future<Map<String, List<Map<String, dynamic>>>> documentNasReadings(String table, Iterable<String> ids) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return const {};
+    final rows = await _db.rpc('admin_doc_read_results', params: {'p_table': table, 'p_ids': list});
+    final out = <String, List<Map<String, dynamic>>>{};
+    for (final r in rows as List) {
+      final m = Map<String, dynamic>.from(r as Map);
+      (out['${m['doc_id']}'] ??= []).add(m);
+    }
+    return out;
+  }
+
   /// Corrects a document's details (Expo `DocumentMetadataEditModal`).
   Future<void> updateDocument(String table, String id, Map<String, dynamic> patch) => _updateOne(table, id, patch);
 

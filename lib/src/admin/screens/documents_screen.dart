@@ -38,8 +38,18 @@ final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dyn
         table == 'vehicle_documents' ? 'vehicle_document' : 'provider_document',
         docs.map((d) => '${d['id']}'),
       );
+      // What the office NAS read (0295); without it the list still works.
+      Map<String, List<Map<String, dynamic>>> nas = const {};
+      try {
+        nas = await repo.documentNasReadings(table, docs.map((d) => '${d['id']}'));
+      } catch (_) {}
       return [
-        for (final d in docs) {...withDocumentOwner(d, owners.partners, owners.vehicles), '_face': faces['${d['id']}']},
+        for (final d in docs)
+          {
+            ...withDocumentOwner(d, owners.partners, owners.vehicles),
+            '_face': faces['${d['id']}'],
+            '_nas': nas['${d['id']}'],
+          },
       ];
     } catch (_) {
       return docs;
@@ -268,6 +278,7 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
           ),
         // Every field printed on it, read and checked (document reading, part 2).
         DocFieldsSection(doc: d),
+        NasReadingSection(doc: d),
         if (ai != null) ...[
           const SizedBox(height: 12),
           ExpansionTile(

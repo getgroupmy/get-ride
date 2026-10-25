@@ -1,0 +1,15 @@
+# GET.ride document reader on the NAS. It only calls out to GET.ride: no port
+# is opened on the NAS or the router. Values come from .env next to this file
+# (copy .env.example). See README.md.
+services:
+  doc-reader:
+    build: .
+    platform: linux/amd64
+    image: getride-doc-reader:1
+    container_name: doc-reader
+    restart: unless-stopped
+    env_file: .env
+    # The reader's key and device id (kept across restarts and updates).
+    volumes:
+      - ./data:/data
+    mem_limit: 1g

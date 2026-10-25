@@ -161,3 +161,72 @@ class DocFieldsSection extends ConsumerWidget {
         FieldVerdict.none => const SizedBox.shrink(),
       };
 }
+
+/// What the office NAS read off a document (0295), side by side: plates and
+/// numbers, each marked when it matches what is on file, and how sure it was.
+class NasReadingSection extends StatelessWidget {
+  const NasReadingSection({super.key, required this.doc});
+  final Map<String, dynamic> doc;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = doc['_nas'] is List ? (doc['_nas'] as List).whereType<Map>().toList() : const <Map>[];
+    if (rows.isEmpty) return const SizedBox.shrink();
+    final t = Theme.of(context);
+    final onFile = doc['_onFile'] is DocOnFile ? doc['_onFile'] as DocOnFile : const DocOnFile();
+    final known = {
+      for (final v in [onFile.plate, onFile.chassis, onFile.engine, onFile.ic]) ?nasKey(v),
+    };
+    return Padding(
+      key: const ValueKey('doc-nas'),
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Read by ${rows.first['reader_label'] ?? 'the office NAS'}', style: t.textTheme.titleSmall),
+        for (final r in rows)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Wrap(spacing: 6, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text('${'${r['side']}' == 'back' ? 'Back' : 'Front'}: ${nasReadingStatus(r)}', style: t.textTheme.bodySmall),
+              for (final v in nasValues(r))
+                Chip(
+                  key: ValueKey('doc-nas-${nasKey(v)}'),
+                  visualDensity: VisualDensity.compact,
+                  avatar: known.contains(nasKey(v))
+                      ? Icon(Icons.check_circle, size: 16, color: t.colorScheme.primary, semanticLabel: 'Matches the record')
+                      : null,
+                  label: Text(v),
+                ),
+            ]),
+          ),
+      ]),
+    );
+  }
+}
+
+/// Plates, then numbers, then QR codes, as the NAS read them.
+List<String> nasValues(Map r) {
+  final res = r['result'] is Map ? r['result'] as Map : const {};
+  return [
+    for (final k in ['plates', 'numbers', 'qr'])
+      if (res[k] is List)
+        for (final v in res[k] as List)
+          if ('$v'.trim().isNotEmpty) '$v'.trim(),
+  ];
+}
+
+/// How a reading compares: letters and digits only, upper case.
+String? nasKey(String? s) {
+  final k = (s ?? '').toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  return k.isEmpty ? null : k;
+}
+
+/// "97% sure, 1.2 s" / "passed on (40% sure)" / "couldn't read it".
+String nasReadingStatus(Map r) {
+  final c = r['confidence'] is num ? (r['confidence'] as num).round() : null;
+  final ms = r['ms'] is num ? (r['ms'] as num).toInt() : null;
+  return switch ('${r['status']}') {
+    'passed_on' => 'passed on to the next reader${c == null ? '' : ' ($c% sure)'}',
+    'failed' => "couldn't read it",
+    _ => [if (c != null) '$c% sure', if (ms != null) '${(ms / 1000).toStringAsFixed(1)} s'].join(', '),
+  };
+}

@@ -1,0 +1,8 @@
+# PP-OCR through OpenVINO on the processor: runs on a Celeron J4125 without
+# AVX (measured on a DS224+: about 1.2 s a plate, 2.3 s a document number).
+# The same versions as the NAS test that measured it.
+rapidocr==3.10.0
+openvino==2026.4.1
+opencv-python-headless==5.0.0.93
+numpy==2.4.6
+requests==2.34.2
