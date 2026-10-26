@@ -21,6 +21,7 @@ class HomeSections {
     this.addressBar = true,
     this.newBadge = true,
     this.vehicleMarkers = false,
+    this.vehicleMarkersSwitch = false,
   });
 
   final bool vehicleBar;
@@ -30,6 +31,10 @@ class HomeSections {
   final bool addressBar;
   final bool newBadge;
   final bool vehicleMarkers;
+
+  /// Display → On-map vehicle icons alone; with home page sections the
+  /// vehicle bar's own switch is the layout's (core/home_layout.dart).
+  final bool vehicleMarkersSwitch;
 
   static HomeSections fromSettings(Map<String, dynamic> s) {
     bool flag(String k, bool d) {
@@ -53,6 +58,7 @@ class HomeSections {
       newBadge: flag('serviceBoxBadge', true),
       // Expo draws them only alongside the vehicle bar, for its selection.
       vehicleMarkers: flag('showVehicleMarkers', false) && flag('rideTypes', true),
+      vehicleMarkersSwitch: flag('showVehicleMarkers', false),
     );
   }
 }

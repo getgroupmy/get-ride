@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderObject, RenderRepaintBoundary, debugDisableShadows;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/home_layout.dart' show homeLayoutKey;
 import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/fare.dart';
 import 'package:get_ride/src/core/overlay_back.dart';
@@ -857,6 +858,30 @@ void main() {
     expect(tester.getRect(where).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('vehicle-type-bar'))).top));
     expect(find.byKey(const ValueKey('home-recent-KLCC')), findsNothing);
   });
+
+  for (final b in Brightness.values) {
+    testWidgets('Home page layout: its order, its search words and its switches (${b.name})', (tester) async {
+      // Recent places moved above the search bar, the bar reworded, the
+      // vehicle bar switched off.
+      await _pump(tester, _Rides(), book: false, brightness: b, display: {
+        homeLayoutKey: {
+          'sections': [
+            {'id': 'recent', 'type': 'recent', 'atRest': 1, 'more': false},
+            {'id': 'search', 'type': 'search', 'text': 'Ke mana hari ini?'},
+            {'id': 'vehicles', 'type': 'vehicles', 'on': false},
+            {'id': 'fold', 'type': 'fold'},
+          ],
+        },
+      });
+      expect(tester.takeException(), isNull);
+      expect(find.text('Ke mana hari ini?'), findsOneWidget);
+      expect(find.byKey(const ValueKey('vehicle-type-bar')), findsNothing);
+      // One recent place with the sheet down, above the bar; the rest not kept.
+      final recent = find.byWidgetPredicate((w) => w.key is ValueKey<String> && (w.key! as ValueKey<String>).value.startsWith('home-recent-'));
+      expect(recent, findsOneWidget);
+      expect(tester.getRect(recent).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('home-search'))).top));
+    });
+  }
 
   testWidgets('on its side at large text the whole route card shows above the confirm sheet', (tester) async {
     tester.platformDispatcher.textScaleFactorTestValue = 1.3;

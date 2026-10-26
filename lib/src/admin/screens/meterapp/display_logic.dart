@@ -7,6 +7,7 @@
 library;
 
 import 'dart:math' as math;
+import '../../../core/home_layout.dart' show HomeLayouts, HomeSectionType;
 import '../../../core/demo_mode.dart' show demoAccountIds, demoDriverIdsKey, demoRiderIdsKey;
 import '../../../core/ride_assistance.dart';
 import '../../../core/ride_option_settings.dart';
@@ -543,12 +544,10 @@ const rideTrackingLayoutItems = [
   LayoutItem('prRecenterHorizontal', 'Partner: recenter left/right', 'Recenter button on the partner ride map $_hDesc', -300, 300, 5),
 ];
 
-/// Home-screen section switches (`DISPLAY_SETTINGS_META`).
+/// Home-screen switches for what sits over the map. The parts under it
+/// (search bar, vehicle bar, recent places, service boxes and the rest) are
+/// laid out on Display Settings → Home page (core/home_layout.dart).
 const homeSectionToggles = [
-  ('rideTypes', 'Vehicle Types Bar', 'Top horizontal vehicle type selector'),
-  ('searchBar', 'Search Bar', 'Where to & for how much? input'),
-  ('recentLocations', 'Recent Locations', 'Recently visited places list'),
-  ('serviceCategories', 'Service Categories', 'Popular nearby places (5 boxes)'),
   ('recenterButton', 'Recenter Button', 'Floating recenter map button'),
   ('addressBar', 'Address Bar', 'Top centered address pill'),
 ];
@@ -587,14 +586,21 @@ typedef SheetItemEstimate = ({String label, int px});
 List<SheetItemEstimate> sheetItemEstimates(String key, Map<String, dynamic> s) {
   switch (key) {
     case homeSheetMinAdjustKey:
+      // The master home page's parts above the fold, in its order.
       const h = homeSheetItemHeights;
+      final layout = HomeLayouts.fromSettings(s).master;
       return [
-        displayBool(s, 'searchBar')
-            ? (label: 'Search Bar', px: h['searchBar']!)
-            : (label: 'Where to? row', px: h['whereToRow']!),
-        if (displayBool(s, 'rideTypes')) (label: 'Vehicle Types Bar', px: h['rideTypes']!),
-        if (displayBool(s, 'recentLocations')) (label: 'Recent Locations', px: h['recentLocations']!),
-        if (displayBool(s, 'serviceCategories')) (label: 'Service Categories', px: h['serviceCategories']!),
+        for (final x in layout.sections.takeWhile((x) => x.type != HomeSectionType.fold))
+          ...switch (x.type) {
+            HomeSectionType.search => [
+                x.on ? (label: 'Search Bar', px: h['searchBar']!) : (label: 'Where to? row', px: h['whereToRow']!),
+              ],
+            HomeSectionType.vehicles when x.on => [(label: 'Vehicle Types Bar', px: h['rideTypes']!)],
+            HomeSectionType.pickup when x.on => [(label: 'Pickup row', px: h['whereToRow']!)],
+            HomeSectionType.recent when x.on => [(label: 'Recent Locations', px: h['recentLocations']!)],
+            HomeSectionType.boxes when x.on => [(label: 'Service Categories', px: h['serviceCategories']!)],
+            _ => const <SheetItemEstimate>[],
+          },
       ];
     case confirmSheetMinAdjustKey:
       const h = confirmSheetItemHeights;

@@ -265,13 +265,12 @@ void main() {
         await _unmount(tester);
       });
 
-      testWidgets('turning a section on raises the figure by it and keeps the adjustment', (tester) async {
-        final store = await _pumpAdmin(tester, b, const {homeSheetMinAdjustKey: 20});
-        final before = sheetMinEstimate(store.blob, homeSheetMinAdjustKey).total;
-        expect(_text(tester, '$homeSheetMinAdjustKey-value'), '$before px');
-        await _tap(tester, find.widgetWithText(SwitchListTile, 'Service Categories'));
-        expect(store.blob['serviceCategories'], isTrue);
-        expect(_text(tester, '$homeSheetMinAdjustKey-value'), '${before + 84 + sheetItemGap} px');
+      testWidgets('a part shown above the fold of the home page raises the figure by it', (tester) async {
+        // The parts are switched on Display Settings › Home page now; here the
+        // service boxes are on in the master layout the old switches give.
+        final without = sheetMinEstimate(mergeDisplaySettings(const {homeSheetMinAdjustKey: 20}), homeSheetMinAdjustKey);
+        final store = await _pumpAdmin(tester, b, const {homeSheetMinAdjustKey: 20, 'serviceCategories': true});
+        expect(_text(tester, '$homeSheetMinAdjustKey-value'), '${without.total + 84 + sheetItemGap} px');
         expect(_text(tester, '$homeSheetMinAdjustKey-breakdown'), contains('Service Categories 84'));
         expect(store.blob[homeSheetMinAdjustKey], 20);
         expect(tester.takeException(), isNull);
