@@ -253,6 +253,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('page:display.assistance-options', SurfaceKind.page, 'Display · Assistance options', 'lib/src/admin/screens/meterapp/display_screen.dart'),
   SurfaceEntry('page:display.courier-settings', SurfaceKind.page, 'Display · Courier settings', 'lib/src/admin/screens/meterapp/display_screen.dart'),
   SurfaceEntry('page:display.freight-settings', SurfaceKind.page, 'Display · Freight settings', 'lib/src/admin/screens/meterapp/display_screen.dart'),
+  SurfaceEntry('page:display.home-layout', SurfaceKind.page, 'Display · Home layout', 'lib/src/admin/screens/meterapp/display_screen.dart'),
   SurfaceEntry('page:display.pet-options', SurfaceKind.page, 'Display · Pet options', 'lib/src/admin/screens/meterapp/display_screen.dart'),
   SurfaceEntry('page:display.ride-option-places', SurfaceKind.page, 'Display · Ride option places', 'lib/src/admin/screens/meterapp/display_screen.dart'),
   SurfaceEntry('page:display.stepper', SurfaceKind.page, 'Display · Stepper', 'lib/src/admin/screens/meterapp/display_screen.dart'),

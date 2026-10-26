@@ -30,6 +30,7 @@ import 'media_gallery_screen.dart' show mediaGalleryPath;
 import 'media_picker_sheet.dart';
 import '../../../core/media_assets.dart' show MediaKind, isMediaRef;
 import '../../../widgets/media_image.dart';
+import 'home_layout_screen.dart' show HomeLayoutScreen;
 import 'ride_option_places_screen.dart' show RideOptionPlacesScreen;
 import 'freight_settings_screen.dart' show FreightSettingsScreen;
 import 'courier_settings_screen.dart' show CourierSettingsScreen;
@@ -234,6 +235,18 @@ class _DisplayBody extends ConsumerWidget {
           const _Section('Home Screen Sections'),
           Card(
             child: Column(children: [
+              ListTile(
+                key: const ValueKey('display-home-page'),
+                leading: const Icon(Icons.dashboard_customize_outlined),
+                title: const Text('Home page'),
+                subtitle: const Text('The parts under the map, their order and which show; a master layout and '
+                    'any country, state or city with its own'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(AppPageRoute(id: 'display.home-layout',
+                      builder: (_) => const HomeLayoutScreen(),
+                    )),
+              ),
+              const Divider(height: 1),
               for (final (key, label, desc) in homeSectionToggles)
                 toggle(label, desc, displayBool(s, key), (v) => set(key, v)),
               const Divider(height: 1),

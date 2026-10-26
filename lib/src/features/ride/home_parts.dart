@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../core/fare.dart';
+import '../../core/home_layout.dart' show homeSearchDefaultText;
 import '../../core/home_sections.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/common.dart' show inkOn, mutedTextColor;
@@ -338,8 +339,11 @@ class _VehicleTypeBarState extends State<VehicleTypeBar> {
 
 /// "Where to & for how much?" (Expo `searchBar`).
 class HomeSearchPill extends StatelessWidget {
-  const HomeSearchPill({super.key, required this.onTap});
+  const HomeSearchPill({super.key, required this.onTap, this.text = homeSearchDefaultText});
   final VoidCallback onTap;
+
+  /// Admin → Display Settings → Home page → Search bar's words.
+  final String text;
 
   @override
   Widget build(BuildContext context) {
@@ -362,7 +366,7 @@ class HomeSearchPill extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Where to & for how much?',
+                  text,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: t.textTheme.titleMedium?.copyWith(

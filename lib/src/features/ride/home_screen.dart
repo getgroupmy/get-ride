@@ -41,6 +41,7 @@ import '../../core/service_tree.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_request_metadata.dart';
 import '../../core/ride_rebook.dart';
+import '../../core/home_layout.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_confirm.dart';
 import '../../core/ride_stops.dart';
@@ -2155,13 +2156,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await _book();
   }
 
-  /// The Expo home parts shown before a destination is chosen, as Admin →
-  /// Display Settings switches them: vehicle-type bar, search bar, recent
-  /// places and the service boxes.
-  Widget _homeParts(HomeSections sections, Map<String, dynamic> blob, AppDisplay? display) {
+  /// The home page under the map before a destination is chosen: the
+  /// sections Admin → Display Settings → Home page lays out for where the
+  /// rider is (the master layout, or a place's own), in their order. Those
+  /// above the fold show with the sheet all the way down; those under it
+  /// only with the sheet up.
+  Widget _homeParts(HomeSections sections, HomeLayout layout, Map<String, dynamic> blob, AppDisplay? display) {
     final serviceOn = display?.serviceEnabled ?? true;
-    final recent = sections.recentPlaces ? (ref.watch(recentPlacesProvider).value ?? const <Place>[]) : const <Place>[];
-    final boxes = sections.serviceBoxes
+    final recentSection = layout.of(HomeSectionType.recent);
+    final recent = layout.shows(HomeSectionType.recent)
+        ? (ref.watch(recentPlacesProvider).value ?? const <Place>[])
+        : const <Place>[];
+    final boxes = layout.shows(HomeSectionType.boxes)
         ? serviceBoxViews(
             blob,
             serviceNames: ref.watch(serviceBoxNamesProvider).value ?? const {},
@@ -2190,81 +2196,99 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _updateRoute();
     }
 
-    // The two most recent places stay in view with the sheet all the way
-    // down (portrait as on its side); any more only with the sheet up.
-    final firstRecent = recent.take(homeRecentAtRest).toList();
-    final moreRecent = recent.skip(homeRecentAtRest).toList();
+    // The first recent places stay in view with the sheet down (portrait as
+    // on its side); the rest, when the admin keeps them, only with it up.
+    final atRest = recentSection?.atRest ?? homeRecentAtRestDefault;
+    final firstRecent = recent.take(atRest).toList();
+    final moreRecent = (recentSection?.more ?? true) ? recent.skip(atRest).toList() : const <Place>[];
+
+    final above = <Widget>[];
+    final below = <Widget>[];
+    var folded = false;
+    for (final s in layout.sections) {
+      final into = folded ? below : above;
+      switch (s.type) {
+        case HomeSectionType.search:
+          // Where to, wherever it stands: however low the admin sets the
+          // sheet, it stays whole (the floor). Switched off, a plain row
+          // takes its place, so a rider can always book.
+          into.add(KeyedSubtree(
+            key: _floorKey,
+            child: s.on
+                ? HomeSearchPill(text: s.text, onTap: whereTo)
+                : ListTile(
+                    key: const ValueKey('home-where-to'),
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.location_on, color: Colors.red.shade700),
+                    title: const Text('Where to?'),
+                    onTap: whereTo,
+                  ),
+          ));
+          into.add(const SizedBox(height: 12));
+        case HomeSectionType.vehicles when s.on:
+          // Until a catalogue is known -- this read's, or the one this device
+          // showed last time -- a skeleton: the built-in names and car icons
+          // would read as the real services and then change.
+          into.add(ref.watch(rideServicesProvider).hasValue || ref.watch(cachedRideServicesProvider).value != null
+              ? VehicleTypeBar(
+                  services: _services,
+                  selected: _service,
+                  onSelect: (v) => setState(() => _serviceName = v.name),
+                  // As the confirm step's, without the trip's high-fare note,
+                  // tolls, coins or taxes: there is no trip yet.
+                  onInfo: (v) => _showFareInfo(v, null, false, null),
+                )
+              : const VehicleTypeBarSkeleton());
+          into.add(const SizedBox(height: 4));
+        case HomeSectionType.pickup when s.on:
+          into.add(ListTile(
+            key: const ValueKey('home-pickup-row'),
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
+            title: Text(_pickup?.name ?? 'Set pickup'),
+            onTap: () => _choose(_PinTarget.pickup),
+          ));
+        case HomeSectionType.upcoming when s.on:
+          into.add(const UpcomingRideCard());
+        case HomeSectionType.recent when s.on:
+          if (firstRecent.isNotEmpty) into.add(HomeRecentPlaces(places: firstRecent, onTap: toRecent));
+          // Under the fold already: the rest follow straight on.
+          if (folded && moreRecent.isNotEmpty) into.add(HomeRecentPlaces(places: moreRecent, onTap: toRecent));
+        case HomeSectionType.boxes when boxes.isNotEmpty:
+          into.add(Padding(
+            padding: EdgeInsets.only(top: into.isEmpty ? 0 : 16),
+            child: ServiceBoxesGrid(
+              boxes: boxes,
+              onOpen: (b) => b.route == null
+                  ? comingSoon(serviceBoxComingSoon(b.title))
+                  : b.route == freightPageRoute
+                      ? openFreightPage(context)
+                      : b.route == courierPageRoute
+                          ? openCourierPage(context)
+                          : openAppRoute(context, b.route!),
+            ),
+          ));
+        case HomeSectionType.fold:
+          // The sheet all the way down reaches this line, clear of the home
+          // indicator (plus Admin → Display → Bottom sheet minimum height).
+          above.add(KeyedSubtree(key: _foldKey, child: const SizedBox(width: double.infinity)));
+          folded = true;
+          // Recent places above the fold: the rest open the part under it.
+          final recentAbove = layout.sections.indexWhere((x) => x.type == HomeSectionType.recent) <
+              layout.sections.indexOf(s);
+          if (recentAbove && layout.shows(HomeSectionType.recent) && moreRecent.isNotEmpty) {
+            below.add(HomeRecentPlaces(places: moreRecent, onTap: toRecent));
+          }
+        default:
+          break;
+      }
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      // Where to first: the destination leads, over the vehicles. However
-      // low the admin sets the sheet, it stays whole (the floor).
-      KeyedSubtree(
-        key: _floorKey,
-        child: sections.searchBar
-            ? HomeSearchPill(onTap: whereTo)
-            : ListTile(
-                key: const ValueKey('home-where-to'),
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.location_on, color: Colors.red.shade700),
-                title: const Text('Where to?'),
-                onTap: whereTo,
-              ),
-      ),
-      const SizedBox(height: 12),
-      if (sections.vehicleBar) ...[
-        // Until a catalogue is known -- this read's, or the one this device
-        // showed last time -- a skeleton: the built-in names and car icons
-        // would read as the real services and then change.
-        if (ref.watch(rideServicesProvider).hasValue || ref.watch(cachedRideServicesProvider).value != null)
-          VehicleTypeBar(
-            services: _services,
-            selected: _service,
-            onSelect: (s) => setState(() => _serviceName = s.name),
-            // As the confirm step's, without the trip's high-fare note,
-            // tolls, coins or taxes: there is no trip yet.
-            onInfo: (s) => _showFareInfo(s, null, false, null),
-          )
-        else
-          const VehicleTypeBarSkeleton(),
-        const SizedBox(height: 4),
-      ],
-      if (!sections.addressBar)
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: Icon(Icons.trip_origin, color: Colors.green.shade700),
-          title: Text(_pickup?.name ?? 'Set pickup'),
-          onTap: () => _choose(_PinTarget.pickup),
+      ...above,
+      if (below.isNotEmpty)
+        MapSheetUpOnly(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: below),
         ),
-      // The fold reaches the foot of the last item shown: the upcoming-ride
-      // card, the first recent places and the service boxes, so the sheet
-      // all the way down shows every item switched on whole, clear of the
-      // home indicator (plus Admin → Display → Bottom sheet minimum height).
-      KeyedSubtree(
-        key: _foldKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const UpcomingRideCard(),
-            if (firstRecent.isNotEmpty) HomeRecentPlaces(places: firstRecent, onTap: toRecent),
-            if (boxes.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              ServiceBoxesGrid(
-                boxes: boxes,
-                onOpen: (b) => b.route == null
-                    ? comingSoon(serviceBoxComingSoon(b.title))
-                    : b.route == freightPageRoute
-                        ? openFreightPage(context)
-                        : b.route == courierPageRoute
-                            ? openCourierPage(context)
-                            : openAppRoute(context, b.route!),
-              ),
-            ],
-          ],
-        ),
-      ),
-      // Recent places past the first ones only with the sheet up.
-      if (moreRecent.isNotEmpty)
-        MapSheetUpOnly(child: HomeRecentPlaces(places: moreRecent, onTap: toRecent)),
     ]);
   }
 
@@ -2313,7 +2337,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final display = ref.watch(appDisplayProvider).value;
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final sections = HomeSections.fromSettings(blob);
-    _syncCars(sections.vehicleMarkers);
+    // The home page for where the rider is: the place's own, or the master.
+    final homeLayout = HomeLayouts.fromSettings(blob).layoutFor(_optionPlace);
+    _syncCars(sections.vehicleMarkersSwitch && homeLayout.shows(HomeSectionType.vehicles));
     final serviceIndex = _services.indexWhere((s) => s.name == _service.name);
     final ai = _ai;
     final tolls = display?.showAiTollBooths ?? true
@@ -2888,7 +2914,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           : null,
       onEditFare: _biddingFor(_service) && _basis != null && !_routing ? _openOfferFare : null,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
-      idle: _drop == null ? _homeParts(sections, blob, display) : null,
+      idle: _drop == null ? _homeParts(sections, homeLayout, blob, display) : null,
       footer: wide ? footer : null,
     );
 
