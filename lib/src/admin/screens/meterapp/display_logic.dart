@@ -433,22 +433,27 @@ Map<String, dynamic> normalizeMenu(Object? m) {
 }
 
 List<Map<String, dynamic>> normalizeBoxes(Object? boxes) {
-  final base = defaultServiceBoxes();
   final list = boxes is List ? boxes : const [];
-  return [
-    for (var i = 0; i < base.length; i++)
-      () {
-        final merged = <String, dynamic>{...base[i], if (i < list.length && list[i] is Map) ...Map<String, dynamic>.from(list[i] as Map)};
-        final route = normalizeServiceBoxRoute(merged['route']);
-        if (route != null) {
-          merged['route'] = route;
-        } else {
-          merged.remove('route');
-        }
-        merged['comingSoon'] = merged['comingSoon'] == true;
-        return merged;
-      }(),
-  ];
+  return [for (var i = 0; i < serviceBoxCount; i++) normalizeBox(i < list.length ? list[i] : null, i)];
+}
+
+/// Box [i] over its defaults: a route this app can open (else none) and a
+/// plain Coming soon switch. Past the first five, the five defaults again.
+Map<String, dynamic> normalizeBox(Object? raw, int i) {
+  final base = defaultServiceBoxes()[i % serviceBoxCount];
+  final merged = <String, dynamic>{
+    ...base,
+    if (i >= serviceBoxCount) 'id': 'box-$i',
+    if (raw is Map) ...Map<String, dynamic>.from(raw),
+  };
+  final route = normalizeServiceBoxRoute(merged['route']);
+  if (route != null) {
+    merged['route'] = route;
+  } else {
+    merged.remove('route');
+  }
+  merged['comingSoon'] = merged['comingSoon'] == true;
+  return merged;
 }
 
 /// The stored blob merged over the defaults (`mergeRemote`); unknown keys

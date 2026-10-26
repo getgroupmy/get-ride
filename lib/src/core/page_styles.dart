@@ -193,6 +193,12 @@ const elementTokens = <String, List<StyleToken>>{
     StyleToken.number('infoIconSize', '(i) size', 22, min: 14, max: 34, group: 'Vehicle bar'),
     StyleToken.color('vehicleSelected', 'Chosen card', light: 0xFFD8EEFB, dark: 0xFF2B2E8C, group: 'Vehicle bar'),
     StyleToken.color('infoIcon', '(i) colour', light: 0xFF5468FF, dark: 0xFF5468FF, group: 'Vehicle bar'),
+    // The service boxes (Display Settings → Home page → Service boxes).
+    StyleToken.color('boxColor', 'Box colour', light: 0xFFF1F0EC, dark: 0xFF2C2C2C, group: 'Service boxes'),
+    StyleToken.color('boxTitleColor', 'Title colour', light: 0xFF2E3138, dark: 0xFFFFFFFF, group: 'Service boxes'),
+    StyleToken.number('boxTitleSize', 'Title size', 16, min: 12, max: 22, group: 'Service boxes'),
+    StyleToken.number('boxRadius', 'Curve', 20, min: 0, max: 32, group: 'Service boxes'),
+    StyleToken.number('boxHeight', 'Short box height', 100, min: 70, max: 160, step: 5, group: 'Service boxes'),
     // The chosen vehicle on the confirm page (ConfirmServiceCard): a larger
     // picture whose back is cut off by the card's left edge.
     StyleToken.number('chosenPictureSize', 'Chosen picture size', 170, min: 100, max: 220, step: 10, unit: '%', group: _chosen),

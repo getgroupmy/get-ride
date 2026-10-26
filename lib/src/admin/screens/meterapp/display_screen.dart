@@ -430,8 +430,17 @@ class _DisplayBody extends ConsumerWidget {
           TestAccountsCard(canEdit: canEdit),
           const _Section('Service Boxes'),
           Card(
-            child: toggle('Show "NEW" badge', 'Toggle the NEW badge on the featured (large) service box',
-                displayBool(s, 'serviceBoxBadge'), (v) => set('serviceBoxBadge', v)),
+            child: Column(children: [
+              const ListTile(
+                key: ValueKey('display-boxes-moved'),
+                leading: Icon(Icons.info_outline),
+                title: Text('These five boxes show until the boxes are edited on Home page'),
+                subtitle: Text('Home page › Service boxes › Edit the boxes: any number of boxes, rows, picture size '
+                    'and place, and badges. It starts from these five.'),
+              ),
+              toggle('Show "NEW" badge', 'Toggle the NEW badge on the featured (large) service box',
+                  displayBool(s, 'serviceBoxBadge'), (v) => set('serviceBoxBadge', v)),
+            ]),
           ),
           for (var i = 0; i < serviceBoxCount; i++)
             Spotlight(

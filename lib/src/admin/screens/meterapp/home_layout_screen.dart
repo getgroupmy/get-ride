@@ -11,6 +11,7 @@ import '../../../core/partner_type_rules.dart' show RegionScope;
 import '../../../core/ride_option_places.dart' show OptionPlaceScope;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
+import '../../../widgets/page_style_host.dart';
 import '../../../widgets/search_select.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
@@ -18,6 +19,7 @@ import '../geo/geo_data.dart' show regionsProvider;
 import '../geo/geo_logic.dart' show RegionEntry;
 import 'display_screen.dart' show applyDisplay, displayPage;
 import 'display_store.dart';
+import 'home_boxes_screen.dart' show HomeBoxesScreen;
 
 /// The places to pick from: Master, every region the admin has, and any
 /// place with a layout whose region has since gone. Outermost first.
@@ -47,7 +49,9 @@ String homeSectionHelp(HomeSection s) => switch (s.type) {
       HomeSectionType.upcoming => 'Shows only when the rider has a booked ride coming up',
       HomeSectionType.recent =>
         '${s.atRest} with the sheet down${s.more ? ', the rest with it up' : ''}',
-      HomeSectionType.boxes => 'Set the boxes under Display Settings › Service Boxes',
+      HomeSectionType.boxes => s.boxes == null
+          ? 'The five boxes of Display Settings › Service Boxes, until you edit them here'
+          : '${s.boxes!.length} boxes in ${s.rows.length} rows',
       HomeSectionType.fold => 'Above this line shows with the sheet all the way down; below it only with the sheet up',
       null => 'From a newer version of the app: kept as it is',
     };
@@ -192,6 +196,10 @@ class _HomeLayoutScreenState extends ConsumerState<HomeLayoutScreen> {
                 canEdit: canEdit,
                 onMove: (by) => _save(own.moved(i, i + by)),
                 onEdit: (patch) => _save(own.edited(own.sections[i].id, patch)),
+                onOpenBoxes: () => Navigator.of(context).push(AppPageRoute(
+                  id: 'display.home-boxes',
+                  builder: (_) => HomeBoxesScreen(place: _place),
+                )),
               ),
           ]),
         ),
@@ -212,9 +220,11 @@ class _SectionTile extends StatelessWidget {
     required this.canEdit,
     required this.onMove,
     required this.onEdit,
+    required this.onOpenBoxes,
   });
 
   final HomeSection section;
+  final VoidCallback onOpenBoxes;
   final bool first, last, canEdit;
   final Future<void> Function(int by) onMove;
   final Future<void> Function(Map<String, dynamic> patch) onEdit;
@@ -262,6 +272,19 @@ class _SectionTile extends StatelessWidget {
             maxLength: homeSearchMaxText,
             decoration: const InputDecoration(labelText: 'Words in the bar', isDense: true),
             onFieldSubmitted: (v) => onEdit({'text': v.trim()}),
+          ),
+        ),
+      if (s.type == HomeSectionType.boxes)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              key: const ValueKey('home-edit-boxes'),
+              icon: const Icon(Icons.dashboard_customize_outlined),
+              label: const Text('Edit the boxes'),
+              onPressed: onOpenBoxes,
+            ),
           ),
         ),
       if (s.type == HomeSectionType.recent && s.on)

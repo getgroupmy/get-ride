@@ -7,6 +7,7 @@ library;
 
 import 'partner_type_rules.dart' show RegionScope;
 import 'ride_option_places.dart' show OptionPlaceScope;
+import 'service_boxes.dart' show BoxRowKind, boxRowsOf, legacyBoxRows;
 
 /// The kinds of section. The built-in ones are the parts the home screen
 /// had before sections: each is there exactly once, can be moved and
@@ -73,6 +74,20 @@ class HomeSection {
 
   /// Whether the rest of the recent places show with the sheet up.
   bool get more => raw['more'] != false;
+
+  /// The service boxes' own list (Home page › Service boxes); null until
+  /// the admin edits them there, when Display Settings' five stand.
+  List<Map<String, dynamic>>? get boxes {
+    final list = raw['boxes'];
+    if (list is! List) return null;
+    return [for (final b in list) if (b is Map) Map<String, dynamic>.from(b)];
+  }
+
+  /// The service boxes' rows; the old layout until set.
+  List<BoxRowKind> get rows {
+    final r = boxRowsOf(raw['rows']);
+    return r.isEmpty ? boxRowsOf(legacyBoxRows) : r;
+  }
 
   HomeSection copyWith(Map<String, dynamic> patch) => HomeSection({...raw, ...patch});
 

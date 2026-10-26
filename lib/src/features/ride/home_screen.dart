@@ -2167,9 +2167,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final recent = layout.shows(HomeSectionType.recent)
         ? (ref.watch(recentPlacesProvider).value ?? const <Place>[])
         : const <Place>[];
+    final boxesSection = layout.of(HomeSectionType.boxes);
     final boxes = layout.shows(HomeSectionType.boxes)
         ? serviceBoxViews(
             blob,
+            // Home page › Service boxes' own, once the admin set them there.
+            boxes: boxesSection?.boxes,
             serviceNames: ref.watch(serviceBoxNamesProvider).value ?? const {},
             serviceEnabled: serviceOn,
             newBadge: sections.newBadge,
@@ -2259,6 +2262,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             padding: EdgeInsets.only(top: into.isEmpty ? 0 : 16),
             child: ServiceBoxesGrid(
               boxes: boxes,
+              rows: s.rows,
               onOpen: (b) => b.route == null
                   ? comingSoon(serviceBoxComingSoon(b.title))
                   : b.route == freightPageRoute

@@ -7,6 +7,7 @@ import 'dart:math' as math;
 
 import '../admin/screens/meterapp/display_logic.dart';
 import 'expo_routes.dart';
+import 'service_boxes.dart';
 import 'courier.dart' show courierPageRoute;
 import 'freight.dart' show DeliveryKind, freightPageRoute;
 
@@ -120,9 +121,10 @@ class ServiceBoxView {
     this.iconName,
     this.imageUri,
     this.route,
-    this.badge,
     this.freight = false,
     this.courier = false,
+    this.look = const BoxLook({}),
+    this.badgeWords = const [],
   });
 
   final int index;
@@ -134,8 +136,14 @@ class ServiceBoxView {
   /// Where a tap goes in this app; null shows "coming soon".
   final String? route;
 
-  /// 'SOON', 'NEW' or none.
-  final String? badge;
+  /// The badge's first word ('SOON', 'NEW', the admin's) or none.
+  String? get badge => badgeWords.isEmpty ? null : badgeWords.first.text;
+
+  /// The badge's words, in turn (core/service_boxes.dart); empty for none.
+  final List<BadgeWord> badgeWords;
+
+  /// Picture size and place, and the badge's flip, size and corner.
+  final BoxLook look;
 
   /// The Freight box: it opens the Freight page ([freightPageRoute]) once
   /// there is a freight size to book, whatever its "coming soon" says.
@@ -197,6 +205,7 @@ String serviceBoxOpensText({
 /// [courierAvailable] (core/courier.dart).
 List<ServiceBoxView> serviceBoxViews(
   Map<String, dynamic> settings, {
+  List<Map<String, dynamic>>? boxes,
   Map<String, String> serviceNames = const {},
   bool serviceEnabled = true,
   bool newBadge = true,
@@ -204,11 +213,16 @@ List<ServiceBoxView> serviceBoxViews(
   bool freightAvailable = false,
   bool courierAvailable = false,
 }) {
-  final boxes = normalizeBoxes(settings['serviceBoxes']);
+  // The Home page's own boxes (any number), else the five of Display
+  // Settings, which may not be all there: each over its defaults.
+  final own = boxes != null;
+  final list = own
+      ? [for (var i = 0; i < boxes.length; i++) normalizeBox(boxes[i], i)]
+      : normalizeBoxes(settings['serviceBoxes']);
   return [
-    for (var i = 0; i < boxes.length; i++)
+    for (var i = 0; i < list.length; i++)
       () {
-        final b = boxes[i];
+        final b = list[i];
         String? str(String k) {
           final v = '${b[k] ?? ''}'.trim();
           return v.isEmpty ? null : v;
@@ -230,6 +244,7 @@ List<ServiceBoxView> serviceBoxViews(
                 : courier
                     ? (courierAvailable ? courierPageRoute : null)
                     : (b['comingSoon'] != true ? flutterRouteFor(str('route')) : null);
+        final look = BoxLook(b);
         return ServiceBoxView(
           index: i,
           title: title,
@@ -237,9 +252,16 @@ List<ServiceBoxView> serviceBoxViews(
           iconName: str('iconName'),
           imageUri: str('imageUri'),
           route: route,
-          badge: route == null ? 'SOON' : (i == 0 && newBadge ? 'NEW' : null),
+          // The admin's words when set; else SOON while it can't open and NEW
+          // on the first box with the old switch on.
+          badgeWords: switch (look.badgeOn) {
+            false => const <BadgeWord>[],
+            true when look.badgeWords.isNotEmpty => badgeTurns(look.badgeWords, flip: look.flip),
+            _ => route == null ? soonBadge : (i == 0 && newBadge && !own ? newBadgeWords : const <BadgeWord>[]),
+          },
           freight: freight,
           courier: courier,
+          look: look,
         );
       }(),
   ];

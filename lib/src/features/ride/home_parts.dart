@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -8,6 +10,7 @@ import 'package:skeletonizer/skeletonizer.dart';
 import '../../core/fare.dart';
 import '../../core/home_layout.dart' show homeSearchDefaultText;
 import '../../core/home_sections.dart';
+import '../../core/service_boxes.dart';
 import '../../data/geo_service.dart';
 import '../../widgets/common.dart' show inkOn, mutedTextColor;
 import '../../core/media_assets.dart' show isMediaRef;
@@ -426,97 +429,228 @@ const _boxIcons = <String, IconData>{
   'Bell': Icons.notifications_outlined,
 };
 
-/// The five service boxes (Expo `serviceCategories` + `serviceBoxes`): box 0
-/// large on the left over box 3, boxes 1, 2 and 4 on the right.
+/// The service boxes in the rows the admin laid out (Display Settings →
+/// Home page → Service boxes; before that, the big box on the left with two
+/// beside it, then a row of two). Boxes fill the places in order; a place
+/// past the last box stays empty. Each picture sits where the admin put it
+/// and may run past the box's edge, which trims it.
 class ServiceBoxesGrid extends StatelessWidget {
-  const ServiceBoxesGrid({super.key, required this.boxes, required this.onOpen});
+  const ServiceBoxesGrid({
+    super.key,
+    required this.boxes,
+    required this.onOpen,
+    this.rows = const [BoxRowKind.bigLeft, BoxRowKind.two],
+  });
   final List<ServiceBoxView> boxes;
   final ValueChanged<ServiceBoxView> onOpen;
+  final List<BoxRowKind> rows;
 
-  Widget _box(BuildContext context, ServiceBoxView b, double height) {
-    final featured = b.featured;
+  @override
+  Widget build(BuildContext context) {
+    if (boxes.isEmpty || rows.isEmpty) return const SizedBox.shrink();
+    // App Page Settings → Home → Service boxes.
+    final style = SurfaceStyle.of(context, homeSurface);
+    final short = style.number('boxHeight');
+    final tall = short * 2 + boxGap;
+    var next = 0;
+    ServiceBoxView? take() => next < boxes.length ? boxes[next++] : null;
+    Widget place(ServiceBoxView? b, bool isTall) => b == null
+        ? SizedBox(height: isTall ? tall : short)
+        : _ServiceBox(box: b, height: isTall ? tall : short, onOpen: onOpen);
+    final out = <Widget>[];
+    for (final row in rows) {
+      final cells = [for (final t in row.tall) place(take(), t)];
+      if (out.isNotEmpty) out.add(const SizedBox(height: boxGap));
+      Widget beside(int i) => Expanded(child: cells[i]);
+      out.add(switch (row) {
+        BoxRowKind.bigLeft || BoxRowKind.bigRight => Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            textDirection: row == BoxRowKind.bigRight ? TextDirection.rtl : TextDirection.ltr,
+            children: [
+              beside(0),
+              const SizedBox(width: boxGap),
+              Expanded(child: Column(children: [cells[1], const SizedBox(height: boxGap), cells[2]])),
+            ],
+          ),
+        _ => Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            for (var i = 0; i < cells.length; i++) ...[if (i > 0) const SizedBox(width: boxGap), beside(i)],
+          ]),
+      });
+    }
+    return Column(key: const ValueKey('service-boxes'), mainAxisSize: MainAxisSize.min, children: out);
+  }
+}
+
+class _ServiceBox extends StatelessWidget {
+  const _ServiceBox({required this.box, required this.height, required this.onOpen});
+  final ServiceBoxView box;
+  final double height;
+  final ValueChanged<ServiceBoxView> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final b = box;
+    final t = Theme.of(context);
+    final style = SurfaceStyle.of(context, homeSurface);
+    final radius = BorderRadius.circular(style.number('boxRadius'));
+    final fill = style.color('boxColor', t.brightness) ?? t.colorScheme.surfaceContainerHigh;
+    final ink = style.color('boxTitleColor', t.brightness) ?? t.colorScheme.onSurface;
+    final look = b.look;
+    final badgeAt = look.badgeAt;
     return SizedBox(
       height: height,
       child: Material(
-        color: const Color(0xFF2A2A2A),
-        borderRadius: BorderRadius.circular(18),
+        color: fill,
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
         child: InkWell(
           key: ValueKey('service-box-${b.index}'),
-          borderRadius: BorderRadius.circular(18),
           onTap: () => onOpen(b),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Stack(
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        b.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    if (b.badge != null)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: Color(b.badge == 'NEW' ? 0xFFD32F26 : 0xFF5C5C66),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          b.badge!,
-                          style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                  ],
+          child: LayoutBuilder(builder: (context, c) {
+            final pic = boxPictureRect(look, c.maxWidth, height);
+            // The title keeps clear of a badge in a top corner beside it.
+            final badgeTop = b.badgeWords.isNotEmpty && badgeAt.y < 0;
+            return Stack(clipBehavior: Clip.hardEdge, children: [
+              Positioned(
+                left: pic.left,
+                top: pic.top,
+                width: pic.side,
+                height: pic.side,
+                child: IgnorePointer(child: _BoxPicture(box: b, side: pic.side)),
+              ),
+              Positioned(
+                left: 14,
+                // A badge top left: the title goes under it; top right: the
+                // title stops short of it.
+                top: badgeTop && badgeAt.x < 0 ? 16 + look.badgeY + look.badgeSize * 2.2 : 12,
+                right: badgeTop && badgeAt.x > 0 ? 16 + look.badgeX + look.badgeSize * 5.5 : 12,
+                child: Text(
+                  b.title,
+                  key: ValueKey('service-box-title-${b.index}'),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: ink, fontSize: style.number('boxTitleSize'), fontWeight: FontWeight.w500, height: 1.2),
                 ),
-                Align(
-                  alignment: Alignment.bottomRight,
-                  child: b.imageUri != null
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(14),
-                          child: uriImage(b.imageUri, width: featured ? 84 : 56, height: featured ? 84 : 56),
-                        )
-                      : isMediaRef(b.iconName)
-                      ? MediaIcon(b.iconName, fallback: Icons.apps, size: featured ? 72 : 44, color: Color(b.accent))
-                      : Icon(_boxIcons[b.iconName] ?? Icons.apps, size: featured ? 72 : 44, color: Color(b.accent)),
+              ),
+              if (b.badgeWords.isNotEmpty)
+                Positioned(
+                  left: badgeAt.x < 0 ? 10 + look.badgeX : null,
+                  right: badgeAt.x > 0 ? 10 + look.badgeX : null,
+                  top: badgeAt.y < 0 ? 10 + look.badgeY : null,
+                  bottom: badgeAt.y > 0 ? 10 + look.badgeY : null,
+                  child: FlipBadge(
+                    key: ValueKey('service-box-badge-${b.index}'),
+                    words: b.badgeWords,
+                    seconds: look.flipSeconds,
+                    size: look.badgeSize,
+                  ),
                 ),
-              ],
-            ),
-          ),
+            ]);
+          }),
         ),
       ),
     );
   }
+}
+
+/// A box's picture: the admin's image, else its icon (a Media Gallery one
+/// or a built-in name), filling [side].
+class _BoxPicture extends StatelessWidget {
+  const _BoxPicture({required this.box, required this.side});
+  final ServiceBoxView box;
+  final double side;
 
   @override
   Widget build(BuildContext context) {
-    if (boxes.length < 5) return const SizedBox.shrink();
-    return Row(
-      key: const ValueKey('service-boxes'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            children: [_box(context, boxes[0], 210), const SizedBox(height: 10), _box(context, boxes[3], 100)],
-          ),
+    final b = box;
+    if (b.imageUri != null) return uriImage(b.imageUri, width: side, height: side, fit: BoxFit.contain);
+    return FittedBox(
+      child: isMediaRef(b.iconName)
+          ? MediaIcon(b.iconName, fallback: Icons.apps, size: side, color: Color(b.accent))
+          : Icon(_boxIcons[b.iconName] ?? Icons.apps, size: side, color: Color(b.accent)),
+    );
+  }
+}
+
+/// A badge whose words take turns, each for [seconds], flipping over
+/// ("NEW", "50% OFF", "NEW", ...), each word in its own colours. One word
+/// stays put; with reduced motion the words change without the flip.
+class FlipBadge extends StatefulWidget {
+  const FlipBadge({super.key, required this.words, this.seconds = badgeSecondsDefault, this.size = badgeSizeDefault});
+  final List<BadgeWord> words;
+  final double seconds;
+  final double size;
+
+  @override
+  State<FlipBadge> createState() => _FlipBadgeState();
+}
+
+class _FlipBadgeState extends State<FlipBadge> {
+  Timer? _timer;
+  int _at = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _arm();
+  }
+
+  @override
+  void didUpdateWidget(FlipBadge old) {
+    super.didUpdateWidget(old);
+    if (old.seconds != widget.seconds || old.words.length != widget.words.length) {
+      _at = 0;
+      _arm();
+    }
+  }
+
+  void _arm() {
+    _timer?.cancel();
+    _timer = null;
+    if (widget.words.length < 2) return;
+    final step = Duration(milliseconds: (widget.seconds * 1000).round().clamp(1000, 6000));
+    _timer = Timer.periodic(step, (_) {
+      if (mounted) setState(() => _at = (_at + 1) % widget.words.length);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget.words[_at % widget.words.length];
+    final size = widget.size;
+    final pill = Container(
+      key: ValueKey('badge-word-$_at-${w.text}'),
+      padding: EdgeInsets.symmetric(horizontal: size * 0.8, vertical: size / 3),
+      decoration: BoxDecoration(color: Color(w.fill), borderRadius: BorderRadius.circular(999)),
+      child: Text(
+        w.text,
+        style: TextStyle(color: Color(w.ink), fontSize: size, fontWeight: FontWeight.w700, letterSpacing: 0.5, height: 1.1),
+      ),
+    );
+    if (widget.words.length < 2 || MediaQuery.disableAnimationsOf(context)) return pill;
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 450),
+      switchInCurve: Curves.easeOut,
+      // Only the incoming word shows: it flips down into place.
+      layoutBuilder: (current, previous) => current ?? const SizedBox.shrink(),
+      transitionBuilder: (child, anim) => AnimatedBuilder(
+        animation: anim,
+        child: child,
+        builder: (_, c) => Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.identity()
+            ..setEntry(3, 2, 0.004)
+            ..rotateX((1 - anim.value) * -math.pi / 2),
+          child: c,
         ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            children: [
-              _box(context, boxes[1], 100),
-              const SizedBox(height: 10),
-              _box(context, boxes[2], 100),
-              const SizedBox(height: 10),
-              _box(context, boxes[4], 100),
-            ],
-          ),
-        ),
-      ],
+      ),
+      child: pill,
     );
   }
 }
