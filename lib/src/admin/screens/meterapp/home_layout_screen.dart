@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/home_layout.dart';
+import '../../../core/home_tiles.dart';
 import '../../../core/partner_type_rules.dart' show RegionScope;
 import '../../../core/ride_option_places.dart' show OptionPlaceScope;
 import '../../../widgets/busy.dart';
@@ -20,6 +21,7 @@ import '../geo/geo_logic.dart' show RegionEntry;
 import 'display_screen.dart' show applyDisplay, displayPage;
 import 'display_store.dart';
 import 'home_boxes_screen.dart' show HomeBoxesScreen;
+import 'home_tiles_screen.dart' show HomeTilesScreen;
 
 /// The places to pick from: Master, every region the admin has, and any
 /// place with a layout whose region has since gone. Outermost first.
@@ -53,6 +55,9 @@ String homeSectionHelp(HomeSection s) => switch (s.type) {
           ? 'The five boxes of Display Settings › Service Boxes, until you edit them here'
           : '${s.boxes!.length} boxes in ${s.rows.length} rows',
       HomeSectionType.fold => 'Above this line shows with the sheet all the way down; below it only with the sheet up',
+      HomeSectionType.tiles || HomeSectionType.wide =>
+        '${s.title.isEmpty ? 'No heading' : '“${s.title}”'} · ${s.shownTiles.length} of ${s.tiles.length} tiles shown',
+      HomeSectionType.promos => '${s.shownTiles.length} of ${s.tiles.length} cards shown',
       null => 'From a newer version of the app: kept as it is',
     };
 
@@ -200,11 +205,30 @@ class _HomeLayoutScreenState extends ConsumerState<HomeLayoutScreen> {
                   id: 'display.home-boxes',
                   builder: (_) => HomeBoxesScreen(place: _place),
                 )),
+                onOpenTiles: () => Navigator.of(context).push(AppPageRoute(
+                  id: 'display.home-tiles',
+                  builder: (_) => HomeTilesScreen(place: _place, sectionId: own.sections[i].id),
+                )),
+                onRemove: () => _save(own.removed(own.sections[i].id)),
               ),
           ]),
         ),
         const SizedBox(height: 8),
-        Text('Each part can be moved and switched off, not removed. A switched-off part keeps its settings.',
+        Text('Add a section', style: t.textTheme.titleSmall),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final type in const [HomeSectionType.tiles, HomeSectionType.wide, HomeSectionType.promos])
+            BusyButton.outlined(
+              key: ValueKey('home-add-${type.key}'),
+              icon: const Icon(Icons.add),
+              // At the end of the page, under the fold: seen with the sheet up.
+              onPressed: canEdit ? () => _save(own.added(newTileSection(type))) : null,
+              child: Text(type.label),
+            ),
+        ]),
+        const SizedBox(height: 8),
+        Text("Today's parts can be moved and switched off, not removed; added sections can be removed too. "
+            'A switched-off section keeps its settings.',
             style: t.textTheme.bodySmall),
       ],
     ]);
@@ -221,10 +245,13 @@ class _SectionTile extends StatelessWidget {
     required this.onMove,
     required this.onEdit,
     required this.onOpenBoxes,
+    required this.onOpenTiles,
+    required this.onRemove,
   });
 
   final HomeSection section;
-  final VoidCallback onOpenBoxes;
+  final VoidCallback onOpenBoxes, onOpenTiles;
+  final Future<void> Function() onRemove;
   final bool first, last, canEdit;
   final Future<void> Function(int by) onMove;
   final Future<void> Function(Map<String, dynamic> patch) onEdit;
@@ -256,7 +283,11 @@ class _SectionTile extends StatelessWidget {
         )
       else
         BusySwitchListTile(
-          title: Text(s.type?.label ?? 'Unknown part'),
+          title: Text(s.type == null
+              ? 'Unknown part'
+              : !s.type!.builtIn && s.title.isNotEmpty
+                  ? '${s.type!.label}: ${s.title}'
+                  : s.type!.label),
           subtitle: Text(homeSectionHelp(s)),
           value: s.on,
           onChanged: canEdit && s.type != null ? (v) => onEdit({'on': v}) : null,
@@ -286,6 +317,24 @@ class _SectionTile extends StatelessWidget {
               onPressed: onOpenBoxes,
             ),
           ),
+        ),
+      if (s.type != null && !s.type!.builtIn)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Wrap(spacing: 8, children: [
+            OutlinedButton.icon(
+              key: ValueKey('home-edit-tiles-${s.id}'),
+              icon: const Icon(Icons.edit_outlined),
+              label: Text(s.type == HomeSectionType.promos ? 'Edit the cards' : 'Edit the tiles'),
+              onPressed: onOpenTiles,
+            ),
+            BusyButton.text(
+              key: ValueKey('home-remove-${s.id}'),
+              icon: const Icon(Icons.delete_outline),
+              onPressed: canEdit ? onRemove : null,
+              child: const Text('Remove section'),
+            ),
+          ]),
         ),
       if (s.type == HomeSectionType.recent && s.on)
         Padding(

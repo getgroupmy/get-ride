@@ -42,6 +42,8 @@ import '../../core/ride_bidding.dart';
 import '../../core/ride_request_metadata.dart';
 import '../../core/ride_rebook.dart';
 import '../../core/home_layout.dart';
+import '../../core/expo_routes.dart' show flutterRouteFor;
+import '../../core/home_tiles.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_confirm.dart';
 import '../../core/ride_stops.dart';
@@ -2205,6 +2207,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final firstRecent = recent.take(atRest).toList();
     final moreRecent = (recentSection?.more ?? true) ? recent.skip(atRest).toList() : const <Place>[];
 
+    // A tile, a heading or a promo card: its page, or Coming Soon.
+    void openTile(String? route, String title) {
+      if (serviceOn && route == freightPageRoute) {
+        openFreightPage(context);
+      } else if (serviceOn && route == courierPageRoute) {
+        openCourierPage(context);
+      } else if (serviceOn && flutterRouteFor(route) != null) {
+        openAppRoute(context, flutterRouteFor(route)!);
+      } else {
+        comingSoon(serviceBoxComingSoon(title));
+      }
+    }
+
     final above = <Widget>[];
     final below = <Widget>[];
     var folded = false;
@@ -2271,6 +2286,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ? openCourierPage(context)
                           : openAppRoute(context, b.route!),
             ),
+          ));
+        case HomeSectionType.tiles || HomeSectionType.wide when s.on && s.shownTiles.isNotEmpty:
+          into.add(Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: HomeTileRow(section: s, onOpen: openTile),
+          ));
+        case HomeSectionType.promos when s.on && s.shownTiles.isNotEmpty:
+          into.add(Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: HomePromoRow(section: s, onOpen: openTile),
           ));
         case HomeSectionType.fold:
           // The sheet all the way down reaches this line, clear of the home
