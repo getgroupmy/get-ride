@@ -378,6 +378,16 @@ class ServiceAreaField extends StatelessWidget {
     }
   }
 
+  /// A chosen area: read as "City: Ampang" with a remove action, not as an
+  /// unticked, disabled tick box.
+  Widget _areaChip(String kind, IconData icon, String label, VoidCallback? onRemove) => Semantics(
+        container: true,
+        label: '$kind: $label',
+        onDismiss: onRemove,
+        excludeSemantics: true,
+        child: InputChip(avatar: Icon(icon, size: 16), label: Text(label), onDeleted: onRemove),
+      );
+
   @override
   Widget build(BuildContext context) {
     Widget row(IconData icon, String label, int count, bool disabled, String level) => ListTile(
@@ -396,20 +406,11 @@ class ServiceAreaField extends StatelessWidget {
       if (!value.isEmpty)
         Wrap(spacing: 6, runSpacing: 6, children: [
           for (final c in value.countries)
-            InputChip(
-                avatar: const Icon(Icons.public, size: 16),
-                label: Text(c),
-                onDeleted: enabled ? () => onChanged(value.toggleCountry(c)) : null),
+            _areaChip('Country', Icons.public, c, enabled ? () => onChanged(value.toggleCountry(c)) : null),
           for (final s in value.states)
-            InputChip(
-                avatar: const Icon(Icons.map_outlined, size: 16),
-                label: Text(areaLabel(s)),
-                onDeleted: enabled ? () => onChanged(value.toggleState(s)) : null),
+            _areaChip('State', Icons.map_outlined, areaLabel(s), enabled ? () => onChanged(value.toggleState(s)) : null),
           for (final c in value.cities)
-            InputChip(
-                avatar: const Icon(Icons.location_city, size: 16),
-                label: Text(areaLabel(c)),
-                onDeleted: enabled ? () => onChanged(value.toggleCity(c)) : null),
+            _areaChip('City', Icons.location_city, areaLabel(c), enabled ? () => onChanged(value.toggleCity(c)) : null),
         ]),
     ]);
   }

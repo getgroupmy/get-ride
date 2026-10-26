@@ -536,3 +536,60 @@ String? reviewFixRoute(String key) {
   final step = reviewFixFor(key).step;
   return step == null ? null : '/drive/onboarding?step=${step.key}';
 }
+
+// ---- Who viewed and decided what (0296) ---------------------------------------------------------
+
+/// One row of `partner_review_log`: a view of a line's document, a
+/// decision, a return to pending, or the partner approved.
+class ReviewLogEntry {
+  const ReviewLogEntry({required this.itemKey, required this.action, this.actorId, required this.at});
+
+  final String itemKey;
+
+  /// viewed, approved, rejected, edited, pending or partner_approved.
+  final String action;
+  final String? actorId;
+  final DateTime at;
+
+  static ReviewLogEntry? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final at = DateTime.tryParse('${raw['at'] ?? ''}');
+    final key = '${raw['item_key'] ?? ''}';
+    final action = '${raw['action'] ?? ''}';
+    if (at == null || key.isEmpty || action.isEmpty) return null;
+    final actor = raw['actor_id'];
+    return ReviewLogEntry(itemKey: key, action: action, actorId: actor == null ? null : '$actor', at: at.toLocal());
+  }
+
+  /// "Viewed", "Passed", "Rejected", "Edited", "Back to pending".
+  String get label => switch (action) {
+        'viewed' => 'Viewed',
+        'approved' => 'Passed',
+        'rejected' => 'Rejected',
+        'edited' => 'Edited',
+        'pending' => 'Back to pending',
+        'partner_approved' => 'Partner approved',
+        _ => action,
+      };
+}
+
+/// What the log says about one line: how many times its document was
+/// viewed, the last viewer, and whether [me] viewed it since it last went
+/// back to pending (what deciding it needs).
+typedef ReviewViews = ({int count, String? lastBy, DateTime? lastAt, bool mine});
+
+ReviewViews reviewViewsFor(String key, List<ReviewLogEntry> log, String? me) {
+  final mineLine = [for (final e in log) if (e.itemKey == key) e];
+  final views = [for (final e in mineLine) if (e.action == 'viewed') e];
+  DateTime? since;
+  for (final e in mineLine) {
+    if (e.action == 'pending' && (since == null || e.at.isAfter(since))) since = e.at;
+  }
+  final mine = me != null && views.any((e) => e.actorId == me && (since == null || e.at.isAfter(since)));
+  final last = views.isEmpty ? null : views.last;
+  return (count: views.length, lastBy: last?.actorId, lastAt: last?.at, mine: mine);
+}
+
+/// Whether a line is decided only once its document has been opened: one
+/// with something to view.
+bool reviewNeedsView(ReviewLine l) => l.files.isNotEmpty;

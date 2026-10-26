@@ -126,7 +126,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('chooses driver: photo step, then Skip goes straight into partner registration', (tester) async {
+    testWidgets('chooses driver: photo step with no Skip, as the photo is needed to be approved', (tester) async {
       final account = _FakeAccount();
       final auth = _FakeAuth();
       await pump(tester, {'id': 'me'}, account, auth: auth);
@@ -137,9 +137,8 @@ void main() {
       expect(account.names, ['Ali']);
       expect(auth.roles, ['driver'], reason: 'the server checks the role it signs up as');
       expect(find.text('Add a profile photo'), findsOneWidget);
-      await tester.tap(find.text('Skip'));
-      await tester.pumpAndSettle();
-      expect(find.text('partner registration'), findsOneWidget);
+      expect(find.text('Skip'), findsNothing, reason: 'partner registration would ask for it again');
+      expect(find.textContaining('Drivers need one to be approved.'), findsOneWidget);
     });
 
     testWidgets('a passenger lands on the map, as before', (tester) async {

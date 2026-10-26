@@ -168,11 +168,17 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
                             Text(_vehicleTitle(v), maxLines: 1, overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 6),
                             step == VehicleStep.done
-                                ? Chip(
-                                    label: Text(approval.label),
-                                    labelStyle: TextStyle(color: _toneColor(approval.tone), fontSize: 12),
-                                    visualDensity: VisualDensity.compact,
-                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                // Read as "Status: Approved", not a tick box.
+                                ? Semantics(
+                                    container: true,
+                                    label: 'Status: ${approval.label}',
+                                    excludeSemantics: true,
+                                    child: Chip(
+                                      label: Text(approval.label),
+                                      labelStyle: TextStyle(color: _toneColor(approval.tone), fontSize: 12),
+                                      visualDensity: VisualDensity.compact,
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
                                   )
                                 // Not submitted yet: a draft, resumed from its next step.
                                 : Chip(

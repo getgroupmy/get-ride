@@ -260,8 +260,13 @@ class ServiceTypeCards extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         side: BorderSide(color: selected ? c.primary : c.outlineVariant, width: selected ? 2 : 1),
       ),
-      child: Semantics(
-        selected: selected,
+      // One tick box per service for a screen reader: its name, words and
+      // whether it needs a vehicle, ticked or not (not a group with an
+      // unticked box inside).
+      child: MergeSemantics(
+        child: Semantics(
+        checked: selected,
+        hint: r.vehicleRequired ? 'Vehicle service' : 'No vehicle',
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
           onTap: enabled ? () => onChanged(selected ? value.where((v) => v != type).toList() : [...value, type]) : null,
@@ -282,14 +287,17 @@ class ServiceTypeCards extends StatelessWidget {
                 ]),
               ),
               const SizedBox(width: 8),
-              Chip(
-                label: Text(r.vehicleRequired ? 'Vehicle service' : 'No vehicle'),
-                visualDensity: VisualDensity.compact,
-                labelStyle: t.textTheme.labelSmall,
+              ExcludeSemantics(
+                child: Chip(
+                  label: Text(r.vehicleRequired ? 'Vehicle service' : 'No vehicle'),
+                  visualDensity: VisualDensity.compact,
+                  labelStyle: t.textTheme.labelSmall,
+                ),
               ),
             ]),
           ),
         ),
+      ),
       ),
     );
   }

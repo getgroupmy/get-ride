@@ -63,7 +63,14 @@ class VehicleOnboardingRepository {
     final p = normalizePlate(plate);
     // Plates are stored upper-cased (Expo and admin both normalise them).
     final own = await _db.from('vehicle').select().eq('plate', p).limit(1).maybeSingle();
-    if (own != null) return own;
+    if (own != null) {
+      // Row-level security shows a driver their own vehicles only; this is
+      // the same rule on the phone, should a wider read ever return another
+      // driver's car.
+      final mine = own['auth_user_id'] == _uid || (own['owner_partner_id'] != null && own['owner_partner_id'] == partner['id']);
+      if (!mine) throw VehiclePlateTaken(p);
+      return own;
+    }
     try {
       return await _db
           .from('vehicle')

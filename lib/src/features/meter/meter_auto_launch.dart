@@ -11,6 +11,9 @@ import '../../core/meter_sign_in.dart';
 import '../../core/taxi_meter.dart';
 import '../../data/meter_session_store.dart';
 import '../../providers.dart';
+import '../../core/partner_onboarding.dart' show isActivePartner, partnerSetupIncomplete;
+import '../../data/notifications_repository.dart' show lastAppMode;
+import '../partner/driver_online.dart' show driverOnlineProvider;
 import '../partner/partner_screen.dart' show partnerCanDrive;
 import 'meter_providers.dart';
 import 'meter_sign_in_prompt.dart';
@@ -191,16 +194,24 @@ Future<void> maybeAutoLaunchMeter(BuildContext context, WidgetRef ref) async {
     // Nor whether a tablet's account is a partner's.
     // Only when this run launched on home: reaching home later (the Ride
     // tab, Go to home, Book a ride) must stay on the rider's home.
-    final partnerTablet = !busy &&
-        !meter &&
-        tablet &&
-        AppLaunch.startedHome &&
-        await ref.read(partnerProvider.future).timeout(meterLaunchTimeout) != null;
+    final partner = !busy && !meter && AppLaunch.startedHome
+        ? await ref.read(partnerProvider.future).timeout(meterLaunchTimeout)
+        : null;
+    final partnerTablet = tablet && partner != null;
+    // A driver mid-application, and an approved one last in Drive (or left
+    // online): signing in or opening the app goes back there.
+    final unfinished = partner != null && !partner.approved && isActivePartner(partner.raw) &&
+        partnerSetupIncomplete(partner.raw);
+    final lastDrive = partner != null &&
+        partner.approved &&
+        (await lastAppMode() == 'partner' || await ref.read(driverOnlineProvider.notifier).wasOnline());
     target = resolveLaunchTarget(
       riderRideInProgress: ongoing.rider,
       partnerTripId: ongoing.partnerTripId,
       meterAutoLaunch: meter,
       partnerTablet: partnerTablet,
+      partnerUnfinished: unfinished,
+      partnerLastMode: lastDrive,
     );
   } catch (_) {
     return;
@@ -213,6 +224,8 @@ Future<void> maybeAutoLaunchMeter(BuildContext context, WidgetRef ref) async {
       unawaited(GoRouter.of(context).push('/meter'));
     case LaunchPartnerConsole():
       GoRouter.of(context).go('/drive');
+    case LaunchPartnerOnboarding():
+      GoRouter.of(context).go('/drive/onboarding');
     case LaunchHome():
       break;
   }
