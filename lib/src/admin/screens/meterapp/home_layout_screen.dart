@@ -45,7 +45,7 @@ String homeLayoutPlaceName(RegionScope? p) => p == null || p.isAll ? 'Master' : 
 String homeSectionHelp(HomeSection s) => switch (s.type) {
       HomeSectionType.search => s.on
           ? '“${s.text}”'
-          : 'Off: a plain “Where to?” row stands in its place, so riders can always book',
+          : 'Off: hidden; set a box, tile or card to Ride so riders can still book',
       HomeSectionType.vehicles => 'The vehicle services riders can book where they are (Vehicle Services)',
       HomeSectionType.pickup => 'A “Set pickup” row; useful with the pickup box over the map switched off',
       HomeSectionType.upcoming => 'Shows only when the rider has a booked ride coming up',

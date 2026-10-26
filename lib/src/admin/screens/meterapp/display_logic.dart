@@ -244,9 +244,14 @@ const serviceBoxIcons = [
 
 const defaultServiceBoxIcons = ['ShoppingBag', 'Car', 'Building2', 'Package', 'Truck'];
 
+/// A home box, tile or card set to this opens Where to?, as tapping the
+/// search bar does.
+const rideSearchRoute = '/ride-search';
+
 /// Every navigable Expo route, for the "link to page" pickers (stored values
 /// are Expo paths, so the Expo app keeps working).
 const allAppRoutes = <String>[
+  rideSearchRoute,
   // The Freight and Courier pages (0267, 0268), for the home service boxes.
   '/freight', '/courier',
   '/', '/onboarding', '/role-selection', '/phone-auth', '/otp-verify', '/pin-setup', '/pin-verify',
@@ -292,6 +297,7 @@ const allAppRoutes = <String>[
 const _routeAcronyms = {'api', 'ev', 'pin', 'otp', 'ui', 'teksi', 'id'};
 const _routeLabelOverrides = {
   '/': 'Home',
+  rideSearchRoute: 'Ride — opens Where to?, as the search bar does',
   '/freight': 'Freight',
   '/courier': 'Courier',
   '/teksi-ev': 'Book TEKSI EV',
@@ -591,7 +597,7 @@ const trackingSheetItemHeights = {'statusTitle': 36, 'driverCard': 132, 'callRow
 typedef SheetItemEstimate = ({String label, int px});
 
 /// The items a sheet shows all the way down, in order, as the current
-/// switches have them; the first is always shown.
+/// switches have them.
 List<SheetItemEstimate> sheetItemEstimates(String key, Map<String, dynamic> s) {
   switch (key) {
     case homeSheetMinAdjustKey:
@@ -601,9 +607,7 @@ List<SheetItemEstimate> sheetItemEstimates(String key, Map<String, dynamic> s) {
       return [
         for (final x in layout.sections.takeWhile((x) => x.type != HomeSectionType.fold))
           ...switch (x.type) {
-            HomeSectionType.search => [
-                x.on ? (label: 'Search Bar', px: h['searchBar']!) : (label: 'Where to? row', px: h['whereToRow']!),
-              ],
+            HomeSectionType.search when x.on => [(label: 'Search Bar', px: h['searchBar']!)],
             HomeSectionType.vehicles when x.on => [(label: 'Vehicle Types Bar', px: h['rideTypes']!)],
             HomeSectionType.pickup when x.on => [(label: 'Pickup row', px: h['whereToRow']!)],
             HomeSectionType.recent when x.on => [(label: 'Recent Locations', px: h['recentLocations']!)],
@@ -664,11 +668,11 @@ class SheetMinEstimate {
 /// `…SheetMinAdjust` keys) under the current settings.
 SheetMinEstimate sheetMinEstimate(Map<String, dynamic> s, String key) {
   final items = sheetItemEstimates(key, s);
-  // What stays whole however low the admin sets it: home's first item (the
-  // search bar), tracking's status line over the Cancel ride bar. Confirm
-  // goes down to a fixed [confirmSheetMinFloor].
+  // What stays whole however low the admin sets it: home's search bar
+  // (nothing with it off), tracking's status line over the Cancel ride bar.
+  // Confirm goes down to a fixed [confirmSheetMinFloor].
   final whole = switch (key) {
-    homeSheetMinAdjustKey => items.first.px,
+    homeSheetMinAdjustKey => [for (final i in items) if (i.label == 'Search Bar') i.px].firstOrNull ?? 0,
     _ => trackingSheetItemHeights['statusTitle']! + trackingSheetItemHeights['cancelBar']!,
   };
   return SheetMinEstimate(

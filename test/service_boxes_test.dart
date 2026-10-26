@@ -129,6 +129,14 @@ void main() {
       // Own boxes never take the old switch's NEW.
       expect(serviceBoxViews(const {}, boxes: [{'route': '/wallet'}], newBadge: true).first.badgeWords, isEmpty);
     });
+
+    test('a box set to Ride opens Where to?; coming soon or services off, it does not', () {
+      expect(serviceBoxViews(const {}, boxes: [{'route': rideSearchRoute}]).first.route, rideSearchRoute);
+      expect(serviceBoxViews(const {}, boxes: [{'route': rideSearchRoute, 'comingSoon': true}]).first.route, isNull);
+      expect(serviceBoxViews(const {}, boxes: [{'route': rideSearchRoute}], serviceEnabled: false).first.route, isNull);
+      expect(allAppRoutes.first, rideSearchRoute, reason: 'first in the Link to page list');
+      expect(routeLabel(rideSearchRoute), startsWith('Ride'));
+    });
   });
 
   for (final b in Brightness.values) {

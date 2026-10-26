@@ -94,7 +94,7 @@ void main() {
     expect(choices, contains(georgeTown));
     expect(homeLayoutPlaceName(null), 'Master');
     expect(homeLayoutPlaceName(georgeTown), 'George Town');
-    expect(homeSectionHelp(HomeSection.of(HomeSectionType.search, on: false)), contains('Where to?'));
+    expect(homeSectionHelp(HomeSection.of(HomeSectionType.search, on: false)), contains('Ride'));
     expect(homeSectionHelp(HomeSection.of(HomeSectionType.recent, extra: {'atRest': 3, 'more': false})),
         '3 with the sheet down');
   });

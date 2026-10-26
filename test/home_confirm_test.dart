@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderObject, RenderRepaintBoundary, debugDisableShadows;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/admin/screens/meterapp/display_logic.dart' show rideSearchRoute;
 import 'package:get_ride/src/core/home_layout.dart' show homeLayoutKey;
 import 'package:get_ride/src/core/home_sections.dart' show pinMiddleOffsetKey;
 import 'package:get_ride/src/widgets/map_sheet_layout.dart' show MapFocusShift;
@@ -854,10 +855,9 @@ void main() {
   testWidgets("Display Settings' switches still hide the search bar and the recent places", (tester) async {
     await _pump(tester, _Rides(), book: false, display: const {'searchBar': false, 'recentLocations': false});
     expect(find.byKey(const ValueKey('home-search')), findsNothing);
-    // The plain Where to? row stands in for it, still first.
-    final where = find.byKey(const ValueKey('home-where-to'));
-    expect(where, findsOneWidget);
-    expect(tester.getRect(where).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('vehicle-type-bar'))).top));
+    // Nothing stands in for it: no Where to? row either.
+    expect(find.text('Where to?'), findsNothing);
+    expect(find.byKey(const ValueKey('vehicle-type-bar')), findsOneWidget);
     expect(find.byKey(const ValueKey('home-recent-KLCC')), findsNothing);
   });
 
@@ -884,6 +884,32 @@ void main() {
       expect(tester.getRect(recent).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('home-search'))).top));
     });
   }
+
+  testWidgets('a box or a tile set to Ride opens Enter your route, as the search bar does', (tester) async {
+    await _pump(tester, _Rides(), book: false, display: {
+      homeLayoutKey: {
+        'sections': [
+          {'id': 'boxes', 'type': 'boxes', 'on': true, 'rows': ['k1'], 'boxes': [
+            {'name': 'Ride', 'route': rideSearchRoute},
+          ]},
+          {'id': 't', 'type': 'tiles', 'title': 'Go', 'items': [
+            {'id': 'go', 'caption': 'Ride', 'route': rideSearchRoute},
+          ]},
+          {'id': 'fold', 'type': 'fold'},
+        ],
+      },
+    });
+    for (final key in ['service-box-0', 'home-tile-go']) {
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await _settle(tester);
+      await tester.tap(find.byKey(ValueKey(key)));
+      await _settle(tester);
+      expect(find.text('Enter your route'), findsOneWidget, reason: key);
+      Navigator.of(tester.element(find.text('Enter your route'))).pop();
+      await _settle(tester);
+      expect(find.text('Enter your route'), findsNothing);
+    }
+  });
 
   testWidgets('the pin and its address bar stay halfway between the top and the sheet, whatever the map height', (tester) async {
     // Where the map keeps the pin: the middle of what shows above the sheet
