@@ -12,6 +12,8 @@ import 'package:flutter/rendering.dart' show RenderObject, RenderRepaintBoundary
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/home_layout.dart' show homeLayoutKey;
+import 'package:get_ride/src/core/home_sections.dart' show pinMiddleOffsetKey;
+import 'package:get_ride/src/widgets/map_sheet_layout.dart' show MapFocusShift;
 import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/fare.dart';
 import 'package:get_ride/src/core/overlay_back.dart';
@@ -882,6 +884,26 @@ void main() {
       expect(tester.getRect(recent).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('home-search'))).top));
     });
   }
+
+  testWidgets('the pin and its address bar stay halfway between the top and the sheet, whatever the map height', (tester) async {
+    // Where the map keeps the pin: the middle of what shows above the sheet
+    // all the way down (map_focus_test.dart), shifted by this.
+    Future<Offset> shift(Map<String, dynamic> display) async {
+      await _pump(tester, _Rides(), book: false, display: display);
+      final s = tester.widget<MapFocusShift>(find.byType(MapFocusShift)).shift;
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(minutes: 1));
+      return s;
+    }
+
+    expect(await shift(const {}), Offset.zero);
+    // A taller map reaches 265 above the screen, its centre half that up:
+    // the pin is put back down by as much, and the old Drop pin height
+    // (made to offset it) no longer counts.
+    expect(await shift(const {'mapHeightOffset': 265, 'dropPinTopOffset': 65}), const Offset(0, 132.5));
+    // Pin up / down moves it from the middle.
+    expect(await shift(const {pinMiddleOffsetKey: 30}), const Offset(0, 30));
+  });
 
   testWidgets('on its side at large text the whole route card shows above the confirm sheet', (tester) async {
     tester.platformDispatcher.textScaleFactorTestValue = 1.3;

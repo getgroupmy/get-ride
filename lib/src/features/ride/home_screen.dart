@@ -2500,8 +2500,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         bottom: 0,
         child: RepaintBoundary(
           child: MapFocusShift(
-          // Drop pin height / left-right: where the pin is kept.
-          shift: Offset(mapLayout.pinShift.$1, mapLayout.pinShift.$2),
+          // Halfway between the top of the screen and the top of the sheet
+          // all the way down, whatever the map's height, moved by the
+          // admin's Pin up / down and left / right.
+          shift: mapLayout.focusShift,
           child: MapDragPin(
             key: _pin,
             controller: _map,
