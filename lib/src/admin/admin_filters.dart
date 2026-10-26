@@ -135,6 +135,8 @@ class QuickStatusAction {
 /// waiting → Approve / Reject, approved → Block, blocked → Unblock,
 /// rejected → Re-open; none for anything else (deleted).
 List<QuickStatusAction> quickStatusActions(String? status) => switch (status) {
+      // A partner's Approve opens Review application (0296); a vehicle's
+      // approves after its documents check.
       'unapproved' || 'unapproved-docs' => const [
           QuickStatusAction('Approve', 'approved'),
           QuickStatusAction('Reject', 'rejected', destructive: true),

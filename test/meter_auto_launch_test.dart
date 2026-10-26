@@ -41,6 +41,16 @@ void main() {
     expect(resolveLaunchTarget(riderRideInProgress: false, partnerTripId: '', meterAutoLaunch: false), isA<LaunchHome>());
   });
 
+  test('a driver mid-application goes back to it; an approved one last in Drive goes to Drive', () {
+    expect(resolveLaunchTarget(riderRideInProgress: false, meterAutoLaunch: false, partnerUnfinished: true),
+        isA<LaunchPartnerOnboarding>());
+    expect(resolveLaunchTarget(riderRideInProgress: false, meterAutoLaunch: false, partnerLastMode: true),
+        isA<LaunchPartnerConsole>());
+    expect(resolveLaunchTarget(riderRideInProgress: false, partnerTripId: 'r1', meterAutoLaunch: false, partnerUnfinished: true),
+        isA<LaunchPartnerTrip>(), reason: 'a trip in progress still comes first');
+    expect(resolveLaunchTarget(riderRideInProgress: true, meterAutoLaunch: false, partnerLastMode: true), isA<LaunchHome>());
+  });
+
   test('a partner on a tablet lands on the console, after everything that outranks it', () {
     expect(
       resolveLaunchTarget(riderRideInProgress: false, meterAutoLaunch: false, partnerTablet: true),

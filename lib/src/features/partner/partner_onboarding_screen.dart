@@ -152,7 +152,9 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       firstIncompleteStep(s.profile, s.partner, needs: _needsFor(s.partner), onPhone: _onPhone);
 
   List<OnboardingStep> _stepsFor(OnboardingState s) =>
-      OnboardingStep.stepsFor(_needsFor(s.partner), includePhoto: _photoStep);
+      // The photo step always counts, done or not, so "Step 2 of 6" means
+      // the same from one visit to the next.
+      OnboardingStep.stepsFor(_needsFor(s.partner));
 
   @override
   void initState() {
@@ -504,7 +506,16 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
       Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
         for (final (i, step) in steps.indexed)
           if (i <= reachedIndex)
-            ChoiceChip(
+            // Read as "Service area, done" or "National ID, current step":
+            // the chip's own selected state read as a ticked box on the
+            // current step and an unticked one on finished steps.
+            Semantics(
+              container: true,
+              button: true,
+              label: '${step.label}, ${i < reachedIndex ? 'done' : 'current step'}',
+              excludeSemantics: true,
+              onTap: !_busy ? () => setState(() => _viewing = step == reached ? null : step) : null,
+              child: ChoiceChip(
               key: ValueKey('onboarding-step-${step.key}'),
               avatar: i < reachedIndex ? const Icon(Icons.check, size: 16) : null,
               // Ticks only on finished steps; the open one is filled, no
@@ -514,6 +525,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
               tooltip: i < reachedIndex ? 'Done: open to review' : 'Current step',
               selected: step == showing,
               onSelected: !_busy ? (_) => setState(() => _viewing = step == reached ? null : step) : null,
+            ),
             )
           else
             _LockedStep(key: ValueKey('onboarding-step-${step.key}'), label: step.label, next: i == reachedIndex + 1),
@@ -545,6 +557,34 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
             subtitle: 'Offered in ${_areaText(ServiceArea.fromRow(s.partner))}. Pick every service you will offer. '
                 'Services marked Vehicle service add the vehicle steps.',
             children: [
+              // Nothing offered where they chose: say so, and the way back,
+              // rather than a Continue that can only refuse.
+              if (offeredTypes.isEmpty)
+                Card(
+                  key: const ValueKey('partner-type-none'),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(children: [
+                      Icon(Icons.explore_off_outlined, size: 40, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      const SizedBox(height: 8),
+                      Text(
+                        'No services offered in ${_areaText(ServiceArea.fromRow(s.partner))} yet',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 4),
+                      const Text('Pick another area to see what you can drive for there.', textAlign: TextAlign.center),
+                      const SizedBox(height: 12),
+                      FilledButton(
+                        key: const ValueKey('partner-type-change-area'),
+                        style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+                        onPressed: _busy ? null : () => goTo(OnboardingStep.serviceArea),
+                        child: const Text('Change area'),
+                      ),
+                    ]),
+                  ),
+                )
+              else ...[
               CitizensNotice(offered: offeredTypes, entries: typeValues, area: ServiceArea.fromRow(s.partner)),
               ServiceTypeCards(
                 // Only types offered in the chosen service area (Admin →
@@ -559,6 +599,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
               ),
               const SizedBox(height: 16),
               _continue(_saveTypes, label: 'Continue'),
+              ],
             ],
           ),
         OnboardingStep.id => NationalIdStep(host: this),

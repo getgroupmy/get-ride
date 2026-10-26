@@ -5,6 +5,12 @@ import 'package:get_ride/src/admin/screens/people/people_module.dart';
 ({String id, Map<String, dynamic> values}) entry(String id, Map<String, dynamic> v) => (id: id, values: v);
 
 void main() {
+  test('a stored service area reads as city and country', () {
+    expect(serviceAreaText('Malaysia|Kuala Lumpur|Kuala Lumpur'), 'Kuala Lumpur, Malaysia');
+    expect(serviceAreaText('Malaysia|Selangor|Shah Alam'), 'Shah Alam, Malaysia');
+    expect(serviceAreaText('Malaysia'), 'Malaysia');
+  });
+
   group('users', () {
     test('profile_status mapping matches Expo upsertUser', () {
       expect(profileStatusFor('approved'), 'Approved');

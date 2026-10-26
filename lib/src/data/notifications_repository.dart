@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -96,7 +97,29 @@ class AppModeNotifier extends Notifier<String?> {
   String? build() => null;
 
   void set(String? mode) {
-    if (mode != null && mode != state) state = mode;
+    if (mode != null && mode != state) {
+      state = mode;
+      unawaited(_remember(mode));
+    }
+  }
+
+  static Future<void> _remember(String mode) async {
+    try {
+      await (await SharedPreferences.getInstance()).setString(lastAppModeKey, mode);
+    } catch (_) {}
+  }
+}
+
+/// Where the phone remembers the mode it was last in ('partner' or
+/// 'user'), so the next launch can open Drive for a driver.
+const lastAppModeKey = 'app_last_mode';
+
+/// The mode this phone was last in, or null.
+Future<String?> lastAppMode() async {
+  try {
+    return (await SharedPreferences.getInstance()).getString(lastAppModeKey);
+  } catch (_) {
+    return null;
   }
 }
 

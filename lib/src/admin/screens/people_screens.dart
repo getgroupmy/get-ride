@@ -23,7 +23,7 @@ import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
 import 'people/account_deletion_section.dart';
 import 'people/people_data.dart';
-import 'people/people_logic.dart' show permitOptions, vehicleStatusOptions;
+import 'people/people_logic.dart' show permitOptions, serviceAreaText, vehicleStatusOptions;
 import 'people/vehicle_screens.dart' show confirmVehicleApprovable;
 import 'security/sign_in_security_card.dart';
 import '../../data/live_tables.dart';
@@ -585,6 +585,18 @@ class AdminPartnersScreen extends ConsumerWidget {
       if (!ctx.mounted) return false;
       return _patch(ctx, ref, id, {'status': s});
     }
+    // An application is approved through its review (0296): each document
+    // viewed and every line checked. Unblocking and permits stay here.
+    if (s == 'approved' && const {'unapproved', 'unapproved-docs', 'changes-needed'}.contains(p['status'])) {
+      await showNotice(ctx,
+          title: 'Review the application',
+          message: 'A partner is approved from Review application, once each document has been viewed and every '
+              'line checked.');
+      if (!ctx.mounted) return false;
+      await ctx.push('/admin/m/partner-review?id=$id');
+      ref.invalidate(adminPartnersProvider);
+      return false;
+    }
     String? reason;
     if (statusTakesReason(s)) {
       reason = await _askStatusReason(ctx, s, p['status_note'] as String?);
@@ -667,9 +679,11 @@ class AdminPartnersScreen extends ConsumerWidget {
                     .map(capitaliseName)
                     .join(', '),
                 'Permit no.': p['permit_number'],
-                'Rating': p['rating'],
+                // A partner with no rated trip yet is new, not rated 0.
+                'Rating': ((p['rating'] as num?) ?? 0) > 0 ? p['rating'] : 'New',
                 'Total rides': p['total_rides'],
-                'Service area': (p['service_cities'] as List?)?.join(', '),
+                // Stored as Country|State|City keys: read as "City, Country".
+                'Service area': (p['service_cities'] as List?)?.map((e) => serviceAreaText('$e')).join('; '),
                 'Onboarding step': p['onboarding_step'],
                 'Documents OK': p['documents_ok'] == true ? 'Yes' : 'No',
                 'Joined': dateText(p['joined_at']),

@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/providers.dart' show currentUserIdProvider;
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/people/partner_review_screen.dart';
@@ -96,14 +97,30 @@ Map<String, dynamic> _itemRow(String key, String group, String label, String sta
       'fixed_at': fixed,
     };
 
+const _me = 'admin-1';
+
 class _ReviewRepo implements PartnerReviewRepository {
-  _ReviewRepo({String status = 'unapproved', Map<String, ReviewItem>? items})
+  _ReviewRepo({String status = 'unapproved', Map<String, ReviewItem>? items, bool viewedAll = true})
       : partner = _partner(status: status),
-        items = items ?? {};
+        items = items ?? {} {
+    // Every document opened by this admin already, unless a test says not.
+    if (viewedAll) {
+      for (final l in _lines()) {
+        log.add(ReviewLogEntry(itemKey: l.key, action: 'viewed', actorId: _me, at: DateTime(2026, 10, 26, 9)));
+      }
+    }
+  }
   final Map<String, dynamic> partner;
   final Map<String, ReviewItem> items;
   final calls = <String>[];
+  final log = <ReviewLogEntry>[];
   List<ReviewItem> mine = [];
+
+  @override
+  Future<void> viewed({required String partnerId, required String key}) async {
+    calls.add('view $key');
+    log.add(ReviewLogEntry(itemKey: key, action: 'viewed', actorId: _me, at: DateTime.now()));
+  }
 
   @override
   Future<ReviewApplication?> application(String partnerId) async => ReviewApplication(
@@ -117,6 +134,8 @@ class _ReviewRepo implements PartnerReviewRepository {
           'national_id:u1': {'state': 'match', 'score': 91, 'provider': 'aws'},
         },
         items: {...items},
+        log: [...log],
+        names: const {_me: 'Aisyah'},
       );
 
   @override
@@ -143,6 +162,7 @@ class _ReviewRepo implements PartnerReviewRepository {
   Future<void> clearItem({required String partnerId, required ReviewLine line}) async {
     calls.add('clear ${line.key}');
     items.remove(line.key);
+    log.add(ReviewLogEntry(itemKey: line.key, action: 'pending', actorId: _me, at: DateTime.now()));
   }
 
   @override
@@ -303,6 +323,7 @@ void main() {
           partnerReviewProvider.overrideWith(
             (ref, id) async => (app: await r.application(id), types: const ['DEALER', 'EHAILING', 'TEKSI']),
           ),
+          currentUserIdProvider.overrideWithValue(_me),
         ],
         child: MaterialApp(theme: ThemeData(brightness: b), home: const PartnerReviewScreen(id: 'p1')),
       ));
@@ -393,18 +414,46 @@ void main() {
       expect(repo.calls.last, 'set services edited eHailing needs a permit you do not have. [TEKSI]');
     });
 
-    testWidgets('approve the rest, then the application with its vehicle', (tester) async {
+    testWidgets('every line approved one by one, then the application with its vehicle', (tester) async {
       final repo = await pump(tester);
-      await tester.tap(find.byKey(const ValueKey('review-approve-rest')));
-      await _settle(tester);
+      expect(find.byKey(const ValueKey('review-approve-rest')), findsNothing, reason: 'no approving unseen lines in bulk');
+      for (final l in _lines()) {
+        final b = find.byKey(ValueKey('review-approve-${l.key}'));
+        await tester.ensureVisible(b);
+        await tester.tap(b);
+        await _settle(tester);
+      }
       expect(repo.calls.where((c) => c.endsWith('approved')).length, _lines().length);
       expect(find.text('Approve application and vehicle'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('review-approve')));
       await tester.tap(find.byKey(const ValueKey('review-approve')));
       await _settle(tester);
       expect(find.textContaining('TST 1 are approved together'), findsOneWidget);
       await tester.tap(find.text('Approve').last);
       await _settle(tester);
       expect(repo.calls.last, 'approve');
+    });
+
+    testWidgets('a document is decided only once viewed; back to pending needs a fresh view', (tester) async {
+      final repo = await pump(tester, repo: _ReviewRepo(viewedAll: false));
+      final reject = find.byKey(const ValueKey('review-reject-id.back'));
+      await tester.ensureVisible(reject);
+      expect(tester.widget<TextButton>(find.descendant(of: reject, matching: find.byType(TextButton))).onPressed, isNull);
+      expect(find.text('Not opened yet: view it to decide'), findsWidgets);
+      // A line with nothing to view (the name) is decided straight away.
+      await tester.tap(find.byKey(const ValueKey('review-approve-details.name')));
+      await _settle(tester);
+      expect(repo.calls, ['set details.name approved']);
+
+      // Viewed (as the View button logs it), then decided, then back to pending.
+      await repo.viewed(partnerId: 'p1', key: 'id.back');
+      await repo.setItem(partnerId: 'p1', line: _lines().firstWhere((l) => l.key == 'id.back'), state: ReviewState.approved);
+      await repo.clearItem(partnerId: 'p1', line: _lines().firstWhere((l) => l.key == 'id.back'));
+      final views = reviewViewsFor('id.back', repo.log, _me);
+      expect((views.count, views.mine), (1, false), reason: 'the view before pending no longer counts');
+      await repo.viewed(partnerId: 'p1', key: 'id.back');
+      expect(reviewViewsFor('id.back', repo.log, _me), (count: 2, lastBy: _me, lastAt: repo.log.last.at, mine: true));
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('while it is with the driver nothing can be changed', (tester) async {

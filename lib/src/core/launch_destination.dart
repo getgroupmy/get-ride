@@ -29,6 +29,12 @@ class LaunchPartnerConsole extends LaunchTarget {
   const LaunchPartnerConsole();
 }
 
+/// Partner registration, for a driver whose application is not finished:
+/// signing in takes them back to it rather than to the rider's home.
+class LaunchPartnerOnboarding extends LaunchTarget {
+  const LaunchPartnerOnboarding();
+}
+
 /// Where this run of the app first landed once signed in: the launch (a
 /// cold start, a reload, or the page after signing in). The partner
 /// console rule is for the launch only: a rider who reaches home later (the
@@ -57,7 +63,9 @@ bool isTabletSize(double width, double height, {required bool web}) {
 
 /// The priority: a rider's ride in progress (it stays home, where the
 /// ongoing-ride card is), then a driver's trip in progress, then the meter
-/// auto-launch, then the partner console on a partner's tablet, then home.
+/// auto-launch, then an unfinished partner application, then the partner
+/// console (a partner's tablet, or an approved driver last in Drive), then
+/// home.
 /// A hire someone is in the middle of always outranks the screen they would
 /// start the next one from.
 LaunchTarget resolveLaunchTarget({
@@ -65,10 +73,15 @@ LaunchTarget resolveLaunchTarget({
   String? partnerTripId,
   required bool meterAutoLaunch,
   bool partnerTablet = false,
+  bool partnerUnfinished = false,
+  bool partnerLastMode = false,
 }) {
   if (riderRideInProgress) return const LaunchHome();
   if (partnerTripId != null && partnerTripId.isNotEmpty) return LaunchPartnerTrip(partnerTripId);
   if (meterAutoLaunch) return const LaunchMeter();
-  if (partnerTablet) return const LaunchPartnerConsole();
+  // A driver mid-application goes back to it; an approved one to Drive when
+  // that is where they last were (or were online).
+  if (partnerUnfinished) return const LaunchPartnerOnboarding();
+  if (partnerTablet || partnerLastMode) return const LaunchPartnerConsole();
   return const LaunchHome();
 }

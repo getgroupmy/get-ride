@@ -19,6 +19,8 @@ class ReviewApplication {
     this.serviceStatuses = const [],
     this.faces = const {},
     this.items = const {},
+    this.log = const [],
+    this.names = const {},
   });
 
   final Map<String, dynamic> partner;
@@ -33,6 +35,12 @@ class ReviewApplication {
 
   /// The admin's decisions by line key.
   final Map<String, ReviewItem> items;
+
+  /// Every view, decision and return to pending, oldest first (0296).
+  final List<ReviewLogEntry> log;
+
+  /// The names of the admins (and driver) in [log] and the approver, by id.
+  final Map<String, String> names;
 
   String get partnerId => '${partner['id']}';
   String get status => '${partner['status'] ?? 'unapproved'}';
@@ -73,7 +81,19 @@ class PartnerReviewRepository {
           ? Future.value(const <Map<String, dynamic>>[])
           : _db.from('document_face_checks').select().eq('user_id', uid).order('checked_at', ascending: false),
       _db.from('partner_review_items').select().eq('partner_id', partnerId).order('decided_at', ascending: true),
+      _optional(_db.from('partner_review_log').select().eq('partner_id', partnerId).order('at', ascending: true)),
     ]);
+    final log = [for (final r in _rows(results[7])) ?ReviewLogEntry.tryParse(r)];
+    final ids = {for (final e in log) ?e.actorId, if (partner['approved_by'] != null) '${partner['approved_by']}'};
+    var names = const <String, String>{};
+    if (ids.isNotEmpty) {
+      try {
+        names = {
+          for (final r in _rows(await _db.from('profiles').select('id, name').inFilter('id', ids.toList())))
+            '${r['id']}': '${r['name'] ?? ''}'.trim().isEmpty ? 'An admin' : '${r['name']}'.trim(),
+        };
+      } catch (_) {}
+    }
     return ReviewApplication(
       partner: partner,
       profile: results[0] as Map<String, dynamic>?,
@@ -83,7 +103,29 @@ class PartnerReviewRepository {
       serviceStatuses: _rows(results[4]),
       faces: {for (final f in _rows(results[5])) '${f['doc_kind']}:${f['doc_id']}': f},
       items: {for (final r in _rows(results[6])) '${r['item_key']}': ReviewItem.fromRow(r)},
+      log: log,
+      names: names,
     );
+  }
+
+  /// A read that a database without it (before 0296) answers with nothing.
+  Future<Object?> _optional(Future<Object?> read) async {
+    try {
+      return await read;
+    } catch (_) {
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  /// Logs that this admin opened [key]'s document (0296): a line with a
+  /// document is decided only once viewed. Quiet on an older database.
+  Future<void> viewed({required String partnerId, required String key}) async {
+    try {
+      await _db.rpc('partner_review_view', params: {'p_partner': partnerId, 'p_key': key});
+    } on PostgrestException catch (e) {
+      if (e.code == 'PGRST202' || e.code == '42883') return;
+      rethrow;
+    }
   }
 
   /// Approves, rejects (with [note] as the reason) or edits (with [note]

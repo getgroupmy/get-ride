@@ -277,6 +277,14 @@ class ServiceArea {
 /// Last segment of an encoded key (chip label).
 String areaLabel(String key) => key.split('|').last;
 
+/// A stored area key read for people: "Malaysia|Kuala Lumpur|Kuala Lumpur"
+/// is "Kuala Lumpur, Malaysia"; a lone country stays as it is.
+String serviceAreaText(String key) {
+  final parts = key.split('|').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+  if (parts.length < 2) return parts.join();
+  return '${parts.last}, ${parts.first}';
+}
+
 List<String> _strings(Object? v) => v is List ? v.map((e) => '$e').where((e) => e.isNotEmpty).toList() : const [];
 
 /// Option lists for the service area picker: the admin geo tables plus any

@@ -131,8 +131,11 @@ class _FakeVehicles extends VehicleOnboardingRepository {
 }
 
 class _FakePeople extends PeopleRepository {
-  _FakePeople({this.uploads = const []}) : super(_db);
+  _FakePeople({this.uploads = const [], this.noTypes = false}) : super(_db);
   final List<Map<String, dynamic>> uploads;
+
+  /// No Partner Service type at all: nothing is offered anywhere.
+  final bool noTypes;
 
   @override
   Future<GeoOptions> geoOptions({Iterable<ServiceArea> inUse = const []}) async => const GeoOptions(
@@ -143,7 +146,8 @@ class _FakePeople extends PeopleRepository {
 
   @override
   Future<List<({String id, Map<String, dynamic> values})>> partnerTypes() async => [
-        for (final (i, e) in regEntries.indexed) (id: 't$i', values: e),
+        if (!noTypes)
+          for (final (i, e) in regEntries.indexed) (id: 't$i', values: e),
       ];
 
   @override
@@ -341,12 +345,32 @@ void main() {
         brightness: b,
         here: (country: 'Malaysia', state: 'Selangor', city: 'Ampang'),
       );
-      expect(find.text('Step 1 of 5 · Service area'), findsOneWidget, reason: 'the photo was there, so no photo step');
+      expect(find.text('Step 2 of 6 · Service area'), findsOneWidget, reason: 'the photo step done still counts, so the count stays the same');
       expect(find.byKey(const ValueKey('area-from-location')), findsOneWidget);
       expect(find.text('Ampang'), findsOneWidget);
       await _tap(tester, find.text('Continue'));
       expect(h.repo.patches.single['service_cities'], ['Malaysia|Selangor|Ampang']);
       expect(find.text('Choose your Partner Service type'), findsOneWidget);
+      _noOverflow(tester);
+    });
+
+    testWidgets('no service offered in the area: says so, and Change area goes back (${b.name})', (tester) async {
+      await _pump(
+        tester,
+        OnboardingState(profile: const {}, partner: _partner({
+          ..._photo,
+          'service_countries': ['Zedland'],
+          'service_states': ['Zedland|North'],
+          'service_cities': ['Zedland|North|Nowhere'],
+        })),
+        brightness: b,
+        people: _FakePeople(noTypes: true),
+      );
+      expect(find.byKey(const ValueKey('partner-type-none')), findsOneWidget);
+      expect(find.text('No services offered in Nowhere yet'), findsOneWidget);
+      expect(find.text('Continue'), findsNothing, reason: 'no Continue that can only refuse');
+      await _tap(tester, find.byKey(const ValueKey('partner-type-change-area')));
+      expect(find.text('Where will you work?'), findsOneWidget);
       _noOverflow(tester);
     });
 
@@ -366,7 +390,7 @@ void main() {
       expect(h.repo.patches.single, {'partner_type': 'Teksi,Delivery', 'partner_types': ['Teksi', 'Delivery']});
       expect(find.text('Your national ID number'), findsOneWidget);
       // Teksi adds the company, driver permit and vehicle steps.
-      expect(find.text('Step 3 of 9 · National ID'), findsOneWidget);
+      expect(find.text('Step 4 of 10 · National ID'), findsOneWidget);
       _noOverflow(tester);
     });
 
@@ -680,7 +704,8 @@ void main() {
     final handle = tester.ensureSemantics();
     await _pump(tester, OnboardingState(profile: const {}, partner: _partner({..._photo, ..._area})));
     final chips = tester.widgetList<ChoiceChip>(find.byType(ChoiceChip)).toList();
-    expect(chips.map((c) => (c.label as Text).data), ['Service area', 'Partner Service type']);
+    expect(chips.map((c) => (c.label as Text).data), ['Profile photo', 'Service area', 'Partner Service type'],
+        reason: 'the photo step, done, is listed too, so the count holds');
     expect(chips.first.avatar, isA<Icon>(), reason: 'a finished step keeps its tick');
     expect(find.text('National ID · next'), findsOneWidget);
     final locked = tester.getSemantics(find.byKey(const ValueKey('onboarding-step-id')));

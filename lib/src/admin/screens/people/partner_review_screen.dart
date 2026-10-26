@@ -12,6 +12,7 @@ import '../../../core/partner_review.dart';
 import '../../../core/signin_checks.dart' show faceNeedsCloserLook, livenessText, rejectNotes;
 import '../../../core/partner_registration.dart' show closerLookReasonText;
 import '../../../data/partner_review_repository.dart';
+import '../../../providers.dart' show currentUserIdProvider;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/date_boxes.dart';
@@ -128,11 +129,20 @@ class _ReviewBody extends ConsumerWidget {
   Future<void> _clear(BuildContext context, WidgetRef ref, ReviewLine l) =>
       _run(context, ref, () => _repo(ref).clearItem(partnerId: app.partnerId, line: l));
 
-  Future<void> _approveRest(BuildContext context, WidgetRef ref, List<ReviewLine> open) => _run(context, ref, () async {
-        for (final l in open) {
-          await _repo(ref).setItem(partnerId: app.partnerId, line: l, state: ReviewState.approved);
-        }
-      });
+  /// Opens a line's document and logs the view (0296): Pass, Reject and
+  /// Pending unlock once this admin has seen it.
+  Future<void> _view(BuildContext context, WidgetRef ref, ReviewLine l, String file) async {
+    try {
+      await _repo(ref).viewed(partnerId: app.partnerId, key: l.key);
+    } catch (e) {
+      if (context.mounted) await showErrorNotice(context, e);
+      return;
+    }
+    if (context.mounted) await openStoredFile(context, file, title: l.label);
+    _reload(ref);
+  }
+
+  String _name(String? id) => id == null ? 'someone' : (app.names[id] ?? 'an admin');
 
   Future<void> _sendBack(BuildContext context, WidgetRef ref, ReviewTally t) async {
     final ok = await confirm(
@@ -186,7 +196,11 @@ class _ReviewBody extends ConsumerWidget {
     final open = canEdit && !withDriver && !closed;
     final lines = app.lines;
     final tally = reviewTally(lines, app.items);
-    final unchecked = [for (final l in lines) if (app.items[l.key] == null || app.items[l.key]!.fixed) l];
+    String? me;
+    try {
+      me = ref.watch(currentUserIdProvider);
+    } catch (_) {}
+    final approvedAt = DateTime.tryParse('${p['approved_at'] ?? ''}')?.toLocal();
     final name = '${p['name'] ?? ''}'.trim();
     final closer = (p['closer_look_reasons'] as List?)?.map((r) => closerLookReasonText('$r')).toList() ?? const [];
     return AdminPage(
@@ -210,11 +224,18 @@ class _ReviewBody extends ConsumerWidget {
                       if ('${p['display_id'] ?? ''}'.isNotEmpty) Text('${p['display_id']}', style: t.textTheme.bodySmall),
                     ]),
                     Text(
-                      'Each line gets Approve, Reject with a reason, or Edit with a note. '
-                      'The driver sees each note against the same line.',
+                      'Open each document first: Approve, Reject and Back to pending unlock once you have viewed '
+                      'it, and every view is logged. Each line gets Approve, Reject with a reason, or Edit with a '
+                      'note. The driver sees each note against the same line.',
                       style: t.textTheme.bodyMedium?.copyWith(color: mutedTextColor(t)),
                     ),
                     Text(tally.summary, key: const ValueKey('review-tally'), style: t.textTheme.labelLarge),
+                    if (p['approved_by'] != null && approvedAt != null)
+                      Text(
+                        'Approved by ${_name('${p['approved_by']}')} · ${dateText(approvedAt.toIso8601String())}',
+                        key: const ValueKey('review-approved-by'),
+                        style: t.textTheme.bodyMedium,
+                      ),
                     if (p['needs_closer_look'] == true && closer.isNotEmpty)
                       _Banner(
                         icon: Icons.report_outlined,
@@ -252,6 +273,10 @@ class _ReviewBody extends ConsumerWidget {
                     item: app.items[l.key],
                     face: l.faceKey == null ? null : app.faces[l.faceKey],
                     enabled: open,
+                    views: reviewViewsFor(l.key, app.log, me),
+                    log: [for (final e in app.log) if (e.itemKey == l.key) e],
+                    nameOf: _name,
+                    onView: (f) => _view(context, ref, l, f),
                     onApprove: () => _approve(context, ref, l),
                     onReject: () => _reject(context, ref, l),
                     onEdit: () => _edit(context, ref, l),
@@ -260,13 +285,6 @@ class _ReviewBody extends ConsumerWidget {
               ],
               const SizedBox(height: 16),
               if (open) ...[
-                if (unchecked.isNotEmpty)
-                  BusyButton.outlined(
-                    key: const ValueKey('review-approve-rest'),
-                    icon: const Icon(Icons.done_all),
-                    onPressed: () => _approveRest(context, ref, unchecked),
-                    child: Text('Approve the ${unchecked.length} line(s) not checked yet'),
-                  ),
                 const SizedBox(height: 8),
                 BusyButton.tonal(
                   key: const ValueKey('review-send-back'),
@@ -323,6 +341,10 @@ class _LineCard extends StatelessWidget {
     required this.item,
     required this.face,
     required this.enabled,
+    required this.views,
+    required this.log,
+    required this.nameOf,
+    required this.onView,
     required this.onApprove,
     required this.onReject,
     required this.onEdit,
@@ -333,6 +355,10 @@ class _LineCard extends StatelessWidget {
   final ReviewItem? item;
   final Map<String, dynamic>? face;
   final bool enabled;
+  final ReviewViews views;
+  final List<ReviewLogEntry> log;
+  final String Function(String? id) nameOf;
+  final Future<void> Function(String file) onView;
   final BusyAction onApprove, onReject, onEdit, onClear;
 
   @override
@@ -347,6 +373,12 @@ class _LineCard extends StatelessWidget {
       null => (Icons.radio_button_unchecked, c.outline),
     };
     final faceLow = face != null && faceNeedsCloserLook(face!['state'], face!['score'], reason: face!['reason']);
+    // A document is decided only once this admin has opened it since it
+    // last went back to pending (the server holds the same rule).
+    final locked = reviewNeedsView(line) && !views.mine;
+    final seen = views.count == 0
+        ? null
+        : 'Viewed ${views.count == 1 ? 'once' : '${views.count} times'}, last by ${nameOf(views.lastBy)}';
     return Card(
       key: ValueKey('review-line-${line.key}'),
       margin: const EdgeInsets.only(bottom: 8),
@@ -370,6 +402,14 @@ class _LineCard extends StatelessWidget {
                   key: ValueKey('review-status-${line.key}'),
                   style: t.textTheme.bodySmall?.copyWith(color: state == null ? mutedTextColor(t) : color),
                 ),
+                if (reviewNeedsView(line))
+                  Text(
+                    locked
+                        ? (views.count == 0 ? 'Not opened yet: view it to decide' : 'View it again to decide · $seen')
+                        : seen!,
+                    key: ValueKey('review-views-${line.key}'),
+                    style: t.textTheme.bodySmall?.copyWith(color: locked ? c.error : mutedTextColor(t)),
+                  ),
                 if (item?.state == ReviewState.edited && item?.oldValue != null)
                   Text(
                     'Was ${reviewValueText(line.key, item!.oldValue)}',
@@ -408,38 +448,54 @@ class _LineCard extends StatelessWidget {
                 style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
                 icon: const Icon(Icons.visibility_outlined, size: 18),
                 label: Text(line.files.length == 1 ? 'View' : 'View ${n + 1}'),
-                onPressed: () => openStoredFile(context, f, title: line.label),
+                onPressed: () => onView(f),
               ),
             if (enabled) ...[
               BusyButton.text(
                 key: ValueKey('review-approve-${line.key}'),
                 icon: const Icon(Icons.check),
-                onPressed: state == ReviewState.approved ? null : onApprove,
+                onPressed: locked || state == ReviewState.approved ? null : onApprove,
                 child: const Text('Approve'),
               ),
               if (reviewCanReject(line.key))
                 BusyButton.text(
                   key: ValueKey('review-reject-${line.key}'),
                   icon: const Icon(Icons.close),
-                  onPressed: onReject,
+                  onPressed: locked ? null : onReject,
                   child: const Text('Reject'),
                 ),
               if (line.edit != ReviewEdit.none)
                 BusyButton.text(
                   key: ValueKey('review-edit-${line.key}'),
                   icon: const Icon(Icons.edit_outlined),
-                  onPressed: onEdit,
+                  onPressed: locked ? null : onEdit,
                   child: Text(line.edit == ReviewEdit.note ? 'Add a note' : 'Edit'),
                 ),
               if (item != null)
                 BusyButton.text(
                   key: ValueKey('review-clear-${line.key}'),
                   icon: const Icon(Icons.undo),
-                  onPressed: onClear,
-                  child: const Text('Undo'),
+                  onPressed: locked ? null : onClear,
+                  child: const Text('Back to pending'),
                 ),
             ],
           ]),
+          if (log.isNotEmpty)
+            ExpansionTile(
+              key: ValueKey('review-log-${line.key}'),
+              tilePadding: EdgeInsets.zero,
+              dense: true,
+              title: Text('Log (${log.length})', style: t.textTheme.labelLarge),
+              children: [
+                for (final e in log.reversed)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text('${e.label} by ${nameOf(e.actorId)}'),
+                    trailing: Text(dateText(e.at.toIso8601String()), style: t.textTheme.bodySmall),
+                  ),
+              ],
+            ),
         ]),
       ),
     );

@@ -80,7 +80,13 @@ class _SignupPhotoScreenState extends ConsumerState<SignupPhotoScreen> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        actions: [TextButton(onPressed: _uploading ? null : _done, child: const Text('Skip'))],
+        // A driver needs the photo to be approved (partner registration asks
+        // for it again): no Skip, rather than asking twice. A passenger's is
+        // optional.
+        actions: [
+          if (widget.next != driverSignupLanding)
+            TextButton(onPressed: _uploading ? null : _done, child: const Text('Skip')),
+        ],
       ),
       body: SingleChildScrollView(
         child: ResponsiveCenter(
@@ -92,6 +98,7 @@ class _SignupPhotoScreenState extends ConsumerState<SignupPhotoScreen> {
               Text('Add a profile photo', style: t.textTheme.headlineSmall),
               const SizedBox(height: 8),
               Text(
+                '${widget.next == driverSignupLanding ? 'Drivers need one to be approved. ' : ''}'
                 'Drivers and passengers see it on your trips. Good lighting, no hat or sunglasses, '
                 'and fill the frame with your face.',
                 style: t.textTheme.bodyLarge,

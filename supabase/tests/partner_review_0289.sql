@@ -124,6 +124,14 @@ select pg_temp.refused($q$insert into public.partner_review_items (partner_id, i
 select public.partner_review_set('00000000-0000-0000-0000-000000028901', 'details.name', 'details', 'Full name', 'approved');
 select pg_temp.raises($q$select public.partner_review_set('00000000-0000-0000-0000-000000028901', 'id.front',
   'national_id', 'MyKad front photo', 'rejected', '  ')$q$, 'REVIEW_REASON_NEEDED', 'a rejection without a reason');
+-- 0296: a line with a document is decided only once the admin has viewed it.
+select pg_temp.raises($q$select public.partner_review_set('00000000-0000-0000-0000-000000028901', 'id.front',
+  'national_id', 'MyKad front photo', 'rejected', 'Photo blurry')$q$, 'REVIEW_VIEW_FIRST', 'deciding a document unseen');
+select public.partner_review_view('00000000-0000-0000-0000-000000028901', 'id.front');
+select public.partner_review_view('00000000-0000-0000-0000-000000028901', 'doc:provider:doc-licence');
+select public.partner_review_view('00000000-0000-0000-0000-000000028901', 'doc:vehicle:doc-inspection');
+select pg_temp.check(public.partner_review_view('00000000-0000-0000-0000-000000028901', 'id.front') = 2,
+  'every view is counted');
 select public.partner_review_set('00000000-0000-0000-0000-000000028901', 'id.front', 'national_id', 'MyKad front photo',
   'rejected', 'Photo blurry: retake it in good light.');
 select public.partner_review_set('00000000-0000-0000-0000-000000028901', 'doc:provider:doc-licence', 'service_documents',
@@ -219,10 +227,26 @@ select pg_temp.raises($q$select public.partner_review_resubmit()$q$, 'PARTNER_NO
 
 -- 6. Approved, with the vehicle -------------------------------------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000289a2');
+-- Sent again, the fixed lines went back to pending: viewed again first.
+select pg_temp.check((select count(*) >= 1 from public.partner_review_log
+   where partner_id = '00000000-0000-0000-0000-000000028901' and action = 'pending'),
+  'lines sent again are logged back to pending');
+select pg_temp.raises($q$select public.partner_review_set('00000000-0000-0000-0000-000000028901', 'id.front',
+  'national_id', 'MyKad front photo', 'approved')$q$, 'REVIEW_VIEW_FIRST', 'a view from before pending does not count');
+select public.partner_review_view('00000000-0000-0000-0000-000000028901', 'id.front');
+select public.partner_review_view('00000000-0000-0000-0000-000000028901', 'doc:provider:doc-licence');
 select public.partner_review_set('00000000-0000-0000-0000-000000028901', 'id.front', 'national_id', 'MyKad front photo', 'approved');
 select public.partner_review_set('00000000-0000-0000-0000-000000028901', 'doc:provider:doc-licence', 'service_documents',
   'Driving License', 'approved');
 select public.partner_review_approve('00000000-0000-0000-0000-000000028901');
+select pg_temp.check((select approved_by = '00000000-0000-0000-0000-0000000289a2' and approved_at is not null
+   from public.partners where id = '00000000-0000-0000-0000-000000028901'), 'the approver is recorded');
+select pg_temp.check((select count(*) = 1 from public.partner_review_log
+   where partner_id = '00000000-0000-0000-0000-000000028901' and action = 'partner_approved'
+     and actor_id = '00000000-0000-0000-0000-0000000289a2'), 'the approval is logged with who');
+select pg_temp.check((select count(*) >= 3 from public.partner_review_log
+   where partner_id = '00000000-0000-0000-0000-000000028901' and action in ('approved', 'rejected')),
+  'decisions are logged');
 reset role;
 select pg_temp.check((select status::text = 'approved' from public.partners where id = '00000000-0000-0000-0000-000000028901'),
   'the partner is approved');

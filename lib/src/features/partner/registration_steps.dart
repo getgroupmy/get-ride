@@ -1491,7 +1491,13 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
         final st = _statuses();
         final other = OwnerMatch.parse(v['owner_match']) == OwnerMatch.other;
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _title(context, 'Your vehicle', 'Add the photos to finish registering it.'),
+          _title(
+            context,
+            'Your vehicle',
+            vehiclePhotoSlots.every((slot) => _t(v['image_$slot']).isNotEmpty)
+                ? 'All photos added. Continue to finish registering it.'
+                : 'Add the photos to finish registering it.',
+          ),
           Card(
             child: ListTile(
               leading: const Icon(Icons.directions_car),
