@@ -7,6 +7,7 @@
 library;
 
 import 'dart:math' as math;
+import '../../../core/home_sections.dart' show pinMiddleOffsetKey;
 import '../../../core/home_layout.dart' show HomeLayouts, HomeSectionType;
 import '../../../core/demo_mode.dart' show demoAccountIds, demoDriverIdsKey, demoRiderIdsKey;
 import '../../../core/ride_assistance.dart';
@@ -363,6 +364,7 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'recenterButtonBottom': 459,
       'mapHeightOffset': 365,
       'dropPinTopOffset': 0,
+      pinMiddleOffsetKey: 0,
       'dropPinHorizontalOffset': 0,
       'addressBarTopOffset': 0,
       'discountBarHeightOffset': 0,
@@ -523,8 +525,10 @@ const _hDesc = '(negative = left, positive = right)';
 const mapLayoutItems = [
   LayoutItem('recenterButtonBottom', 'Recenter button height',
       'Distance from the bottom of the screen (the button still stays above the bottom sheet)', 100, 700, 10),
-  LayoutItem('mapHeightOffset', 'Map height', 'Extra map height extending above the screen (raises the pin by half)', 0, 800, 25),
-  LayoutItem('dropPinTopOffset', 'Drop pin height', 'Vertical offset of the pin $_vDesc', -200, 200, 5),
+  LayoutItem('mapHeightOffset', 'Map height', 'Extra map height extending above the screen (the pin stays where it is)', 0, 800, 25),
+  LayoutItem(pinMiddleOffsetKey, 'Pin up/down',
+      'The pin, its address bar and the current place sit halfway between the top of the screen and the top of the '
+          'bottom sheet all the way down; this moves them from there $_vDesc', -200, 200, 5),
   LayoutItem('dropPinHorizontalOffset', 'Drop pin left/right', 'Horizontal offset of the pin $_hDesc', -200, 200, 5),
   LayoutItem('addressBarTopOffset', 'Address bar height',
       'Vertical offset of the address pill above the pin $_vDesc; it never covers the pin', -300, 300, 5),

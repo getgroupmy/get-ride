@@ -102,13 +102,16 @@ void main() {
       final l = HomeMapLayout.fromSettings({
         'recenterButtonBottom': 239,
         'mapHeightOffset': '215',
-        'dropPinTopOffset': 65,
+        pinMiddleOffsetKey: 30,
         'dropPinHorizontalOffset': -10,
         'addressBarTopOffset': -20,
       });
       expect(l.recenterBottom, 239);
       expect(l.mapExtra, 215);
-      expect(l.pinShift, (-10.0, 65.0));
+      expect(l.pinShift, (-10.0, 30.0));
+      // The map's centre is half its extra height up; the pin is put back
+      // on the middle of the screen above the sheet, then moved.
+      expect(l.focusShift, const Offset(-10, 30 + 107.5));
       expect(l.pillGap, 25, reason: 'up 20 from the 5 px gap');
     });
 
@@ -117,7 +120,14 @@ void main() {
       expect(l.recenterBottom, isNull);
       expect(l.mapExtra, 0);
       expect(l.pinShift, (0.0, 0.0));
+      expect(l.focusShift, Offset.zero);
       expect(l.pillGap, 5);
+    });
+
+    test('the older Drop pin height, made for Map height moving the pin, no longer moves it', () {
+      final l = HomeMapLayout.fromSettings(const {'mapHeightOffset': 265, 'dropPinTopOffset': 65});
+      expect(l.pinShift, (0.0, 0.0));
+      expect(l.focusShift, const Offset(0, 132.5), reason: 'exactly where it would be with no map height');
     });
 
     test('the pill never comes down over the pin, and the map never shrinks', () {

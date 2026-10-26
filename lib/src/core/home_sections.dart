@@ -4,6 +4,7 @@
 library;
 
 import 'dart:math' as math;
+import 'dart:ui' show Offset;
 
 import '../admin/screens/meterapp/display_logic.dart';
 import 'expo_routes.dart';
@@ -64,6 +65,10 @@ class HomeSections {
   }
 }
 
+/// Admin → Display → Map Layout: the pin up (negative) or down from the
+/// middle of the map showing with the sheet all the way down.
+const pinMiddleOffsetKey = 'pinMiddleOffset';
+
 /// Admin → Display → Map Layout on the home map. Each applies only once the
 /// admin has set it, so a blob without it leaves the map as it is.
 class HomeMapLayout {
@@ -74,12 +79,19 @@ class HomeMapLayout {
   /// higher). Null leaves them on the sheet.
   final double? recenterBottom;
 
-  /// How far the map reaches above the top of the screen: its centre, and
-  /// the pin kept there, go up by half of it.
+  /// How far the map reaches above the top of the screen. The pin stays
+  /// where it is ([focusShift] makes up for it).
   final double mapExtra;
 
-  /// (right, down) that the pin is kept off its usual place.
+  /// (right, down) that the pin is kept off the middle of the map showing
+  /// with the sheet all the way down: halfway between the top of the
+  /// screen and the top of the sheet.
   final (double, double) pinShift;
+
+  /// The shift that keeps the pin, the pickup pill over it and the current
+  /// place [pinShift] off that middle: the map's own centre sits half of
+  /// [mapExtra] above the screen's, so that much down again.
+  Offset get focusShift => Offset(pinShift.$1, pinShift.$2 + mapExtra / 2);
 
   /// How far the pickup pill above the pin is moved down (negative: up).
   final double pillOffset;
@@ -98,7 +110,9 @@ class HomeMapLayout {
     return HomeMapLayout(
       recenterBottom: n('recenterButtonBottom'),
       mapExtra: math.max(0, n('mapHeightOffset') ?? 0),
-      pinShift: (n('dropPinHorizontalOffset') ?? 0, n('dropPinTopOffset') ?? 0),
+      // The pin's own up / down (0302 on): the older Drop pin height made
+      // up for Map height moving the pin, which it no longer does.
+      pinShift: (n('dropPinHorizontalOffset') ?? 0, n(pinMiddleOffsetKey) ?? 0),
       pillOffset: n('addressBarTopOffset') ?? 0,
     );
   }
