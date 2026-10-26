@@ -26,6 +26,35 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 - Cash on delivery for items.
 - Business accounts.
 
+## Services, partner types and vehicle services (study of 26 Oct 2026)
+
+High:
+- H1 Approved drivers can't go online with the car they registered: owner's ID is required but not saved when the driver is the owner (`firstVehicleStep`, `_saveVehicle`); an approved vehicle should count as complete; one-off fix for stuck vehicles.
+- H2 The partner type's allowed services are only checked on the open-request list: `driver_takes_service` (pushes, offers, scheduled rides) should check the partner type too.
+- H3 A new partner type takes every service, and a partner with no vehicle can offer on a vehicle service. Decide: no row means none, or a required picker on the type form; the server refuses offers on vehicle services without a vehicle.
+- H4 A service's per-minute rate and minimum fare are never used when there's no fare tariff. Decide: price with them, or remove the fields.
+
+Medium:
+- M1 Register vehicle has no Vehicle service picker, and the review has no Vehicle service line.
+- M2 Services, types, switches, locks and promotions are linked by name: renaming breaks them. Link by id.
+- M4 Region service switches: Inherit / On / Off, and a server check that the service is offered at the pickup.
+- M5 Approved vehicle permit never switches its service back on (trigger compares the permit key with the permit id).
+- M6 Citizens only, business registration, driver/vehicle permit and age-limit covers are app-only: move into SQL rules.
+- M7 An approved partner can change their partner types without re-review.
+- M8 Two accounts can register the same MyKad number. Decide: flag in the review, or also a unique index.
+- M9 Vehicles added later skip the per-service checks.
+
+Low:
+- L1 One default for "partners must register a vehicle".
+- L2 Built-in fallback service names match no seeded rules.
+- L4 A partner with no vehicle sees "No vehicle chosen" instead of "No vehicle needed".
+- L5 Repeat vehicle wizard after registration (goes with H1).
+- L6 Vehicle permits opens on the first country, not the admin's.
+- L7 Driver service locks: long names break the row layout.
+- L8 City to City booking flow; per-service commission rate.
+
+(M3, the list's quick Approve, and L3, the step count, are in the partner review fixes.)
+
 ## Owner setup
 
 - AI Reports email: add the Resend key in Admin › Settings › API Keys (Email › Resend) and verify the getride.my domain in Resend. Until then scheduled report emails don't send; downloads work.
