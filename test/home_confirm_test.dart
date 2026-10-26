@@ -855,10 +855,9 @@ void main() {
   testWidgets("Display Settings' switches still hide the search bar and the recent places", (tester) async {
     await _pump(tester, _Rides(), book: false, display: const {'searchBar': false, 'recentLocations': false});
     expect(find.byKey(const ValueKey('home-search')), findsNothing);
-    // The plain Where to? row stands in for it, still first.
-    final where = find.byKey(const ValueKey('home-where-to'));
-    expect(where, findsOneWidget);
-    expect(tester.getRect(where).bottom, lessThanOrEqualTo(tester.getRect(find.byKey(const ValueKey('vehicle-type-bar'))).top));
+    // Nothing stands in for it: no Where to? row either.
+    expect(find.text('Where to?'), findsNothing);
+    expect(find.byKey(const ValueKey('vehicle-type-bar')), findsOneWidget);
     expect(find.byKey(const ValueKey('home-recent-KLCC')), findsNothing);
   });
 

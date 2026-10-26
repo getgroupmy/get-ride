@@ -2229,22 +2229,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     for (final s in layout.sections) {
       final into = folded ? below : above;
       switch (s.type) {
-        case HomeSectionType.search:
+        case HomeSectionType.search when s.on:
           // Where to, wherever it stands: however low the admin sets the
-          // sheet, it stays whole (the floor). Switched off, a plain row
-          // takes its place, so a rider can always book.
-          into.add(KeyedSubtree(
-            key: _floorKey,
-            child: s.on
-                ? HomeSearchPill(text: s.text, onTap: whereTo)
-                : ListTile(
-                    key: const ValueKey('home-where-to'),
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.location_on, color: Colors.red.shade700),
-                    title: const Text('Where to?'),
-                    onTap: whereTo,
-                  ),
-          ));
+          // sheet, it stays whole (the floor). Switched off, nothing shows:
+          // a box, tile or card set to Ride opens Where to? instead.
+          into.add(KeyedSubtree(key: _floorKey, child: HomeSearchPill(text: s.text, onTap: whereTo)));
           into.add(const SizedBox(height: 12));
         case HomeSectionType.vehicles when s.on:
           // Until a catalogue is known -- this read's, or the one this device
