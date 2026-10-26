@@ -472,6 +472,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:god-view.send-push', SurfaceKind.sheet, 'God view · Send push', 'lib/src/admin/screens/god_view_screen.dart'),
   SurfaceEntry('sheet:god-view.settings', SurfaceKind.sheet, 'God view · Settings', 'lib/src/admin/screens/god_view_screen.dart'),
   SurfaceEntry('sheet:home.vehicle-description', SurfaceKind.sheet, 'Home · Vehicle description', 'lib/src/features/ride/home_parts.dart'),
+  SurfaceEntry('sheet:home.welcome-back', SurfaceKind.sheet, 'Home · Welcome back', 'lib/src/features/ride/welcome_back_sheet.dart'),
   SurfaceEntry('sheet:location-share-button.show-location-share-sheet', SurfaceKind.sheet, 'Location share button · Location share sheet', 'lib/src/features/ride/location_share_button.dart'),
   SurfaceEntry('sheet:location-share-button.show-location-share-sheet-2', SurfaceKind.sheet, 'Location share button · Location share sheet', 'lib/src/features/ride/location_share_button.dart'),
   SurfaceEntry('sheet:make-model.add-picker', SurfaceKind.sheet, 'Make model · Add picker', 'lib/src/admin/screens/catalogue/make_model_screen.dart'),

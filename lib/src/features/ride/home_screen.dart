@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -40,6 +41,7 @@ import '../../core/region_pricing.dart';
 import '../../core/service_tree.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_request_metadata.dart';
+import '../../core/ride_draft.dart';
 import '../../core/ride_rebook.dart';
 import '../../core/home_layout.dart';
 import '../../core/expo_routes.dart' show flutterRouteFor;
@@ -69,6 +71,7 @@ import '../permissions/permission_actions.dart' show askPermission;
 import '../../data/models.dart';
 import '../../data/route_estimate_repository.dart';
 import '../../data/ride_pet_repository.dart' show petConfigProvider;
+import '../../data/ride_draft_store.dart';
 import '../../data/ride_option_providers.dart';
 import '../../core/ride_option_charges.dart';
 import '../../core/partner_type_rules.dart' show RegionScope;
@@ -78,6 +81,7 @@ import '../../core/ride_option_settings.dart' show RideOptionsConfig;
 import '../../core/ride_pets.dart' show PetConfig;
 import '../../data/ride_option_places_repository.dart';
 import '../../providers.dart';
+import 'welcome_back_sheet.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_drag_pin.dart';
 import '../../widgets/map_recenter.dart';
@@ -539,7 +543,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     _locate();
-    _checkOngoing();
+    _ongoingRead = _checkOngoing();
     _lifecycle = AppLifecycleListener(onResume: () {
       _checkOngoing();
       _checkPromoZone(force: true);
@@ -553,6 +557,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // per launch.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) maybeAutoLaunchMeter(context, ref);
+    });
+    // A booking left unfinished when the app closed: Welcome back.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_offerDraft());
     });
   }
 
@@ -569,6 +577,113 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.setState(fn);
     _changes.value++;
     _confirmBack.set(_drop != null, _backFromConfirm);
+    _queueDraft();
+  }
+
+  // ---- Welcome back (ride_draft.dart) ----
+  /// Whether the saved booking has been offered (or passed over) for this
+  /// screen: until then nothing is saved over it.
+  bool _draftChecked = false;
+
+  /// The booking last saved (without its time), so an unchanged trip is
+  /// not written again.
+  String? _draftLast;
+  Timer? _draftTimer;
+
+  /// The rider's open requests, as first read on opening.
+  Future<void>? _ongoingRead;
+
+  String? get _uid {
+    try {
+      return ref.read(currentUserIdProvider);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The booking on the confirm step now: the fare only when the rider
+  /// offered their own (else it is priced again), and who's riding when it
+  /// is someone else.
+  RideDraft? _draftNow() {
+    if (_ongoing != null || _drop == null) return null;
+    final service = _services.isEmpty ? null : _service;
+    return rideDraftOf(
+      pickup: _pickup,
+      drop: _drop,
+      stops: _stops,
+      now: DateTime.now(),
+      service: service?.name,
+      fare: service != null && _adjust != 0 ? _fareFor(service) : null,
+      payment: _paymentPick,
+      forName: _forOther ? _otherName.text : null,
+      forPhone: _forOther ? _otherPhone.text : null,
+      currency: service == null ? null : _currency,
+    );
+  }
+
+  /// Saves the booking a moment after it last changed, or forgets it once
+  /// the confirm step is left (booked, or Back to the map).
+  void _queueDraft() {
+    if (!_draftChecked) return;
+    final key = _draftKey();
+    if (key == _draftLast) return;
+    _draftLast = key;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 800), () {
+      final uid = _uid;
+      if (uid == null) return;
+      final store = ref.read(rideDraftStoreProvider);
+      final now = _draftNow();
+      unawaited(now == null ? store.clear(uid) : store.save(uid, now));
+    });
+  }
+
+  /// The booking now without its time ('' for none), to tell a change.
+  String _draftKey() {
+    final d = _draftNow();
+    return d == null ? '' : jsonEncode({...d.toJson(), 'saved_at': null});
+  }
+
+  /// Forgets the saved booking now (it was sent). The trip still on the
+  /// screen is not saved again; a change to it is.
+  void _forgetDraft() {
+    _draftTimer?.cancel();
+    _draftLast = _draftKey();
+    final uid = _uid;
+    if (uid != null) unawaited(ref.read(rideDraftStoreProvider).clear(uid));
+  }
+
+  /// "Welcome back": once per launch, the booking left on the confirm step
+  /// within [rideDraftKeep] is offered again, unless a ride is on the go or
+  /// a trip is already being filled in.
+  Future<void> _offerDraft() async {
+    try {
+      if (rideDraftOfferedThisRun) return;
+      rideDraftOfferedThisRun = true;
+      final uid = _uid;
+      if (uid == null) return;
+      final store = ref.read(rideDraftStoreProvider);
+      final draft = freshRideDraft(await store.read(uid), DateTime.now());
+      await _ongoingRead;
+      if (!mounted) return;
+      if (draft == null || _ongoing != null) {
+        await store.clear(uid);
+        return;
+      }
+      if (_drop != null || ref.read(rideRebookProvider) != null) return;
+      final go = await showWelcomeBackSheet(context, draft);
+      if (!mounted) return;
+      if (go == true) {
+        ref.read(rideRebookProvider.notifier).set(draft.trip);
+      } else if (go == false) {
+        await store.clear(uid);
+      }
+    } finally {
+      if (mounted) {
+        _draftChecked = true;
+        _queueDraft();
+      }
+    }
   }
 
   @override
@@ -580,6 +695,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _carsTimer?.cancel();
     _lifecycle?.dispose();
     _promoTimer?.cancel();
+    _draftTimer?.cancel();
     _expiry?.cancel();
     _note.dispose();
     _otherName.dispose();
@@ -941,6 +1057,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _drop = trip.drop;
       if (trip.service != null) _serviceName = trip.service;
       if (trip.payment != null) _paymentPick = trip.payment!;
+      if (trip.forName != null) {
+        _forOther = true;
+        _otherName.text = trip.forName!;
+        _otherPhone.text = trip.forPhone ?? '';
+      }
     });
     final seq = _routeSeq + 1;
     await _updateRoute();
@@ -1814,6 +1935,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // later at its pickup time and again when it is dispatched.
             promoCodeId: _promo?.codeId,
           );
+      // Sent: nothing left to offer again.
+      _forgetDraft();
       final later = booked.later;
       final promoSent = _promo;
       if (later != null && promoSent != null && later.promoCode == null && mounted) {
