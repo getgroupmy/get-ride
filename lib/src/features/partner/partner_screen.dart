@@ -69,7 +69,11 @@ import 'remote_action.dart';
 import '../../core/partner_remote_action.dart' show DriverRemoteActions;
 import '../../core/partner_modes.dart';
 import '../../core/vehicle_assignment.dart';
-import '../../core/vehicle_onboarding.dart' show firstVehicleStep;
+import '../../core/saved_drafts.dart';
+import '../../core/vehicle_onboarding.dart' show VehicleStep, firstVehicleStep;
+import '../../data/ride_draft_store.dart';
+import '../../data/vehicle_onboarding_repository.dart' show vehicleOnboardingRepositoryProvider;
+import '../ride/welcome_back_sheet.dart' show showWelcomeBackSaved;
 import '../../data/vehicle_assignment_repository.dart';
 import '../../admin/screens/people/people_logic.dart' show parseStringList;
 import '../../widgets/side_menu_host.dart';
@@ -344,6 +348,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     _resume();
     _locate();
     unawaited(_restoreOnline());
+    // A vehicle being added when the app closed: Welcome back.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_offerVehicleDraft());
+    });
     // A saved OBD-II reader comes up with the driver home, as Expo's did on
     // the Teksi screen, so the menu's Vehicle information row (shown only on
     // a live link) appears without opening the meter first. No-op without one.
@@ -401,6 +409,39 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// Online when the app last closed (driverOnlineProvider remembers it):
   /// back online now, through the same checks as the switch. When a check
   /// stops it, the server is told this driver is offline too.
+  /// "Welcome back" for a vehicle being added (saved_drafts.dart): once per
+  /// launch, within [rideDraftKeep], while that vehicle is still unfinished.
+  /// Continue opens it at its next step; Not now leaves it in My vehicles.
+  Future<void> _offerVehicleDraft() async {
+    if (vehicleDraftOfferedThisRun) return;
+    vehicleDraftOfferedThisRun = true;
+    String? uid;
+    try {
+      uid = ref.read(currentUserIdProvider);
+    } catch (_) {}
+    if (uid == null) return;
+    final store = ref.read(rideDraftStoreProvider);
+    final d = await store.readSaved(SavedDraftKind.vehicle, uid);
+    if (d == null) return;
+    final id = draftText(d.data['id']);
+    Map<String, dynamic>? v;
+    if (id != null && d.freshAt(DateTime.now())) {
+      try {
+        v = await ref.read(vehicleOnboardingRepositoryProvider).vehicle(id);
+      } catch (_) {}
+    }
+    // Gone, finished since or run out: nothing to offer.
+    if (v == null || firstVehicleStep(v) == VehicleStep.done) {
+      await store.clearSaved(SavedDraftKind.vehicle, uid);
+      return;
+    }
+    if (!mounted) return;
+    final go = await showWelcomeBackSaved(context, d);
+    if (!mounted || go == null) return;
+    await store.clearSaved(SavedDraftKind.vehicle, uid);
+    if (go && mounted) unawaited(context.push('/drive/vehicles/$id'));
+  }
+
   Future<void> _restoreOnline() async {
     if (_online || !await _onlineState.wasOnline() || !mounted || _online) return;
     try {

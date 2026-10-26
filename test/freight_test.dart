@@ -38,7 +38,9 @@ import 'package:get_ride/src/features/partner/request_sheet.dart';
 import 'package:get_ride/src/features/ride/freight_parts.dart';
 import 'package:get_ride/src/features/ride/confirm_parts.dart' show accentFill;
 import 'package:get_ride/src/features/ride/freight_screen.dart';
+import 'package:get_ride/src/core/saved_drafts.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:get_ride/src/core/page_styles.dart';
 import 'package:get_ride/src/features/ride/delivery_look.dart';
 import 'package:get_ride/src/features/ride/place_search.dart' show routeSheetFill;
@@ -194,6 +196,56 @@ Future<void> _address(WidgetTester tester, String field) async {
 }
 
 void main() {
+  group('Welcome back (saved_drafts.dart)', () {
+    Map<String, Object?> left() => {
+      'pickup': draftAddressToJson(
+        const Place(name: 'Kuala Lumpur', address: '', point: LatLng(3.158, 101.712)), '12, Jalan Ampang'),
+      'drop': draftAddressToJson(
+        const Place(name: 'Petaling Jaya', address: '', point: LatLng(3.118, 101.623)), '8, Jalan SS2/24'),
+      'time': 'withinHour',
+      'description': 'Single-door fridge and 6 boxes',
+      'vehicle_id': 'v2',
+      'vehicle_name': '3-tonne lorry (L)',
+      'payment': 'Cash',
+      'offer': 180,
+      'declared': 400,
+      'recipient': {'name': 'Mei', 'phone': '+60 12 345 6789'},
+    };
+
+    for (final b in Brightness.values) {
+      testWidgets('a move left unfinished comes back filled in; sending it forgets it (${b.name})', (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final rides = _Rides();
+        await _pump(tester, FreightScreen(resume: left()),
+            [..._overrides(rides), currentUserIdProvider.overrideWithValue('me')], b);
+        expect(find.textContaining('Jalan Ampang'), findsWidgets);
+        expect(find.textContaining('Jalan SS2/24'), findsWidgets);
+        expect(find.text('Single-door fridge and 6 boxes'), findsOneWidget);
+        expect(find.text('Mei · +60 12 345 6789'), findsOneWidget);
+        expect(find.text('RM400'), findsOneWidget);
+        // The prohibited items are confirmed again.
+        await tester.ensureVisible(find.byKey(const ValueKey('freight-prohibited-ack')));
+        await tester.tap(find.byKey(const ValueKey('freight-prohibited-ack')));
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pumpAndSettle();
+        final prefs = await SharedPreferences.getInstance();
+        final saved = SavedDraft.decode(SavedDraftKind.freight, prefs.getString(SavedDraftKind.freight.key('me')));
+        expect(saved?.data['description'], 'Single-door fridge and 6 boxes', reason: 'kept on the phone as it changes');
+        expect(saved?.data.containsKey('ack'), isFalse);
+
+        await tester.ensureVisible(find.byKey(const ValueKey('freight-create')));
+        await tester.tap(find.byKey(const ValueKey('freight-create')));
+        await tester.pumpAndSettle();
+        final created = rides.call(#createRequest);
+        expect(created, isNotNull);
+        expect(created!.namedArguments[#service], '3-tonne lorry (L)');
+        await tester.pump(const Duration(seconds: 1));
+        expect(prefs.getString(SavedDraftKind.freight.key('me')), isNull, reason: 'sent: nothing left to offer');
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
+
   group('pure', () {
     test('the house number and street: the search\'s address up to the postcode', () {
       Place at(String name, String address) => Place(name: name, address: address, point: const LatLng(0, 0));

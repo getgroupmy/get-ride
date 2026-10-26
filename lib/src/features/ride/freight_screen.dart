@@ -21,6 +21,7 @@ import '../../core/fare_tariff.dart';
 import '../../core/format.dart';
 import '../../core/courier.dart' show deliveryStatusLabel, recipientPaysText;
 import '../../core/freight.dart';
+import '../../core/saved_drafts.dart';
 import '../../core/option_charge.dart';
 import '../../core/partner_type_rules.dart' show RegionScope;
 import '../../core/payment_types.dart';
@@ -40,6 +41,7 @@ import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../data/photo_picker.dart';
 import '../../data/ride_option_places_repository.dart';
+import '../../data/ride_draft_store.dart';
 import '../../data/ride_option_providers.dart';
 import '../../data/scheduled_ride_repository.dart';
 import '../../providers.dart';
@@ -58,9 +60,10 @@ import 'place_search.dart';
 import 'scheduled_rides_screen.dart' show pickupLabel;
 import 'searching_parts.dart' show OfferStack, SearchOfferView;
 
-/// Opens the Freight page.
-Future<void> openFreightPage(BuildContext context) =>
-    Navigator.of(context).push<void>(AppPageRoute(id: 'ride.freight', builder: (_) => const FreightScreen()));
+/// Opens the Freight page; with [resume], filled in as it was left
+/// (Welcome back, saved_drafts.dart).
+Future<void> openFreightPage(BuildContext context, {Map<String, Object?>? resume}) => Navigator.of(context)
+    .push<void>(AppPageRoute(id: 'ride.freight', builder: (_) => FreightScreen(resume: resume)));
 
 /// A loading or drop-off point: the place searched (or pinned) and booked,
 /// and the house number and street as the rider typed them.
@@ -166,10 +169,13 @@ final freightRouteProvider = Provider<Future<({double km, double min})?> Functio
 );
 
 class FreightScreen extends ConsumerStatefulWidget {
-  const FreightScreen({super.key, this.initialTab = 0});
+  const FreightScreen({super.key, this.initialTab = 0, this.resume});
 
   /// 0: Create request, 1: My requests.
   final int initialTab;
+
+  /// A request left unfinished, to fill the form in with.
+  final Map<String, Object?>? resume;
 
   @override
   ConsumerState<FreightScreen> createState() => _FreightScreenState();
@@ -203,12 +209,72 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     _tabs.addListener(() {
       if (mounted) setState(() {});
     });
+    try {
+      _uid = ref.read(currentUserIdProvider);
+    } catch (_) {}
+    _saver = DraftSaver(SavedDraftKind.freight, ref.read(rideDraftStoreProvider), () => _uid);
+    if (widget.resume case final r?) _restore(r);
   }
 
   @override
   void dispose() {
+    _saver.dispose();
     _tabs.dispose();
     super.dispose();
+  }
+
+  // ---- Welcome back (saved_drafts.dart) ----
+  late final DraftSaver _saver;
+  String? _uid;
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _saver.changed(_saved());
+  }
+
+  /// The form as kept on the phone, once both ends are set. The confirmation
+  /// about prohibited items and the cargo photo are asked for again.
+  Map<String, Object?>? _saved() {
+    final a = _pickup, b = _drop;
+    if (a == null || b == null || !draftPlaceReal(a.place) || !draftPlaceReal(b.place)) return null;
+    return {
+      'pickup': draftAddressToJson(a.place, a.details),
+      'drop': draftAddressToJson(b.place, b.details),
+      'time': _time.name,
+      'schedule_at': ?_scheduleAt?.toUtc().toIso8601String(),
+      if (_description.isNotEmpty) 'description': _description,
+      'vehicle_id': ?_vehicleId,
+      'vehicle_name': ?(_vehicleId == null ? null : _vehicle?.name),
+      if (_options.isNotEmpty) 'options': [for (final o in _options) o.name],
+      'payment': _payment,
+      'offer': ?_offer,
+      if (_offer != null) 'currency': _currency,
+      'declared': ?_declared,
+      if (_recipient case final r?) 'recipient': {'name': r.name, 'phone': r.phone},
+    };
+  }
+
+  void _restore(Map<String, Object?> m) {
+    final a = draftAddressFromJson(m['pickup']), b = draftAddressFromJson(m['drop']);
+    if (a != null) _pickup = a;
+    if (b != null) _drop = b;
+    _time = FreightPickupTime.values.where((t) => t.name == m['time']).firstOrNull ?? _time;
+    final at = DateTime.tryParse('${m['schedule_at'] ?? ''}')?.toLocal();
+    _scheduleAt = at != null && at.isAfter(DateTime.now()) ? at : null;
+    if (_time == FreightPickupTime.scheduled && _scheduleAt == null) _time = FreightPickupTime.soon;
+    _description = draftText(m['description']) ?? '';
+    _vehicleId = draftText(m['vehicle_id']);
+    final options = m['options'];
+    _options = {
+      if (options is List)
+        for (final o in options) ?RideOptionKind.values.where((k) => k.name == o).firstOrNull,
+    };
+    _payment = draftText(m['payment']) ?? _payment;
+    _offer = draftNumber(m['offer']);
+    _declared = draftNumber(m['declared']);
+    final r = m['recipient'];
+    if (r is Map && draftText(r['phone']) != null) _recipient = (name: '${r['name'] ?? ''}', phone: '${r['phone']}');
   }
 
   List<FreightVehicle> get _vehicles => ref.read(freightVehiclesProvider).value ?? const [];
@@ -558,6 +624,8 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
         _ack = false;
         _recipient = null;
       });
+      // Sent: nothing left to offer again.
+      _saver.forget(_saved());
       final later = booked.later;
       if (later != null) {
         ref.invalidate(myScheduledRidesProvider);
@@ -565,6 +633,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
           _scheduleAt = null;
           _time = FreightPickupTime.soon;
         });
+        _saver.forget(_saved());
         await showNotice(
           context,
           title: 'Freight scheduled',

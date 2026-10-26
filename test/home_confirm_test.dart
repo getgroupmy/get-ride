@@ -24,6 +24,7 @@ import 'package:get_ride/src/core/ride_option_charges.dart';
 import 'package:get_ride/src/core/ride_pets.dart';
 import 'package:get_ride/src/core/ride_draft.dart';
 import 'package:get_ride/src/core/ride_rebook.dart';
+import 'package:get_ride/src/core/saved_drafts.dart';
 import 'package:get_ride/src/data/ride_draft_store.dart' show rideDraftOfferedThisRun;
 import 'package:get_ride/src/core/route_estimate.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
@@ -1655,6 +1656,14 @@ void main() {
       expect(find.text('You were booking a ride for Mum 6 min ago.'), findsOneWidget);
     });
 
+    testWidgets('closing the sheet keeps the booking for next time', (tester) async {
+      await _pump(tester, _Rides(), book: false, uid: 'me', prefs: {rideDraftKey('me'): saved()});
+      await wait(tester);
+      Navigator.of(tester.element(find.byKey(const ValueKey('welcome-back-sheet')))).pop();
+      await wait(tester, 15);
+      expect((await SharedPreferences.getInstance()).getString(rideDraftKey('me')), isNotNull);
+    });
+
     testWidgets('Start over forgets the booking and stays on the map', (tester) async {
       await _pump(tester, _Rides(), book: false, uid: 'me', prefs: {rideDraftKey('me'): saved()});
       await wait(tester);
@@ -1677,6 +1686,36 @@ void main() {
       await _pump(tester, _Rides(), book: false, uid: 'me', prefs: {rideDraftKey('me'): saved()});
       await wait(tester);
       expect(find.byKey(const ValueKey('welcome-back-sheet')), findsNothing);
+    });
+
+    String freight({Duration ago = const Duration(minutes: 3)}) => SavedDraft(
+      kind: SavedDraftKind.freight,
+      savedAt: DateTime.now().subtract(ago),
+      data: {
+        'pickup': draftAddressToJson(_eco, ''),
+        'drop': draftAddressToJson(_klcc, ''),
+        'vehicle_name': '1-tonne lorry',
+      },
+    ).encode();
+
+    testWidgets('a Freight move left last is offered; Start over forgets it', (tester) async {
+      await _pump(tester, _Rides(), book: false, uid: 'me',
+          prefs: {rideDraftKey('me'): saved(ago: const Duration(minutes: 10)), SavedDraftKind.freight.key('me'): freight()});
+      await wait(tester);
+      expect(find.text('You were booking a Freight move 3 min ago.'), findsOneWidget);
+      expect(find.text('1-tonne lorry · Eco Majestic to KLCC'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('welcome-back-start-over')));
+      await wait(tester);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString(SavedDraftKind.freight.key('me')), isNull);
+      expect(prefs.getString(rideDraftKey('me')), isNotNull, reason: 'only the one offered is forgotten');
+    });
+
+    testWidgets('a ride left after the Freight move is the one offered', (tester) async {
+      await _pump(tester, _Rides(), book: false, uid: 'me',
+          prefs: {rideDraftKey('me'): saved(ago: const Duration(minutes: 1)), SavedDraftKind.freight.key('me'): freight()});
+      await wait(tester);
+      expect(find.text('You were booking a ride 1 min ago.'), findsOneWidget);
     });
 
     testWidgets('the confirm step is saved as it changes, and Back to the map forgets it', (tester) async {
