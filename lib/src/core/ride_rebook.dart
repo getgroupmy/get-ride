@@ -19,6 +19,8 @@ class RideRebook {
     this.service,
     this.fare,
     this.payment,
+    this.forName,
+    this.forPhone,
   });
 
   final Place pickup, drop;
@@ -33,6 +35,9 @@ class RideRebook {
 
   /// The payment mode booked.
   final String? payment;
+
+  /// Who's riding, when it is someone else (a saved booking).
+  final String? forName, forPhone;
 
   /// The same route alone: the vehicle, fare and payment picked afresh.
   RideRebook get routeOnly => RideRebook(pickup: pickup, drop: drop, stops: stops);

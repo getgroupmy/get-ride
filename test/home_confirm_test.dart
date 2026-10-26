@@ -22,7 +22,9 @@ import 'package:get_ride/src/core/region_pricing.dart';
 import 'package:get_ride/src/core/ride_assistance.dart';
 import 'package:get_ride/src/core/ride_option_charges.dart';
 import 'package:get_ride/src/core/ride_pets.dart';
+import 'package:get_ride/src/core/ride_draft.dart';
 import 'package:get_ride/src/core/ride_rebook.dart';
+import 'package:get_ride/src/data/ride_draft_store.dart' show rideDraftOfferedThisRun;
 import 'package:get_ride/src/core/route_estimate.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/coin_trade_repository.dart';
@@ -296,8 +298,10 @@ Future<ProviderContainer> _pump(
   Brightness brightness = Brightness.light,
   Size size = const Size(400, 860),
   PageStyles? styles,
+  Map<String, Object> prefs = const {},
+  String? uid,
 }) async {
-  SharedPreferences.setMockInitialValues({});
+  SharedPreferences.setMockInitialValues(prefs);
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -325,6 +329,7 @@ Future<ProviderContainer> _pump(
       promoRepositoryProvider.overrideWithValue(promos ?? PromoRepository(null)),
       if (here != null) locationSourceProvider.overrideWithValue(_Here(here)),
       if (scheduled != null) scheduledRidesConfigProvider.overrideWith((ref) async => scheduled),
+      if (uid != null) currentUserIdProvider.overrideWithValue(uid),
     ],
   );
   addTearDown(container.dispose);
@@ -1603,6 +1608,91 @@ void main() {
       expect(find.text('ride r9'), findsOneWidget);
     });
   }
+
+  // ---- Welcome back (ride_draft.dart) ----
+  group('Welcome back', () {
+    setUp(() => rideDraftOfferedThisRun = false);
+    Future<void> wait(WidgetTester tester, [int n = 10]) async {
+      for (var i = 0; i < n; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    String saved({Duration ago = const Duration(minutes: 6), String? forName}) => RideDraft(
+      savedAt: DateTime.now().subtract(ago),
+      trip: RideRebook(pickup: _eco, drop: _klcc, service: 'GET XL', payment: 'Cash', forName: forName, forPhone: forName == null ? null : '0123456789'),
+    ).encode();
+
+    for (final b in Brightness.values) {
+      testWidgets('a booking left within 30 minutes is offered; Continue fills in the confirm step (${b.name})', (tester) async {
+        final rides = _Rides();
+        await _pump(tester, rides, book: false, uid: 'me', brightness: b, prefs: {rideDraftKey('me'): saved()});
+        await wait(tester);
+        expect(find.byKey(const ValueKey('welcome-back-sheet')), findsOneWidget);
+        expect(find.text('Welcome back'), findsOneWidget);
+        expect(find.text('You were booking a ride 6 min ago.'), findsOneWidget);
+        expect(find.text('KLCC'), findsWidgets);
+        expect(find.text('The fare is checked again when you continue.'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.tap(find.byKey(const ValueKey('welcome-back-continue')));
+        await wait(tester, 15);
+        expect(find.byKey(const ValueKey('welcome-back-sheet')), findsNothing);
+        expect(find.byKey(const ValueKey('book')), findsOneWidget, reason: 'on the confirm step');
+        expect(rides.created, isNull, reason: 'the rider sends it');
+        await tester.tap(find.byKey(const ValueKey('book')));
+        await wait(tester);
+        expect(rides.created![#dropName], 'KLCC');
+        expect(rides.created![#service], 'GET XL');
+        await wait(tester, 10);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString(rideDraftKey('me')), isNull, reason: 'sent: nothing left to offer');
+      });
+    }
+
+    testWidgets('a booking for someone else comes back with who is riding', (tester) async {
+      await _pump(tester, _Rides(), book: false, uid: 'me', prefs: {rideDraftKey('me'): saved(forName: 'Mum')});
+      await wait(tester);
+      expect(find.text('You were booking a ride for Mum 6 min ago.'), findsOneWidget);
+    });
+
+    testWidgets('Start over forgets the booking and stays on the map', (tester) async {
+      await _pump(tester, _Rides(), book: false, uid: 'me', prefs: {rideDraftKey('me'): saved()});
+      await wait(tester);
+      await tester.tap(find.byKey(const ValueKey('welcome-back-start-over')));
+      await wait(tester);
+      expect(find.byKey(const ValueKey('welcome-back-sheet')), findsNothing);
+      expect(find.byKey(const ValueKey('book')), findsNothing);
+      expect((await SharedPreferences.getInstance()).getString(rideDraftKey('me')), isNull);
+    });
+
+    testWidgets('older than 30 minutes: not offered, and dropped', (tester) async {
+      await _pump(tester, _Rides(), book: false, uid: 'me', prefs: {rideDraftKey('me'): saved(ago: const Duration(minutes: 31))});
+      await wait(tester);
+      expect(find.byKey(const ValueKey('welcome-back-sheet')), findsNothing);
+      expect((await SharedPreferences.getInstance()).getString(rideDraftKey('me')), isNull);
+    });
+
+    testWidgets('offered once per launch', (tester) async {
+      rideDraftOfferedThisRun = true;
+      await _pump(tester, _Rides(), book: false, uid: 'me', prefs: {rideDraftKey('me'): saved()});
+      await wait(tester);
+      expect(find.byKey(const ValueKey('welcome-back-sheet')), findsNothing);
+    });
+
+    testWidgets('the confirm step is saved as it changes, and Back to the map forgets it', (tester) async {
+      await _pump(tester, _Rides(), uid: 'me');
+      await wait(tester, 12);
+      final prefs = await SharedPreferences.getInstance();
+      final d = RideDraft.decode(prefs.getString(rideDraftKey('me')));
+      expect(d, isNotNull);
+      expect(d!.trip.drop.name, 'KLCC');
+      await tester.drag(find.byKey(const ValueKey('map-sheet-handle')), const Offset(0, 600));
+      await wait(tester);
+      await tester.tap(find.byKey(const ValueKey('confirm-back')));
+      await wait(tester, 12);
+      expect(prefs.getString(rideDraftKey('me')), isNull);
+    });
+  });
 
   // ---- Promo codes (0242) ----
   for (final b in Brightness.values) {
