@@ -821,12 +821,15 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           _ => r.status.label,
         }, style: t.textTheme.headlineSmall),
         const SizedBox(height: 12),
+        // The trip done: rating the rider comes first, in view with the
+        // sheet all the way down (it saves as a star is tapped).
+        if (r.status == RideStatus.completed) MapSheetRestLine(child: RateRiderCard(ride: r, now: _now)),
         Card(
           child: Column(children: [
             // The sheet never rests lower than the passenger and their
             // Message and Call (a phone on its side showed only the title),
             // nor, below them, Navigate and Cancel ride ([restAt]).
-            MapSheetRestLine(child: ListTile(
+            MapSheetRestLine.unless(r.status == RideStatus.completed, child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.person)),
               title: Text(r.passengerName),
               // Two pieces with their own icons and no separator, each kept
@@ -1022,9 +1025,6 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         // Their cancel rate, and the pause it brings over the limit (0269).
         if (driverMayCancel(r.status)) const DriverCancelRateNote(),
         if (r.status == RideStatus.completed) _CollectCard(ride: r),
-        // The driver rates the rider (0269): optional, Skip leaves it for
-        // trip history (24 hours).
-        if (r.status == RideStatus.completed) RateRiderCard(ride: r, now: _now),
         if (r.status == RideStatus.completed)
           OutlinedButton.icon(
             key: const ValueKey('trip-receipt'),

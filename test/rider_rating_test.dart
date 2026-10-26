@@ -5,6 +5,8 @@ import 'package:get_ride/src/core/rider_rating.dart';
 import 'package:get_ride/src/data/city_ride_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/widgets/rider_badge.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/features/partner/rate_rider.dart';
 
 RideRequest _ride({double? rating, int? ratings, int? trips}) => RideRequest({
   'id': 'r1',
@@ -85,4 +87,44 @@ void main() {
       expect(showRiderStars(_ride(rating: 4.8, ratings: 126), RiderRatingSettings.standard), isTrue);
     });
   }
+
+  for (final b in Brightness.values) {
+    testWidgets('the driver rates the rider: a star saves at once, tags as they are ticked (${b.name})', (tester) async {
+      final repo = _RateRepo();
+      final ride = RideRequest({
+        'id': 'r9', 'rider_id': 'u1', 'status': 'completed', 'pickup_label': 'Mid Valley', 'drop_label': 'KLCC',
+        'passenger_name': 'Aina', 'completed_at': DateTime.now().toIso8601String(),
+      });
+      await tester.pumpWidget(ProviderScope(
+        overrides: [cityRideRepositoryProvider.overrideWithValue(repo)],
+        child: MaterialApp(theme: appTheme(b), home: Scaffold(body: SingleChildScrollView(child: RateRiderCard(ride: ride, now: DateTime.now())))),
+      ));
+      expect(find.byKey(const ValueKey('rate-rider-submit')), findsNothing);
+      final star = find.byKey(const ValueKey('rate-rider-star-5'));
+      expect(tester.getSize(star).height, greaterThanOrEqualTo(48), reason: 'a full-size tap target');
+      expect(find.byKey(const ValueKey('rate-rider-skip')), findsOneWidget);
+      await tester.tap(star);
+      await tester.pumpAndSettle();
+      expect(repo.calls.single, ('r9', 5, ''));
+      expect(find.text('Rating saved'), findsOneWidget);
+      expect(find.byKey(const ValueKey('rate-rider-skip')), findsNothing, reason: 'already rated');
+      await tester.tap(find.byKey(ValueKey('rate-rider-tag-${riderTagsFor(5).first}')));
+      await tester.pump();
+      expect(repo.calls, hasLength(1));
+      await tester.pump(rateRiderTagsSaveAfter);
+      await tester.pumpAndSettle();
+      expect(repo.calls.last, ('r9', 5, riderTagsFor(5).first));
+      expect(tester.takeException(), isNull);
+    });
+  }
+}
+
+class _RateRepo implements CityRideRepository {
+  final calls = <(String, int, String)>[];
+
+  @override
+  Future<void> rateRider(String requestId, int stars, Set<String> tags) async => calls.add((requestId, stars, (tags.toList()..sort()).join(',')));
+
+  @override
+  dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }

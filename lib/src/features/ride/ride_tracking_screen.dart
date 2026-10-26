@@ -1214,6 +1214,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             ..._searchSheet(r),
           ] else ...[
           const SizedBox(height: 16),
+          // The trip done: rating it comes first, in view with the sheet all
+          // the way down (it saves as a star is tapped).
+          if (r.status == RideStatus.completed && !_isDemo) MapSheetRestLine(child: RideRatingCard(ride: r)),
           // The driver asking to hand the trip over (0199), or the new one coming.
           if (!_isDemo) ...[
             RiderHandoverCard(ride: r),
@@ -1249,7 +1252,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   // The sheet never rests lower than this row: on a phone on
                   // its side or at large text it showed under "Cancel ride".
                   if (!_isDemo && r.status != RideStatus.cancelled && (r.partnerPhone != null || rideChatAvailable(r)))
-                    MapSheetRestLine(
+                    // Once the trip is done the rating card is the line.
+                    MapSheetRestLine.unless(
+                      r.status == RideStatus.completed,
                       child: OverflowBar(
                       children: [
                         // An in-app call (migration 0131); a long press offers
@@ -1330,7 +1335,6 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (r.status == RideStatus.onTrip && !_isDemo) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
           // The route check (0269): asks when the car leaves the planned route.
           if (r.status == RideStatus.onTrip && !_isDemo) RouteCheckWatcher(ride: r, onSos: () => _sos(r)),
-          if (r.status == RideStatus.completed && !_isDemo) RideRatingCard(ride: r),
           if (r.status == RideStatus.completed && !_isDemo) LostItemCard(ride: r),
           // On the trip itself the X only asks: the driver approves it.
           // Before it, on a phone, Cancel ride is pinned under the sheet.
