@@ -31,6 +31,7 @@ import '../../data/partner_doc_check.dart';
 import '../../data/partner_type_check.dart';
 import '../../core/partner_type_rules.dart' show PartnerTypeCheck, hailNotOfferedMessage;
 import '../../providers.dart';
+import '../../data/driver_presence.dart' show driverPresenceProvider;
 import '../../core/ride_offers.dart';
 import '../../data/city_ride_repository.dart';
 import '../../core/rider_rating.dart';
@@ -223,6 +224,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// what is already waiting goes in the list, only new requests pop up.
   bool _restoredOnline = false;
 
+  /// Put back online as the app opened, as the driver left it.
+  bool _backOnline = false;
+
   @override
   void dispose() {
     _fixes?.cancel();
@@ -339,6 +343,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     });
     _resume();
     _locate();
+    unawaited(_restoreOnline());
     // A saved OBD-II reader comes up with the driver home, as Expo's did on
     // the Teksi screen, so the menu's Vehicle information row (shown only on
     // a live link) appears without opening the meter first. No-op without one.
@@ -391,6 +396,25 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Future<void> _resume() async {
     final trip = await ref.read(rideRepositoryProvider).ongoingForPartner().catchError((_) => null);
     if (trip != null && mounted) context.push('/drive/trip/${trip.id}');
+  }
+
+  /// Online when the app last closed (driverOnlineProvider remembers it):
+  /// back online now, through the same checks as the switch. When a check
+  /// stops it, the server is told this driver is offline too.
+  Future<void> _restoreOnline() async {
+    if (_online || !await _onlineState.wasOnline() || !mounted || _online) return;
+    try {
+      await ref.read(partnerProvider.future).timeout(goOnlineCheckTimeout);
+    } catch (_) {}
+    if (!mounted || _online) return;
+    final why = await _toggle(true);
+    if (!mounted) return;
+    if (why == null) {
+      setState(() => _backOnline = true);
+    } else {
+      _onlineState.set(false);
+      ref.read(driverPresenceProvider).tellOffline();
+    }
   }
 
   void _markQueueSeen() {
@@ -475,6 +499,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     setState(() {
       _online = v;
       _demoShowing = false;
+      if (!v) _backOnline = false;
     });
     _onlineState.set(v);
     if (!v) _syncAlert(const []);
@@ -1118,7 +1143,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         value: _online,
                         onChanged: _toggle,
                         secondary: Icon(_online ? Icons.wifi_tethering : Icons.wifi_tethering_off),
-                        title: Text(_online ? 'You are online' : 'You are offline'),
+                        title: Text(_online ? (_backOnline ? "You're back online" : 'You are online') : 'You are offline'),
                         // One line: on a phone on its side the card must fit
                         // the sheet's lowest height.
                         subtitle: Text(

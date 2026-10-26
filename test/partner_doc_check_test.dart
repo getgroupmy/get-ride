@@ -12,7 +12,9 @@ import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
 import 'package:get_ride/src/features/partner/partner_screen.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/features/partner/driver_online.dart' show driverOnlineKey;
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 RequiredDoc _doc(String id, String name, {bool compulsory = true}) => RequiredDoc(
   id: id,
@@ -106,7 +108,8 @@ void main() {
   });
 
   group('Drive screen', () {
-    Future<void> pump(WidgetTester tester, PartnerDocCheck check) async {
+    Future<void> pump(WidgetTester tester, PartnerDocCheck check, {bool wasOnline = false}) async {
+      SharedPreferences.setMockInitialValues({if (wasOnline) driverOnlineKey('u1'): true});
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(700, 1400);
       addTearDown(tester.view.reset);
@@ -133,6 +136,7 @@ void main() {
               ],
             ),
             partnerDocCheckProvider.overrideWithValue(check),
+            currentUserIdProvider.overrideWithValue('u1'),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -169,6 +173,33 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
       expect(find.byKey(const ValueKey('docs-blocked')), findsNothing);
       expect(find.text('You are online'), findsOneWidget);
+    });
+
+    testWidgets('online when the app closed: back online as the Drive screen opens', (tester) async {
+      await pump(tester, (partner, {required teksi}) async => const [], wasOnline: true);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text("You're back online"), findsOneWidget);
+      // Off and on again by hand: the plain words.
+      await tester.tap(find.text("You're back online"));
+      await tester.pump();
+      expect(find.text('You are offline'), findsOneWidget);
+      expect((await SharedPreferences.getInstance()).getBool(driverOnlineKey('u1')), isNull);
+    });
+
+    testWidgets('online when the app closed but a document now blocks it: offline, and forgotten', (tester) async {
+      await pump(
+        tester,
+        (partner, {required teksi}) async => [
+          (id: 'psv', name: 'PSV permit', compulsory: true, reason: DocIssueReason.expired),
+        ],
+        wasOnline: true,
+      );
+      await _pumpOpen(tester);
+      expect(find.byKey(const ValueKey('docs-blocked')), findsOneWidget);
+      await tester.tap(find.text('Not now'));
+      await tester.pumpAndSettle();
+      expect(find.text('You are offline'), findsOneWidget);
+      expect((await SharedPreferences.getInstance()).getBool(driverOnlineKey('u1')), isNull);
     });
 
     testWidgets('a failed check lets the partner online', (tester) async {

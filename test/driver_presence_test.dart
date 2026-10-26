@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/data/driver_presence.dart';
 import 'package:get_ride/src/features/partner/driver_online.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   late List<String> reports;
@@ -85,6 +86,43 @@ void main() {
       await tester.pump(const Duration(minutes: 2));
       expect(reports, hasLength(2), reason: 'a disposed reporter is silent');
     }
+  });
+
+  test('the switch is remembered per account, so the Drive screen can put the driver back online', () async {
+    SharedPreferences.setMockInitialValues({});
+    final c = ProviderContainer(overrides: [currentUserIdProvider.overrideWithValue('d1')]);
+    addTearDown(c.dispose);
+    final online = c.read(driverOnlineProvider.notifier);
+    expect(await online.wasOnline(), isFalse);
+    online.set(true);
+    await pumpEventQueue();
+    expect(await online.wasOnline(), isTrue);
+    expect((await SharedPreferences.getInstance()).getBool(driverOnlineKey('d1')), isTrue);
+    expect(c.read(driverOnlineProvider), isTrue);
+    online.set(false);
+    await pumpEventQueue();
+    expect(await online.wasOnline(), isFalse, reason: 'the switch taken off is remembered too');
+
+    // Another account on this phone has its own.
+    final other = ProviderContainer(overrides: [currentUserIdProvider.overrideWithValue('d2')]);
+    addTearDown(other.dispose);
+    c.read(driverOnlineProvider.notifier).set(true);
+    await pumpEventQueue();
+    expect(await other.read(driverOnlineProvider.notifier).wasOnline(), isFalse);
+  });
+
+  testWidgets('opened offline after closing online: the server is told, once', (tester) async {
+    final r = reporter();
+    r.tellOffline();
+    await tester.pump();
+    expect(reports, ['false null null']);
+    r.setOnline(true);
+    await tester.pump();
+    r.tellOffline();
+    await tester.pump();
+    expect(reports.last, startsWith('true'), reason: 'online: nothing to correct');
+    r.setOnline(false);
+    await tester.pump();
   });
 
   testWidgets('the provider follows the Drive switch', (tester) async {
