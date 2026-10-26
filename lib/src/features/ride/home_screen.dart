@@ -43,6 +43,7 @@ import '../../core/ride_bidding.dart';
 import '../../core/ride_request_metadata.dart';
 import '../../core/ride_draft.dart';
 import '../../core/ride_rebook.dart';
+import '../../core/saved_drafts.dart';
 import '../../core/home_layout.dart';
 import '../../core/expo_routes.dart' show flutterRouteFor;
 import '../../admin/screens/meterapp/display_logic.dart' show rideSearchRoute;
@@ -663,25 +664,53 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final uid = _uid;
       if (uid == null) return;
       final store = ref.read(rideDraftStoreProvider);
-      final draft = freshRideDraft(await store.read(uid), DateTime.now());
+      final now = DateTime.now();
+      final ride = freshRideDraft(await store.read(uid), now);
+      // A Freight move or a Courier parcel left unfinished (saved_drafts.dart).
+      final saved = <SavedDraft>[
+        for (final k in const [SavedDraftKind.freight, SavedDraftKind.courier]) ?await store.readSaved(k, uid),
+      ];
+      for (final d in saved.where((d) => !d.freshAt(now))) {
+        await store.clearSaved(d.kind, uid);
+      }
+      saved.removeWhere((d) => !d.freshAt(now));
       await _ongoingRead;
-      if (!mounted) return;
-      if (draft == null || _ongoing != null) {
-        await store.clear(uid);
+      if (ride == null || _ongoing != null) await store.clear(uid);
+      final rideOk = ride != null && _ongoing == null;
+      if (!rideOk && saved.isEmpty) return;
+      if (!mounted || _drop != null || ref.read(rideRebookProvider) != null) return;
+      // The one left last is offered.
+      saved.sort((a, b) => b.savedAt.compareTo(a.savedAt));
+      final other = saved.firstOrNull;
+      if (rideOk && (other == null || !other.savedAt.isAfter(ride.savedAt))) {
+        final go = await showWelcomeBackSheet(context, ride);
+        if (!mounted) return;
+        if (go == true) {
+          ref.read(rideRebookProvider.notifier).set(ride.trip);
+        } else if (go == false) {
+          await store.clear(uid);
+        }
         return;
       }
-      if (_drop != null || ref.read(rideRebookProvider) != null) return;
-      final go = await showWelcomeBackSheet(context, draft);
+      final d = other!;
+      if (!mounted) return;
+      final go = await showWelcomeBackSaved(context, d);
       if (!mounted) return;
       if (go == true) {
-        ref.read(rideRebookProvider.notifier).set(draft.trip);
+        // Kept until it is sent: closing the page again keeps it.
+        unawaited(d.kind == SavedDraftKind.freight
+            ? openFreightPage(context, resume: d.data)
+            : openCourierPage(context, resume: d.data));
       } else if (go == false) {
-        await store.clear(uid);
+        await store.clearSaved(d.kind, uid);
       }
     } finally {
       if (mounted) {
+        // What is on screen now is the starting point: a booking kept (not
+        // offered, or the sheet closed) stays until the rider changes or
+        // sends one.
         _draftChecked = true;
-        _queueDraft();
+        _draftLast = _draftKey();
       }
     }
   }

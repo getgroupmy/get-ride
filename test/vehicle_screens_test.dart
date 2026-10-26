@@ -3,7 +3,10 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/saved_drafts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/vehicle_onboarding.dart' show vehicleLooksLikeDraft;
@@ -130,6 +133,7 @@ Future<_FakeVehicles> _pump(
   _FakePeople? people,
   Brightness brightness = Brightness.light,
   GoRouter? router,
+  List<Override> extra = const [],
 }) async {
   tester.view.physicalSize = const Size(800, 1400);
   tester.view.devicePixelRatio = 1;
@@ -143,6 +147,7 @@ Future<_FakeVehicles> _pump(
       peopleRepositoryProvider.overrideWithValue(people ?? _FakePeople()),
       // No realtime socket in a test.
       liveTablesProvider.overrideWith(_QuietLive.new),
+      ...extra,
     ],
     child: router == null
         ? MaterialApp(theme: appTheme(brightness), home: screen)
@@ -154,6 +159,21 @@ Future<_FakeVehicles> _pump(
 }
 
 void main() {
+  testWidgets('Welcome back: a vehicle being added is remembered with its next step, until it is finished', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await _pump(
+      tester,
+      const VehicleOnboardingScreen(vehicleId: 'v1'),
+      vehicles: _FakeVehicles(existing: const {'id': 'v1', 'plate': 'WXY 1', 'make': 'Proton', 'model': 'Saga'}),
+      extra: [currentUserIdProvider.overrideWithValue('me')],
+    );
+    await tester.pump(const Duration(seconds: 1));
+    final prefs = await SharedPreferences.getInstance();
+    final d = SavedDraft.decode(SavedDraftKind.vehicle, prefs.getString(SavedDraftKind.vehicle.key('me')));
+    expect(d?.data, {'id': 'v1', 'plate': 'WXY 1', 'next': 'Year & colour'});
+    expect(draftSummary(d!, d.savedAt).detail, 'WXY 1 · Year & colour next');
+  });
+
   testWidgets('a new vehicle starts at the plate and normalises it', (tester) async {
     final repo = await _pump(tester, const VehicleOnboardingScreen());
     expect(find.text("What's the plate number?"), findsOneWidget);

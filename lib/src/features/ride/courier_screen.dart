@@ -26,12 +26,14 @@ import '../../core/payment_types.dart';
 import '../../core/region_pricing.dart';
 import '../../core/ride_option_places.dart';
 import '../../core/ride_request_metadata.dart';
+import '../../core/saved_drafts.dart';
 import '../../data/app_display_repository.dart';
 import '../../data/device_access.dart';
 import '../../data/fare_tariff_repository.dart';
 import '../../data/freight_repository.dart';
 import '../../data/geo_service.dart' show Place;
 import '../../data/models.dart';
+import '../../data/ride_draft_store.dart';
 import '../../data/ride_option_places_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart' show showError, showInfo;
@@ -43,9 +45,10 @@ import 'delivery_look.dart';
 import 'freight_parts.dart' show FreightVehicleImage;
 import 'freight_screen.dart';
 
-/// Opens the Courier page.
-Future<void> openCourierPage(BuildContext context, {int tab = 0}) => Navigator.of(context)
-    .push<void>(AppPageRoute(id: 'ride.courier', builder: (_) => CourierScreen(initialTab: tab)));
+/// Opens the Courier page; with [resume], filled in as it was left
+/// (Welcome back, saved_drafts.dart).
+Future<void> openCourierPage(BuildContext context, {int tab = 0, Map<String, Object?>? resume}) => Navigator.of(context)
+    .push<void>(AppPageRoute(id: 'ride.courier', builder: (_) => CourierScreen(initialTab: tab, resume: resume)));
 
 /// A vehicle's own icon (Material Symbols'), by its name.
 IconData courierVehicleIcon(FreightVehicle v) {
@@ -57,10 +60,13 @@ IconData courierVehicleIcon(FreightVehicle v) {
 }
 
 class CourierScreen extends ConsumerStatefulWidget {
-  const CourierScreen({super.key, this.initialTab = 0});
+  const CourierScreen({super.key, this.initialTab = 0, this.resume});
 
   /// 0: Send a parcel, 1: My deliveries.
   final int initialTab;
+
+  /// A parcel left unfinished, to fill the form in with.
+  final Map<String, Object?>? resume;
 
   @override
   ConsumerState<CourierScreen> createState() => _CourierScreenState();
@@ -93,10 +99,76 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     _tabs.addListener(() {
       if (mounted) setState(() {});
     });
+    try {
+      _uid = ref.read(currentUserIdProvider);
+    } catch (_) {}
+    _saver = DraftSaver(SavedDraftKind.courier, ref.read(rideDraftStoreProvider), () => _uid);
+    if (widget.resume case final r?) _restore(r);
+    for (final c in [_pickupDetails, _dropDetails, _note]) {
+      c.addListener(_typed);
+    }
+  }
+
+  // ---- Welcome back (saved_drafts.dart) ----
+  late final DraftSaver _saver;
+  String? _uid;
+
+  void _typed() => _saver.changed(_saved());
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _saver.changed(_saved());
+  }
+
+  /// The form as kept on the phone, once both ends are set. The
+  /// confirmation about prohibited items is asked for again.
+  Map<String, Object?>? _saved() {
+    final a = _pickup, b = _drop;
+    if (!draftPlaceReal(a) || !draftPlaceReal(b)) return null;
+    return {
+      'pickup': draftAddressToJson(a!, _pickupDetails.text),
+      'drop': draftAddressToJson(b!, _dropDetails.text),
+      if (_note.text.trim().isNotEmpty) 'note': _note.text,
+      if (_recipient case final r?) 'recipient': {'name': r.name, 'phone': r.phone},
+      'size': _size.name,
+      if (_items.isNotEmpty) 'items': _items,
+      'vehicle_id': ?_vehicleId,
+      'vehicle_name': ?(_vehicleId == null ? null : _vehicle?.name),
+      'payer': _payer.name,
+      'payment': _payment,
+      'offer': ?_offer,
+      if (_offer != null) 'currency': _currency,
+      'declared': ?_declared,
+    };
+  }
+
+  void _restore(Map<String, Object?> m) {
+    final a = draftAddressFromJson(m['pickup']), b = draftAddressFromJson(m['drop']);
+    if (a != null) {
+      _pickup = a.place;
+      _pickupDetails.text = a.details;
+    }
+    if (b != null) {
+      _drop = b.place;
+      _dropDetails.text = b.details;
+    }
+    _note.text = draftText(m['note']) ?? '';
+    final r = m['recipient'];
+    if (r is Map && draftText(r['phone']) != null) _recipient = (name: '${r['name'] ?? ''}', phone: '${r['phone']}');
+    _size = ParcelSize.values.where((x) => x.name == m['size']).firstOrNull ?? _size;
+    final items = m['items'];
+    if (items is List) _items = [for (final i in items) if (i is String && i.trim().isNotEmpty) i];
+    _vehicleId = draftText(m['vehicle_id']);
+    _payer = CourierPayer.values.where((x) => x.name == m['payer']).firstOrNull ?? _payer;
+    _payment = draftText(m['payment']) ?? _payment;
+    _offer = draftNumber(m['offer']);
+    _declared = draftNumber(m['declared']);
   }
 
   @override
   void dispose() {
+    _saver.dispose();
     _tabs.dispose();
     _pickupDetails.dispose();
     _dropDetails.dispose();
@@ -328,6 +400,8 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
         _recipient = null;
         _dropDetails.clear();
       });
+      // Sent: nothing left to offer again.
+      _saver.forget(_saved());
       _tabs.animateTo(1);
       showInfo(context, 'Request sent. Couriers will send you their offers.');
     } on DuplicateRideRequest catch (e) {

@@ -36,7 +36,9 @@ import 'package:get_ride/src/features/ride/confirm_parts.dart' show accentFill;
 import 'package:get_ride/src/features/ride/courier_screen.dart';
 import 'package:get_ride/src/features/ride/freight_parts.dart';
 import 'package:get_ride/src/features/ride/freight_screen.dart';
+import 'package:get_ride/src/core/saved_drafts.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:get_ride/src/core/page_styles.dart';
 import 'package:get_ride/src/features/ride/delivery_look.dart';
 import 'package:get_ride/src/features/ride/place_search.dart' show routeSheetFill;
@@ -190,6 +192,50 @@ Future<void> _tap(WidgetTester tester, String key) async {
 }
 
 void main() {
+  group('Welcome back (saved_drafts.dart)', () {
+    for (final b in Brightness.values) {
+      testWidgets('a parcel left unfinished comes back filled in; sending it forgets it (${b.name})', (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final rides = _Rides();
+        final left = <String, Object?>{
+          'pickup': draftAddressToJson(
+            const Place(name: 'Eco Majestic', address: '', point: LatLng(2.93, 101.83)), 'Block B, unit 3'),
+          'drop': draftAddressToJson(
+            const Place(name: 'Pavilion Kuala Lumpur', address: '', point: LatLng(3.149, 101.713)), ''),
+          'recipient': {'name': 'Mei', 'phone': '+60 12 345 6789'},
+          'size': 'm',
+          'items': ['Documents'],
+          'note': 'fragile',
+          'vehicle_id': 'c4',
+          'payer': 'sender',
+          'payment': 'Cash',
+          'offer': 25,
+          'declared': 200,
+        };
+        await _pump(tester, CourierScreen(resume: left),
+            [..._overrides(rides), currentUserIdProvider.overrideWithValue('me')], b);
+        expect(find.text('Eco Majestic'), findsOneWidget);
+        expect(find.text('Pavilion Kuala Lumpur'), findsOneWidget);
+        expect(find.text('Mei · +60 12 345 6789'), findsOneWidget);
+        expect(find.byKey(const ValueKey('courier-vehicle-c4')), findsOneWidget, reason: 'size M: the car');
+        expect(find.text('fragile'), findsOneWidget);
+        // The prohibited items are confirmed again.
+        await _tap(tester, 'courier-prohibited-ack');
+        await tester.pump(const Duration(seconds: 1));
+        final prefs = await SharedPreferences.getInstance();
+        final saved = SavedDraft.decode(SavedDraftKind.courier, prefs.getString(SavedDraftKind.courier.key('me')));
+        expect(saved?.data['size'], 'm', reason: 'kept on the phone as it changes');
+
+        await _tap(tester, 'courier-create');
+        final created = rides.call(#createRequest);
+        expect(created, isNotNull);
+        expect(created!.namedArguments[#service], 'Courier Car');
+        await tester.pump(const Duration(seconds: 1));
+        expect(prefs.getString(SavedDraftKind.courier.key('me')), isNull, reason: 'sent: nothing left to offer');
+      });
+    }
+  });
+
   group('pure', () {
     test('the vehicles: active Vehicle Services under Courier, not Freight or rides', () {
       final entries = [

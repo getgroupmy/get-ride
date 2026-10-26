@@ -10,13 +10,16 @@ import '../../admin/screens/people/people_logic.dart';
 import '../../admin/screens/people/people_widgets.dart';
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_type_rules.dart' show vehicleAgeProblem;
+import '../../core/saved_drafts.dart';
 import '../../core/vehicle_onboarding.dart';
 import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
 import '../../core/fare.dart' show RideService;
 import '../../data/app_display_repository.dart' show rideServicesProvider;
 import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
+import '../../data/ride_draft_store.dart';
 import '../../data/vehicle_onboarding_repository.dart';
+import '../../providers.dart' show currentUserIdProvider;
 import '../../widgets/busy.dart';
 import '../../widgets/page_add_action.dart';
 import '../../widgets/common.dart';
@@ -262,15 +265,42 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   @override
   void initState() {
     super.initState();
+    try {
+      _uid = ref.read(currentUserIdProvider);
+    } catch (_) {}
+    _saver = DraftSaver(SavedDraftKind.vehicle, ref.read(rideDraftStoreProvider), () => _uid);
     _load();
   }
 
   @override
   void dispose() {
+    _saver.dispose();
     for (final c in [_plate, _year, _color, _ownerName, _ownerPhone, _ownerIc]) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  // ---- Welcome back (saved_drafts.dart) ----
+  /// A vehicle being added is kept on the server as it goes; the phone only
+  /// remembers which one and how far it got, to offer it again on Drive.
+  late final DraftSaver _saver;
+  String? _uid;
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _saver.changed(_saved());
+  }
+
+  Map<String, Object?>? _saved() {
+    final v = _v;
+    final id = v?['id'];
+    if (v == null || id is! String) return null;
+    final step = firstVehicleStep(v);
+    if (step == VehicleStep.done) return null;
+    final plate = '${v['plate'] ?? ''}'.trim();
+    return {'id': id, if (plate.isNotEmpty) 'plate': plate, 'next': step.label};
   }
 
   Future<void> _load() async {
@@ -448,6 +478,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   /// Leaves the wizard: an approved vehicle goes to the Drive tab, read
   /// fresh so an approval made while the screen was open counts.
   Future<void> _finish() async {
+    _saver.forget(null);
     var v = _v!;
     try {
       v = await _repo.vehicle(v['id'] as String) ?? v;
