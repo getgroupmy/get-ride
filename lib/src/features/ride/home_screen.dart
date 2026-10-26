@@ -43,6 +43,7 @@ import '../../core/ride_request_metadata.dart';
 import '../../core/ride_rebook.dart';
 import '../../core/home_layout.dart';
 import '../../core/expo_routes.dart' show flutterRouteFor;
+import '../../admin/screens/meterapp/display_logic.dart' show rideSearchRoute;
 import '../../core/home_tiles.dart';
 import '../../core/home_sections.dart';
 import '../../core/ride_confirm.dart';
@@ -2209,7 +2210,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // A tile, a heading or a promo card: its page, or Coming Soon.
     void openTile(String? route, String title) {
-      if (serviceOn && route == freightPageRoute) {
+      if (route == rideSearchRoute) {
+        whereTo();
+      } else if (serviceOn && route == freightPageRoute) {
         openFreightPage(context);
       } else if (serviceOn && route == courierPageRoute) {
         openCourierPage(context);
@@ -2280,11 +2283,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               rows: s.rows,
               onOpen: (b) => b.route == null
                   ? comingSoon(serviceBoxComingSoon(b.title))
-                  : b.route == freightPageRoute
-                      ? openFreightPage(context)
-                      : b.route == courierPageRoute
-                          ? openCourierPage(context)
-                          : openAppRoute(context, b.route!),
+                  : b.route == rideSearchRoute
+                      ? whereTo()
+                      : b.route == freightPageRoute
+                          ? openFreightPage(context)
+                          : b.route == courierPageRoute
+                              ? openCourierPage(context)
+                              : openAppRoute(context, b.route!),
             ),
           ));
         case HomeSectionType.tiles || HomeSectionType.wide when s.on && s.shownTiles.isNotEmpty:

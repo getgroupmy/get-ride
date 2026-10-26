@@ -257,7 +257,11 @@ List<ServiceBoxView> serviceBoxViews(
                 ? (freightAvailable ? freightPageRoute : null)
                 : courier
                     ? (courierAvailable ? courierPageRoute : null)
-                    : (b['comingSoon'] != true ? flutterRouteFor(str('route')) : null);
+                    : b['comingSoon'] == true
+                        ? null
+                        : str('route') == rideSearchRoute
+                            ? rideSearchRoute
+                            : flutterRouteFor(str('route'));
         final look = BoxLook(b);
         return ServiceBoxView(
           index: i,

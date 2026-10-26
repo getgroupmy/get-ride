@@ -244,9 +244,14 @@ const serviceBoxIcons = [
 
 const defaultServiceBoxIcons = ['ShoppingBag', 'Car', 'Building2', 'Package', 'Truck'];
 
+/// A home box, tile or card set to this opens Where to?, as tapping the
+/// search bar does.
+const rideSearchRoute = '/ride-search';
+
 /// Every navigable Expo route, for the "link to page" pickers (stored values
 /// are Expo paths, so the Expo app keeps working).
 const allAppRoutes = <String>[
+  rideSearchRoute,
   // The Freight and Courier pages (0267, 0268), for the home service boxes.
   '/freight', '/courier',
   '/', '/onboarding', '/role-selection', '/phone-auth', '/otp-verify', '/pin-setup', '/pin-verify',
@@ -292,6 +297,7 @@ const allAppRoutes = <String>[
 const _routeAcronyms = {'api', 'ev', 'pin', 'otp', 'ui', 'teksi', 'id'};
 const _routeLabelOverrides = {
   '/': 'Home',
+  rideSearchRoute: 'Ride — opens Where to?, as the search bar does',
   '/freight': 'Freight',
   '/courier': 'Courier',
   '/teksi-ev': 'Book TEKSI EV',
