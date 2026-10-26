@@ -108,24 +108,38 @@ void main() {
         return r;
       }
 
-      testWidgets('rate with stars and a comment, then see it saved', (tester) async {
+      testWidgets('a star saves at once; the comment saves as it is written', (tester) async {
         final repo = await pump(tester, _ride());
         expect(find.text('Rate Dan'), findsOneWidget);
-        final submit = find.byKey(const ValueKey('ride-rating-submit'));
-        expect(tester.widget<FilledButton>(submit).onPressed, isNull, reason: 'no stars yet');
+        expect(find.byKey(const ValueKey('ride-rating-submit')), findsNothing, reason: 'nothing to forget to press');
+        expect(find.text('Tap a star. It saves straight away.'), findsOneWidget);
 
         await tester.tap(find.byKey(const ValueKey('rate-star-4')));
-        await tester.pump();
-        expect(find.text('Very good'), findsOneWidget);
-        await tester.enterText(find.byKey(const ValueKey('ride-rating-comment')), '  Smooth drive ');
-        await tester.tap(submit);
         await tester.pumpAndSettle();
+        expect(repo.saved.single, ('r1', 4, null), reason: 'saved on the tap');
+        expect(find.text('Very good'), findsOneWidget);
+        expect(find.byKey(const ValueKey('ride-rating-saved-chip')), findsOneWidget);
+        expect(find.text('Rating saved'), findsOneWidget);
+        // It stays open for a comment rather than folding away.
+        expect(find.byKey(const ValueKey('ride-rating-card')), findsOneWidget);
 
-        expect(repo.saved.single, ('r1', 4, 'Smooth drive'));
-        expect(find.byKey(const ValueKey('ride-rating-saved')), findsOneWidget);
-        expect(find.text('Smooth drive'), findsOneWidget);
-        expect(find.text('Thanks — your rating is saved.'), findsOneWidget);
+        await tester.enterText(find.byKey(const ValueKey('ride-rating-comment')), '  Smooth drive ');
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(repo.saved, hasLength(1), reason: 'not on every keystroke');
+        await tester.pump(rideRatingCommentSaveAfter);
+        await tester.pumpAndSettle();
+        expect(repo.saved.last, ('r1', 4, 'Smooth drive'));
         expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('a comment still being typed as the screen goes is sent all the same', (tester) async {
+        final repo = await pump(tester, _ride());
+        await tester.tap(find.byKey(const ValueKey('rate-star-5')));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byKey(const ValueKey('ride-rating-comment')), 'Thanks!');
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump();
+        expect(repo.saved.last, ('r1', 5, 'Thanks!'));
       });
 
       testWidgets('a saved rating shows, and Edit changes it within the window', (tester) async {
@@ -139,8 +153,6 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('ride-rating-card')), findsOneWidget);
         await tester.tap(find.byKey(const ValueKey('rate-star-5')));
-        await tester.pump();
-        await tester.tap(find.byKey(const ValueKey('ride-rating-submit')));
         await tester.pumpAndSettle();
         expect(repo.saved.single, ('r1', 5, 'Late'));
         expect(tester.takeException(), isNull);
@@ -165,8 +177,6 @@ void main() {
       testWidgets('an older database says ratings are not available yet', (tester) async {
         await pump(tester, _ride(), repo: _Repo(unavailable: true));
         await tester.tap(find.byKey(const ValueKey('rate-star-3')));
-        await tester.pump();
-        await tester.tap(find.byKey(const ValueKey('ride-rating-submit')));
         await tester.pumpAndSettle();
         expect(find.text('Ratings aren\'t available yet.'), findsOneWidget);
         expect(find.byKey(const ValueKey('ride-rating-card')), findsOneWidget);
@@ -179,8 +189,6 @@ void main() {
           repo: _Repo(refuse: const PostgrestException(message: 'too_late')),
         );
         await tester.tap(find.byKey(const ValueKey('rate-star-3')));
-        await tester.pump();
-        await tester.tap(find.byKey(const ValueKey('ride-rating-submit')));
         await tester.pumpAndSettle();
         expect(find.text('It\'s too late to rate this trip.'), findsOneWidget);
       });

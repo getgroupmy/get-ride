@@ -998,6 +998,10 @@ class MapSheetUpOnly extends StatelessWidget {
 class MapSheetRestLine extends StatefulWidget {
   const MapSheetRestLine({super.key, required this.child, this.soft = false, this.floor = false});
 
+  /// [child] as the rest line, or plainly when [off] (another item is the
+  /// line for now).
+  static Widget unless(bool off, {required Widget child}) => off ? child : MapSheetRestLine(child: child);
+
   final Widget child;
 
   /// The floor instead ([MapSheetLayout.minAdjust]): the sheet never rests
