@@ -32,7 +32,9 @@ create table if not exists public.partner_review_log (
   item_key   text not null check (char_length(item_key) between 1 and 120),
   action     text not null check (action in ('viewed', 'approved', 'rejected', 'edited', 'pending', 'partner_approved')),
   actor_id   uuid references public.profiles (id) on delete set null,
-  at         timestamptz not null default now()
+  -- clock_timestamp(), not now(): a view and a return to pending in one
+  -- transaction are still ordered.
+  at         timestamptz not null default clock_timestamp()
 );
 comment on table public.partner_review_log is
   'Partner application review (0296): every view of a line''s document, every decision and every return to pending, with who did it. Admins read it; written only by partner_review_view and the triggers on partner_review_items and partners.';
