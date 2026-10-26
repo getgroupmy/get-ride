@@ -123,6 +123,13 @@ class DriverPresenceReporter {
     }
   }
 
+  /// Tells the server this driver is not taking rides, whatever the switch
+  /// last said here: the app opened offline after it closed online.
+  void tellOffline() {
+    if (_disposed || _online) return;
+    unawaited(_send(false, null));
+  }
+
   void dispose() {
     if (_disposed) return;
     _timer?.cancel();
@@ -134,10 +141,10 @@ class DriverPresenceReporter {
 }
 
 Future<({double lat, double lng})?> _phoneFix() async {
-  if (kIsWeb) return null;
   final perm = await Geolocator.checkPermission();
   if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return null;
-  final last = await Geolocator.getLastKnownPosition();
+  // A browser has no last known position: straight to a fresh one.
+  final last = kIsWeb ? null : await Geolocator.getLastKnownPosition();
   // Reports go every 10 s while moving: a fix older than that is stale.
   if (last != null && DateTime.now().difference(last.timestamp) < const Duration(seconds: 10)) {
     return (lat: last.latitude, lng: last.longitude);
