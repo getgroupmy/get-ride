@@ -29,7 +29,7 @@ import requests
 
 from core import Line, poll_after, read
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 URL = os.environ.get("GETRIDE_URL", "").strip()
 DATA = Path(os.environ.get("READER_DATA", "/data"))
 LABEL = os.environ.get("READER_LABEL", "").strip() or None
@@ -55,11 +55,19 @@ def state() -> dict:
         return {}
 
 
-def save_state(s: dict) -> None:
-    DATA.mkdir(parents=True, exist_ok=True)
-    p = DATA / "key.json"
-    p.write_text(json.dumps(s))
-    p.chmod(0o600)
+def save_state(s: dict) -> bool:
+    """Keeps the key in /data; False (and says why) when the folder can't be
+    written, which on a Synology means the data folder wasn't made for it."""
+    try:
+        DATA.mkdir(parents=True, exist_ok=True)
+        p = DATA / "key.json"
+        p.write_text(json.dumps(s))
+        p.chmod(0o600)
+        return True
+    except OSError as e:
+        log.error("Can't save to %s (%s). Make the data folder next to docker-compose.yml and give it to the reader "
+                  "(README.md, step 3), then restart.", DATA, type(e).__name__)
+        return False
 
 
 def call(action: str, key: str | None = None, **body) -> tuple[int, dict]:
@@ -79,7 +87,9 @@ def pair() -> str | None:
         return s["key"]
     code = os.environ.get("PAIR_CODE", "").strip()
     device = s.get("device_id") or str(uuid.uuid4())
-    save_state({"device_id": device})
+    if not save_state({"device_id": device}):
+        # Don't spend the one-time code on a key that can't be kept.
+        return None
     if not code:
         log.info("Not connected. Make a code in Admin > Settings > Document reading, put it in .env as PAIR_CODE and restart.")
         return None
