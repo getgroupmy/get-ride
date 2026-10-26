@@ -329,6 +329,9 @@ class _DetailsStepState extends ConsumerState<DetailsStep> {
   late final _nationality = TextEditingController(text: _t(_p['nationality']));
   late final _name = TextEditingController(text: _t(_p['id_name']));
   late final _dob = TextEditingController(text: _t(_p['birth_date']).split('T').first);
+
+  /// The date of birth boxes, for their own message.
+  final _dobBoxes = GlobalKey<DateBoxesFieldState>(debugLabel: 'details-dob');
   late final _address = TextEditingController(text: _t(_p['address']));
   bool _reading = false;
 
@@ -395,7 +398,12 @@ class _DetailsStepState extends ConsumerState<DetailsStep> {
       dateOfBirth: birth,
       address: _address.text,
     );
-    if (problem != null) return showNotice(context, message: problem);
+    // The date boxes' own words when they hold something that is not a date
+    // ("Enter the year as 4 digits"), not a plain "Enter your date of birth".
+    final dobProblem = birth == null ? _dobBoxes.currentState?.problem : null;
+    if (problem != null) {
+      return showNotice(context, message: dobProblem != null && _dob.text.isNotEmpty ? 'Date of birth: $dobProblem.' : problem);
+    }
     if (_mismatch) {
       final keep = await askRegistration(
         context,
@@ -531,7 +539,7 @@ class _DetailsStepState extends ConsumerState<DetailsStep> {
         ),
       RegField(controller: _name, label: 'Full name (as on ID)', enabled: !busy),
       DateBoxesField(
-        key: const ValueKey('details-dob'),
+        key: _dobBoxes,
         label: 'Date of birth',
         controller: _dob,
         enabled: !busy,

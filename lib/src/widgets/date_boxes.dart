@@ -121,6 +121,9 @@ class DateBoxesFieldState extends State<DateBoxesField> {
   /// The date in the boxes, or null while it is not a valid one.
   DateTime? get value => _check().date;
 
+  /// Why the boxes do not hold a date (the line under them), or null.
+  String? get problem => _check().error;
+
   @override
   void initState() {
     super.initState();
@@ -244,11 +247,35 @@ class DateBoxesFieldState extends State<DateBoxesField> {
     } else if (text.length >= datePartLength(p) && text != was) {
       final n = _next(p);
       if (n != null) _focus(n, selectAll: true);
-    } else if (text.isEmpty && was.isNotEmpty) {
-      final b = _prev(p);
-      if (b != null) _focus(b, selectAll: false);
     }
+    // A box emptied stays where it is: whatever is typed next goes in it
+    // (select-all and delete, then retype). Backspace in a box that was
+    // already empty goes back ([_onKey]).
     setState(_changed);
+  }
+
+  /// Digits typed into [p] when it was already full (fast typing reaches a
+  /// box before the focus moves on): they go into the next box instead of
+  /// being lost.
+  void _carry(DatePart p, String extra) {
+    final n = _next(p);
+    if (n == null) return;
+    Future.microtask(() {
+      if (!mounted) return;
+      final max = datePartLength(n);
+      var text = extra.length > max ? extra.substring(0, max) : extra;
+      if (text.length == 1) {
+        final d = int.parse(text);
+        if ((n == DatePart.day && d > 3) || (n == DatePart.month && d > 1)) text = '0$text';
+      }
+      _set(n, text);
+      _focus(n, selectAll: false);
+      if (text.length >= max) {
+        final after = _next(n);
+        if (after != null) _focus(after, selectAll: true);
+      }
+      setState(_changed);
+    });
   }
 
   KeyEventResult _onKey(DatePart p, KeyEvent e) {
@@ -441,6 +468,11 @@ class _BoxInput extends TextInputFormatter {
     if ((text.length - old.text.length > 1 || digits.length > max) && state._paste(part, text)) {
       final own = splitDateText(text, state._order)![part]!;
       return TextEditingValue(text: own, selection: TextSelection.collapsed(offset: own.length));
+    }
+    // Typed on past a full box: the rest goes on to the next box.
+    if (digits.length > max && old.text.length == max && now.selection.end == now.text.length) {
+      state._carry(part, digits.substring(max));
+      return TextEditingValue(text: old.text, selection: TextSelection.collapsed(offset: old.text.length));
     }
     var out = digits.length > max ? digits.substring(0, max) : digits;
     final replacing = old.text.isEmpty || (old.selection.start == 0 && old.selection.end == old.text.length);

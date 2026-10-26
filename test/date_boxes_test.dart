@@ -218,9 +218,13 @@ void main() {
         expect(find.byKey(const ValueKey('date-box-error')), findsNothing);
 
         await type(tester, 'year', '');
-        expect(_focused(tester, 'month'), isTrue, reason: 'emptying a box steps back');
+        expect(_focused(tester, 'year'), isTrue, reason: 'emptying a box stays in it, for the retyped digits');
         expect(changes.last, isNull);
         expect(iso.text, '12/05/', reason: 'a part date never looks stored');
+        await type(tester, 'year', '1990');
+        expect((_text(tester, 'day'), _text(tester, 'month'), _text(tester, 'year')), ('12', '05', '1990'),
+            reason: 'select-all, delete and retype lands in the same box');
+        await type(tester, 'year', '');
         await tester.tap(_box('year'));
         await tester.pump();
         await tester.sendKeyEvent(LogicalKeyboardKey.backspace);
@@ -231,6 +235,24 @@ void main() {
         await type(tester, 'month', '7');
         expect(_text(tester, 'month'), '07', reason: 'a 7 can only be July');
         expect(_focused(tester, 'year'), isTrue);
+      });
+
+      testWidgets('typed on past a full box: the digits go on to the next box, none lost', (tester) async {
+        final changes = await pump(tester);
+        await tester.tap(_box('day'));
+        await tester.pump();
+        await type(tester, 'day', '12');
+        await type(tester, 'month', '05');
+        // The next key reached the month before the focus moved on.
+        await tester.enterText(_box('month'), '051');
+        await tester.pump();
+        await tester.pump();
+        expect(_text(tester, 'month'), '05');
+        expect(_text(tester, 'year'), '1');
+        expect(_focused(tester, 'year'), isTrue);
+        await tester.enterText(_box('year'), '1990');
+        await tester.pump();
+        expect(changes.last, DateTime(1990, 5, 12));
       });
 
       testWidgets('a pasted date fills all three boxes', (tester) async {
