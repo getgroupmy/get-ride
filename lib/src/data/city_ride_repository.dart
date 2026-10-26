@@ -12,6 +12,7 @@ import '../core/ride_offers.dart';
 import '../core/rider_rating.dart';
 import '../core/trip_safety.dart';
 import '../providers.dart';
+import 'live_query.dart';
 import 'live_tables.dart';
 
 /// The admin's city ride settings (city_ride_config).
@@ -51,22 +52,33 @@ class CityRideRepository {
   // ---- Offers --------------------------------------------------------------------------------------
 
   /// The offers on [requestId], live (the rider reads them all, a driver
-  /// their own).
-  Stream<List<RideOfferRow>> offers(String requestId) => _db
-      .from('ride_offers')
-      .stream(primaryKey: ['id'])
-      .eq('request_id', requestId)
-      .map((rows) => [for (final r in rows) ?RideOfferRow.tryParse(r)]);
+  /// their own): read again on every change and, while realtime is down,
+  /// every few seconds, so an offer always reaches the rider.
+  Stream<List<RideOfferRow>> offers(String requestId) => liveQuery(
+        _db,
+        table: 'ride_offers',
+        column: 'request_id',
+        value: requestId,
+        backoff: false,
+        read: () async => _rows(await _db.from('ride_offers').select().eq('request_id', requestId)),
+      );
 
   /// This driver's offers, live, newest first: one that closes as "taken"
   /// tells them another driver got the ride.
-  Stream<List<RideOfferRow>> myOffers(String partnerId) => _db
-      .from('ride_offers')
-      .stream(primaryKey: ['id'])
-      .eq('partner_id', partnerId)
-      .order('created_at', ascending: false)
-      .limit(20)
-      .map((rows) => [for (final r in rows) ?RideOfferRow.tryParse(r)]);
+  Stream<List<RideOfferRow>> myOffers(String partnerId) => liveQuery(
+        _db,
+        table: 'ride_offers',
+        column: 'partner_id',
+        value: partnerId,
+        backoff: false,
+        read: () async => _rows(
+          await _db.from('ride_offers').select().eq('partner_id', partnerId).order('created_at', ascending: false).limit(20),
+        ),
+      );
+
+  static List<RideOfferRow> _rows(List<dynamic> rows) => [
+        for (final r in rows) ?RideOfferRow.tryParse(r),
+      ];
 
   Future<void> acceptOffer(String offerId) => _db.rpc('ride_offer_accept', params: {'p_offer': offerId});
 

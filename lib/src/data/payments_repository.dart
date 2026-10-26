@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers.dart';
+import 'live_query.dart';
 
 /// Whether a kind of payment can be paid now (payment_purpose_info).
 class PaymentPurposeInfo {
@@ -167,12 +168,15 @@ class PaymentsRepository {
   Future<PaymentIntentState> status(String id) async => PaymentIntentState.fromJson(await _invoke('status', {'id': id}));
 
   /// The payment's row as it changes (the owner reads their own, 0252).
-  Stream<PaymentIntentState> watch(String id) => _db
-      .from('payment_intents')
-      .stream(primaryKey: ['id'])
-      .eq('id', id)
-      .where((rows) => rows.isNotEmpty)
-      .map((rows) => PaymentIntentState.fromJson(rows.first));
+  /// Read again on every change and, while realtime is down, every few
+  /// seconds.
+  Stream<PaymentIntentState> watch(String id) => liveQuery<Map<String, dynamic>?>(
+        _db,
+        table: 'payment_intents',
+        column: 'id',
+        value: id,
+        read: () => _db.from('payment_intents').select().eq('id', id).maybeSingle(),
+      ).where((row) => row != null).map((row) => PaymentIntentState.fromJson(row!));
 }
 
 final paymentsRepositoryProvider = Provider((ref) => PaymentsRepository(ref.watch(supabaseProvider)));

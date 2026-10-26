@@ -1,23 +1,30 @@
 // Whether the app knows it can't reach GET.ride right now, from what it
-// already hears: the live-settings realtime channel dropping or coming
-// back (`LiveTables`), and the launch connection check behind the
-// connection popups. No probe of its own.
+// already hears: each request to the server answering or not
+// (`httpOutcomes`), the live-settings realtime channel opening
+// (`LiveTables`), and the launch connection check behind the connection
+// popups. No probe of its own.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show RealtimeSubscribeStatus;
 
-/// What a realtime channel status says about the connection: offline on an
-/// error or a timeout, online once subscribed, nothing new otherwise (a
-/// channel closed on purpose says nothing). Pure.
+import 'timeout_http_client.dart' show httpOutcomes;
+
+/// What a realtime channel status says about the connection: online once
+/// subscribed, nothing otherwise. A channel that errors or times out says
+/// nothing either: networks that block WebSockets still reach the server,
+/// and the requests themselves tell ([httpOutcomes]). Pure.
 bool? offlineFromRealtime(RealtimeSubscribeStatus status) => switch (status) {
   RealtimeSubscribeStatus.subscribed => false,
-  RealtimeSubscribeStatus.channelError || RealtimeSubscribeStatus.timedOut => true,
-  RealtimeSubscribeStatus.closed => null,
+  _ => null,
 };
 
 class AppOffline extends Notifier<bool> {
   /// Unknown counts as online: no strip until something says otherwise.
   @override
-  bool build() => false;
+  bool build() {
+    final sub = httpOutcomes.listen((ok) => set(!ok));
+    ref.onDispose(sub.cancel);
+    return false;
+  }
 
   /// From the live channel's status ([offlineFromRealtime]).
   void realtime(RealtimeSubscribeStatus status) {
