@@ -7,6 +7,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/inbox.dart';
 import 'package:get_ride/src/data/app_connection.dart';
+import 'package:get_ride/src/data/timeout_http_client.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/notifications_repository.dart';
 import 'package:get_ride/src/features/notifications/notifications_screen.dart';
@@ -44,9 +47,9 @@ Future<ProviderContainer> _pump(WidgetTester tester, Widget home, {required bool
 }
 
 void main() {
-  test('the live channel says offline on an error or a timeout, online once subscribed', () {
-    expect(offlineFromRealtime(RealtimeSubscribeStatus.channelError), isTrue);
-    expect(offlineFromRealtime(RealtimeSubscribeStatus.timedOut), isTrue);
+  test('the live channel only ever says online; a channel error alone is not offline', () {
+    expect(offlineFromRealtime(RealtimeSubscribeStatus.channelError), isNull, reason: 'WebSockets blocked, REST fine');
+    expect(offlineFromRealtime(RealtimeSubscribeStatus.timedOut), isNull);
     expect(offlineFromRealtime(RealtimeSubscribeStatus.subscribed), isFalse);
     expect(offlineFromRealtime(RealtimeSubscribeStatus.closed), isNull, reason: 'closed on purpose says nothing');
 
@@ -54,13 +57,23 @@ void main() {
     addTearDown(c.dispose);
     expect(c.read(appOfflineProvider), isFalse, reason: 'unknown is not offline');
     c.read(appOfflineProvider.notifier).realtime(RealtimeSubscribeStatus.channelError);
-    expect(c.read(appOfflineProvider), isTrue);
-    c.read(appOfflineProvider.notifier).realtime(RealtimeSubscribeStatus.closed);
-    expect(c.read(appOfflineProvider), isTrue);
-    c.read(appOfflineProvider.notifier).realtime(RealtimeSubscribeStatus.subscribed);
     expect(c.read(appOfflineProvider), isFalse);
     c.read(appOfflineProvider.notifier).reachable(false);
     expect(c.read(appOfflineProvider), isTrue, reason: 'the launch check found no server');
+    c.read(appOfflineProvider.notifier).realtime(RealtimeSubscribeStatus.subscribed);
+    expect(c.read(appOfflineProvider), isFalse);
+  });
+
+  test('requests to the server: an answer is online, no answer is offline', () async {
+    final c = ProviderContainer();
+    addTearDown(c.dispose);
+    c.read(appOfflineProvider);
+    final fails = TimeoutHttpClient(MockClient((_) async => throw http.ClientException('no route')));
+    final works = TimeoutHttpClient(MockClient((_) async => http.Response('[]', 401)));
+    await expectLater(fails.get(Uri.parse('https://example.test/rest/v1/x')), throwsA(isA<http.ClientException>()));
+    expect(c.read(appOfflineProvider), isTrue);
+    await works.get(Uri.parse('https://example.test/rest/v1/x'));
+    expect(c.read(appOfflineProvider), isFalse, reason: 'any answer, even an error status, means the server is there');
   });
 
   for (final b in Brightness.values) {

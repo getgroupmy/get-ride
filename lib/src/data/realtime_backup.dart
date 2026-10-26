@@ -91,11 +91,14 @@ class RealtimeBackup {
   /// while the channel is open and has not dropped since the last read (a
   /// socket that dropped meanwhile reads as it reopens). [healthyJitter]
   /// moves each wait while open by up to that fraction of [healthy] either
-  /// way (see [realtimeBackupJittered]); [random] is for tests.
+  /// way (see [realtimeBackupJittered]); [random] is for tests. [backoff]
+  /// false keeps to [every] however long the channel stays down, for lists a
+  /// person is waiting on (offers, requests) rather than slowing down.
   RealtimeBackup(
     this._refresh, {
     this.every = realtimeBackupInterval,
     this.healthy = realtimeBackupHealthyInterval,
+    this.backoff = true,
     bool onOpen = true,
     this.resumeWhileOpen = true,
     this.healthyJitter = 0,
@@ -125,6 +128,9 @@ class RealtimeBackup {
 
   /// The fraction each wait while open may move by either way.
   final double healthyJitter;
+
+  /// Whether the wait grows while the channel stays down.
+  final bool backoff;
   final Random _random;
   Timer? _timer;
   AppLifecycleListener? _lifecycle;
@@ -146,7 +152,7 @@ class RealtimeBackup {
   /// The wait before the timer's next read; null while none is due.
   Duration? get period => _connected
       ? realtimeBackupPeriod(every: every, healthy: healthy, connected: true)
-      : realtimeBackupDownDelay(every: every, downReads: _downReads);
+      : (backoff ? realtimeBackupDownDelay(every: every, downReads: _downReads) : every);
 
   void _schedule() {
     _timer?.cancel();

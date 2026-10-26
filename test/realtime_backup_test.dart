@@ -17,6 +17,24 @@ void main() {
     );
   });
 
+  test('backoff false keeps reading every interval however long the channel stays down', () {
+    fakeAsync((clock) {
+      var reads = 0;
+      final backup = RealtimeBackup(() => reads++, every: const Duration(seconds: 10), backoff: false);
+      clock.elapse(const Duration(minutes: 10));
+      expect(reads, 60, reason: 'every 10 s, no doubling');
+      expect(backup.period, const Duration(seconds: 10));
+      backup.dispose();
+    });
+    fakeAsync((clock) {
+      var reads = 0;
+      final backup = RealtimeBackup(() => reads++, every: const Duration(seconds: 10));
+      clock.elapse(const Duration(minutes: 10));
+      expect(reads, lessThan(20), reason: 'the default backs off');
+      backup.dispose();
+    });
+  });
+
   test('polls fast until the channel opens, slowly while open, fast again once it drops', () {
     fakeAsync((clock) {
       var reads = 0;

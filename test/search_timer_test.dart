@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/ride_bidding.dart';
+import 'package:get_ride/src/core/ride_offers.dart' show RideOfferRow;
+import 'package:get_ride/src/data/city_ride_repository.dart' show rideOffersProvider;
 import 'package:get_ride/src/core/search_timer.dart';
 import 'package:get_ride/src/data/fare_coin_store.dart';
 import 'package:get_ride/src/data/models.dart';
@@ -110,6 +112,7 @@ void main() {
       Map<String, dynamic> display = const {},
       Map<String, double> nearby = const {},
       bool demoOffers = false,
+      List<RideOfferRow> offerRows = const [],
     }) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.physicalSize = const Size(1200, 2400);
@@ -146,6 +149,7 @@ void main() {
             displaySettingsBlobProvider.overrideWith((ref) async => display),
             geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
             demoSettingsProvider.overrideWithValue(DemoSettings(riderOffers: demoOffers)),
+            rideOffersProvider.overrideWith((ref, id) => Stream.value(offerRows)),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -233,6 +237,25 @@ void main() {
       expect(find.byKey(const ValueKey('search-raise-card')), findsOneWidget);
     });
 
+    testWidgets('no raise prompt while a driver\'s offer is on screen', (tester) async {
+      final offer = RideOfferRow.tryParse({
+        'id': 'o1',
+        'request_id': 'r1',
+        'partner_id': 'p1',
+        'amount': 26,
+        'created_at': t0.toIso8601String(),
+        'expires_at': t0.add(const Duration(minutes: 10)).toIso8601String(),
+        'partner_name': 'Ali',
+      })!;
+      await pump(tester, display: {'raiseFareAfterSeconds': 90}, offerRows: [offer]);
+      rows.add(open(age: const Duration(seconds: 60)));
+      await tester.pump();
+      await tick(tester, const Duration(seconds: 1));
+      await tick(tester, const Duration(seconds: 60));
+      expect(find.byKey(const ValueKey('ride-offer-o1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('search-raise-card')), findsNothing, reason: 'it would contradict the offer');
+    });
+
     testWidgets('the wait hint comes from the drivers near the pickup, and only then', (tester) async {
       await pump(tester, nearby: const {'car': 1.0});
       rows.add(open(age: const Duration(seconds: 5), extra: const {'pickup_lat': 3.15, 'pickup_lng': 101.71, 'service': 'Car'}));
@@ -292,7 +315,7 @@ void main() {
       // Not under the offers' dim: it still takes a tap.
       await tester.tap(cancel);
       await tick(tester, const Duration(seconds: 1));
-      expect(find.byKey(const ValueKey('cancel-skip')), findsOneWidget);
+      expect(find.byKey(const ValueKey('cancel-keep-searching')), findsOneWidget);
     });
 
     testWidgets('a fixed-fare request has nothing to raise, confirm or auto-accept, and is never asked to raise',

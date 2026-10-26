@@ -1275,7 +1275,9 @@ class RideRepository {
       refresh();
       // Back from the background, or an update dropped: the queue as it is
       // now, not as it was (and requests drop off as they age past expiry).
-      backup = RealtimeBackup(refresh, every: const Duration(seconds: 10));
+      // Requests go stale in minutes: while realtime is down keep reading
+      // every 10 s rather than backing off.
+      backup = RealtimeBackup(refresh, every: const Duration(seconds: 10), backoff: false);
       channel = RealtimeHub.of(_db).listen(table: _table, onChange: (_) => refresh(), onStatus: backup!.onStatus);
     };
     controller.onCancel = () async {

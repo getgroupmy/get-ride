@@ -254,27 +254,21 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
       }
 
-      // Closing the first sheet keeps the request.
+      // "Cancel your request?" comes first: Keep searching keeps it.
       await open();
-      expect(find.text('Why do you want to cancel?'), findsOneWidget);
-      expect(find.byKey(const ValueKey('cancel-reason-driver_too_long')), findsNothing);
-      await tester.tap(find.byKey(const ValueKey('cancel-sheet-close')));
-      await tester.pump(const Duration(milliseconds: 400));
-      // Skip, then Keep searching: still nothing.
-      await open();
-      await tester.tap(find.byKey(const ValueKey('cancel-skip')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
       expect(find.text('Cancel your request?'), findsOneWidget);
+      expect(find.text('Why do you want to cancel?'), findsNothing);
       await tester.tap(find.byKey(const ValueKey('cancel-keep-searching')));
       await tester.pump(const Duration(milliseconds: 400));
       expect(rides.cancels, isEmpty);
-      // A reason, then Cancel request.
+      // Cancel request, then a reason.
       await open();
-      await tester.tap(find.byKey(const ValueKey('cancel-reason-high_fares')));
+      await tester.tap(find.byKey(const ValueKey('cancel-confirm')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
-      await tester.tap(find.byKey(const ValueKey('cancel-confirm')));
+      expect(find.text('Why do you want to cancel?'), findsOneWidget);
+      expect(find.byKey(const ValueKey('cancel-reason-driver_too_long')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('cancel-reason-high_fares')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(rides.cancels, [('open', 'high_fares')]);
@@ -289,10 +283,26 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('cancel-request')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const ValueKey('cancel-confirm')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.tap(find.byKey(const ValueKey('cancel-skip')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
+      expect(rides.cancels, [('open', null)]);
+    });
+
+    testWidgets('closing the reason sheet once sure still cancels, with no reason', (tester) async {
+      final (rides, rows, _) = await pump(tester);
+      rows.add(ride('open'));
+      await settle(tester);
+      await tester.tap(find.byKey(const ValueKey('cancel-request')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.tap(find.byKey(const ValueKey('cancel-confirm')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.tap(find.byKey(const ValueKey('cancel-sheet-close')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
       expect(rides.cancels, [('open', null)]);

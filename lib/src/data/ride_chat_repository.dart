@@ -63,6 +63,18 @@ class RideChatRepository {
     }
   }
 
+  /// The open threads' re-reads, by request: a message this phone sent is
+  /// in its thread before it leaves the outbox, whatever realtime does.
+  final _rereads = <String, Set<Future<void> Function()>>{};
+
+  Future<void> _rereadThread(String requestId) async {
+    for (final r in [...?_rereads[requestId]]) {
+      try {
+        await r();
+      } catch (_) {}
+    }
+  }
+
   /// The thread for [requestId], re-read whenever a message arrives or a
   /// tick moves.
   Stream<List<RideMessage>> watch(String requestId) {
@@ -89,6 +101,7 @@ class RideChatRepository {
 
     RealtimeBackup? backup;
     controller.onListen = () {
+      (_rereads[requestId] ??= {}).add(refresh);
       backup = RealtimeBackup(refresh);
       // The copy on the phone first, so the thread is there at once; the
       // server's replaces it as soon as it answers.
@@ -104,6 +117,7 @@ class RideChatRepository {
       );
     };
     controller.onCancel = () async {
+      _rereads[requestId]?.remove(refresh);
       backup?.dispose();
       channel?.cancel();
       await controller.close();
@@ -152,6 +166,9 @@ class RideChatRepository {
       if (!rideSendLacksClientId(e.code, e.message)) rethrow;
       await _db.from('ride_messages').insert(p.toRow()..remove('client_msg_id'));
     }
+    // Read the thread before the outbox lets the message go, so it never
+    // drops out of sight between the two.
+    await _rereadThread(p.requestId);
   }
 
   Future<void> sendText(String requestId, RideChatRole role, String body, {bool quick = false}) async {

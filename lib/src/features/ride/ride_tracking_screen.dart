@@ -688,7 +688,16 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           .read(rideRepositoryProvider)
           .acceptOffer(widget.ride.id, partnerId: o.partnerId, amount: o.amount);
       if (won == null && mounted) showInfo(context, 'That offer changed before you accepted it.');
+      if (won != null) _readRideNow();
     });
+  }
+
+  /// Reads the ride and its offers again at once: an accepted offer moves
+  /// the rider on without waiting for realtime or the next timed read.
+  void _readRideNow() {
+    if (!mounted) return;
+    ref.invalidate(rideStreamProvider(widget.ride.id));
+    ref.invalidate(rideOffersProvider(widget.ride.id));
   }
 
   /// An offer of the many (0269), taken or turned down by its id.
@@ -696,6 +705,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     await _run(() async {
       try {
         await ref.read(cityRideRepositoryProvider).acceptOffer(o.id);
+        _readRideNow();
       } catch (e) {
         if (mounted) showInfo(context, rideOfferError(e));
       }
@@ -987,7 +997,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           valueListenable: _clock,
           builder: (_, now, _) => showRaiseNudge(
                   bidding: bidding,
-                  offerStanding: _visibleOffer != null,
+                  // Any driver's offer on screen, one bid or one of many:
+                  // a raise prompt beside it would contradict it.
+                  offerStanding: _visibleOffer != null ||
+                      (!_isDemo &&
+                          (ref.watch(rideOffersProvider(r.id)).value ?? const <RideOfferRow>[]).any((o) => o.isLive(now))),
                   waited: _waited(r, now),
                   after: nudgeAfter)
               ? SearchRaiseCard(

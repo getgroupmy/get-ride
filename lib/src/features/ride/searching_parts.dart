@@ -1179,9 +1179,17 @@ class ChooseDriverOverlay extends StatelessWidget {
 /// What the cancel sheets came back with.
 typedef SearchCancelChoice = ({bool cancel, String? reason});
 
-/// inDrive's cancel: "Why do you want to cancel?" (a reason, or Skip), then
-/// "Cancel your request?" with Keep searching first. Null keeps searching.
+/// The cancel: "Cancel your request?" with Keep searching first, then, once
+/// sure, "Why do you want to cancel?" (a reason, or Skip; closing it skips
+/// too). Null keeps searching.
 Future<SearchCancelChoice?> showSearchCancelSheet(BuildContext context) async {
+  final sure = await showAppSheet<bool>(id: 'searching.show-search-cancel-sheet-2',
+    context: context,
+    fitContent: true,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+    builder: (c) => const _SureCancelSheet(),
+  );
+  if (sure != true || !context.mounted) return null;
   final reason = await showAppSheet<String>(id: 'searching.show-search-cancel-sheet',
     context: context,
     fitContent: true,
@@ -1189,15 +1197,7 @@ Future<SearchCancelChoice?> showSearchCancelSheet(BuildContext context) async {
     shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
     builder: (c) => const _WhyCancelSheet(),
   );
-  if (reason == null || !context.mounted) return null;
-  final sure = await showAppSheet<bool>(id: 'searching.show-search-cancel-sheet-2',
-    context: context,
-    fitContent: true,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-    builder: (c) => const _SureCancelSheet(),
-  );
-  if (sure != true) return null;
-  return (cancel: true, reason: reason == _skip ? null : reason);
+  return (cancel: true, reason: reason == null || reason == _skip ? null : reason);
 }
 
 const _skip = '_skip';

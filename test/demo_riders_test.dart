@@ -376,10 +376,10 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('cancel-request')));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
-        await tester.tap(find.byKey(const ValueKey('cancel-reason-high_fares')));
+        await tester.tap(find.byKey(const ValueKey('cancel-confirm')));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
-        await tester.tap(find.byKey(const ValueKey('cancel-confirm')));
+        await tester.tap(find.byKey(const ValueKey('cancel-reason-high_fares')));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
         final cancelled = container.read(demoRidesProvider)[id]!;
