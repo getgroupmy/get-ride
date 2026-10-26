@@ -11,7 +11,8 @@ import 'service_boxes.dart' show BoxRowKind, boxRowsOf, legacyBoxRows;
 
 /// The kinds of section. The built-in ones are the parts the home screen
 /// had before sections: each is there exactly once, can be moved and
-/// switched off, never removed.
+/// switched off, never removed. The others are added by the admin, as many
+/// as wanted, and can be removed (core/home_tiles.dart).
 enum HomeSectionType {
   search('search', 'Search bar'),
   vehicles('vehicles', 'Vehicle bar'),
@@ -19,11 +20,15 @@ enum HomeSectionType {
   upcoming('upcoming', 'Upcoming ride'),
   recent('recent', 'Recent places'),
   boxes('boxes', 'Service boxes'),
-  fold('fold', 'Sheet fold');
+  fold('fold', 'Sheet fold'),
+  tiles('tiles', 'Tile row', builtIn: false),
+  wide('wide', 'Wide tile row', builtIn: false),
+  promos('promos', 'Promo cards', builtIn: false);
 
-  const HomeSectionType(this.key, this.label);
+  const HomeSectionType(this.key, this.label, {this.builtIn = true});
   final String key;
   final String label;
+  final bool builtIn;
 
   static HomeSectionType? of(Object? key) {
     for (final t in values) {
@@ -138,7 +143,10 @@ class HomeLayout {
         if (s is! Map) continue;
         final section = HomeSection(Map<String, dynamic>.from(s));
         final t = section.type;
-        if (t != null && !seen.add(t)) continue;
+        // A built-in part once; added sections as many as there are, once
+        // each by id.
+        if (t != null && t.builtIn && !seen.add(t)) continue;
+        if (t != null && !t.builtIn && out.any((x) => x.id == section.id)) continue;
         out.add(section);
       }
     }
@@ -176,6 +184,15 @@ class HomeLayout {
 
   HomeLayout edited(String id, Map<String, dynamic> patch) =>
       HomeLayout([for (final s in sections) s.id == id ? s.copyWith(patch) : s]);
+
+  /// [section] added at the end of the page.
+  HomeLayout added(HomeSection section) => HomeLayout([...sections, section]);
+
+  /// Without the added section [id]; a built-in part stays.
+  HomeLayout removed(String id) =>
+      HomeLayout([for (final s in sections) if (s.id != id || (s.type?.builtIn ?? false)) s]);
+
+  HomeSection? byId(String id) => sections.where((s) => s.id == id).firstOrNull;
 }
 
 /// Blob keys (`admin_display_settings`, row global).

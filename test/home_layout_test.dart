@@ -32,7 +32,7 @@ void main() {
           {'id': 'search', 'type': 'search', 'text': 'Ke mana?'},
           {'id': 'search2', 'type': 'search'},
           {'id': 'fold', 'type': 'fold', 'on': false},
-          {'id': 'x', 'type': 'tiles', 'title': 'From a newer app'},
+          {'id': 'x', 'type': 'hologram', 'title': 'From a newer app'},
           'junk',
         ],
       },

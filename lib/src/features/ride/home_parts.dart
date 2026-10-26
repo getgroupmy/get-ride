@@ -8,7 +8,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../../core/fare.dart';
-import '../../core/home_layout.dart' show homeSearchDefaultText;
+import '../../core/home_layout.dart' show HomeSection, HomeSectionType, homeSearchDefaultText;
+import '../../core/home_tiles.dart';
 import '../../core/home_sections.dart';
 import '../../core/service_boxes.dart';
 import '../../data/geo_service.dart';
@@ -651,6 +652,252 @@ class _FlipBadgeState extends State<FlipBadge> {
         ),
       ),
       child: pill,
+    );
+  }
+}
+
+/// A picture for a tile or a heading: the admin's image filling it, else
+/// its icon (a Media Gallery one or a built-in name) sized [iconSize].
+Widget homePicture({String? imageUri, String? iconName, required double iconSize, Color? color, BoxFit fit = BoxFit.cover}) {
+  if (imageUri != null) return uriImage(imageUri, fit: fit, width: double.infinity, height: double.infinity);
+  return Center(
+    child: isMediaRef(iconName)
+        ? MediaIcon(iconName, fallback: Icons.apps, size: iconSize, color: color)
+        : Icon(_boxIcons[iconName] ?? Icons.apps, size: iconSize, color: color),
+  );
+}
+
+/// A tile row or a wide tile row (Display Settings → Home page): a heading
+/// with its picture and an arrow, then tiles scrolling sideways with their
+/// words under them, and a last "see all" tile. A wide tile also has a
+/// second line, and any tile a corner label.
+class HomeTileRow extends StatelessWidget {
+  const HomeTileRow({super.key, required this.section, required this.onOpen});
+  final HomeSection section;
+
+  /// A tile's page (null: Coming Soon), with the words to say so.
+  final void Function(String? route, String title) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = section;
+    final t = Theme.of(context);
+    final style = SurfaceStyle.of(context, homeSurface);
+    final fill = style.color('boxColor', t.brightness) ?? t.colorScheme.surfaceContainerHigh;
+    final ink = style.color('boxTitleColor', t.brightness) ?? t.colorScheme.onSurface;
+    final wide = s.type == HomeSectionType.wide;
+    final tiles = s.shownTiles;
+    return Column(key: ValueKey('home-tiles-${s.id}'), crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      if (s.title.isNotEmpty)
+        InkWell(
+          key: ValueKey('home-tiles-heading-${s.id}'),
+          onTap: () => onOpen(s.headingRoute, s.title),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(children: [
+              if (s.headingIcon != null) ...[
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
+                  child: homePicture(iconName: s.headingIcon, iconSize: 22, color: ink),
+                ),
+                const SizedBox(width: 10),
+              ],
+              Flexible(
+                child: Text(s.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700, color: ink)),
+              ),
+              const SizedBox(width: 6),
+              Container(
+                width: 22,
+                height: 22,
+                decoration: BoxDecoration(color: fill, shape: BoxShape.circle),
+                child: Icon(Icons.chevron_right, size: 16, color: ink),
+              ),
+            ]),
+          ),
+        ),
+      LayoutBuilder(builder: (context, c) {
+        final w = tileWidth(c.maxWidth, s.across);
+        final pic = wide ? w * wideTileAspect : w;
+        // The picture, its words (two lines), a second line on wide tiles,
+        // at the phone's text size.
+        final ts = MediaQuery.textScalerOf(context);
+        final height = pic + 8 + ts.scale(16) * 1.25 * 2 + 6 + (wide ? ts.scale(14) * 1.5 : 0);
+        final cards = <Widget>[
+          for (final tile in tiles)
+            _Tile(tile: tile, width: w, picture: pic, wide: wide, fill: fill, ink: ink, onTap: () => onOpen(tile.route, tile.caption)),
+          if (s.seeAll.isNotEmpty)
+            _Tile(
+              key: ValueKey('home-tiles-see-all-${s.id}'),
+              tile: HomeTile({'id': 'see-all', 'caption': s.seeAll, 'iconName': s.headingIcon}),
+              width: w,
+              picture: pic,
+              wide: wide,
+              fill: fill,
+              ink: ink,
+              arrow: true,
+              onTap: () => onOpen(s.headingRoute, s.title),
+            ),
+        ];
+        return SizedBox(
+          height: height,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: cards.length,
+            separatorBuilder: (_, _) => const SizedBox(width: tileGap),
+            itemBuilder: (_, i) => cards[i],
+          ),
+        );
+      }),
+    ]);
+  }
+}
+
+class _Tile extends StatelessWidget {
+  const _Tile({
+    super.key,
+    required this.tile,
+    required this.width,
+    required this.picture,
+    required this.wide,
+    required this.fill,
+    required this.ink,
+    required this.onTap,
+    this.arrow = false,
+  });
+  final HomeTile tile;
+  final double width, picture;
+  final bool wide, arrow;
+  final Color fill, ink;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final bg = tile.background == null ? fill : Color(tile.background!);
+    final at = tile.labelAt;
+    const r = Radius.circular(12);
+    return SizedBox(
+      width: width,
+      child: InkWell(
+        key: ValueKey('home-tile-${tile.id}'),
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: width,
+              height: picture,
+              color: bg,
+              child: Stack(fit: StackFit.expand, children: [
+                homePicture(imageUri: tile.imageUri, iconName: tile.iconName, iconSize: picture * tile.size / 100, color: ink),
+                if (tile.label.isNotEmpty)
+                  Positioned(
+                    left: at.x < 0 ? 0 : null,
+                    right: at.x > 0 ? 0 : null,
+                    top: at.y < 0 ? 0 : null,
+                    bottom: at.y > 0 ? 0 : null,
+                    child: Container(
+                      key: ValueKey('home-tile-label-${tile.id}'),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Color(tile.labelFill),
+                        // Round on the side facing into the tile.
+                        borderRadius: BorderRadius.only(
+                          topLeft: at.x > 0 && at.y > 0 ? r : Radius.zero,
+                          topRight: at.x < 0 && at.y > 0 ? r : Radius.zero,
+                          bottomLeft: at.x > 0 && at.y < 0 ? r : Radius.zero,
+                          bottomRight: at.x < 0 && at.y < 0 ? r : Radius.zero,
+                        ),
+                      ),
+                      child: Text(tile.label,
+                          style: TextStyle(color: Color(tile.labelInk), fontWeight: FontWeight.w700, fontSize: 13)),
+                    ),
+                  ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text.rich(
+            TextSpan(children: [
+              TextSpan(text: tile.caption),
+              if (arrow) const WidgetSpan(child: Padding(padding: EdgeInsets.only(left: 4), child: Icon(Icons.arrow_forward, size: 16))),
+            ]),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: t.textTheme.bodyLarge?.copyWith(color: ink, height: 1.25),
+          ),
+          if (wide && tile.sub.isNotEmpty)
+            Text(tile.sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.bodyMedium?.copyWith(color: ink.withValues(alpha: 0.6))),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Promo cards (Display Settings → Home page): small coloured cards with
+/// their words, scrolling sideways.
+class HomePromoRow extends StatelessWidget {
+  const HomePromoRow({super.key, required this.section, required this.onOpen});
+  final HomeSection section;
+  final void Function(String? route, String title) onOpen;
+
+  static const side = 96.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final fill = SurfaceStyle.of(context, homeSurface).color('boxColor', t.brightness) ?? t.colorScheme.surfaceContainerHigh;
+    final cards = section.shownTiles;
+    return SizedBox(
+      key: ValueKey('home-promos-${section.id}'),
+      height: side,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: cards.length,
+        separatorBuilder: (_, _) => const SizedBox(width: tileGap),
+        itemBuilder: (_, i) {
+          final c = cards[i];
+          final bg = c.background == null ? fill : Color(c.background!);
+          // Words dark on a light card, white on a dark one.
+          final ink = ThemeData.estimateBrightnessForColor(bg) == Brightness.dark ? Colors.white : const Color(0xFF1B1D22);
+          return SizedBox(
+            width: side,
+            child: Material(
+              color: bg,
+              borderRadius: BorderRadius.circular(18),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                key: ValueKey('home-promo-${c.id}'),
+                onTap: () => onOpen(c.route, c.caption),
+                child: Stack(children: [
+                  Positioned(
+                    right: -10,
+                    top: -6,
+                    width: 76,
+                    height: 76,
+                    child: Opacity(opacity: c.imageUri == null ? 0.5 : 1, child: homePicture(imageUri: c.imageUri, iconName: c.iconName, iconSize: 70, color: ink)),
+                  ),
+                  Positioned(
+                    left: 9,
+                    right: 6,
+                    bottom: 9,
+                    child: Text(c.caption,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: ink, fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.2)),
+                  ),
+                ]),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
