@@ -214,6 +214,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:session-history.open-trail', SurfaceKind.modal, 'Session history · Trail', 'lib/src/admin/screens/security/session_history_screen.dart'),
   SurfaceEntry('modal:settings.edit', SurfaceKind.modal, 'Settings · Edit', 'lib/src/admin/screens/settings_screens.dart'),
   SurfaceEntry('modal:side-menu-tiles.open-route', SurfaceKind.modal, 'Side menu tiles · Route', 'lib/src/widgets/side_menu_tiles.dart'),
+  SurfaceEntry('modal:sign-in-security.allow-devices', SurfaceKind.modal, 'Sign in security · Allow devices', 'lib/src/admin/screens/security/sign_in_security_card.dart'),
   SurfaceEntry('modal:sign-in-security.save', SurfaceKind.modal, 'Sign in security · Save', 'lib/src/admin/screens/security/sign_in_security_card.dart'),
   SurfaceEntry('modal:sign-in-security.sign-out-everywhere', SurfaceKind.modal, 'Sign in security · Sign out everywhere', 'lib/src/admin/screens/security/sign_in_security_card.dart'),
   SurfaceEntry('modal:site.edit', SurfaceKind.modal, 'Site · Edit', 'lib/src/admin/screens/meterapp/site_screen.dart'),

@@ -37,6 +37,10 @@ final signInConfigProvider = FutureProvider<SignInConfig>((ref) async {
 /// another one; the sign-in screen says so and clears it.
 final signedOutElsewhere = ValueNotifier<bool>(false);
 
+/// How many devices the account may use at once, as its last claim said
+/// (0298); worded into the sign-out note.
+final signedOutAllowance = ValueNotifier<int>(1);
+
 /// How often an open app checks it is still the account's device, beside
 /// the live row and every resume.
 const sessionCheckEvery = Duration(minutes: 3);
@@ -69,6 +73,7 @@ class SessionGuard {
           'p_only_if_unclaimed': onlyIfUnclaimed,
         },
       );
+      if (r is Map && r['allowed'] is num) signedOutAllowance.value = (r['allowed'] as num).toInt();
       // Opened after another device signed in: signed out here at once.
       if (r is Map && r['current'] == false) await signOutHere();
     } catch (e) {

@@ -112,6 +112,13 @@ const signedOutElsewhereMessage =
     "You signed in on another device, so you've been signed out here. "
     "If that wasn't you, sign in again and change your PIN.";
 
+/// The same, for an account an admin allowed [allowed] devices (0298): the
+/// device that signed in longest ago is the one signed out.
+String signedOutElsewhereMessageFor(int allowed) => allowed <= 1
+    ? signedOutElsewhereMessage
+    : 'This account is signed in on its allowed number of devices ($allowed), so this one, signed in '
+        "longest ago, was signed out. If that wasn't you, sign in again and change your PIN.";
+
 /// The server's refusal of a session that is no longer the account's one
 /// (`request_guard`, migration 0180), from any error the API returned.
 bool isSignedInElsewhere(Object? error) {
