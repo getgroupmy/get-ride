@@ -288,11 +288,15 @@ select pg_temp.check((select count(*) = 1 from public.partner_rule_overrides o
                          and o.reason like 'SSM certificate received%'
                          and o.rules -> 0 ->> 'rule' = 'business_registration'),
   'the override is recorded with the admin, the reason and the failed rules');
+-- Only full admins read the audit log (0270); this admin has EDIT on Partners only.
+reset role;
 select pg_temp.check(exists (select 1 from public.admin_audit_log
                               where action = 'partner.review_approve'
                                 and detail ->> 'partner_id' = '00000000-0000-0000-0000-0000000305f5'
                                 and detail ? 'override_reason'),
   'and in the audit log');
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000305a1');
 -- The old one-argument call still approves a partner passing every rule.
 select public.partner_review_approve('00000000-0000-0000-0000-0000000305f6');
 select pg_temp.check((select status::text = 'approved' from public.partners where id = '00000000-0000-0000-0000-0000000305f6'),
