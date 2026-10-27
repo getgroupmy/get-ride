@@ -126,7 +126,7 @@ class SignedOutElsewhereNote extends StatelessWidget {
             color: t.colorScheme.secondaryContainer,
             child: ListTile(
               leading: Icon(Icons.devices_other, color: t.colorScheme.onSecondaryContainer),
-              title: Text(signedOutElsewhereMessage, style: TextStyle(color: t.colorScheme.onSecondaryContainer)),
+              title: Text(signedOutElsewhereMessageFor(signedOutAllowance.value), style: TextStyle(color: t.colorScheme.onSecondaryContainer)),
               trailing: IconButton(
                 tooltip: 'Dismiss',
                 icon: Icon(Icons.close, color: t.colorScheme.onSecondaryContainer),

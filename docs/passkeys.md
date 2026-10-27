@@ -57,3 +57,14 @@ signed in on one device at a time; the newest sign-in wins (migration 0180).
 
 Turn it on only once App updates' minimum is 1.4.8 or later: older builds
 are not told why they stopped working.
+
+### More devices for chosen accounts (0298)
+
+Admin → Users → an account → Devices sets how many devices it may use at
+once (1 to 10, with a reason only admins see); App Settings → Sign-in
+security lists those accounts and finds one to add. A new sign-in past the
+allowance signs out the device that signed in longest ago, and that phone
+is told the allowance. Such an account's devices are kept in
+`account_devices` instead of `active_sessions` (phones from before 0298
+watch that row and would sign out at every new sign-in), so a phone pushed
+out learns it from its next request or its check on resume, not at once.
