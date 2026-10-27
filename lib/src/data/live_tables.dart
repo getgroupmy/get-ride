@@ -67,6 +67,12 @@ const liveSettingTables = <String>[
   'driver_incentive',
   // Admin → Commission settings → tiers (0218).
   'commission_tiers',
+  // City to City (0306): settings, permits by country, route rules; and
+  // commission per service (admins only, by row-level security).
+  'city_to_city_settings',
+  'c2c_country_permits',
+  'c2c_route_rules',
+  'commission_service_rates',
   // Not settings, but the balances on screen: a commission or a transfer
   // lands without a pull to refresh (row-level security limits it to the
   // signed-in account's own wallets).

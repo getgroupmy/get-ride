@@ -69,7 +69,9 @@ begin
     -- City ride cancel and no-show rules by place (migration 0269).
     'ride_cancel_places',
     -- The Media Gallery's uploads (migration 0273).
-    'media_assets'
+    'media_assets',
+    -- City to City: settings, permits by country, route rules; commission per service (migration 0306).
+    'city_to_city_settings', 'c2c_country_permits', 'c2c_route_rules', 'commission_service_rates'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

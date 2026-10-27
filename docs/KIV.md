@@ -29,7 +29,7 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 ## Services, partner types and vehicle services (study of 26 Oct 2026)
 
 Low:
-- L8 City to City booking flow; per-service commission rate.
+- L8 City to City: C1 server + admin done; C2 rider app and C3 driver app next.
 
 (M3, the list's quick Approve, and L3, the step count, are in the partner review fixes.)
 
