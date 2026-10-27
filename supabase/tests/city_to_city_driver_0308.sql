@@ -31,7 +31,7 @@ insert into auth.users (id) values
 on conflict do nothing;
 insert into public.profiles (id, name) select id, 'Test 308' from auth.users
  where id::text like '00000000-0000-0000-0000-0000000308%'
-on conflict do nothing;
+on conflict (id) do update set name = excluded.name;  -- the sign-up trigger may have made the row
 update public.profiles set name = 'Rider  Satu Contoh', rider_rating = 4.6, phone = '+60100030899'
  where id = '00000000-0000-0000-0000-0000000308c1';
 
