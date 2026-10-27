@@ -30,6 +30,7 @@ import '../../widgets/live_selfie_gate.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/search_select.dart';
 import 'registration_parts.dart';
+import 'vehicle_service_parts.dart';
 
 /// What a step needs from the registration form around it.
 abstract class RegHost {
@@ -1121,6 +1122,14 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
   late final _owner = TextEditingController();
   late final _ownerId = TextEditingController();
 
+  /// The driver's choice of vehicle service (0249), when the make & model
+  /// sets none; [_serviceError] once they tried to save without one.
+  String _serviceId = '';
+  String? _serviceError;
+
+  /// Vehicle Make & Model, for the service GET.ride set per make & model.
+  List<Map<String, dynamic>> _catalogue = const [];
+
   List<TextEditingController> get _all =>
       [_plate, _make, _model, _year, _colour, _engine, _chassis, _registered, _cc, _owner, _ownerId];
 
@@ -1128,7 +1137,25 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
   void initState() {
     super.initState();
     _fromVehicle(_v);
+    _make.addListener(_makeModelChanged);
+    _model.addListener(_makeModelChanged);
+    _loadCatalogue();
   }
+
+  Future<void> _loadCatalogue() async {
+    try {
+      final rows = await ref.read(peopleRepositoryProvider).makeModels();
+      if (mounted) setState(() => _catalogue = rows);
+    } catch (_) {}
+  }
+
+  /// The service follows the make & model as they are typed.
+  void _makeModelChanged() {
+    if (mounted && _phase == _VehiclePhase.details) setState(() {});
+  }
+
+  /// The service the make & model has ('' when the list sets none).
+  String get _mapped => makeModelService(_catalogue, _make.text, _model.text);
 
   @override
   void dispose() {
@@ -1153,6 +1180,7 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
     _ownerId.text = _t(v['grant_owner_id']);
     _grantFront = _t(v['grant_front_url']);
     _grantBack = _t(v['grant_back_url']);
+    _serviceId = _t(v['service_id']);
   }
 
   OnboardingState get _s => widget.host.state;
@@ -1242,11 +1270,22 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
     if (_owner.text.trim().isEmpty) return showNotice(context, message: "Enter the registered owner's name.");
     final statuses = _statuses();
     final match = _ownerMatch;
-    Map<String, dynamic>? catalogue;
+    var rows = _catalogue;
     try {
-      catalogue = matchMakeModel(await ref.read(peopleRepositoryProvider).makeModels(), _make.text, _model.text);
+      rows = await ref.read(peopleRepositoryProvider).makeModels();
     } catch (_) {}
     if (!mounted) return;
+    final catalogue = matchMakeModel(rows, _make.text, _model.text);
+    // The make & model's service, else the driver's choice (checked at review).
+    final service = vehicleServiceChoice(
+      mapped: makeModelService(rows, _make.text, _model.text),
+      chosen: _serviceId,
+      canChoose: (ref.read(vehicleServiceOptionsProvider).value ?? const []).isNotEmpty,
+    );
+    if (service.problem != null) {
+      setState(() => _serviceError = service.problem);
+      return showNotice(context, message: service.problem!);
+    }
     Map<String, dynamic>? saved;
     final ok = await widget.host.save((s) async {
       final vehicles = ref.read(vehicleOnboardingRepositoryProvider);
@@ -1281,10 +1320,8 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
           profile: s.profile,
         ),
         'partner_types': _services,
-        if (catalogue != null) ...{
-          'service_id': _t(catalogue['service_id']).isEmpty ? null : _t(catalogue['service_id']),
-          'vehicle_type': _t(catalogue['vehicle_type']).isEmpty ? null : _t(catalogue['vehicle_type']),
-        },
+        if (service.serviceId != null || catalogue != null) 'service_id': service.serviceId,
+        if (catalogue != null) 'vehicle_type': _t(catalogue['vehicle_type']).isEmpty ? null : _t(catalogue['vehicle_type']),
       });
       await vehicles.saveServiceStatuses(id, [for (final st in statuses) st.toRow(id)]);
       saved = v;
@@ -1334,46 +1371,6 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
       final repo = ref.read(partnerOnboardingRepositoryProvider);
       return s.copyWith(partner: await repo.patchPartner(s, withRegistrationStep(s.partner, regStepVehicle)));
     });
-  }
-
-  Widget _statusBlocks(BuildContext context, List<VehicleServiceStatus> st, {required String regLabel}) {
-    if (st.isEmpty) return const SizedBox.shrink();
-    final anyPaused = st.any((s) => s.state == VehicleServiceState.pausedAge);
-    final withLimit = st.where((s) => s.limit != null).toList();
-    final reg = _day(_registered.text);
-    final age = reg == null ? null : vehicleAgeYears(reg, now: widget.now);
-    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (withLimit.isNotEmpty)
-        RegNotice(
-          key: const ValueKey('vehicle-age'),
-          icon: Icons.event,
-          tone: anyPaused ? NoticeTone.warn : NoticeTone.info,
-          children: [
-            Text(age == null ? 'Vehicle age' : '$regLabel: $age years old', style: const TextStyle(fontWeight: FontWeight.w600)),
-            for (final s in st)
-              CheckLine(
-                ok: s.state != VehicleServiceState.pausedAge,
-                paused: s.state == VehicleServiceState.pausedAge,
-                text: vehicleAgeLine(s),
-              ),
-            Text(
-              anyPaused
-                  ? 'You can carry on. The other services work with this vehicle; the paused one turns on when you add a newer vehicle later.'
-                  : 'We remind you a year before a limit is reached.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-      RegNotice(
-        key: const ValueKey('vehicle-permits'),
-        icon: Icons.verified_outlined,
-        children: [
-          const Text('Vehicle permits', style: TextStyle(fontWeight: FontWeight.w600)),
-          for (final s in st) CheckLine(ok: s.permit == null, paused: s.permit != null, text: vehiclePermitLine(s)),
-          Text("You don't upload these; we tell you when each one is ready.", style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
-    ]);
   }
 
   @override
@@ -1449,6 +1446,17 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
           RegField(controller: _plate, label: 'Plate number', enabled: !busy),
           RegField(controller: _make, label: 'Make', enabled: !busy),
           RegField(controller: _model, label: 'Model', enabled: !busy),
+          VehicleServiceField(
+            key: const ValueKey('vehicle-service'),
+            mapped: _mapped,
+            value: _serviceId,
+            enabled: !busy,
+            errorText: _serviceError,
+            onChanged: (v) => setState(() {
+              _serviceId = v;
+              _serviceError = null;
+            }),
+          ),
           RegField(controller: _year, label: 'Year made', enabled: !busy, keyboard: TextInputType.number),
           RegField(controller: _colour, label: 'Colour', enabled: !busy),
           RegField(controller: _engine, label: 'Engine number', enabled: !busy),
@@ -1465,7 +1473,12 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
           ),
           const SizedBox(height: 12),
           RegField(controller: _cc, label: 'Engine capacity (cc)', enabled: !busy, keyboard: TextInputType.number),
-          _statusBlocks(context, st, regLabel: 'Registered ${_day(_registered.text)?.year ?? ''}'.trim()),
+          VehicleServiceStatusBlocks(
+            statuses: st,
+            regLabel: 'Registered ${_day(_registered.text)?.year ?? ''}'.trim(),
+            registered: _day(_registered.text),
+            now: widget.now,
+          ),
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: TextField(
@@ -1527,7 +1540,12 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
             ),
           ),
           const SizedBox(height: 8),
-          _statusBlocks(context, st, regLabel: 'Registered ${_day(_registered.text)?.year ?? ''}'.trim()),
+          VehicleServiceStatusBlocks(
+            statuses: st,
+            regLabel: 'Registered ${_day(_registered.text)?.year ?? ''}'.trim(),
+            registered: _day(_registered.text),
+            now: widget.now,
+          ),
           if (other) ...[
             UploadTile(
               key: const ValueKey('vehicle-authorisation'),

@@ -14,6 +14,7 @@ import 'people_logic.dart';
 import 'people_widgets.dart';
 import 'vehicle_drivers.dart';
 import 'vehicle_permits_screen.dart' show VehiclePermitsSection;
+import 'vehicle_service_checks.dart';
 import '../geo/geo_data.dart' show regionVehicleTypesProvider;
 import '../geo/geo_logic.dart' show ServiceOption;
 import '../../../widgets/search_select.dart';
@@ -334,6 +335,8 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
             ChoiceChips(options: permitOptions, value: _permit, enabled: canEdit, onChanged: (p) => setState(() => _permit = p)),
             // The country's permits for this vehicle (0254): upload, bypass.
             if (_isEdit) VehiclePermitsSection(vehicleId: r!['id'] as String, canEdit: canEdit),
+            // Per Partner Service type: active, paused or waiting (0301).
+            if (_isEdit) VehicleServiceChecksSection(vehicleId: r!['id'] as String, canEdit: canEdit),
             const SizedBox(height: 8),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,

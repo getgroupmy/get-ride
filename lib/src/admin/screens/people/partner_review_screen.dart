@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/partner_review.dart';
 import '../../../core/signin_checks.dart' show faceNeedsCloserLook, livenessText, rejectNotes;
 import '../../../core/partner_registration.dart' show closerLookReasonText;
+import '../../../core/vehicle_onboarding.dart' show VehicleServiceOption;
 import '../../../data/partner_review_repository.dart';
 import '../../../providers.dart' show currentUserIdProvider;
 import '../../../widgets/busy.dart';
@@ -28,6 +29,7 @@ import '../../widgets/reject_reason.dart';
 import '../documents_screen.dart' show documentFaceText;
 import 'people_data.dart';
 import 'people_logic.dart' show partnerTypeOptions;
+import 'vehicle_service_checks.dart' show VehicleServiceCheckRows;
 
 /// The admin's edit: the new value and the note for the driver.
 typedef ReviewEditResult = ({Object? value, String note});
@@ -116,9 +118,24 @@ class _ReviewBody extends ConsumerWidget {
     final r = await showAppDialog<ReviewEditResult>(
       id: 'admin-partner-review.edit',
       context: context,
-      builder: (_) => ReviewEditDialog(line: l, types: types, note: app.items[l.key]?.note),
+      builder: (_) => ReviewEditDialog(line: l, types: types, services: app.services, note: app.items[l.key]?.note),
     );
     if (r == null || !context.mounted) return;
+    if (l.edit == ReviewEdit.service) {
+      // The vehicle's approved service, through the admin's vehicle save
+      // (their Vehicles access), then the line is approved.
+      final vehicleId = '${app.vehicle?['id'] ?? ''}';
+      await _run(context, ref, () async {
+        await ref.read(peopleRepositoryProvider).updateVehicle(vehicleId, {'service_approved_id': '${r.value}'});
+        await _repo(ref).setItem(
+          partnerId: app.partnerId,
+          line: l,
+          state: ReviewState.approved,
+          note: r.note.isEmpty ? null : r.note,
+        );
+      });
+      return;
+    }
     await _run(
       context,
       ref,
@@ -283,6 +300,23 @@ class _ReviewBody extends ConsumerWidget {
                     onClear: () => _clear(context, ref, l),
                   ),
               ],
+              if (app.serviceStatuses.isNotEmpty)
+                Card(
+                  key: const ValueKey('review-service-checks'),
+                  margin: const EdgeInsets.only(top: 16),
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: t.colorScheme.outlineVariant),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      Text('Per-service checks', style: t.textTheme.titleSmall),
+                      VehicleServiceCheckRows(rows: app.serviceStatuses),
+                    ]),
+                  ),
+                ),
               const SizedBox(height: 16),
               if (open) ...[
                 const SizedBox(height: 8),
@@ -398,7 +432,9 @@ class _LineCard extends StatelessWidget {
                 Text(line.label, style: t.textTheme.titleSmall),
                 if (line.value != null) SelectableText(line.value!, style: t.textTheme.bodyMedium),
                 Text(
-                  reviewAdminStatus(item),
+                  line.optional && item == null
+                      ? '${reviewAdminStatus(item)} · approving the application approves it'
+                      : reviewAdminStatus(item),
                   key: ValueKey('review-status-${line.key}'),
                   style: t.textTheme.bodySmall?.copyWith(color: state == null ? mutedTextColor(t) : color),
                 ),
@@ -505,9 +541,12 @@ class _LineCard extends StatelessWidget {
 /// The admin's edit: the new value (typed as the line is: text, a date in
 /// boxes, a number, the services) and a note for the driver.
 class ReviewEditDialog extends StatefulWidget {
-  const ReviewEditDialog({super.key, required this.line, required this.types, this.note});
+  const ReviewEditDialog({super.key, required this.line, required this.types, this.services = const [], this.note});
   final ReviewLine line;
   final List<String> types;
+
+  /// What the vehicle service line picks from.
+  final List<VehicleServiceOption> services;
   final String? note;
 
   @override
@@ -518,7 +557,8 @@ class _ReviewEditDialogState extends State<ReviewEditDialog> {
   ReviewLine get l => widget.line;
   late final _value = TextEditingController(text: l.editValue is String ? l.editValue as String : '');
   late final _note = TextEditingController(text: widget.note ?? '');
-  late final Set<String> _types = {...?(l.editValue as List?)?.map((e) => '$e')};
+  late final Set<String> _types = {...?(l.editValue is List ? l.editValue as List : null)?.map((e) => '$e')};
+  late String _service = l.edit == ReviewEdit.service && l.editValue is String ? l.editValue as String : '';
   String? _problem;
 
   @override
@@ -540,6 +580,10 @@ class _ReviewEditDialogState extends State<ReviewEditDialog> {
         value = _value.text.trim();
       case ReviewEdit.note:
         value = _value.text.trim().isEmpty ? null : _value.text.trim();
+      case ReviewEdit.service:
+        if (_service.isEmpty) return setState(() => _problem = 'Pick a vehicle service.');
+        // The service is the admin's: a note is optional.
+        return Navigator.pop(context, (value: _service, note: note));
       default:
         if (_value.text.trim().isEmpty) return setState(() => _problem = 'Enter the new value.');
         value = _value.text.trim();
@@ -569,6 +613,14 @@ class _ReviewEditDialogState extends State<ReviewEditDialog> {
                     onSelected: (on) => setState(() => on ? _types.add(t) : _types.remove(t)),
                   ),
             ]),
+          ),
+        ReviewEdit.service => SearchableDropdownFormField<String>(
+            key: const ValueKey('review-edit-service'),
+            isExpanded: true,
+            initialValue: widget.services.any((s) => s.id == _service) ? _service : null,
+            decoration: const InputDecoration(labelText: 'Vehicle service (approved)', border: OutlineInputBorder()),
+            items: [for (final s in widget.services) DropdownMenuItem(value: s.id, child: Text(s.name))],
+            onChanged: (v) => setState(() => _service = v ?? ''),
           ),
         _ => TextField(
             key: const ValueKey('review-edit-value'),
@@ -603,8 +655,8 @@ class _ReviewEditDialogState extends State<ReviewEditDialog> {
                 minLines: 2,
                 maxLines: 4,
                 maxLength: 500,
-                decoration: const InputDecoration(
-                  labelText: 'Note for the driver',
+                decoration: InputDecoration(
+                  labelText: l.edit == ReviewEdit.service ? 'Note (optional)' : 'Note for the driver',
                   hintText: 'For example: Changed to match your MyKad.',
                   border: OutlineInputBorder(),
                 ),

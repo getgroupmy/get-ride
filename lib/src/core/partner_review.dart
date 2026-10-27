@@ -10,7 +10,7 @@
 //   id.front / id.back, company.document / name / reg_no / type / reg_date /
 //   address, permit.photos / card_no / valid_until, services, vehicle.grant /
 //   photos / authorisation / agreement / plate / make / model / year / color /
-//   engine_number / vin / registration_date / engine_cc / owner,
+//   engine_number / vin / registration_date / engine_cc / owner / service,
 //   doc:provider:<required document id>, doc:vehicle:<required document id>,
 //   vpermit:<permit type id>.
 library;
@@ -50,7 +50,13 @@ enum ReviewState {
 }
 
 /// How an admin edits a line (partner_review_edit_type on the server).
-enum ReviewEdit { none, text, date, integer, services, note }
+/// [service]: the vehicle's approved service (vehicle.service_approved_id),
+/// written through the admin's vehicle save (their Vehicles access), then
+/// the line is approved.
+enum ReviewEdit { none, text, date, integer, services, note, service }
+
+/// The registration vehicle's service line (0249, docs/KIV.md M1).
+const vehicleServiceKey = 'vehicle.service';
 
 const _textKeys = {
   'details.name', 'details.address', 'details.nationality', 'details.id_number',
@@ -66,12 +72,14 @@ ReviewEdit reviewEditFor(String key) {
   if (key == 'vehicle.engine_cc') return ReviewEdit.integer;
   if (key == 'services') return ReviewEdit.services;
   if (key.startsWith('vpermit:')) return ReviewEdit.note;
+  if (key == vehicleServiceKey) return ReviewEdit.service;
   return ReviewEdit.none;
 }
 
-/// A vehicle permit is GET.ride's upload: the driver can't fix it, so it is
-/// never rejected back to them.
-bool reviewCanReject(String key) => !key.startsWith('vpermit:');
+/// A vehicle permit is GET.ride's upload, and the vehicle's service the
+/// admin changes here: the driver can't fix either, so they are never
+/// rejected back to them.
+bool reviewCanReject(String key) => !key.startsWith('vpermit:') && key != vehicleServiceKey;
 
 /// The admin's decision on one line, as stored.
 class ReviewItem {
@@ -168,11 +176,18 @@ class ReviewLine {
     this.liveness,
     this.docStatus,
     this.flag,
+    this.optional = false,
   });
 
   final String key;
   final ReviewGroup group;
   final String label;
+
+  /// Approving the application doesn't wait for it: the vehicle's service,
+  /// which approving the vehicle approves as asked (0249) unless the admin
+  /// changed it here. So applications already in review when the line was
+  /// added (and those after) are approved as before.
+  final bool optional;
 
   /// What it says now, for reading.
   final String? value;
@@ -221,6 +236,30 @@ String _docValue(Map<String, dynamic> d) => reviewValueText('doc', {
       'file_url': d['file_url'],
     });
 
+/// The vehicle service line's value: the approved service, else the one
+/// asked for (by name from [names], else its id), with where the request
+/// came from: "driver's choice (make & model sets none)" when the Vehicle
+/// Make & Model list sets none ([mapped] empty), and what it sets when the
+/// driver's differs.
+String vehicleServiceReviewText({
+  required String requested,
+  required String approved,
+  required String mapped,
+  Map<String, String> names = const {},
+}) {
+  String name(String id) => names[id] ?? id;
+  final req = requested.trim(), app = approved.trim(), map = mapped.trim();
+  final shown = app.isNotEmpty ? app : req;
+  if (shown.isEmpty) return map.isEmpty ? 'Not chosen' : 'Not chosen · make & model sets ${name(map)}';
+  return [
+    name(shown),
+    if (app.isNotEmpty) 'approved',
+    if (app.isNotEmpty && req.isNotEmpty && req != app) 'driver asked for ${name(req)}',
+    if (req.isNotEmpty && map.isEmpty) "driver's choice (make & model sets none)",
+    if (req.isNotEmpty && map.isNotEmpty && req != map) 'make & model sets ${name(map)}',
+  ].join(' · ');
+}
+
 /// The review's flag for an ID number other accounts share: "Same ID as
 /// another account: U0012" (or "as other accounts: U0012, U0040").
 String sameIdFlag(List<String> displayIds) => displayIds.length == 1
@@ -233,6 +272,8 @@ String sameIdFlag(List<String> displayIds) => displayIds.length == 1
 /// `permit_type_id`) and its [serviceStatuses] (vehicle_service_status).
 /// [sameIdAccounts] are the display ids of other accounts with the same ID
 /// number (0299 `admin_same_ic_accounts`), flagged on the ID number.
+/// [serviceNames] name the Vehicle Services by id; [makeModelService] is the
+/// service the Vehicle Make & Model list sets for the vehicle ('' for none).
 List<ReviewLine> applicationReviewLines({
   required Map<String, dynamic>? profile,
   required Map<String, dynamic> partner,
@@ -241,6 +282,8 @@ List<ReviewLine> applicationReviewLines({
   List<Map<String, dynamic>> vehicleDocs = const [],
   List<Map<String, dynamic>> serviceStatuses = const [],
   List<String> sameIdAccounts = const [],
+  Map<String, String> serviceNames = const {},
+  String makeModelService = '',
 }) {
   String? p(String k) => _text(profile?[k]);
   String? a(String k) => _text(partner[k]);
@@ -356,6 +399,19 @@ List<ReviewLine> applicationReviewLines({
       field(ReviewGroup.vehicle, 'vehicle.plate', 'Plate', v('plate')),
       field(ReviewGroup.vehicle, 'vehicle.make', 'Make', v('make')),
       field(ReviewGroup.vehicle, 'vehicle.model', 'Model', v('model')),
+      ReviewLine(
+        key: vehicleServiceKey,
+        group: ReviewGroup.vehicle,
+        label: 'Vehicle service',
+        value: vehicleServiceReviewText(
+          requested: v('service_id') ?? '',
+          approved: v('service_approved_id') ?? '',
+          mapped: makeModelService,
+          names: serviceNames,
+        ),
+        editValue: v('service_approved_id') ?? v('service_id'),
+        optional: true,
+      ),
       field(ReviewGroup.vehicle, 'vehicle.year', 'Year made', v('year')),
       field(ReviewGroup.vehicle, 'vehicle.color', 'Colour', v('color')),
       field(ReviewGroup.vehicle, 'vehicle.engine_number', 'Engine no.', v('engine_number')),
@@ -475,6 +531,7 @@ ReviewTally reviewTally(List<ReviewLine> lines, Map<String, ReviewItem> items) {
   var approved = 0, rejected = 0, edited = 0, open = 0;
   for (final l in lines) {
     final i = items[l.key];
+    if (i == null && l.optional) continue;
     if (i == null || i.fixed) {
       open++;
       continue;

@@ -23,7 +23,6 @@ import 'package:get_ride/src/features/partner/vehicle_screens.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'notice.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
@@ -248,7 +247,8 @@ void main() {
 
   for (final b in Brightness.values) {
     group('driver (${b.name})', () {
-      testWidgets('an old vehicle is refused at the year step, with the reason', (tester) async {
+      testWidgets('an old vehicle is not refused at the year step: its service is paused once submitted (0301)',
+          (tester) async {
         final repo = _Vehicles();
         await _pumpVehicle(tester, repo, b);
         expect(find.text('Year and colour'), findsOneWidget);
@@ -258,17 +258,8 @@ void main() {
         for (var i = 0; i < 4; i++) {
           await tester.pump();
         }
-        await pumpNotice(tester);
-        expect(find.text('Vehicles for eHailing in Selangor must be at most 10 years old (this one is 12).'), findsOneWidget);
-        await closeNotice(tester);
-        expect(repo.patches, isEmpty);
-
-        await tester.enterText(find.widgetWithText(TextField, 'Year'), '${DateTime.now().year - 3}');
-        await tester.tap(find.text('Save and continue'));
-        for (var i = 0; i < 4; i++) {
-          await tester.pump();
-        }
-        expect(repo.patches.single, {'year': '${DateTime.now().year - 3}', 'color': 'White'});
+        expect(find.textContaining('must be at most 10 years old'), findsNothing);
+        expect(repo.patches.single, {'year': '${DateTime.now().year - 12}', 'color': 'White'});
       });
 
       testWidgets('a type not offered in the service area is not offered at sign-up', (tester) async {

@@ -136,18 +136,22 @@ update public.settings_entries set values = values || '{"rules":{"vehicleAge":{"
 
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000245a1');
-select pg_temp.refused(
-  $q$update public.vehicle set documents_ok = true where id = '00000000-0000-0000-0000-0000000245c1'$q$,
-  'submitting a 12-year-old vehicle where the limit is 10',
-  'Vehicles for eHailing in North must be at most 10 years old (this one is 12)');
+-- Too old for the type: submitted, and that service is paused for the
+-- vehicle (0301), not refused.
+update public.vehicle set documents_ok = true where id = '00000000-0000-0000-0000-0000000245c1';
+select pg_temp.check((select documents_ok from public.vehicle where id = '00000000-0000-0000-0000-0000000245c1'),
+                     'a 12-year-old vehicle where the limit is 10 is submitted');
+select pg_temp.check((select status = 'paused_age' and max_age_years = 10 from public.vehicle_service_status
+                       where vehicle_id = '00000000-0000-0000-0000-0000000245c1' and service = 'eHailing'),
+                     'its eHailing is paused (over the 10 years in North)');
 select pg_temp.refused(
   $q$select public.claim_vehicle('00000000-0000-0000-0000-0000000245c2', '00000000-0000-0000-0000-0000000245a1')$q$,
   'taking an approved 12-year-old vehicle to drive', 'at most 10 years old');
 update public.vehicle set year = (extract(year from current_date)::int - 8)::text
  where id = '00000000-0000-0000-0000-0000000245c1';
-update public.vehicle set documents_ok = true where id = '00000000-0000-0000-0000-0000000245c1';
-select pg_temp.check((select documents_ok from public.vehicle where id = '00000000-0000-0000-0000-0000000245c1'),
-                     'an 8-year-old vehicle is submitted');
+select pg_temp.check((select status = 'active' from public.vehicle_service_status
+                       where vehicle_id = '00000000-0000-0000-0000-0000000245c1' and service = 'eHailing'),
+                     'as an 8-year-old vehicle, eHailing is on again');
 reset role;
 
 -- The narrowest rule wins: in the South only "All regions" (15) applies.

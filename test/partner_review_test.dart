@@ -10,6 +10,7 @@ import 'package:get_ride/src/providers.dart' show currentUserIdProvider;
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
 import 'package:get_ride/src/admin/screens/people/partner_review_screen.dart';
+import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/core/partner_onboarding.dart';
 import 'package:get_ride/src/core/partner_review.dart';
 import 'package:get_ride/src/core/partner_status.dart';
@@ -18,6 +19,7 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/partner_review_repository.dart';
 import 'package:get_ride/src/features/partner/partner_status_panel.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 const _profile = {
   'id': 'u1',
@@ -64,6 +66,7 @@ const _vehicle = {
   'owner_match': 'driver',
   'grant_front_url': 'https://x.test/grant.jpg',
   'image_front': 'https://x.test/car-front.jpg',
+  'service_id': 'ride',
 };
 
 final _providerDocs = [
@@ -137,6 +140,8 @@ class _ReviewRepo implements PartnerReviewRepository {
         log: [...log],
         names: const {_me: 'Aisyah'},
         sameIdAccounts: const ['U-TEST-0099'],
+        serviceNames: const {'ride': 'Ride', 'comfort': 'Comfort'},
+        services: const [(id: 'ride', name: 'Ride'), (id: 'comfort', name: 'Comfort')],
       );
 
   @override
@@ -208,6 +213,16 @@ List<ReviewItem> _driverItems({bool fixed = false}) => [
           note: 'This inspection report expired. Upload the current one.', fixed: fixed ? '2026-10-21T00:00:00Z' : null)),
     ];
 
+/// The admin's vehicle save (people_data.dart), recorded.
+class _People extends PeopleRepository {
+  _People()
+      : super(SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false)));
+  final updates = <(String, Map<String, dynamic>)>[];
+
+  @override
+  Future<void> updateVehicle(String id, Map<String, dynamic> patch) async => updates.add((id, patch));
+}
+
 /// A busy button spins while its dialog is open, so this pumps frames
 /// rather than waiting for everything to settle.
 Future<void> _settle(WidgetTester tester) async {
@@ -273,6 +288,8 @@ void main() {
       expect(reviewEditFor('doc:provider:rd1'), ReviewEdit.none);
       expect(reviewCanReject('vpermit:pt1'), isFalse);
       expect(reviewCanReject('id.front'), isTrue);
+      expect(reviewEditFor('vehicle.service'), ReviewEdit.service);
+      expect(reviewCanReject('vehicle.service'), isFalse);
     });
 
     test('the tally decides Send back and Approve', () {
@@ -324,7 +341,8 @@ void main() {
   });
 
   group('the admin review page', () {
-    Future<_ReviewRepo> pump(WidgetTester tester, {_ReviewRepo? repo, Brightness b = Brightness.light}) async {
+    Future<_ReviewRepo> pump(WidgetTester tester,
+        {_ReviewRepo? repo, Brightness b = Brightness.light, PeopleRepository? people}) async {
       final r = repo ?? _ReviewRepo();
       tester.view.physicalSize = const Size(1000, 9000);
       tester.view.devicePixelRatio = 1;
@@ -337,6 +355,7 @@ void main() {
             (ref, id) async => (app: await r.application(id), types: const ['DEALER', 'EHAILING', 'TEKSI']),
           ),
           currentUserIdProvider.overrideWithValue(_me),
+          if (people != null) peopleRepositoryProvider.overrideWithValue(people),
         ],
         child: MaterialApp(theme: ThemeData(brightness: b), home: const PartnerReviewScreen(id: 'p1')),
       ));
@@ -368,6 +387,56 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    // M1: the registration vehicle's service.
+    for (final b in Brightness.values) {
+      testWidgets('the vehicle service line: shown after Model, changed by the admin (${b.name})', (tester) async {
+        final people = _People();
+        final repo = await pump(tester, b: b, people: people);
+        expect(find.byKey(const ValueKey('review-line-vehicle.service')), findsOneWidget);
+        expect(find.text("Ride · driver's choice (make & model sets none)"), findsOneWidget);
+        expect(find.text('Not checked yet · approving the application approves it'), findsOneWidget);
+        expect(find.byKey(const ValueKey('review-reject-vehicle.service')), findsNothing, reason: "it is the admin's to change");
+        // M9: the vehicle's per-service checks.
+        expect(find.byKey(const ValueKey('review-service-checks')), findsOneWidget);
+        expect(find.text('EHAILING: waiting for EVP'), findsOneWidget);
+
+        final edit = find.byKey(const ValueKey('review-edit-vehicle.service'));
+        await tester.ensureVisible(edit);
+        await tester.tap(edit);
+        await _settle(tester);
+        await tester.tap(find.byKey(const ValueKey('review-edit-service')));
+        await _settle(tester);
+        await tester.tap(find.text('Comfort').last);
+        await _settle(tester);
+        await tester.tap(find.byKey(const ValueKey('review-edit-save')));
+        await _settle(tester);
+        expect(people.updates.single.$1, 'v1');
+        expect(people.updates.single.$2, {'service_approved_id': 'comfort'}, reason: "the admin's vehicle save");
+        expect(repo.calls.last, 'set vehicle.service approved');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('an application decided before the vehicle service line is approved as before', (tester) async {
+      final repo = await pump(
+        tester,
+        repo: _ReviewRepo(items: {
+          for (final l in _lines())
+            if (l.key != 'vehicle.service')
+              l.key: ReviewItem(key: l.key, group: l.group, label: l.label, state: ReviewState.approved),
+        }),
+      );
+      final approve = find.byKey(const ValueKey('review-approve'));
+      await tester.ensureVisible(approve);
+      expect(tester.widget<FilledButton>(find.descendant(of: approve, matching: find.byType(FilledButton))).onPressed,
+          isNotNull);
+      await tester.tap(approve);
+      await _settle(tester);
+      await tester.tap(find.text('Approve').last);
+      await _settle(tester);
+      expect(repo.calls.last, 'approve');
+    });
 
     testWidgets('approve a line, reject one with a reason, then send back', (tester) async {
       final repo = await pump(tester);

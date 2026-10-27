@@ -9,12 +9,10 @@ import '../../admin/screens/people/people_data.dart';
 import '../../admin/screens/people/people_logic.dart';
 import '../../admin/screens/people/people_widgets.dart';
 import '../../core/partner_onboarding.dart';
-import '../../core/partner_type_rules.dart' show vehicleAgeProblem;
+import '../../core/partner_registration.dart';
 import '../../core/saved_drafts.dart';
 import '../../core/vehicle_onboarding.dart';
 import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
-import '../../core/fare.dart' show RideService;
-import '../../data/app_display_repository.dart' show rideServicesProvider;
 import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../data/ride_draft_store.dart';
@@ -27,7 +25,7 @@ import '../../widgets/loading_skeleton.dart';
 import '../../widgets/back_or_go_button.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/page_style_host.dart';
-import '../../widgets/search_select.dart';
+import 'vehicle_service_parts.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
 
@@ -252,8 +250,13 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   final _ownerIc = TextEditingController();
   MakeModel? _makeModel;
 
-  /// The service type the driver chose (0249), when the make & model maps none.
+  /// The service the driver chose (0249), when the make & model maps none;
+  /// [_serviceError] once they tried to go on without one.
   String _serviceId = '';
+  String? _serviceError;
+
+  /// Vehicle Make & Model, for the service GET.ride set per make & model.
+  List<Map<String, dynamic>> _catalogue = const [];
   bool? _ownVehicle;
 
   _Entries _requiredDocs = const [];
@@ -316,9 +319,14 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
       ]);
       final v = id == null ? null : settled[2] as Map<String, dynamic>?;
       if (id != null && v == null) throw StateError('This vehicle was not found.');
+      var catalogue = const <Map<String, dynamic>>[];
+      try {
+        catalogue = await people.makeModels();
+      } catch (_) {}
       if (!mounted) return;
       setState(() {
         _ctx = ctx;
+        _catalogue = catalogue;
         _requiredDocs = settled[0] as _Entries;
         _vehicleTypeIds = vehicleDocTypeIds(settled[1] as _Entries);
         _hydrate(v);
@@ -360,8 +368,17 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
     _ownerName.text = t('owner_name');
     _ownerPhone.text = t('owner_phone');
     _ownerIc.text = t('owner_ic');
-    if (t('make').isNotEmpty) _makeModel = makeModelFromRow(v);
+    // The vehicle's service_id may be the driver's choice: what the make &
+    // model sets is looked up in the list (_mapped).
+    if (t('make').isNotEmpty) _makeModel = makeModelFromRow({...v, 'service_id': null});
     _serviceId = t('service_id');
+  }
+
+  /// The service the make & model has ('' when the list sets none).
+  String get _mapped {
+    final m = _makeModel;
+    if (m == null) return '';
+    return m.serviceId.isNotEmpty ? m.serviceId : makeModelService(_catalogue, m.make, m.model);
   }
 
   Future<void> _save(Future<Map<String, dynamic>> Function() action, {VehicleStep? stayOn}) async {
@@ -393,9 +410,16 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   Future<void> _saveMakeModel() async {
     final m = _makeModel;
     if (m == null || m.make.isEmpty) return showError(context, 'Please select the make and model.');
-    // Its service type: the make & model's, else the driver's choice (0249).
-    final service = vehicleServiceChoice(mapped: m.serviceId, chosen: _serviceId);
-    if (service.problem != null) return showError(context, service.problem!);
+    // Its service: the make & model's, else the driver's choice (0249).
+    final service = vehicleServiceChoice(
+      mapped: _mapped,
+      chosen: _serviceId,
+      canChoose: (ref.read(vehicleServiceOptionsProvider).value ?? const []).isNotEmpty,
+    );
+    if (service.problem != null) {
+      setState(() => _serviceError = service.problem);
+      return showError(context, service.problem!);
+    }
     await _save(() => _repo.patch(_v!, {
           'make': m.make,
           'model': m.model,
@@ -406,11 +430,10 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
 
   Future<void> _saveYearColor() async {
     final year = _year.text.trim(), color = _color.text.trim();
-    final problem = vehicleYearColorProblem(year, color) ?? await _ageProblem(year);
-    if (problem != null) {
-      if (mounted) showError(context, problem);
-      return;
-    }
+    // Too old for a service: that service is paused for this vehicle once
+    // submitted (0301), never refused; the documents step shows which.
+    final problem = vehicleYearColorProblem(year, color);
+    if (problem != null) return showError(context, problem);
     await _save(() => _repo.patch(_v!, {'year': year, 'color': color}));
   }
 
@@ -444,34 +467,36 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
     await _save(() => _repo.patch(_v!, {'owner_name': name, 'owner_phone': phone, 'owner_ic': ic}));
   }
 
-  /// Admin → Partner Type → Max vehicle age (0245): why a vehicle of [year]
-  /// is refused for the partner's types in its registration region (the
-  /// vehicle's own service area, else the partner's), or null. The server
-  /// refuses it too; this says so before the step is saved. Null when the
-  /// types can't be read.
-  Future<String?> _ageProblem(String year) async {
-    final List<Map<String, dynamic>> entries;
-    try {
-      entries = [for (final e in await ref.read(partnerTypeEntriesProvider.future)) e.values];
-    } catch (_) {
-      return null;
-    }
+  /// How each of the partner's vehicle services stands with this vehicle
+  /// (registration's vehicleServiceStatuses): its types (its own, else the
+  /// partner's) in its registration region (its service area, else the
+  /// partner's), by the year made. The server works out the same on submit
+  /// (0301).
+  List<VehicleServiceStatus> _statuses(Iterable<Map<String, dynamic>> entries) {
     final v = _v;
     final own = v != null && (v['service_countries'] is List) && (v['service_countries'] as List).isNotEmpty;
     final ownTypes = v == null ? const <String>[] : parseStringList(v['partner_types']);
-    return vehicleAgeProblem(
-      types: ownTypes.isNotEmpty ? ownTypes : parseStringList(_ctx?.partner['partner_types']),
-      year: year,
-      area: ServiceArea.fromRow(own ? v : _ctx?.partner),
+    final types = ownTypes.isNotEmpty ? ownTypes : parseStringList(_ctx?.partner['partner_types']);
+    return vehicleServiceStatuses(
+      services: vehicleServicesOf(types, entries),
       entries: entries,
+      area: ServiceArea.fromRow(own ? v : _ctx?.partner),
+      registered: _registered,
     );
+  }
+
+  /// When the vehicle was registered: its registration date, else 1 January
+  /// of the year made.
+  DateTime? get _registered {
+    final v = _v;
+    final day = DateTime.tryParse('${v?['registration_date'] ?? ''}');
+    if (day != null) return day;
+    final year = int.tryParse(RegExp(r'\d{4}').firstMatch('${v?['year'] ?? ''}')?.group(0) ?? '');
+    return year == null ? null : DateTime(year);
   }
 
   Future<void> _submit() async {
     if (!_docsComplete) return showError(context, 'Please upload every compulsory document before submitting.');
-    final why = await _ageProblem('${_v?['year'] ?? ''}');
-    if (!mounted) return;
-    if (why != null) return showError(context, why);
     await _save(() => _repo.patch(_v!, {'documents_ok': true}));
   }
 
@@ -642,8 +667,18 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
             subtitle: 'Choose your vehicle from the list.',
             children: [
               MakeModelField(value: _makeModel, enabled: !_busy, onChanged: (m) => setState(() => _makeModel = m)),
-              if (_makeModel != null && _makeModel!.serviceId.isEmpty)
-                _ServicePicker(value: _serviceId, enabled: !_busy, onChanged: (v) => setState(() => _serviceId = v)),
+              if (_makeModel != null)
+                VehicleServiceField(
+                  key: const ValueKey('vehicle-service'),
+                  mapped: _mapped,
+                  value: _serviceId,
+                  enabled: !_busy,
+                  errorText: _serviceError,
+                  onChanged: (v) => setState(() {
+                    _serviceId = v;
+                    _serviceError = null;
+                  }),
+                ),
               _continue(_saveMakeModel),
             ],
           ),
@@ -728,10 +763,21 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
   Widget _documentsStep() {
     final docs = _docs();
     final v = _v!;
+    final entries = ref.watch(partnerTypeEntriesProvider).value;
+    final made = _registered;
     return _section(
       title: 'Vehicle documents',
       subtitle: 'Tap each document to upload it. Every compulsory one is needed before you can submit.',
       children: [
+        // Before "Submit for review": how each service stands with this
+        // vehicle, as registration shows it.
+        if (entries != null)
+          VehicleServiceStatusBlocks(
+            key: const ValueKey('vehicle-service-checks'),
+            statuses: _statuses([for (final e in entries) e.values]),
+            regLabel: made == null ? 'Vehicle age' : 'Made ${made.year}',
+            registered: made,
+          ),
         PartnerDocsUploader(
           key: ValueKey('${v['id']}:${docs.map((d) => d.id).join(',')}'),
           partnerId: _ctx!.partnerId,
@@ -787,37 +833,5 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
       const SizedBox(height: 16),
       BusyButton.outlined(onPressed: _busy ? null : _finish, child: const Text('Done')),
     ]);
-  }
-}
-
-/// "Service type": what the vehicle is for (Ride, Comfort, …), when its make &
-/// model doesn't say. An administrator approves it with the vehicle (0249).
-class _ServicePicker extends ConsumerWidget {
-  const _ServicePicker({required this.value, required this.onChanged, this.enabled = true});
-  final String value;
-  final ValueChanged<String> onChanged;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final services = [
-      for (final s in ref.watch(rideServicesProvider).value ?? const <RideService>[])
-        if (s.id != null) s,
-    ];
-    final known = services.any((s) => s.id == value);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: SearchableDropdownFormField<String>(
-        key: ValueKey('vehicle-service-pick-$known-${services.length}'),
-        isExpanded: true,
-        initialValue: known ? value : null,
-        decoration: const InputDecoration(
-          labelText: 'Service type',
-          helperText: 'What this vehicle is for. An administrator approves it with the vehicle.',
-        ),
-        items: [for (final s in services) DropdownMenuItem(value: s.id!, child: Text(s.name))],
-        onChanged: enabled ? (v) => onChanged(v ?? '') : null,
-      ),
-    );
   }
 }

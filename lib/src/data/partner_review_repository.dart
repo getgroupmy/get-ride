@@ -5,7 +5,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/partner_registration.dart' show makeModelService;
 import '../core/partner_review.dart';
+import '../core/vehicle_onboarding.dart' show VehicleServiceOption, vehicleServiceOptions;
 import '../providers.dart';
 
 /// Everything one application's review page shows.
@@ -22,6 +24,9 @@ class ReviewApplication {
     this.log = const [],
     this.names = const {},
     this.sameIdAccounts = const [],
+    this.serviceNames = const {},
+    this.services = const [],
+    this.makeModelService = '',
   });
 
   final Map<String, dynamic> partner;
@@ -46,6 +51,14 @@ class ReviewApplication {
   /// Display ids of other accounts with the same ID number (0299).
   final List<String> sameIdAccounts;
 
+  /// Every Vehicle Services entry's name by id, and those a vehicle can be
+  /// set to (the vehicle service line, 0249).
+  final Map<String, String> serviceNames;
+  final List<VehicleServiceOption> services;
+
+  /// The service the Vehicle Make & Model list sets for the vehicle ('' for none).
+  final String makeModelService;
+
   String get partnerId => '${partner['id']}';
   String get status => '${partner['status'] ?? 'unapproved'}';
 
@@ -57,6 +70,8 @@ class ReviewApplication {
         vehicleDocs: vehicleDocs,
         serviceStatuses: serviceStatuses,
         sameIdAccounts: sameIdAccounts,
+        serviceNames: serviceNames,
+        makeModelService: makeModelService,
       );
 }
 
@@ -90,7 +105,28 @@ class PartnerReviewRepository {
       uid.isEmpty
           ? Future.value(const <Map<String, dynamic>>[])
           : _optional(_db.rpc('admin_same_ic_accounts', params: {'p_profile': uid})),
+      _optional(_db
+          .from('settings_entries')
+          .select('id, values')
+          .eq('category', 'vehicle-services')
+          .order('position', ascending: true)
+          .order('created_at', ascending: true)),
     ]);
+    final vehicle = results[1] as Map<String, dynamic>?;
+    final make = '${vehicle?['make'] ?? ''}'.trim(), model = '${vehicle?['model'] ?? ''}'.trim();
+    // The make's rows of Vehicle Make & Model, for the service it sets.
+    final makeModels = make.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : _rows(await _optional(_db
+            .from('vehicle_make_models')
+            .select('make, model, service_id, vehicle_type')
+            .eq('status', true)
+            .ilike('make', make)
+            .order('position', ascending: true)));
+    final serviceEntries = [
+      for (final r in _rows(results[9] ?? const []))
+        (id: '${r['id']}', values: Map<String, dynamic>.from((r['values'] as Map?) ?? const {})),
+    ];
     final log = [for (final r in _rows(results[7])) ?ReviewLogEntry.tryParse(r)];
     final ids = {for (final e in log) ?e.actorId, if (partner['approved_by'] != null) '${partner['approved_by']}'};
     var names = const <String, String>{};
@@ -105,7 +141,7 @@ class PartnerReviewRepository {
     return ReviewApplication(
       partner: partner,
       profile: results[0] as Map<String, dynamic>?,
-      vehicle: results[1] as Map<String, dynamic>?,
+      vehicle: vehicle,
       providerDocs: _rows(results[2]),
       vehicleDocs: _rows(results[3]),
       serviceStatuses: _rows(results[4]),
@@ -117,6 +153,12 @@ class PartnerReviewRepository {
         for (final r in _rows(results[8] ?? const []))
           if ('${r['display_id'] ?? ''}'.trim().isNotEmpty) '${r['display_id']}'.trim(),
       ],
+      serviceNames: {
+        for (final e in serviceEntries)
+          if ('${e.values['name'] ?? ''}'.trim().isNotEmpty) e.id: '${e.values['name']}'.trim(),
+      },
+      services: vehicleServiceOptions(serviceEntries),
+      makeModelService: makeModelService(makeModels, make, model),
     );
   }
 

@@ -16,6 +16,7 @@ import 'package:get_ride/src/admin/screens/people/people_logic.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/app_display.dart';
 import 'package:get_ride/src/core/partner_onboarding.dart';
+import 'package:get_ride/src/core/vehicle_onboarding.dart' show vehicleServiceMissing;
 import 'package:get_ride/src/data/app_display_repository.dart' show appDisplayProvider;
 import 'package:get_ride/src/data/document_text_reader.dart';
 import 'package:get_ride/src/data/live_tables.dart';
@@ -29,6 +30,7 @@ import 'package:get_ride/src/widgets/live_selfie.dart' show LiveSelfie;
 import 'package:get_ride/src/widgets/live_selfie_gate.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'notice.dart';
 import 'partner_registration_fixture.dart';
 
 // No token refresh: its timer would outlive the first test.
@@ -137,8 +139,14 @@ class _FakeVehicles extends VehicleOnboardingRepository {
 }
 
 class _FakePeople extends PeopleRepository {
-  _FakePeople({this.uploads = const [], this.noTypes = false}) : super(_db);
+  _FakePeople({this.uploads = const [], this.noTypes = false, this.services = const []}) : super(_db);
   final List<Map<String, dynamic>> uploads;
+
+  /// Admin → Vehicle Services, as (id, values).
+  final List<({String id, Map<String, dynamic> values})> services;
+
+  @override
+  Future<List<({String id, Map<String, dynamic> values})>> vehicleServices() async => services;
 
   /// No Partner Service type at all: nothing is offered anywhere.
   final bool noTypes;
@@ -631,6 +639,45 @@ void main() {
       await _tap(tester, find.byKey(const ValueKey('vehicle-continue')));
       expect(h.repo.patches.last['registration_steps'], ['details', 'vehicle']);
       expect(find.text('Upload vehicle documents'), findsOneWidget);
+      _noOverflow(tester);
+    });
+
+    testWidgets('Register vehicle: the vehicle service, set by the make & model or chosen (${b.name})', (tester) async {
+      final h = await _pump(
+        tester,
+        OnboardingState(
+          profile: _detailsDone,
+          partner: _partner({
+            ..._photo, ..._area, 'phone': '+60123456789', 'partner_types': ['eHailing'],
+            'registration_steps': ['details'],
+          }),
+        ),
+        brightness: b,
+        texts: {'vehicle-grant/front': _grantText},
+        people: _FakePeople(services: [
+          (id: 'ride', values: <String, dynamic>{'name': 'Ride'}),
+          (id: 'comfort', values: <String, dynamic>{'name': 'Comfort'}),
+        ]),
+      );
+      await _tap(tester, find.byKey(const ValueKey('grant-front')));
+      await _tap(tester, find.byKey(const ValueKey('grant-read')));
+      // PERODUA BEZZA: GET.ride set Ride for it, so it is filled in.
+      expect(find.text('Vehicle service *'), findsOneWidget);
+      expect(find.text('Ride · from make & model'), findsOneWidget);
+      // Another model the list sets nothing for: the driver must choose.
+      await tester.enterText(find.widgetWithText(TextField, 'Model'), 'AXIA');
+      await _settle(tester);
+      expect(find.text('Ride · from make & model'), findsNothing);
+      await _tap(tester, find.byKey(const ValueKey('vehicle-save')));
+      await closeNotice(tester);
+      expect(find.text(vehicleServiceMissing), findsOneWidget, reason: 'the field says what is missing');
+      expect(h.vehicles.updates, isEmpty, reason: 'nothing saved without a service');
+      await _tap(tester, find.byKey(const ValueKey('vehicle-service')));
+      await _tap(tester, find.text('Comfort').last);
+      expect(find.text(vehicleServiceMissing), findsNothing);
+      await _tap(tester, find.byKey(const ValueKey('vehicle-save')));
+      expect(h.vehicles.updates.last['service_id'], 'comfort');
+      expect(h.vehicles.updates.last['model'], 'AXIA');
       _noOverflow(tester);
     });
 

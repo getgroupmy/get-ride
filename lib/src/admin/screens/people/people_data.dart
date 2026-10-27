@@ -231,6 +231,18 @@ class PeopleRepository {
 
   Future<void> deleteVehicle(String id) => _db.from('vehicle').delete().eq('id', id);
 
+  /// The vehicle's per-service checks (vehicle_service_status, 0288/0301).
+  Future<List<Map<String, dynamic>>> vehicleServiceStatus(String vehicleId) async => List<Map<String, dynamic>>.from(
+      await _db.from('vehicle_service_status').select().eq('vehicle_id', vehicleId).order('service', ascending: true));
+
+  /// What the server's checks would make of them (0301), changing nothing.
+  Future<List<Map<String, dynamic>>> vehicleServiceChecksPreview(String vehicleId) async => List<Map<String, dynamic>>.from(
+      await _db.rpc('admin_vehicle_service_checks_preview', params: {'p_vehicle': vehicleId}) as List);
+
+  /// Writes the server's checks for the vehicle (rows an admin set are kept).
+  Future<void> applyVehicleServiceChecks(String vehicleId) =>
+      _db.rpc('admin_vehicle_service_checks_apply', params: {'p_vehicle': vehicleId});
+
   Future<List<Map<String, dynamic>>> vehicleDocuments(String vehicleId) async => List<Map<String, dynamic>>.from(
       await _db.from('vehicle_documents').select().eq('vehicle_id', vehicleId).order('uploaded_at', ascending: false));
 
@@ -250,6 +262,9 @@ class PeopleRepository {
 
   Future<List<({String id, Map<String, dynamic> values})>> partnerTypes() =>
       _entries('settings_entries', category: 'partner-type');
+  /// Admin → Vehicle Services: what a vehicle is registered for (0249).
+  Future<List<({String id, Map<String, dynamic> values})>> vehicleServices() =>
+      _entries('settings_entries', category: 'vehicle-services');
   Future<List<({String id, Map<String, dynamic> values})>> requiredDocuments() => _entries('required_document');
   Future<List<({String id, Map<String, dynamic> values})>> documentTypes() => _entries('document_type');
   Future<List<({String id, Map<String, dynamic> values})>> insuranceProviders() => _entries('insurance_providers');

@@ -9,7 +9,7 @@ import 'package:get_ride/src/core/saved_drafts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:get_ride/src/admin/screens/people/people_data.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
-import 'package:get_ride/src/core/vehicle_onboarding.dart' show vehicleLooksLikeDraft;
+import 'package:get_ride/src/core/vehicle_onboarding.dart' show vehicleLooksLikeDraft, vehicleServiceMissing;
 import 'package:get_ride/src/data/live_tables.dart';
 import 'package:get_ride/src/data/partner_onboarding_repository.dart';
 import 'package:get_ride/src/data/vehicle_onboarding_repository.dart';
@@ -89,8 +89,25 @@ class _FakeVehicles extends VehicleOnboardingRepository {
 }
 
 class _FakePeople extends PeopleRepository {
-  _FakePeople({this.uploads = const []}) : super(_db);
+  _FakePeople({this.uploads = const [], this.catalogue = const [], this.services = const [], this.types = const []})
+      : super(_db);
   final List<Map<String, dynamic>> uploads;
+
+  /// Vehicle Make & Model, Admin → Vehicle Services and Partner Type.
+  final List<Map<String, dynamic>> catalogue;
+  final List<({String id, Map<String, dynamic> values})> services;
+  final List<Map<String, dynamic>> types;
+
+  @override
+  Future<List<Map<String, dynamic>>> makeModels() async => catalogue;
+
+  @override
+  Future<List<({String id, Map<String, dynamic> values})>> vehicleServices() async => services;
+
+  @override
+  Future<List<({String id, Map<String, dynamic> values})>> partnerTypes() async => [
+        for (final (i, t) in types.indexed) (id: 't$i', values: t),
+      ];
 
   @override
   Future<List<({String id, Map<String, dynamic> values})>> requiredDocuments() async => [
@@ -156,6 +173,13 @@ Future<_FakeVehicles> _pump(
   await tester.pump();
   await tester.pump();
   return repo;
+}
+
+/// A busy tile spins while its dialog is open: frames, not settling.
+Future<void> _frames(WidgetTester tester) async {
+  for (var i = 0; i < 8; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }
 
 void main() {
@@ -261,6 +285,83 @@ void main() {
     expect(repo.patches.single, {'documents_ok': true});
     expect(find.text('Proton Saga · Pending review'), findsOneWidget);
   });
+
+  // M1: the vehicle's service. M9: its per-service checks before submitting.
+  for (final b in Brightness.values) {
+    // Made inside each test: the client needs the test's zone.
+    _FakePeople people() => _FakePeople(
+      catalogue: const [
+        {'make': 'Proton', 'model': 'Saga'},
+        {'make': 'Perodua', 'model': 'Bezza', 'service_id': 'ride', 'vehicle_type': 'Sedan'},
+      ],
+      services: [
+        (id: 'ride', values: <String, dynamic>{'name': 'Ride'}),
+        (id: 'comfort', values: <String, dynamic>{'name': 'Comfort'}),
+      ],
+      types: const [
+        {'name': 'Teksi', 'vehicleRequired': true, 'rules': {'vehicleAge': {'required': true, 'rules': [{'maxYears': 10}]}}},
+      ],
+      uploads: const [
+        {'doc_id': 'puspakom', 'status': 'Pending Review'},
+      ],
+    );
+
+    testWidgets('make & model the list sets no service for: the driver chooses one (${b.name})', (tester) async {
+      final repo = await _pump(tester, const VehicleOnboardingScreen(vehicleId: 'v1'),
+          brightness: b, people: people(), vehicles: _FakeVehicles(existing: const {'id': 'v1', 'plate': 'WXY 1'}));
+      expect(find.text('Make and model'), findsOneWidget);
+      await tester.tap(find.text('Select make & model'));
+      await _frames(tester);
+      await tester.tap(find.text('Proton Saga'));
+      await _frames(tester);
+      expect(find.text('Vehicle service *'), findsOneWidget);
+      await tester.tap(find.text('Save and continue'));
+      await tester.pump();
+      await closeNotice(tester);
+      expect(find.text(vehicleServiceMissing), findsOneWidget);
+      expect(repo.patches, isEmpty);
+      await tester.tap(find.byKey(const ValueKey('vehicle-service')));
+      await _frames(tester);
+      await tester.tap(find.text('Comfort').last);
+      await _frames(tester);
+      await tester.tap(find.text('Save and continue'));
+      await tester.pump();
+      await tester.pump();
+      expect(repo.patches.single, {'make': 'Proton', 'model': 'Saga', 'vehicle_type': null, 'service_id': 'comfort'});
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('make & model with a service set by GET.ride: filled in, read-only (${b.name})', (tester) async {
+      final repo = await _pump(tester, const VehicleOnboardingScreen(vehicleId: 'v1'),
+          brightness: b, people: people(), vehicles: _FakeVehicles(existing: const {'id': 'v1', 'plate': 'WXY 1'}));
+      await tester.tap(find.text('Select make & model'));
+      await _frames(tester);
+      await tester.tap(find.text('Perodua Bezza'));
+      await _frames(tester);
+      expect(find.text('Ride · from make & model'), findsOneWidget);
+      await tester.tap(find.text('Save and continue'));
+      await tester.pump();
+      await tester.pump();
+      expect(repo.patches.single['service_id'], 'ride');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('before Submit for review: each service with this vehicle; too old is paused, not refused (${b.name})',
+        (tester) async {
+      final repo = await _pump(tester, const VehicleOnboardingScreen(vehicleId: 'v1'),
+          brightness: b, people: people(), vehicles: _FakeVehicles(existing: {..._ready, 'year': '2005'}));
+      await tester.pump();
+      expect(find.byKey(const ValueKey('vehicle-service-checks')), findsOneWidget);
+      expect(find.text('Teksi: limit 10 years. Not active until you add a newer vehicle.'), findsOneWidget);
+      expect(find.text('Teksi: no vehicle permit needed here.'), findsOneWidget);
+      await tester.ensureVisible(find.text('Submit for review'));
+      await tester.tap(find.text('Submit for review'));
+      await tester.pump();
+      await tester.pump();
+      expect(repo.patches.single, {'documents_ok': true});
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   for (final b in Brightness.values) {
     testWidgets('a draft can be removed by its owner, once confirmed (${b.name})', (tester) async {
