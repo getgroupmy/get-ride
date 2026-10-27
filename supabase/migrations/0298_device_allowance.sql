@@ -78,8 +78,9 @@ as $$
 $$;
 revoke execute on function public.device_allowance(uuid) from public, anon, authenticated;
 
--- Keeps the newest [p_n] of an account's devices; the rest lose their
--- sign-in. Then ends every Auth session of the account that is not kept.
+-- Keeps the newest [p_n] of an account's devices; the ones pushed past it
+-- lose their sign-in. A session that signed in but hasn't claimed yet is
+-- left alone: it claims in a moment (or is refused after two minutes).
 create or replace function public.device_trim(p_user uuid, p_n int)
 returns int
 language plpgsql
@@ -87,17 +88,23 @@ security definer
 set search_path = public
 as $$
 declare
+  v_gone uuid[];
   v_out int := 0;
 begin
-  delete from public.account_devices d
-   where d.user_id = p_user
-     and d.session_id not in (select k.session_id from public.account_devices k
-                               where k.user_id = p_user
-                               order by k.claimed_at desc limit greatest(p_n, 1));
+  with gone as (
+    delete from public.account_devices d
+     where d.user_id = p_user
+       and d.session_id not in (select k.session_id from public.account_devices k
+                                 where k.user_id = p_user
+                                 order by k.claimed_at desc limit greatest(p_n, 1))
+    returning d.session_id
+  )
+  select array_agg(session_id) into v_gone from gone;
+  if v_gone is null then
+    return 0;
+  end if;
   begin
-    delete from auth.sessions s
-     where s.user_id = p_user
-       and s.id not in (select k.session_id from public.account_devices k where k.user_id = p_user);
+    delete from auth.sessions s where s.user_id = p_user and s.id = any (v_gone);
     get diagnostics v_out = row_count;
   exception when others then
     v_out := 0;
