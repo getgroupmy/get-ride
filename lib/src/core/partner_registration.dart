@@ -506,3 +506,9 @@ Map<String, dynamic>? matchMakeModel(List<Map<String, dynamic>> rows, String mak
   }
   return best;
 }
+
+/// The vehicle service GET.ride set for [make] and [model] in the Vehicle Make
+/// & Model list (its `service_id`, as [matchMakeModel] finds the row), or ''
+/// when the list sets none: the driver chooses then.
+String makeModelService(List<Map<String, dynamic>> rows, String make, String model) =>
+    '${matchMakeModel(rows, make, model)?['service_id'] ?? ''}'.trim();

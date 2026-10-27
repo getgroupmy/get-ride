@@ -223,9 +223,85 @@ List<RequiredDoc> vehicleRequiredDocs({
     );
 
 /// The service a vehicle is registered for (migration 0249): the one its make
-/// & model maps to, else the driver's choice; a problem when neither is set.
-({String? serviceId, String? problem}) vehicleServiceChoice({required String mapped, required String chosen}) {
+/// & model maps to, else the driver's choice; a problem when neither is set
+/// and there is a service to choose ([canChoose] false: none could be read,
+/// so the server's make & model match is left to decide).
+({String? serviceId, String? problem}) vehicleServiceChoice({
+  required String mapped,
+  required String chosen,
+  bool canChoose = true,
+}) {
   if (mapped.trim().isNotEmpty) return (serviceId: mapped.trim(), problem: null);
   if (chosen.trim().isNotEmpty) return (serviceId: chosen.trim(), problem: null);
-  return (serviceId: null, problem: 'Choose the service type of this vehicle.');
+  return (serviceId: null, problem: canChoose ? vehicleServiceMissing : null);
+}
+
+/// What the Vehicle service field says when nothing is chosen.
+const vehicleServiceMissing = 'Choose the vehicle service.';
+
+/// A Vehicle Services entry a vehicle can be registered for.
+typedef VehicleServiceOption = ({String id, String name});
+
+/// The Vehicle Services entries (Admin → Vehicle Services) a driver picks a
+/// vehicle's service from: those switched on, by display priority, then in
+/// the admin's order.
+List<VehicleServiceOption> vehicleServiceOptions(Iterable<({String id, Map<String, dynamic> values})> entries) {
+  final list = <({int i, num p, VehicleServiceOption o})>[];
+  for (final (i, e) in entries.indexed) {
+    final st = e.values['status'];
+    if (st == false || st == 0 || st == 'false') continue;
+    final name = _text(e.values['name']);
+    if (e.id.trim().isEmpty || name.isEmpty) continue;
+    list.add((i: i, p: num.tryParse('${e.values['displayPriority'] ?? ''}') ?? 9999, o: (id: e.id, name: name)));
+  }
+  list.sort((a, b) {
+    final c = a.p.compareTo(b.p);
+    return c != 0 ? c : a.i.compareTo(b.i);
+  });
+  return [for (final x in list) x.o];
+}
+
+/// [id]'s name among [options]; null when it isn't one of them.
+String? vehicleServiceName(List<VehicleServiceOption> options, String id) =>
+    id.trim().isEmpty ? null : options.where((o) => o.id == id.trim()).firstOrNull?.name;
+
+// ---- Per-service checks (0301) ------------------------------------------------------------------
+
+/// A per-service status in words: "active", "paused: over the 15-year
+/// limit", "waiting for EVP".
+String vehicleServiceStatusWords(Object? status, {Object? maxAge, Object? permitName}) {
+  final permit = _text(permitName);
+  return switch (_text(status)) {
+    'active' => 'active',
+    'paused_age' => 'paused: over the ${_text(maxAge).isEmpty ? '?' : _text(maxAge)}-year limit',
+    'waiting_permit' => 'waiting for ${permit.isEmpty ? 'the vehicle permit' : permit}',
+    '' => 'none',
+    final s => s,
+  };
+}
+
+/// A `vehicle_service_status` row as the admin reads it: "eHailing: paused:
+/// over the 15-year limit · set by an admin".
+String vehicleServiceCheckText(Map<String, dynamic> r) {
+  final words = vehicleServiceStatusWords(r['status'], maxAge: r['max_age_years'], permitName: r['permit_name']);
+  return '${_text(r['service'])}: $words${r['set_by_admin'] == true ? ' · set by an admin' : ''}';
+}
+
+/// One `admin_vehicle_service_checks_preview` row: what applying the checks
+/// does to that service.
+String vehicleServicePreviewText(Map<String, dynamic> r) {
+  final service = _text(r['service']);
+  final now = _text(r['current_status']);
+  final would = _text(r['would_status']);
+  final checks = _text(r['checks_status']);
+  final wouldWords = vehicleServiceStatusWords(would, maxAge: r['max_age_years'], permitName: r['permit_name']);
+  if (r['set_by_admin'] == true) {
+    return checks == now || checks.isEmpty
+        ? '$service: set by an admin, kept'
+        : '$service: set by an admin, kept as ${vehicleServiceStatusWords(now)} (the checks say ${vehicleServiceStatusWords(checks)})';
+  }
+  if (r['changes'] != true) return '$service: no change';
+  if (now.isEmpty) return '$service: would be added, $wouldWords';
+  if (would.isEmpty) return '$service: would be removed (the vehicle no longer has this type)';
+  return '$service: ${vehicleServiceStatusWords(now)} now, would be $wouldWords';
 }
