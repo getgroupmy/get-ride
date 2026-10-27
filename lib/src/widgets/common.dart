@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app_notice.dart';
@@ -183,6 +184,8 @@ String? errorDetails(Object e) {
 
 String _errorText(Object e) => switch (e) {
       AuthException(:final message) => message,
+      // Two registrations at the same moment: the index (0303), not the trigger.
+      _ when isIdNumberTaken(e) => idNumberTakenMessage,
       // A database refusal named by code (GET_CREDIT_TOO_LOW) says it in its hint.
       PostgrestException(:final message, :final hint)
           when RegExp(r'^[A-Z][A-Z0-9_]+$').hasMatch(message) && (hint ?? '').trim().isNotEmpty =>
@@ -194,9 +197,48 @@ String _errorText(Object e) => switch (e) {
       _ => e.toString().replaceFirst('Exception: ', ''),
     };
 
+// ---- ID number already registered (0303, docs/KIV.md M8) -------------------
+
+/// The title of [showIdNumberTaken].
+const idNumberTakenTitle = 'This ID number is already registered';
+
+/// What [showIdNumberTaken] says; the server's hint for ID_NUMBER_TAKEN.
+const idNumberTakenMessage =
+    "Another GET.ride account uses this ID number. Sign in to that account, or contact support if it isn't yours.";
+
+/// Whether [e] is the server refusing an ID number another live account
+/// has: ID_NUMBER_TAKEN from the profiles trigger, or the unique index
+/// (`profiles_ic_key_uidx`) when two saves race (migration 0303).
+bool isIdNumberTaken(Object e) =>
+    e is PostgrestException &&
+    (e.message == 'ID_NUMBER_TAKEN' ||
+        (e.code == '23505' && '${e.message} ${e.details ?? ''}'.contains('profiles_ic_key_uidx')));
+
+/// "This ID number is already registered", with Contact support (the
+/// support screen) and OK. In the admin pages there is no Contact support:
+/// the admin is support.
+Future<void> showIdNumberTaken(BuildContext context) {
+  final router = GoRouter.maybeOf(context);
+  final admin = router?.routerDelegate.currentConfiguration.uri.path.startsWith('/admin') ?? false;
+  final support = router != null && !admin;
+  return showAppNotice(
+    id: 'notice.id-taken',
+    key: const ValueKey('id-taken'),
+    context: context,
+    title: idNumberTakenTitle,
+    message: idNumberTakenMessage,
+    kind: NoticeKind.error,
+    actionLabel: support ? 'Contact support' : null,
+    onAction: support ? () => router.push('/account/support') : null,
+    closeLabel: 'OK',
+  );
+}
+
 /// [e] in plain words, as a modal with an OK ([showAppNotice]).
 void showError(BuildContext context, Object e) => unawaited(
-  showAppNotice(id: 'notice.error', context: context, message: errorText(e), kind: NoticeKind.error),
+  isIdNumberTaken(e)
+      ? showIdNumberTaken(context)
+      : showAppNotice(id: 'notice.error', context: context, message: errorText(e), kind: NoticeKind.error),
 );
 
 /// [message] as a modal with an OK ([showAppNotice]).
@@ -218,8 +260,9 @@ Future<void> showNotice(BuildContext context, {String? title, required String me
 
 /// An error as a modal with one OK (owner rule: popups are modals, never a
 /// bar at the bottom).
-Future<void> showErrorNotice(BuildContext context, Object e, {String? title}) =>
-    showNotice(context, title: title, message: errorText(e));
+Future<void> showErrorNotice(BuildContext context, Object e, {String? title}) => isIdNumberTaken(e)
+    ? showIdNumberTaken(context)
+    : showNotice(context, title: title, message: errorText(e));
 
 /// Booking a ride is locked while the driver is online.
 Future<void> showGoOfflineToBook(BuildContext context) => showNotice(

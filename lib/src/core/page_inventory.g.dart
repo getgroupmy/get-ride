@@ -128,6 +128,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:notice.error', SurfaceKind.modal, 'Notice · Error', 'lib/src/widgets/common.dart'),
   SurfaceEntry('modal:notice.ev-order', SurfaceKind.modal, 'Notice · Ev order', 'lib/src/features/ev/ev_order_screen.dart'),
   SurfaceEntry('modal:notice.fare-offer', SurfaceKind.modal, 'Notice · Fare offer', 'lib/src/features/ride/fare_offer_controls.dart'),
+  SurfaceEntry('modal:notice.id-taken', SurfaceKind.modal, 'Notice · Id taken', 'lib/src/widgets/common.dart'),
   SurfaceEntry('modal:notice.in-app-link', SurfaceKind.modal, 'Notice · In app link', 'lib/src/widgets/in_app_page.dart'),
   SurfaceEntry('modal:notice.info', SurfaceKind.modal, 'Notice · Info', 'lib/src/widgets/common.dart'),
   SurfaceEntry('modal:notice.location-share', SurfaceKind.modal, 'Notice · Location share', 'lib/src/features/ride/location_share_button.dart'),

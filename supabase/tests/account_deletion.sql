@@ -20,7 +20,7 @@ insert into public.profiles (id) select id from auth.users
  where id::text like '00000000-0000-0000-0000-0000000194%'
 on conflict do nothing;
 update public.profiles set phone = '+' || u.phone, name = 'Person ' || right(u.id::text, 2),
-       ic = '900101-14-0194', referral_code = 'REF' || right(u.id::text, 2)
+       ic = '900101-14-0194-' || right(u.id::text, 2), referral_code = 'REF' || right(u.id::text, 2)
   from auth.users u
  where u.id = profiles.id and u.id::text like '00000000-0000-0000-0000-0000000194%';
 insert into public.admin_access (profile_id, page, access_level) values

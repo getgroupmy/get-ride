@@ -34,6 +34,16 @@ insert into public.profiles (id) select id from auth.users
  where id::text like '00000000-0000-0000-0000-0000000299%'
 on conflict do nothing;
 update public.profiles set ic = '900101-14-0299', display_id = 'T0299B1' where id = '00000000-0000-0000-0000-0000000299b1';
+-- Since 0303 a second live account can't take a number; this read is for the
+-- pairs from before it, so the guard is off in this (rolled back) test.
+do $$ begin
+  if to_regclass('public.profiles_ic_key_uidx') is not null then
+    execute 'drop index public.profiles_ic_key_uidx';
+  end if;
+  if exists (select 1 from pg_trigger where tgname = 'trg_profiles_ic_taken' and not tgisinternal) then
+    execute 'alter table public.profiles disable trigger trg_profiles_ic_taken';
+  end if;
+end $$;
 update public.profiles set ic = '900101140299', display_id = 'T0299C2' where id = '00000000-0000-0000-0000-0000000299c2';
 update public.profiles set ic = '900101 14 0299', display_id = 'T0299C3', deleted_at = now()
  where id = '00000000-0000-0000-0000-0000000299c3';
