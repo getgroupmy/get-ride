@@ -143,6 +143,13 @@ void main() {
       expect(vehicleApproval(v).label, 'Pending review');
     });
 
+    test("the car a driver registered is driveable once approved, its owner's phone and ID or not (H1)", () {
+      final v = {..._car('a', 'A 1'), 'owner_phone': '', 'owner_ic': null};
+      expect(pick(v), AssignableStatus.available);
+      expect(pick({...v, 'status': 'permit-verified'}), AssignableStatus.available);
+      expect(pick({...v, 'status': 'unapproved'}), AssignableStatus.incomplete, reason: 'still in review: the wizard first');
+    });
+
     test('blocked, deleted and rejected lock it', () {
       for (final s in ['blocked', 'deleted', 'rejected']) {
         expect(pick(_car('a', 'A 1', status: s)), AssignableStatus.contactAdmin, reason: s);
@@ -155,7 +162,7 @@ void main() {
   group('assignment logic', () {
     test('roles, states and order', () {
       final list = buildAssignableVehicles(
-        owned: [_car('own', 'B 1'), _car('half', 'A 9', complete: false)],
+        owned: [_car('own', 'B 1'), _car('half', 'A 9', status: 'unapproved', complete: false)],
         assignments: [
           {'vehicle_id': 'shared', 'role': 'co-driver'},
           {'vehicle_id': 'locked', 'role': 'driver'},
@@ -189,7 +196,7 @@ void main() {
         assignments: [
           {'vehicle_id': 'x', 'role': 'co-driver'},
         ],
-        assignedVehicles: [_car('x', 'X 1', complete: false)],
+        assignedVehicles: [_car('x', 'X 1', status: 'unapproved', complete: false)],
         mySessionVehicleId: null,
       );
       expect(list.single.blockedReason, "The owner hasn't finished setting it up.");

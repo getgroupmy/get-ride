@@ -31,9 +31,13 @@ String _text(Object? v) => '${v ?? ''}'.trim();
 /// in the database in this form.
 String normalizePlate(String plate) => plate.replaceAll(RegExp(r'\s+'), ' ').trim().toUpperCase();
 
-/// The first step still missing (Expo `computeFirstVehicleStep`).
+/// The first step still missing (Expo `computeFirstVehicleStep`). A vehicle
+/// an admin has approved is complete: the registration flow (0288) leaves
+/// the owner's phone or ID out where the grant has none, and that must not
+/// stop the driver taking the car they registered.
 VehicleStep firstVehicleStep(Map<String, dynamic>? v) {
   if (v == null || _text(v['plate']).isEmpty) return VehicleStep.plate;
+  if (approvedVehicleStatuses.contains(_text(v['status']).toLowerCase())) return VehicleStep.done;
   if (_text(v['make']).isEmpty || _text(v['model']).isEmpty) return VehicleStep.makeModel;
   if (_text(v['year']).isEmpty || _text(v['color']).isEmpty) return VehicleStep.yearColor;
   if (vehiclePhotoSlots.any((s) => _text(v['image_$s']).isEmpty)) return VehicleStep.photos;
@@ -112,6 +116,27 @@ String? vehicleOwnerProblem({required bool? ownVehicle, required String name, re
   }
 
   return (name: pick('name'), phone: pick('phone'), ic: pick('ic'));
+}
+
+/// The owner's ID and phone saved with a registered vehicle: the ID read off
+/// the grant when there is one and, when the driver owns it ([driverOwns]),
+/// their own ID (the profile's, else the partner's) and phone (the
+/// partner's, else the profile's). Blanks are left out, so what is stored
+/// stays.
+Map<String, String> registeredOwnerContact({
+  required bool driverOwns,
+  required String grantOwnerId,
+  Map<String, dynamic>? partner,
+  Map<String, dynamic>? profile,
+}) {
+  String first(String key, List<Map<String, dynamic>?> rows) =>
+      rows.map((r) => _text(r?[key])).firstWhere((t) => t.isNotEmpty, orElse: () => '');
+  final ic = grantOwnerId.trim().isNotEmpty ? grantOwnerId.trim() : (driverOwns ? first('ic', [profile, partner]) : '');
+  final phone = driverOwns ? first('phone', [partner, profile]) : '';
+  return {
+    if (ic.isNotEmpty) 'owner_ic': ic,
+    if (phone.isNotEmpty) 'owner_phone': phone,
+  };
 }
 
 enum VehicleApprovalTone { approved, pending, rejected, blocked }

@@ -169,6 +169,14 @@ Map<String, dynamic> newPartnerStub({
   };
 }
 
+/// The words for the server's refusal of a change to an approved partner's
+/// Partner Service types (0299 `PARTNER_TYPES_LOCKED`); null for any other
+/// error. A change of type is reviewed again, so an admin makes it.
+String? partnerTypesLockedMessage(Object error) => '$error'.contains('PARTNER_TYPES_LOCKED')
+    ? "Your account is approved, so your Partner Service types can't be changed here. "
+        'Contact support to add or change one: an admin reviews it first.'
+    : null;
+
 /// Every compulsory document has an upload that is neither rejected nor
 /// expired (the check that unlocks "Submit for review"). Optional uploads
 /// never stand in for a missing compulsory one.

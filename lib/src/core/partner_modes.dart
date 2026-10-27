@@ -9,15 +9,35 @@ typedef PartnerTypeEntry = ({String id, Map<String, dynamic> values});
 /// an explicit "Vehicle required" on the entry always wins.
 const defaultVehicleModes = {'teksi', 'ehailing', 'phailing'};
 
+/// "Vehicle required" for a partner type named [name] whose entry says
+/// nothing: on for [defaultVehicleModes]. The one default for the driver
+/// app, the admin's Partner Type editor and partner form, and the server
+/// (0245 `partner_type_rules`).
+bool defaultVehicleRequired(String name) => defaultVehicleModes.contains(_key(name));
+
+/// "Vehicle required" for the partner type named [name] with the catalogue
+/// [values] (null: no entry): the admin's switch when set, else the default.
+bool typeVehicleRequired(String name, Map<String, dynamic>? values) =>
+    values != null && values.containsKey('vehicleRequired')
+        ? _truthy(values['vehicleRequired'])
+        : defaultVehicleRequired(name);
+
 /// Whether [mode] (a partner-type name) needs a vehicle before it starts.
 bool vehicleRequiredFor(String mode, List<PartnerTypeEntry> entries) {
   final key = _key(mode);
-  for (final e in entries) {
-    if (_key('${e.values['name'] ?? ''}') != key) continue;
-    if (e.values.containsKey('vehicleRequired')) return _truthy(e.values['vehicleRequired']);
-    break;
-  }
-  return defaultVehicleModes.contains(key);
+  final entry = entries.where((e) => _key('${e.values['name'] ?? ''}') == key).firstOrNull;
+  return typeVehicleRequired(mode, entry?.values);
+}
+
+/// Whether the partner's modes ([assigned], their `partner_types`) need a
+/// vehicle: the meter's for [teksi] true, the ride modes' for false, any
+/// for null. No mode: as a plain e-hailing (or taxi) partner.
+bool modesNeedVehicle(Iterable<Object?> assigned, List<PartnerTypeEntry> entries, {bool? teksi}) {
+  final modes = [
+    for (final m in partnerModeOptions(assigned, entries))
+      if (teksi == null || m.isTeksi == teksi) m.name,
+  ];
+  return (modes.isEmpty ? [teksi == true ? 'teksi' : 'ehailing'] : modes).any((m) => vehicleRequiredFor(m, entries));
 }
 
 /// A mode the partner can enter: one of their assigned types, with the

@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/fare.dart';
 import 'package:get_ride/src/core/ride_services.dart';
 
 CatalogueEntry _svc(String id, Map<String, dynamic> v) => (id: id, values: v);
@@ -63,5 +66,21 @@ void main() {
     expect(services.single.multiplier, 1.0);
     expect(services.single.seats, 4);
     expect(rideServicesFromCatalogue(const [], const {}), [fallbackRideService]);
+  });
+
+  test('the built-in list (catalogue unreadable) uses the seeded service names (L2)', () {
+    // 0259 seeds which services each partner type takes; a built-in name
+    // none of them lists would reach no partner of a restricted type.
+    final seed = File('supabase/migrations/0259_partner_type_services_admin.sql').readAsStringSync();
+    final seeded = {
+      for (final m in RegExp(r"array\[([^\]]*)\]").allMatches(seed))
+        for (final n in RegExp(r"'([^']+)'").allMatches(m.group(1)!)) n.group(1)!,
+    };
+    expect(seeded, containsAll(['Ride', 'Teksi']));
+    for (final s in rideServices) {
+      expect(seeded, contains(s.name), reason: s.name);
+    }
+    expect(rideServices.first.name, 'Teksi', reason: 'the metered taxi stays first');
+    expect(rideServices.map((s) => s.name), containsAll([fallbackRideService.name]));
   });
 }

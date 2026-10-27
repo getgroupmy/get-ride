@@ -11,6 +11,7 @@ import 'dart:convert';
 import '../../../core/doc_kinds.dart' show DocKind, docKindFor;
 import '../../../core/avatar.dart';
 import '../../../core/ride_bidding.dart' show RegionBlock, regionBlockOf;
+import '../../../core/partner_modes.dart' show typeVehicleRequired;
 
 /// Token a required-document / partner-type list uses for "every type".
 const allToken = '__ALL__';
@@ -387,9 +388,16 @@ List<Map<String, dynamic>> _selectedTypes(Iterable<Map<String, dynamic>> typeVal
   return typeValues.where((v) => set.contains('${v['name'] ?? ''}'.toLowerCase())).toList();
 }
 
-/// A vehicle is required when any selected partner type asks for one.
-bool partnerTypesRequireVehicle(Iterable<Map<String, dynamic>> typeValues, List<String> selected) =>
-    _selectedTypes(typeValues, selected).any((v) => _truthy(v['vehicleRequired'], false));
+/// A vehicle is required when any selected partner type asks for one (its
+/// "Vehicle required", else the shared default, as in the driver app).
+bool partnerTypesRequireVehicle(Iterable<Map<String, dynamic>> typeValues, List<String> selected) => selected.any(
+      (name) => typeVehicleRequired(
+        name,
+        typeValues.where((v) => _typeKey('${v['name'] ?? ''}') == _typeKey(name)).firstOrNull,
+      ),
+    );
+
+String _typeKey(String s) => s.trim().toLowerCase().replaceAll(RegExp(r'[\s_-]+'), '');
 
 /// Union of the selected types' `docTypes`; null means "no filter".
 List<String>? partnerTypeDocTypeIds(Iterable<Map<String, dynamic>> typeValues, List<String> selected) {

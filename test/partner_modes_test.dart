@@ -36,6 +36,29 @@ void main() {
     expect(vehicleRequiredFor('pHailing', const []), isTrue);
   });
 
+  test('one "Vehicle required" default for the app, the admin and the server (L1)', () {
+    for (final name in ['Teksi', 'e-Hailing', 'eHailing', 'p_hailing']) {
+      expect(defaultVehicleRequired(name), isTrue, reason: name);
+      expect(typeVehicleRequired(name, {'name': name}), isTrue, reason: '$name, unset');
+    }
+    expect(defaultVehicleRequired('Delivery'), isFalse);
+    expect(typeVehicleRequired('Teksi', {'vehicleRequired': false}), isFalse, reason: 'the admin wins');
+    expect(typeVehicleRequired('Tour guide', {'vehicleRequired': 'true'}), isTrue);
+    expect(typeVehicleRequired('Tour guide', null), isFalse);
+  });
+
+  test("whether a partner's modes need a vehicle (L4)", () {
+    final entries = [
+      _e({'name': 'Delivery'}),
+      _e({'name': 'eHailing', 'vehicleRequired': false}),
+    ];
+    expect(modesNeedVehicle(['Delivery'], entries), isFalse);
+    expect(modesNeedVehicle(['Delivery', 'Teksi'], entries), isTrue, reason: 'the meter needs one');
+    expect(modesNeedVehicle(['Delivery', 'Teksi'], entries, teksi: false), isFalse);
+    expect(modesNeedVehicle(const [], entries), isFalse, reason: 'no mode: as eHailing, switched off here');
+    expect(modesNeedVehicle(const [], const []), isTrue);
+  });
+
   test('mode options: switched off dropped, admin order, description and icon', () {
     final entries = [
       _e({'name': 'eHailing', 'displayPriority': 2, 'shortInfo': 'Ride requests'}),

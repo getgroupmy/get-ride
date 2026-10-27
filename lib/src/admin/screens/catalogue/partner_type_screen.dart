@@ -13,6 +13,7 @@ import 'catalogue_widgets.dart';
 import 'partner_service_settings_editor.dart';
 import 'partner_type_rules_editor.dart';
 import 'partner_type_services_screen.dart' show partnerTypeServicesPath;
+import '../../../core/partner_modes.dart' show defaultVehicleRequired;
 import '../../../core/partner_type_rules.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../core/media_assets.dart' show MediaKind;
@@ -239,7 +240,10 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
   late String _icon = str(v['iconUrl']);
   late bool _enabled = jsBool(v['enabled'], true);
   late bool _subOn = jsBool(v['subServicesEnabled']);
-  late bool _vehicle = jsBool(v['vehicleRequired']);
+  // Unset: the default the driver app and the server use (teksi, eHailing
+  // and pHailing need one).
+  late bool _vehicle =
+      v.containsKey('vehicleRequired') ? jsBool(v['vehicleRequired']) : defaultVehicleRequired(str(v['name']));
   late List<SubService> _tree = parseSubServiceTree(v['subServicesJson']);
   late List<String> _docTypes = parsePartnerDocTypes(v['docTypes']);
   late PartnerTypeRules _rules = PartnerTypeRules.fromValues(v);

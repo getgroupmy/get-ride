@@ -221,10 +221,18 @@ String _docValue(Map<String, dynamic> d) => reviewValueText('doc', {
       'file_url': d['file_url'],
     });
 
+/// The review's flag for an ID number other accounts share: "Same ID as
+/// another account: U0012" (or "as other accounts: U0012, U0040").
+String sameIdFlag(List<String> displayIds) => displayIds.length == 1
+    ? 'Same ID as another account: ${displayIds.single}'
+    : 'Same ID as other accounts: ${displayIds.join(', ')}';
+
 /// Every line of the application: [profile] and [partner] rows, the
 /// registration [vehicle] (or null), the partner's [providerDocs], the
 /// vehicle's [vehicleDocs] (vehicle permits among them, by
 /// `permit_type_id`) and its [serviceStatuses] (vehicle_service_status).
+/// [sameIdAccounts] are the display ids of other accounts with the same ID
+/// number (0299 `admin_same_ic_accounts`), flagged on the ID number.
 List<ReviewLine> applicationReviewLines({
   required Map<String, dynamic>? profile,
   required Map<String, dynamic> partner,
@@ -232,6 +240,7 @@ List<ReviewLine> applicationReviewLines({
   List<Map<String, dynamic>> providerDocs = const [],
   List<Map<String, dynamic>> vehicleDocs = const [],
   List<Map<String, dynamic>> serviceStatuses = const [],
+  List<String> sameIdAccounts = const [],
 }) {
   String? p(String k) => _text(profile?[k]);
   String? a(String k) => _text(partner[k]);
@@ -250,6 +259,10 @@ List<ReviewLine> applicationReviewLines({
   final idName = idType?.label ?? 'ID';
   final photo = _url(profile?['avatar_url']) ?? _url(partner['avatar_url']);
   final typed = p('id_number_typed'), read = p('id_number_read');
+  final idFlags = [
+    if (profile?['id_mismatch'] == true) 'Typed ${typed ?? '—'}, read off the ID ${read ?? '—'}: they differ',
+    if (sameIdAccounts.isNotEmpty) sameIdFlag(sameIdAccounts),
+  ];
 
   final lines = <ReviewLine>[
     ReviewLine(
@@ -268,9 +281,7 @@ List<ReviewLine> applicationReviewLines({
     field(ReviewGroup.details, 'details.address', 'Address', p('address') ?? a('address')),
     field(ReviewGroup.details, 'details.nationality', 'Nationality', p('nationality')),
     field(ReviewGroup.details, 'details.id_number', '$idName number', p('ic') ?? a('ic'),
-        flag: profile?['id_mismatch'] == true
-            ? 'Typed ${typed ?? '—'}, read off the ID ${read ?? '—'}: they differ'
-            : null),
+        flag: idFlags.isEmpty ? null : idFlags.join(' · ')),
     ReviewLine(
       key: 'id.front',
       group: ReviewGroup.nationalId,

@@ -122,8 +122,12 @@ class _VehiclePermitsScreenState extends ConsumerState<VehiclePermitsScreen> {
     super.dispose();
   }
 
-  String? _pickDefault(List<PermitType> types, List<String> countries) =>
-      widget.initialCountry ?? types.firstOrNull?.country ?? countries.firstOrNull;
+  String? _pickDefault(List<PermitType> types, List<String> countries) => permitsStartCountry(
+        linked: widget.initialCountry,
+        typeCountries: [for (final t in types) t.country],
+        countries: countries,
+        homeCode: userDateCountry(),
+      );
 
   Future<void> _chooseCountry(List<String> countries) async {
     final picked = await showSearchPicker<String>(

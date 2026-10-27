@@ -21,6 +21,7 @@ class ReviewApplication {
     this.items = const {},
     this.log = const [],
     this.names = const {},
+    this.sameIdAccounts = const [],
   });
 
   final Map<String, dynamic> partner;
@@ -42,6 +43,9 @@ class ReviewApplication {
   /// The names of the admins (and driver) in [log] and the approver, by id.
   final Map<String, String> names;
 
+  /// Display ids of other accounts with the same ID number (0299).
+  final List<String> sameIdAccounts;
+
   String get partnerId => '${partner['id']}';
   String get status => '${partner['status'] ?? 'unapproved'}';
 
@@ -52,6 +56,7 @@ class ReviewApplication {
         providerDocs: providerDocs,
         vehicleDocs: vehicleDocs,
         serviceStatuses: serviceStatuses,
+        sameIdAccounts: sameIdAccounts,
       );
 }
 
@@ -82,6 +87,9 @@ class PartnerReviewRepository {
           : _db.from('document_face_checks').select().eq('user_id', uid).order('checked_at', ascending: false),
       _db.from('partner_review_items').select().eq('partner_id', partnerId).order('decided_at', ascending: true),
       _optional(_db.from('partner_review_log').select().eq('partner_id', partnerId).order('at', ascending: true)),
+      uid.isEmpty
+          ? Future.value(const <Map<String, dynamic>>[])
+          : _optional(_db.rpc('admin_same_ic_accounts', params: {'p_profile': uid})),
     ]);
     final log = [for (final r in _rows(results[7])) ?ReviewLogEntry.tryParse(r)];
     final ids = {for (final e in log) ?e.actorId, if (partner['approved_by'] != null) '${partner['approved_by']}'};
@@ -105,6 +113,10 @@ class PartnerReviewRepository {
       items: {for (final r in _rows(results[6])) '${r['item_key']}': ReviewItem.fromRow(r)},
       log: log,
       names: names,
+      sameIdAccounts: [
+        for (final r in _rows(results[8] ?? const []))
+          if ('${r['display_id'] ?? ''}'.trim().isNotEmpty) '${r['display_id']}'.trim(),
+      ],
     );
   }
 

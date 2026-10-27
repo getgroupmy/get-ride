@@ -294,4 +294,18 @@ void main() {
       expect(reminderDaysFor(const []), isEmpty);
     });
   });
+
+  group('the country Vehicle permits opens on (L6)', () {
+    const countries = ['Indonesia', 'Malaysia', 'Singapore'];
+
+    test("the link's, else the admin's own, else the first with permit types, else the first", () {
+      expect(permitsStartCountry(linked: 'Singapore', typeCountries: ['Malaysia'], countries: countries, homeCode: 'MY'),
+          'Singapore');
+      expect(permitsStartCountry(typeCountries: ['Singapore'], countries: countries, homeCode: 'MY'), 'Malaysia');
+      expect(permitsStartCountry(typeCountries: ['Singapore'], countries: countries, homeCode: 'my'), 'Malaysia');
+      expect(permitsStartCountry(typeCountries: ['Singapore'], countries: countries, homeCode: 'JP'), 'Singapore');
+      expect(permitsStartCountry(typeCountries: const [], countries: countries, homeCode: 'JP'), 'Indonesia');
+      expect(permitsStartCountry(linked: ' ', typeCountries: const [], countries: const []), isNull);
+    });
+  });
 }

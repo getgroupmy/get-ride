@@ -34,6 +34,18 @@ void main() {
       expect(firstVehicleStep({...v, 'documents_ok': true}), VehicleStep.done);
     });
 
+    test('an approved vehicle is complete, owner details or not (H1)', () {
+      final v = <String, dynamic>{
+        'plate': 'WXY 1', 'make': 'Proton', 'model': 'Saga', 'year': '2020', 'color': 'White', ..._photos,
+        'owner_name': 'AINA', 'documents_ok': true,
+      };
+      expect(firstVehicleStep(v), VehicleStep.owner, reason: 'in review, still missing the phone and ID');
+      expect(firstVehicleStep({...v, 'status': 'approved'}), VehicleStep.done);
+      expect(firstVehicleStep({...v, 'status': 'Permit-Verified'}), VehicleStep.done);
+      expect(firstVehicleStep({...v, 'status': 'permit-pending'}), VehicleStep.owner);
+      expect(firstVehicleStep({'status': 'approved'}), VehicleStep.plate, reason: 'no plate is no vehicle');
+    });
+
     test('step keys match what the Expo app stores', () {
       expect(VehicleStep.wizard.map((s) => s.key),
           ['plate', 'make-model', 'year-color', 'photos', 'owner', 'documents']);
@@ -61,6 +73,26 @@ void main() {
   test('"my own vehicle" prefers the partner row, then the profile', () {
     final d = ownOwnerDetails({'name': 'Aina', 'phone': ''}, {'phone': '+60123', 'ic': '900101'});
     expect(d, (name: 'Aina', phone: '+60123', ic: '900101'));
+  });
+
+  group('registeredOwnerContact (H1)', () {
+    const partner = {'phone': '+60111', 'ic': 'OLD-1'};
+    const profile = {'phone': '+60222', 'ic': '900101-14-5678'};
+
+    test("the driver's own car: their ID (profile first) and phone (partner first)", () {
+      expect(registeredOwnerContact(driverOwns: true, grantOwnerId: '', partner: partner, profile: profile),
+          {'owner_ic': '900101-14-5678', 'owner_phone': '+60111'});
+      expect(registeredOwnerContact(driverOwns: true, grantOwnerId: ' ', partner: {'phone': ''}, profile: profile),
+          {'owner_ic': '900101-14-5678', 'owner_phone': '+60222'});
+    });
+
+    test("the grant's ID wins; someone else's car keeps only that", () {
+      expect(registeredOwnerContact(driverOwns: true, grantOwnerId: ' 900101145678 ', partner: partner, profile: profile),
+          {'owner_ic': '900101145678', 'owner_phone': '+60111'});
+      expect(registeredOwnerContact(driverOwns: false, grantOwnerId: 'X1', partner: partner, profile: profile),
+          {'owner_ic': 'X1'});
+      expect(registeredOwnerContact(driverOwns: false, grantOwnerId: '', partner: partner, profile: profile), isEmpty);
+    });
   });
 
   group('vehicleApproval', () {

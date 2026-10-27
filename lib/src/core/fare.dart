@@ -63,10 +63,13 @@ class RideService {
   final List<String> parentIds;
 }
 
-/// Used only when the admin Vehicle Services catalogue cannot be read.
+/// Used only when the admin Vehicle Services catalogue cannot be read. The
+/// names are the seeded services' (0259 partner type services), so a ride
+/// booked from this list still reaches the partner types that take it.
 const rideServices = <RideService>[
   RideService('Teksi', 'Metered taxi', 1.0, 4),
-  RideService('GET Car', 'Everyday rides', 1.1, 4),
-  RideService('GET XL', 'Up to 6 seats', 1.5, 6),
-  RideService('GET Premium', 'Executive cars', 2.0, 4),
+  RideService('Ride', 'Everyday rides', 1.1, 4),
+  RideService('Comfort', 'Newer, roomier cars', 1.3, 4),
+  RideService('6-seater', 'Up to 6 seats', 1.5, 6),
+  RideService('Premium', 'Executive cars', 2.0, 4),
 ];
