@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -21,6 +23,7 @@ import '../../../core/partner_type_rules.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../core/media_assets.dart' show MediaKind;
 import '../meterapp/media_picker_sheet.dart' show MediaStore, showMediaPicker;
+import 'safe_rename.dart';
 
 const _page = 'admin-settings-partner-type';
 
@@ -53,6 +56,11 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
       _PartnerTypeEditor(entries: all, entry: e, docTypes: docTypes, canEdit: canEditPage(ref, _page)),
     );
     if (saved == null || !mounted) return;
+    // A new name moves every place that uses the old one (0304).
+    if (e != null && renamesEntry(e, saved.values)) {
+      await saveEntryWithRename(context, ref, category: c, entry: e, values: saved.values);
+      return;
+    }
     final rule = saved.rule;
     if (await runAdminAction(
       context,
@@ -247,7 +255,13 @@ class _PartnerTypeEditor extends ConsumerStatefulWidget {
 
 class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
   late final v = widget.entry?.values ?? const <String, dynamic>{};
-  late final _name = TextEditingController(text: str(v['name']));
+  late final _nameCtl = RenameFieldController(
+    category: partnerTypeKey,
+    entryId: widget.entry?.id,
+    name: str(v['name']),
+    otherNames: [for (final e in widget.entries) if (e.id != widget.entry?.id) str(e.values['name'])],
+  )..addListener(_renamed);
+  TextEditingController get _name => _nameCtl.text;
   late final _info = TextEditingController(text: str(v['shortInfo']));
   late String _icon = str(v['iconUrl']);
   late bool _enabled = jsBool(v['enabled'], true);
@@ -270,9 +284,15 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
 
   @override
   void dispose() {
-    _name.dispose();
+    _nameCtl
+      ..removeListener(_renamed)
+      ..dispose();
     _info.dispose();
     super.dispose();
+  }
+
+  void _renamed() {
+    if (mounted) setState(() {});
   }
 
   /// From the Media Gallery (or uploaded there). Kept as the file's web
@@ -353,7 +373,7 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
         ],
       ];
 
-  void _save() {
+  Future<void> _save() async {
     final r = buildPartnerTypeValues(
       entries: widget.entries,
       editing: widget.entry,
@@ -378,6 +398,8 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
         _tried = true;
       });
     }
+    // A new name: what follows it, then Rename (0304).
+    if (!await reviewRename(context, ref, _nameCtl) || !mounted) return;
     final choices = _serviceChoices();
     Navigator.pop<_TypeSave>(context, (
       values: r.values,
@@ -475,15 +497,26 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
   @override
   Widget build(BuildContext context) => EditorBody(
         error: _error,
-        saveLabel: _isNew ? addTypeLabel(_takes.length) : 'Save changes',
-        onSave: widget.canEdit ? _save : null,
+        saveLabel: _isNew
+            ? addTypeLabel(_takes.length)
+            : _nameCtl.renaming
+                ? renameSaveLabel(_nameCtl.places)
+                : 'Save changes',
+        // Not awaited: the button would spin behind the preview.
+        onSave: widget.canEdit && _nameCtl.problem == null ? () => unawaited(_save()) : null,
         children: [
           if (jsBool(v['isDefault']))
             const Padding(
               padding: EdgeInsets.only(bottom: 12),
               child: Text('Default type — name & sub-services can be edited.'),
             ),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Name *', hintText: 'Partner Service type name')),
+          RenameNameField(
+            controller: _nameCtl,
+            label: 'Name *',
+            hint: 'Partner Service type name',
+            enabled: widget.canEdit,
+            onReview: widget.canEdit ? () => unawaited(_save()) : null,
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _info,
@@ -572,6 +605,8 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
             ..._nodes(_tree, const []),
             const SizedBox(height: 12),
           ],
+          if (widget.entry != null)
+            RenameHistoryCard(category: partnerTypeCategory, entryId: widget.entry!.id, canEdit: widget.canEdit),
         ],
       );
 }
