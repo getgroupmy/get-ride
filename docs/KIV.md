@@ -31,7 +31,6 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 Medium:
 - M2 Services, types, switches, locks and promotions are linked by name: renaming breaks them. Link by id.
 - M6 Citizens only, business registration, driver/vehicle permit and age-limit covers are app-only: move into SQL rules.
-- M8 Two accounts can register the same MyKad number: the review flags it ("Same ID as another account"); only the unique index is left.
 
 Low:
 - L8 City to City booking flow; per-service commission rate.

@@ -22,7 +22,8 @@ Route<void>? _shown;
 final noticeAutoClose = ValueNotifier<Duration>(Duration.zero);
 
 /// [message] as a modal with an OK (and [actionLabel] as a second button,
-/// running [onAction] once the modal is closed). [id] is the notice's area,
+/// running [onAction] once the modal is closed; the other button then reads
+/// Close, or [closeLabel]). [id] is the notice's area,
 /// `notice.<area>`, listed in App Page Settings; [key] is the dialog's, for
 /// tests.
 ///
@@ -38,6 +39,7 @@ Future<void> showAppNotice({
   NoticeKind kind = NoticeKind.info,
   String? actionLabel,
   VoidCallback? onAction,
+  String? closeLabel,
   Key? key,
 }) {
   final done = Completer<void>();
@@ -65,6 +67,7 @@ Future<void> showAppNotice({
         kind: kind,
         autoClose: noticeAutoClose.value,
         actionLabel: actionLabel,
+        closeLabel: closeLabel,
         onAction: actionLabel == null
             ? null
             : () {
@@ -102,6 +105,7 @@ class NoticeDialog extends StatefulWidget {
     this.autoClose = Duration.zero,
     this.actionLabel,
     this.onAction,
+    this.closeLabel,
   });
 
   final String message;
@@ -110,6 +114,9 @@ class NoticeDialog extends StatefulWidget {
   final Duration autoClose;
   final String? actionLabel;
   final VoidCallback? onAction;
+
+  /// The closing button's label in place of OK (Close beside an action).
+  final String? closeLabel;
 
   @override
   State<NoticeDialog> createState() => _NoticeDialogState();
@@ -184,7 +191,7 @@ class _NoticeDialogState extends State<NoticeDialog> with SingleTickerProviderSt
         FilledButton(
           key: const ValueKey('notice-ok'),
           onPressed: () => Navigator.pop(context),
-          child: Text(action ? 'Close' : 'OK'),
+          child: Text(widget.closeLabel ?? (action ? 'Close' : 'OK')),
         ),
       ],
     );
