@@ -136,6 +136,86 @@ class DriverTagTotals {
   }
 }
 
+/// The most tags in each list, and the longest tag (driver_rating_tags_set).
+const driverRatingTagsMax = 12;
+const driverRatingTagLengthMax = 40;
+
+/// Why [tag] can't join a list holding [others]; null when it can.
+String? driverTagProblem(String tag, List<String> others) {
+  final t = tag.trim();
+  if (t.isEmpty) return 'Type a tag.';
+  if (t.length > driverRatingTagLengthMax) return 'Keep it to $driverRatingTagLengthMax letters.';
+  if (others.any((o) => o.toLowerCase() == t.toLowerCase())) return '"$t" is already a tag.';
+  return null;
+}
+
+/// The low-rating flag rule: a driver is flagged when the same 1-3 star tag
+/// is picked [times] times within [days] days.
+class DriverFlagRule {
+  const DriverFlagRule({this.times = 3, this.days = 30});
+  final int times, days;
+
+  static const timesMin = 1, timesMax = 20, daysMin = 1, daysMax = 90;
+
+  factory DriverFlagRule.fromRow(Map<String, dynamic>? r) => DriverFlagRule(
+    times: (r?['times'] as num?)?.toInt() ?? 3,
+    days: (r?['days'] as num?)?.toInt() ?? 30,
+  );
+
+  DriverFlagRule copyWith({int? times, int? days}) => DriverFlagRule(
+    times: (times ?? this.times).clamp(timesMin, timesMax),
+    days: (days ?? this.days).clamp(daysMin, daysMax),
+  );
+
+  @override
+  bool operator ==(Object other) => other is DriverFlagRule && other.times == times && other.days == days;
+
+  @override
+  int get hashCode => Object.hash(times, days);
+}
+
+/// What the admin sees of one driver (admin_driver_rating_tags): the tag
+/// totals over the rule's days and the low tags that reached the rule.
+class AdminDriverTags {
+  const AdminDriverTags({this.rule = const DriverFlagRule(), this.totals = const DriverTagTotals(), this.flags = const []});
+
+  final DriverFlagRule rule;
+  final DriverTagTotals totals;
+  final List<({String tag, int n})> flags;
+
+  factory AdminDriverTags.fromJson(Object? json) {
+    final m = json is Map ? json : const {};
+    final rule = DriverFlagRule.fromRow(Map<String, dynamic>.from(m));
+    final f = m['flags'];
+    return AdminDriverTags(
+      rule: rule,
+      totals: DriverTagTotals.fromJson({...m, 'days': rule.days}),
+      flags: [
+        if (f is List)
+          for (final x in f)
+            if (x is Map && '${x['tag'] ?? ''}'.trim().isNotEmpty) (tag: '${x['tag']}', n: (x['n'] as num?)?.toInt() ?? 0),
+      ],
+    );
+  }
+}
+
+/// The flag banner's words for one flagged tag.
+String driverFlagText(({String tag, int n}) f, DriverFlagRule rule) =>
+    '${f.tag} picked ${f.n} time${f.n == 1 ? '' : 's'} in the last ${rule.days} day${rule.days == 1 ? '' : 's'} '
+    '(limit ${rule.times}).';
+
+/// admin_rating_flags rows, by driver (the partner's sign-in id).
+Map<String, List<String>> driverFlagsByPartner(List<Map<String, dynamic>> rows) {
+  final out = <String, List<String>>{};
+  for (final r in rows) {
+    final id = '${r['partner_id'] ?? ''}';
+    final tag = '${r['tag'] ?? ''}'.trim();
+    if (id.isEmpty || tag.isEmpty) continue;
+    (out[id] ??= []).add(tag);
+  }
+  return out;
+}
+
 /// Seconds the trip summary shows after a rating (or Skip) before it closes.
 const tripSummaryCloseAfter = Duration(seconds: 3);
 

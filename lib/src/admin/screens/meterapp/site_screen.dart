@@ -26,6 +26,7 @@ import '../permission_rules_card.dart';
 import '../ride_privacy_card.dart';
 import '../trip_cancellation_card.dart';
 import '../ride_offers_card.dart';
+import '../driver_rating_admin.dart';
 import '../rider_ratings_card.dart';
 import '../cancel_rules_card.dart';
 import '../trip_safety_card.dart';
@@ -534,6 +535,10 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                 RideOffersCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 RiderRatingsCard(canEdit: canEdit),
+                const SizedBox(height: 8),
+                // Rider tags on the driver rating (0297): changed with edit
+                // rights on Partners, where the flags are worked.
+                DriverRatingTagsCard(canEdit: ref.watch(pageAccessProvider('admin-partners')) == AccessLevel.edit),
                 const SizedBox(height: 8),
                 CancelRulesCard(canEdit: canEdit),
                 const SizedBox(height: 8),

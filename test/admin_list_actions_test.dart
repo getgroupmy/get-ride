@@ -15,6 +15,7 @@ import 'package:get_ride/src/admin/widgets/admin_widgets.dart' show StatusChip;
 import 'package:get_ride/src/admin/screens/support_screens.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/data/models.dart';
+import 'package:get_ride/src/data/ride_rating_repository.dart' show adminRatingFlagsProvider;
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -47,7 +48,7 @@ class _Admin extends AdminRepository {
 
   @override
   Future<List<Map<String, dynamic>>> partners() async => [
-    {'id': 'p1', 'name': 'Pak Ali', 'phone': '+60111', 'status': 'unapproved', 'permit': 'pending'},
+    {'id': 'p1', 'auth_user_id': 'a1', 'name': 'Pak Ali', 'phone': '+60111', 'status': 'unapproved', 'permit': 'pending'},
   ];
 
   @override
@@ -151,6 +152,7 @@ void main() {
               ...quietLiveOverrides,
               adminAccessProvider.overrideWith((_) async => AdminAccess([AdminGrant(page: '*', edit: edit)])),
               adminRepositoryProvider.overrideWithValue(admin),
+              adminRatingFlagsProvider.overrideWith((ref) async => const {'a1': ['Unsafe driving']}),
               peopleRepositoryProvider.overrideWithValue(_People(docs)),
               adminDialerProvider.overrideWithValue((u) async {
                 dialled.add(u);
@@ -228,6 +230,7 @@ void main() {
 
       testWidgets('partners: Reject asks the reason it already asks for', (tester) async {
         final (admin, dialled) = await pump(tester, const AdminPartnersScreen());
+        expect(find.textContaining('Flagged: Unsafe driving'), findsOneWidget, reason: 'riders\' low-rating tags (0297)');
         await tester.tap(find.byKey(const ValueKey('call-p1')));
         await tester.pumpAndSettle();
         expect(dialled.single, Uri(scheme: 'tel', path: '+60111'));
