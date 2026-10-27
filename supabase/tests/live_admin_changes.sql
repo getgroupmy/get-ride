@@ -71,7 +71,9 @@ begin
     -- The Media Gallery's uploads (migration 0273).
     'media_assets',
     -- City to City: settings, permits by country, route rules; commission per service (migration 0306).
-    'city_to_city_settings', 'c2c_country_permits', 'c2c_route_rules', 'commission_service_rates'
+    'city_to_city_settings', 'c2c_country_permits', 'c2c_route_rules', 'commission_service_rates',
+    -- City to City bookings and offers (migration 0307).
+    'c2c_bookings', 'c2c_offers'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

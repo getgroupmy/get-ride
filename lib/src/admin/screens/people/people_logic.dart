@@ -10,6 +10,7 @@ import 'dart:convert';
 
 import '../../../core/doc_kinds.dart' show DocKind, docKindFor;
 import '../../../core/avatar.dart';
+import '../../../core/date_order.dart' show isoDate, parseIsoDate;
 import '../../../core/ride_bidding.dart' show RegionBlock, regionBlockOf;
 import '../../../core/partner_modes.dart' show typeVehicleRequired;
 
@@ -982,4 +983,17 @@ String? _futureDate(String? iso) {
   if (d == null) return null;
   final now = DateTime.now();
   return d.isAfter(DateTime(now.year, now.month, now.day)) ? iso : null;
+}
+
+/// The partners.driving_since column (0306) from the Driving since boxes'
+/// [text] (`yyyy-mm-dd`, or blank to clear it): the value to save, or why
+/// it can't be (a date that isn't whole, in the future, or before 1930).
+({String? value, String? error}) partnerDrivingSince(String text, DateTime today) {
+  final t = text.trim();
+  if (t.isEmpty) return (value: null, error: null);
+  final d = parseIsoDate(t);
+  if (d == null || d.isAfter(today) || d.isBefore(DateTime(1930))) {
+    return (value: null, error: 'Check the driving since date.');
+  }
+  return (value: isoDate(d), error: null);
 }

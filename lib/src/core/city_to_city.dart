@@ -15,7 +15,14 @@
 // in the geocoder's), and each parent that both name. A place keeps the
 // parents of the region it was picked from, so Kuala Lumpur (a federal
 // territory, its own state) is never taken to be in Selangor.
+//
+// Bookings (migration 0307): the rider's request, drivers' offers, the
+// booking and the cancel fee; [C2cBooking], [C2cOffer], [c2cCancelFee],
+// [c2cFareProblem] and the words the rider app shows. The server checks
+// the same on insert and cancel (supabase/tests/city_to_city_bookings_0307.sql).
 import 'dart:math' as math;
+
+import 'package:intl/intl.dart' show DateFormat;
 
 import 'commission.dart' show Geo;
 import 'fare.dart' show ServiceRates, calculateFare;
@@ -693,3 +700,525 @@ enum CommissionSource { user, promotion, service, place }
   if (promotionRate != null && promotionRate < base) return (rate: promotionRate, source: CommissionSource.promotion);
   return (rate: base, source: serviceRate != null ? CommissionSource.service : CommissionSource.place);
 }
+
+// ---- Bookings (0307) ------------------------------------------------------------------------------
+
+/// The rider's City to City page.
+const c2cPageRoute = '/city-to-city';
+
+/// How long before leaving a trip can be booked at the latest (0307).
+const c2cMinLead = Duration(hours: 1);
+
+/// How far either side of the rider's time a flexible trip may leave.
+const c2cFlexWindow = Duration(minutes: 30);
+
+/// Trips a rider may have under way at once (0307, C2C_TOO_MANY).
+const c2cMaxUnderWay = 3;
+
+/// Passengers in a whole car: 1 to 6 (5 or 6: an MPV).
+const c2cMaxPassengers = 6;
+
+/// Where a request or booking is.
+enum C2cStatus {
+  open('open', 'Waiting for offers'),
+  offered('offered', 'Offers in'),
+  booked('booked', 'Booked'),
+  driverArriving('driver_arriving', 'Driver on the way'),
+  onTrip('on_trip', 'On the trip'),
+  completed('completed', 'Completed'),
+  cancelled('cancelled', 'Cancelled'),
+  expired('expired', 'Expired');
+
+  const C2cStatus(this.key, this.label);
+  final String key;
+  final String label;
+  static C2cStatus of(Object? v) => values.firstWhere((s) => s.key == v, orElse: () => open);
+
+  /// No driver yet: drivers offer, the rider picks.
+  bool get waiting => this == open || this == offered;
+
+  /// A driver is booked and the trip has not ended.
+  bool get withDriver => this == booked || this == driverArriving || this == onTrip;
+
+  /// Over: completed, cancelled or expired.
+  bool get ended => this == completed || this == cancelled || this == expired;
+}
+
+/// What the rider brings.
+enum C2cLuggage {
+  none('none', 'No bags'),
+  small('small', 'Small bags'),
+  suitcases('suitcases', '1 to 2 suitcases'),
+  many('many', '3+ suitcases');
+
+  const C2cLuggage(this.key, this.label);
+  final String key;
+  final String label;
+  static C2cLuggage of(Object? v) => values.firstWhere((s) => s.key == v, orElse: () => small);
+}
+
+/// How the rider pays.
+enum C2cPayment {
+  inApp('in_app', 'In app'),
+  cash('cash', 'Cash');
+
+  const C2cPayment(this.key, this.label);
+  final String key;
+  final String label;
+  static C2cPayment of(Object? v) => v == 'in_app' ? inApp : cash;
+}
+
+/// The payment methods the settings allow, In app first.
+List<C2cPayment> c2cPayments(C2cSettings s) => [if (s.payInApp) C2cPayment.inApp, if (s.payCash) C2cPayment.cash];
+
+/// A quote as c2c_quote returns it (0306), or as a booking keeps it.
+C2cQuote c2cQuoteFromJson(Map<String, dynamic> j, {String currency = 'MYR'}) => C2cQuote(
+  ruleId: _nz(j['ruleId']),
+  fareMode: C2cFareMode.of(j['fareMode']),
+  fareCard: _numOrNull(j['fareCard']),
+  addOn: _num(j['addOn']),
+  suggested: _num(j['suggested']),
+  low: _numOrNull(j['low']),
+  high: _numOrNull(j['high']),
+  rangeMode: C2cRangeMode.of(j['rangeMode']),
+  rangePercent: _num(j['rangePercent'], 8),
+  bookAheadDays: _num(j['bookAheadDays'], 14).round(),
+  minYears: _numOrNull(j['minYears'])?.round(),
+  currency: (_nz(j['currency']) ?? currency).toUpperCase(),
+);
+
+/// A trip request and, once a driver is picked, the booking (c2c_bookings).
+class C2cBooking {
+  const C2cBooking({
+    required this.id,
+    this.ref = '',
+    required this.pickupName,
+    this.pickupAddress,
+    this.pickupPlace = const Geo(),
+    required this.dropName,
+    this.dropAddress,
+    this.dropPlace = const Geo(),
+    this.distanceKm = 0,
+    this.durationMin = 0,
+    required this.leaveAt,
+    this.flexible = true,
+    this.passengers = 1,
+    this.luggage = C2cLuggage.small,
+    required this.fare,
+    this.currency = 'MYR',
+    this.quote,
+    this.payment = C2cPayment.cash,
+    this.status = C2cStatus.open,
+    this.expiresAt,
+    this.driverId,
+    this.agreedFare,
+    this.driverLeaveAt,
+    this.cancelledBy,
+    this.cancelFee,
+    this.cancelFeeStatus,
+    this.riderStars,
+    this.createdAt,
+  });
+
+  factory C2cBooking.fromRow(Map<String, dynamic> r) {
+    Geo geo(Object? v) {
+      final m = v is Map ? Map<String, dynamic>.from(v) : const <String, dynamic>{};
+      return Geo(country: _nz(m['country']), state: _nz(m['state']), city: _nz(m['city']), suburb: _nz(m['suburb']));
+    }
+
+    DateTime? at(Object? v) => DateTime.tryParse('${v ?? ''}')?.toLocal();
+    final currency = (_nz(r['currency']) ?? 'MYR').toUpperCase();
+    final q = r['quote'] is Map ? Map<String, dynamic>.from(r['quote'] as Map) : null;
+    return C2cBooking(
+      id: '${r['id']}',
+      ref: _nz(r['ref']) ?? '',
+      pickupName: _nz(r['pickup_name']) ?? 'Pickup',
+      pickupAddress: _nz(r['pickup_address']),
+      pickupPlace: geo(r['pickup_place']),
+      dropName: _nz(r['drop_name']) ?? 'Drop-off',
+      dropAddress: _nz(r['drop_address']),
+      dropPlace: geo(r['drop_place']),
+      distanceKm: _num(r['distance_km']),
+      durationMin: _num(r['duration_min']),
+      leaveAt: at(r['leave_at']) ?? DateTime.now(),
+      flexible: r['flexible'] != false,
+      passengers: _num(r['passengers'], 1).round(),
+      luggage: C2cLuggage.of(r['luggage']),
+      fare: _num(r['fare']),
+      currency: currency,
+      quote: q == null || q.isEmpty ? null : c2cQuoteFromJson(q, currency: currency),
+      payment: C2cPayment.of(r['payment']),
+      status: C2cStatus.of(r['status']),
+      expiresAt: at(r['expires_at']),
+      driverId: _nz(r['driver_id']),
+      agreedFare: _numOrNull(r['agreed_fare']),
+      driverLeaveAt: at(r['driver_leave_at']),
+      cancelledBy: _nz(r['cancelled_by']),
+      cancelFee: _numOrNull(r['cancel_fee']),
+      cancelFeeStatus: _nz(r['cancel_fee_status']),
+      riderStars: _numOrNull(r['rider_stars'])?.round(),
+      createdAt: at(r['created_at']),
+    );
+  }
+
+  final String id;
+
+  /// "CC-20481".
+  final String ref;
+  final String pickupName, dropName;
+  final String? pickupAddress, dropAddress;
+  final Geo pickupPlace, dropPlace;
+  final double distanceKm, durationMin;
+  final DateTime leaveAt;
+
+  /// ± 30 minutes is fine.
+  final bool flexible;
+  final int passengers;
+  final C2cLuggage luggage;
+
+  /// The rider's fare for the whole car.
+  final double fare;
+  final String currency;
+  final C2cQuote? quote;
+  final C2cPayment payment;
+  final C2cStatus status;
+  final DateTime? expiresAt;
+  final String? driverId;
+  final double? agreedFare;
+  final DateTime? driverLeaveAt;
+
+  /// rider | driver | admin.
+  final String? cancelledBy;
+  final double? cancelFee;
+
+  /// charged | due | none.
+  final String? cancelFeeStatus;
+  final int? riderStars;
+  final DateTime? createdAt;
+
+  /// What the trip costs now: the agreed fare once booked, else the rider's.
+  double get price => agreedFare ?? fare;
+
+  /// When the car leaves: the driver's time once booked, else the rider's.
+  DateTime get leaves => driverLeaveAt ?? leaveAt;
+
+  /// "Kuala Lumpur to Ipoh": the cities (else the names).
+  String get route => '${pickupPlace.city ?? pickupPlace.state ?? pickupName} to ${dropPlace.city ?? dropPlace.state ?? dropName}';
+
+  /// The pickup line: "12 Jalan Ampang, Kuala Lumpur".
+  String get pickupLine => c2cAddressLine(pickupName, pickupPlace);
+
+  String get dropLine => c2cAddressLine(dropName, dropPlace);
+}
+
+/// "12 Jalan Ampang, Kuala Lumpur": the name, then the city when the name
+/// doesn't already say it.
+String c2cAddressLine(String name, Geo place) {
+  final city = place.city ?? place.state;
+  if (city == null || name.toLowerCase().contains(city.toLowerCase())) return name;
+  return '$name, $city';
+}
+
+/// A driver's offer on a request (c2c_offers).
+class C2cOffer {
+  const C2cOffer({
+    required this.id,
+    required this.bookingId,
+    required this.driverId,
+    required this.price,
+    required this.leaveAt,
+    this.driverName = 'Driver',
+    this.rating,
+    this.trips,
+    this.car,
+    this.plate,
+    this.status = 'open',
+    this.createdAt,
+  });
+
+  factory C2cOffer.fromRow(Map<String, dynamic> r) => C2cOffer(
+    id: '${r['id']}',
+    bookingId: '${r['booking_id']}',
+    driverId: '${r['driver_id']}',
+    price: _num(r['price']),
+    leaveAt: DateTime.tryParse('${r['leave_at'] ?? ''}')?.toLocal() ?? DateTime.now(),
+    driverName: _nz(r['driver_name']) ?? 'Driver',
+    rating: _numOrNull(r['driver_rating']),
+    trips: _numOrNull(r['driver_trips'])?.round(),
+    car: _nz(r['car']),
+    plate: _nz(r['plate']),
+    status: _nz(r['status']) ?? 'open',
+    createdAt: DateTime.tryParse('${r['created_at'] ?? ''}')?.toLocal(),
+  );
+
+  final String id, bookingId, driverId;
+  final double price;
+  final DateTime leaveAt;
+  final String driverName;
+  final double? rating;
+  final int? trips;
+  final String? car, plate;
+
+  /// open | accepted | declined | withdrawn | expired.
+  final String status;
+  final DateTime? createdAt;
+
+  bool get open => status == 'open';
+
+  /// "AC" for Aiman Contoh.
+  String get initials => c2cInitials(driverName);
+
+  /// "4.9 (312 trips)", "New driver".
+  String get ratingLine {
+    final r = rating, t = trips;
+    if (r == null || r <= 0) return t == null || t == 0 ? 'New driver' : '$t ${t == 1 ? 'trip' : 'trips'}';
+    return '${r.toStringAsFixed(1)}${t == null ? '' : ' ($t ${t == 1 ? 'trip' : 'trips'})'}';
+  }
+
+  /// "Proton X50, VKA 2231".
+  String get carLine => [?car, ?plate].join(', ');
+}
+
+/// Up to two capitals of [name]: "AC" for "Aiman Contoh".
+String c2cInitials(String name) {
+  final words = name.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return '?';
+  return words.take(2).map((w) => w[0].toUpperCase()).join();
+}
+
+/// How an offer's price sits against the rider's [fare]: "Your fare",
+/// "+ RM 5", "- RM 5".
+String c2cOfferDiff(double price, double fare, [String currency = 'MYR']) {
+  final d = c2cRound2(price - fare);
+  if (d == 0) return 'Your fare';
+  return '${d > 0 ? '+' : '-'} ${c2cMoney(d.abs(), currency)}';
+}
+
+/// What a cancel at [at] costs for a booked trip leaving at [leaveAt], as
+/// the server's c2c_cancel_fee (0307): 0 while the fee is off or until the
+/// free hours before, then the amount. A request with no driver yet is free.
+double c2cCancelFee(C2cSettings s, DateTime leaveAt, DateTime at, {bool booked = true}) {
+  if (!booked || !s.cancelFeeOn) return 0;
+  if (at.isBefore(c2cFreeCancelUntil(s, leaveAt))) return 0;
+  return c2cRound2(s.cancelFeeAmount);
+}
+
+/// Until when a booked trip leaving at [leaveAt] cancels free.
+DateTime c2cFreeCancelUntil(C2cSettings s, DateTime leaveAt) => leaveAt.subtract(Duration(hours: s.cancelFreeHours));
+
+/// What the booked trip says about cancelling: "Free to cancel until 24
+/// hours before (Thu 29 Oct, 9:00), then RM 20. The fee goes to the
+/// driver.", or "Free to cancel any time."
+String c2cCancelText(C2cSettings s, DateTime leaveAt) {
+  if (!s.cancelFeeOn) return 'Free to cancel any time.';
+  final until = c2cFreeCancelUntil(s, leaveAt);
+  final h = s.cancelFreeHours;
+  return 'Free to cancel until $h ${h == 1 ? 'hour' : 'hours'} before (${c2cDayTime(until)}), '
+      'then ${c2cMoney(s.cancelFeeAmount, s.currency)}. The fee goes to the driver.';
+}
+
+/// Why [fare] can't be sent under [q], as the server says it (0307,
+/// C2C_FARE_OUT_OF_RANGE), or null.
+String? c2cFareProblem(double fare, C2cQuote q) {
+  if (q.fareMode == C2cFareMode.fixed) {
+    return c2cRound2(fare) == c2cRound2(q.suggested)
+        ? null
+        : 'This route has a fixed fare of ${c2cMoney(q.suggested, q.currency)}.';
+  }
+  final lo = q.low, hi = q.high;
+  if (lo != null && hi != null && (fare < lo || fare > hi)) {
+    return 'Your fare must be between ${c2cMoney(lo, q.currency)} and ${c2cMoney(hi, q.currency)}.';
+  }
+  return null;
+}
+
+/// Why leaving at [leaveAt] can't be booked at [now] with [bookAheadDays]
+/// (0307: C2C_TOO_SOON, C2C_TOO_FAR_AHEAD), or null.
+String? c2cLeaveProblem(DateTime leaveAt, DateTime now, int bookAheadDays) {
+  if (leaveAt.isBefore(now.add(c2cMinLead))) return 'Leave at least 1 hour from now.';
+  if (leaveAt.isAfter(now.add(Duration(days: bookAheadDays)))) {
+    return 'Book up to $bookAheadDays ${bookAheadDays == 1 ? 'day' : 'days'} ahead on this route.';
+  }
+  return null;
+}
+
+/// The fare the Price step starts at: the fixed fare, else the suggestion
+/// rounded to the nearest RM [step], kept within the range.
+double c2cStartFare(C2cQuote q, {double step = 5}) {
+  if (q.fareMode == C2cFareMode.fixed) return c2cRound2(q.suggested);
+  return c2cClampFare((q.suggested / step).round() * step, q);
+}
+
+/// [fare] kept within [q]'s range.
+double c2cClampFare(double fare, C2cQuote q) {
+  final lo = q.low, hi = q.high;
+  var f = fare;
+  if (lo != null && f < lo) f = lo;
+  if (hi != null && f > hi) f = hi;
+  return c2cRound2(f);
+}
+
+/// [fare] moved by [by] steps of RM [step] (to the next whole step first),
+/// within the range; a fixed fare doesn't move.
+double c2cStepFare(double fare, int by, C2cQuote q, {double step = 5}) {
+  if (q.fareMode == C2cFareMode.fixed) return c2cRound2(q.suggested);
+  final base = by > 0 ? (fare / step).floor() * step : (fare / step).ceil() * step;
+  return c2cClampFare(base + by * step, q);
+}
+
+/// Where [fare] sits on the Price step's bar, 0 to 1: the bar runs from 20%
+/// of the range's width below it to 20% above.
+({double start, double end, double at}) c2cFareBar(double fare, C2cQuote q) {
+  final lo = q.low ?? q.suggested, hi = q.high ?? q.suggested;
+  final pad = math.max((hi - lo) * 0.5, math.max(hi * 0.1, 1));
+  final min = lo - pad, max = hi + pad;
+  double pos(double v) => ((v - min) / (max - min)).clamp(0.0, 1.0);
+  return (start: pos(lo), end: pos(hi), at: pos(fare));
+}
+
+/// "Fare card RM 118 + City to City RM 20 = RM 138 suggested", or "Fixed
+/// fare RM 190 on this route".
+String c2cQuoteLine(C2cQuote q) {
+  if (q.fareMode == C2cFareMode.fixed) return 'Fixed fare ${c2cMoney(q.suggested, q.currency)} on this route';
+  final card = q.fareCard ?? q.suggested;
+  if (q.addOn == 0) return 'Fare card ${c2cMoney(card, q.currency)} suggested';
+  return 'Fare card ${c2cMoney(card, q.currency)} + City to City ${c2cMoney(q.addOn, q.currency)} = '
+      '${c2cMoney(q.suggested, q.currency)} suggested';
+}
+
+/// "Most drivers accept RM 130 to RM 150 for Kuala Lumpur to Ipoh."
+String c2cRangeLine(C2cQuote q, String route) {
+  final lo = q.low, hi = q.high;
+  if (q.fareMode == C2cFareMode.fixed || lo == null || hi == null) {
+    return 'Drivers take ${c2cMoney(q.suggested, q.currency)} for $route.';
+  }
+  return 'Most drivers accept ${c2cMoney(lo, q.currency)} to ${c2cMoney(hi, q.currency)} for $route.';
+}
+
+/// "Fri 30 Oct, 9:00".
+String c2cDayTime(DateTime t) => DateFormat('EEE d MMM, H:mm').format(t);
+
+/// "9:00".
+String c2cClock(DateTime t) => DateFormat('H:mm').format(t);
+
+/// "Leave Fri 30 Oct at 9:00".
+String c2cLeaveText(DateTime t) => 'Leave ${DateFormat('EEE d MMM').format(t)} at ${c2cClock(t)}';
+
+/// "Flexible, 8:30 to 9:30", or "Exact time".
+String c2cFlexText(DateTime t, bool flexible) => flexible
+    ? 'Flexible, ${c2cClock(t.subtract(c2cFlexWindow))} to ${c2cClock(t.add(c2cFlexWindow))}'
+    : 'Exact time';
+
+/// "Whole car, 2 passengers".
+String c2cCarLine(int passengers) => 'Whole car, $passengers ${passengers == 1 ? 'passenger' : 'passengers'}';
+
+/// The passengers step's hint.
+String c2cPassengerHint(int passengers) =>
+    passengers > 4 ? 'Who is travelling. 5 or 6: an MPV is matched' : 'Who is travelling, you included';
+
+/// "Whole car · 2 passengers · 1 to 2 suitcases".
+String c2cTripLine(int passengers, C2cLuggage luggage) =>
+    'Whole car · $passengers ${passengers == 1 ? 'passenger' : 'passengers'} · ${luggage.label}';
+
+/// What is left of [d], roughly: "2 d 14 h", "3 h 20 min", "14 min".
+String c2cTimeLeft(Duration d) {
+  if (d.inMinutes < 1) return 'less than a minute';
+  if (d.inHours < 1) return '${d.inMinutes} min';
+  if (d.inDays < 1) return '${d.inHours} h ${d.inMinutes % 60} min';
+  return '${d.inDays} d ${d.inHours % 24} h';
+}
+
+/// The status line over the offers: "2 offers. Request open for 2 d 14 h
+/// more.", "No offers yet. Drivers who can take the trip are told."
+String c2cOffersLine(int offers, DateTime? expiresAt, DateTime now) {
+  final left = expiresAt?.difference(now);
+  final open = left == null || left.isNegative ? '' : ' Request open for ${c2cTimeLeft(left)} more.';
+  if (offers == 0) return 'No offers yet. Drivers who can take the trip see it now.$open';
+  return '$offers ${offers == 1 ? 'offer' : 'offers'}.$open';
+}
+
+/// "Arrive about 11:30": leaving at [leaves], [durationMin] on the road.
+String c2cArriveText(DateTime leaves, double durationMin) =>
+    'Arrive about ${c2cClock(leaves.add(Duration(minutes: durationMin.round())))}';
+
+/// "205 km, about 2 h 40 min."
+String c2cTripSize(double km, double min) {
+  final m = min.round();
+  final time = m < 60 ? '$m min' : '${m ~/ 60} h${m % 60 == 0 ? '' : ' ${m % 60} min'}';
+  return '${km.round()} km, about $time.';
+}
+
+/// The words for a server refusal by code (0307), for when it gives none.
+const c2cErrorWords = <String, String>{
+  'C2C_NOT_AVAILABLE': "City to City isn't available from this pickup yet.",
+  'C2C_BAD_TRIP': "The distance doesn't match the addresses. Pick them again.",
+  'C2C_TOO_SOON': 'Leave at least 1 hour from now.',
+  'C2C_TOO_FAR_AHEAD': "That's too far ahead for this route.",
+  'C2C_FARE_OUT_OF_RANGE': 'Your fare is outside the range for this route.',
+  'C2C_PAYMENT_NOT_ALLOWED': "That payment method isn't offered for City to City.",
+  'C2C_TOO_MANY': 'You have 3 City to City trips under way. Finish or cancel one first.',
+  'C2C_OFFER_GONE': 'This offer is no longer available.',
+  'C2C_NOT_OPEN': 'This trip already has a driver, or it was cancelled.',
+  'C2C_EXPIRED': 'This request has expired. Plan the trip again.',
+  'C2C_DRIVER_BUSY': 'This driver has just been booked for another trip at that time.',
+  'C2C_ON_TRIP': 'The trip has started. Talk to your driver, or contact support.',
+  'C2C_RATED': 'You have already rated this trip.',
+};
+
+/// One end of a trip as the rider picked it.
+class C2cEnd {
+  const C2cEnd({required this.name, this.address, required this.lat, required this.lng, this.place = const Geo()});
+
+  final String name;
+  final String? address;
+  final double lat, lng;
+
+  /// Its country, state, city and suburb (the geocoder's).
+  final Geo place;
+
+  Map<String, dynamic> get placeJson => {
+    'country': ?place.country,
+    'state': ?place.state,
+    'city': ?place.city,
+    'suburb': ?place.suburb,
+  };
+
+  /// "12 Jalan Ampang, Kuala Lumpur".
+  String get line => c2cAddressLine(name, place);
+}
+
+/// The c2c_bookings row the rider app inserts (0307 checks it and sets the
+/// rest).
+Map<String, dynamic> c2cBookingRow({
+  required C2cEnd pickup,
+  required C2cEnd drop,
+  required double distanceKm,
+  required double durationMin,
+  required DateTime leaveAt,
+  required bool flexible,
+  required int passengers,
+  required C2cLuggage luggage,
+  required double fare,
+  required C2cPayment payment,
+  String? timezone,
+}) => {
+  'pickup_name': pickup.name,
+  'pickup_address': ?pickup.address,
+  'pickup_lat': pickup.lat,
+  'pickup_lng': pickup.lng,
+  'pickup_place': pickup.placeJson,
+  'drop_name': drop.name,
+  'drop_address': ?drop.address,
+  'drop_lat': drop.lat,
+  'drop_lng': drop.lng,
+  'drop_place': drop.placeJson,
+  'distance_km': double.parse(distanceKm.toStringAsFixed(2)),
+  'duration_min': double.parse(durationMin.toStringAsFixed(1)),
+  'leave_at': leaveAt.toUtc().toIso8601String(),
+  'flexible': flexible,
+  'passengers': passengers.clamp(1, c2cMaxPassengers),
+  'luggage': luggage.key,
+  'fare': c2cRound2(fare),
+  'payment': payment.key,
+  'timezone': ?timezone,
+};

@@ -104,6 +104,9 @@ import '../../data/promo_repository.dart';
 import 'place_search.dart';
 import 'freight_screen.dart' show openFreightPage;
 import 'courier_screen.dart' show openCourierPage;
+import 'city_to_city_screen.dart' show openCityToCityPage;
+import '../../core/city_to_city.dart' show c2cPageRoute;
+import '../../data/city_to_city_repository.dart' show c2cServiceActiveProvider;
 import '../../core/courier.dart' show courierPageRoute;
 import '../../core/freight.dart' show freightPageRoute, isCourierService, isFreightService;
 import '../../data/freight_repository.dart' show courierAvailableProvider, freightAvailableProvider;
@@ -2337,6 +2340,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             freightAvailable: ref.watch(freightAvailableProvider),
             // And the Couriers box once a courier vehicle is (0268).
             courierAvailable: ref.watch(courierAvailableProvider),
+            // And the City to City box once its Vehicle Service is on (0307).
+            cityToCityAvailable: ref.watch(c2cServiceActiveProvider).value ?? false,
           )
         : const <ServiceBoxView>[];
     void comingSoon(String body) => showAppDialog<void>(id: 'home.coming-soon',
@@ -2369,6 +2374,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         openFreightPage(context);
       } else if (serviceOn && route == courierPageRoute) {
         openCourierPage(context);
+      } else if (serviceOn && route == c2cPageRoute) {
+        openCityToCityPage(context);
       } else if (serviceOn && flutterRouteFor(route) != null) {
         openAppRoute(context, flutterRouteFor(route)!);
       } else {
@@ -2431,6 +2438,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ? openFreightPage(context)
                           : b.route == courierPageRoute
                               ? openCourierPage(context)
+                              : b.route == c2cPageRoute
+                              ? openCityToCityPage(context)
                               : openAppRoute(context, b.route!),
             ),
           ));
