@@ -45,6 +45,7 @@ import '../../data/ride_draft_store.dart';
 import '../../data/ride_option_providers.dart';
 import '../../data/scheduled_ride_repository.dart';
 import '../../providers.dart';
+import 'service_not_offered.dart';
 import '../../widgets/chat_photo.dart' show choosePhotoSource;
 import '../../widgets/common.dart' show showError, showInfo, showNotice;
 import '../../widgets/page_style_host.dart';
@@ -648,7 +649,8 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     } on DuplicateRideRequest catch (e) {
       if (mounted) showInfo(context, e.toString());
     } catch (e) {
-      if (mounted) showError(context, e);
+      // Refused by the server's service check (0302): its own modal.
+      if (mounted && !showServiceNotOffered(context, e)) showError(context, e);
     } finally {
       if (mounted) setState(() => _booking = false);
     }

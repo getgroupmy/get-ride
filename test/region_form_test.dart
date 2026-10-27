@@ -195,8 +195,9 @@ void main() {
       expect(left('ride-xl-2') > left('ride-1'), isTrue, reason: 'Ride XL indented under Ride');
       expect(top('ride-1') < top('ride-xl-2') && top('ride-xl-2') < top('moto-1'), isTrue);
 
-      await tester.ensureVisible(find.byKey(const ValueKey('region-sub-ride-xl-2')));
-      await tester.tap(find.byKey(const ValueKey('region-sub-ride-xl-2')));
+      final xlOff = find.descendant(of: find.byKey(const ValueKey('region-sub-ride-xl-2')), matching: find.text('Off'));
+      await tester.ensureVisible(xlOff);
+      await tester.tap(xlOff);
       await tester.pumpAndSettle();
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();

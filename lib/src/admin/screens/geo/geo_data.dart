@@ -118,6 +118,18 @@ class GeoAdminRepository {
     }
   }
 
+  /// Admin → Regions → Service check (migration 0302): the mode, the
+  /// counts and the latest bookings kept.
+  Future<RegionServiceCheck> regionServiceCheck() async {
+    final r = await _db.rpc('admin_region_service_check', params: {'p_limit': 20});
+    return RegionServiceCheck.fromJson(r is Map ? Map<String, dynamic>.from(r) : const {});
+  }
+
+  /// Sets the check's mode (EDIT on Regions).
+  Future<void> setRegionServiceCheck(RegionCheckMode mode) async {
+    await _db.rpc('set_region_service_check', params: {'p_mode': mode.id});
+  }
+
   /// `service-settings` entries for the per-region services switches.
   Future<List<ServiceOption>> services() async {
     final rows = await _db
@@ -281,6 +293,15 @@ final serviceVehiclesProvider = FutureProvider.autoDispose<List<ServiceVehicle>>
     return await ref.watch(geoAdminRepositoryProvider).serviceVehicles();
   } catch (_) {
     return const [];
+  }
+});
+/// Admin → Regions → Service check; null when it can't be read (before
+/// migration 0302, or offline).
+final regionServiceCheckProvider = FutureProvider.autoDispose<RegionServiceCheck?>((ref) async {
+  try {
+    return await ref.watch(geoAdminRepositoryProvider).regionServiceCheck();
+  } catch (_) {
+    return null;
   }
 });
 final regionServicesProvider = FutureProvider.autoDispose<List<ServiceOption>>((ref) async {

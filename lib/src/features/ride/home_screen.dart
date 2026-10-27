@@ -34,6 +34,7 @@ import '../../data/area_precedence_repository.dart' show areaPrecedenceRuleProvi
 import '../../data/place_gates_repository.dart' show airportAreasProvider, placeGatesProvider;
 import '../../data/place_types_repository.dart';
 import '../../core/place_types.dart';
+import 'service_not_offered.dart';
 import '../../widgets/place_type_badge.dart';
 import '../../core/gate_snap.dart';
 import 'gate_picker.dart';
@@ -352,10 +353,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// whole amounts, and the tax on top.
   RegionPricing _pricing = RegionPricing.none;
 
-  /// The services the pickup's region switches on (Admin → Country /
-  /// States / Cities); null when it does not restrict them.
-  Set<String>? _regionServices;
-
   /// The pickup's region rules (Admin → Country / States / Cities): when a
   /// service is offered, bid on, taxed and surcharged.
   RegionRuleContext _rules = RegionRuleContext.empty;
@@ -365,12 +362,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       s.serviceTypes.isEmpty ? const {} : serviceTypeIds(s, ref.read(serviceBoxNamesProvider).value ?? const {});
 
   /// The Service Settings types offered at the pickup now, for the home
-  /// service boxes: the region's Services switches, and its scheduled
-  /// availability rules where it has any.
+  /// service boxes: the regions' Inherit / On / Off switches (as the server
+  /// checks them, 0302), and their scheduled availability rules where they
+  /// have any. Null when no region is around the pickup.
   Set<String>? _boxServices(Map<String, String> types) {
-    if (!_rules.hasRules) return _regionServices;
+    if (_rules.around.isEmpty || types.isEmpty) return null;
     final now = DateTime.now().toUtc();
-    return {for (final id in types.keys) if (_rules.available(types: {id}, nowUtc: now)) id};
+    final masters = types.keys.toSet();
+    return {
+      for (final id in masters)
+        if (_rules.available(types: {id}, masterIds: masters, nowUtc: now)) id,
+    };
   }
 
   /// [s] and every sub-service above it (Admin → Vehicle Services → Under),
@@ -400,6 +402,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         types: _typesOf(s),
         vehicleType: s.id,
         lineage: _lineageOf(s),
+        masterIds: (ref.read(serviceBoxNamesProvider).value ?? const <String, String>{}).keys.toSet(),
         nowUtc: DateTime.now().toUtc(),
       );
 
@@ -1283,11 +1286,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     final onF = orElse(() => rides.biddingEnabledFor(pickup, () => area), false);
     final pricingF = orElse(() => rides.pricingFor(pickup, () => area), RegionPricing.none);
-    final servicesF = orElse(() => rides.servicesFor(pickup, () => area), null);
     final rulesF = orElse(() => rides.ruleContextFor(pickup, () => area), RegionRuleContext.empty);
     final on = await onF;
     final pricing = await pricingF;
-    final services = await servicesF;
     final rules = await rulesF;
     if (!mounted || _biddingAt != pickup) return;
     // Read again for the same pickup (a region changed, or the live link
@@ -1301,7 +1302,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _rules = rules;
       _biddingOn = on;
       _pricing = pricing;
-      _regionServices = services;
     });
   }
 
@@ -2038,7 +2038,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       setState(() => _gap = gap);
       _showGap(gap);
     } catch (e) {
-      if (mounted) showError(context, e);
+      // Refused by the server's service check (0302): its own modal.
+      if (mounted && !showServiceNotOffered(context, e, service: _service.name)) showError(context, e);
     } finally {
       if (mounted) setState(() => _booking = false);
     }

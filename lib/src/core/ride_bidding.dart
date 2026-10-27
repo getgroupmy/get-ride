@@ -24,6 +24,7 @@ import 'permits.dart' show PlateColours;
 import 'region_pricing.dart';
 import 'region_rules.dart';
 import 'region_time.dart';
+import 'region_service_switches.dart';
 import 'service_tree.dart';
 
 // ---- Region switch (Expo utils/regionBidding.ts) --------------------------
@@ -40,6 +41,7 @@ class BiddingRegion {
     this.pricing,
     this.services,
     this.subServices = const {},
+    this.serviceSwitches = const {},
     this.rules = const [],
     this.timezone,
     this.currency,
@@ -118,6 +120,16 @@ class BiddingRegion {
   /// follows the regions around it (on by default). See service_tree.dart.
   final Map<String, bool> subServices;
 
+  /// Admin → Country / States / Cities → Services → each master service set
+  /// On or Off here (`serviceSwitches`, migration 0302); one not listed is
+  /// Inherit. See core/region_service_switches.dart.
+  final Map<String, bool> serviceSwitches;
+
+  /// What it says about services, for the resolver
+  /// (core/region_service_switches.dart).
+  ServiceSwitchLevel get switchLevel =>
+      ServiceSwitchLevel(name: name, list: services ?? const {}, switches: serviceSwitches, subServices: subServices);
+
   /// Admin → Country / States / Cities → Block: no ride starts, stops or
   /// ends here, whatever the regions around it allow. Kept for the old
   /// switch; [block] says which (migration 0212).
@@ -164,6 +176,7 @@ class BiddingRegion {
       pricing: RegionPricing.fromValues(v),
       services: _enabledServices(v['services']),
       subServices: regionSubServiceSwitches(v['subServices']),
+      serviceSwitches: parseServiceSwitches(v['serviceSwitches']),
       rules: parseRegionRules(v['rules']),
       timezone: s(v['timezone']).isEmpty ? null : s(v['timezone']),
       currency: RegExp(r'^[A-Za-z]{3}$').hasMatch(s(v['currencyName'])) ? s(v['currencyName']).toUpperCase() : null,
@@ -435,11 +448,22 @@ T? _settingAt<T extends Object>(
 RegionPricing pricingAt(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? area}) =>
     _settingAt(regions, pickup, area, (r) => r.pricing) ?? RegionPricing.none;
 
-/// The `service-settings` ids a region switches on at [pickup], chosen the
-/// same way and counting only regions that switch at least one on; null
-/// when none does, which leaves every service available.
-Set<String>? servicesAt(List<BiddingRegion> regions, LatLng? pickup, {AreaInfo? area}) =>
-    _settingAt(regions, pickup, area, (r) => r.services);
+/// Of the master services [masters] (`service-settings` ids), those offered
+/// at [pickup] (core/region_service_switches.dart); null when no region
+/// around it says anything about them, which leaves every service available.
+Set<String>? servicesAt(
+  List<BiddingRegion> regions,
+  LatLng? pickup, {
+  AreaInfo? area,
+  required Iterable<String> masters,
+}) {
+  final levels = [for (final r in regionsAround(regions, pickup, area: area)) r.switchLevel];
+  if (!masters.any((m) => levels.any((l) => l.say(m, master: true) != null))) return null;
+  return {
+    for (final m in masters)
+      if (resolveServiceSwitch(m, levels, master: true).on) m,
+  };
+}
 
 /// The regions around [pickup], most specific first: each whose mapped
 /// boundary contains it, and each without a boundary whose names match
@@ -652,29 +676,29 @@ class RegionRuleContext {
   RuleOutcome outcomeFor({Set<String> types = const {}, String? vehicleType, required DateTime nowUtc}) =>
       resolveRules(chain, categories: types, vehicleType: vehicleType, local: localTime(nowUtc));
 
-  /// The Service Settings types the most specific region with a Services
-  /// list switches on; null when none restricts them.
-  Set<String>? get allowedTypes => around.map((r) => r.services).whereType<Set<String>>().firstOrNull;
+  /// The regions' service switches, most specific first.
+  List<ServiceSwitchLevel> get switchLevels => [for (final r in around) r.switchLevel];
 
   /// Whether a vehicle type in [types] is offered now: a rule decides while
-  /// one holds; else, when its region restricts the service types and the
-  /// vehicle has some, one of them must be on.
+  /// one holds; else the regions' Inherit / On / Off switches
+  /// (core/region_service_switches.dart, as the server's
+  /// service_offered_at): the service and each sub-service above it on, and
+  /// one of its master services ([types], and any of [masterIds] in the
+  /// lineage) on.
   /// [lineage] is the service and every sub-service above it, nearest first
   /// (ServiceTree.lineage); without it, [vehicleType] alone.
   bool available({
     Set<String> types = const {},
     String? vehicleType,
     Iterable<String> lineage = const [],
+    Set<String> masterIds = const {},
     required DateTime nowUtc,
   }) {
     final rule = outcomeFor(types: types, vehicleType: vehicleType, nowUtc: nowUtc).available;
     if (rule != null) return rule;
-    // Switched off here, or something above it is (service_tree.dart).
     final line = lineage.isNotEmpty ? lineage : [?vehicleType];
-    if (!subServiceOn(line, [for (final r in around) r.subServices])) return false;
-    final allowed = allowedTypes;
-    if (allowed == null || types.isEmpty) return true;
-    return types.any(allowed.contains);
+    bool isMaster(String id) => types.contains(id) || masterIds.contains(id);
+    return serviceOffered({...line, ...types}, switchLevels, isMaster: isMaster);
   }
 
   /// Whether the fare may be bid on for this service now: a rule decides

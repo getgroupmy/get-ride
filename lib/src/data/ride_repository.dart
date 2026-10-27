@@ -653,16 +653,21 @@ class RideRepository {
     return regions;
   }
 
-  /// The `service-settings` ids switched on for [pickup]'s region; null when
-  /// no region restricts them.
-  Future<Set<String>?> servicesFor(LatLng pickup, Future<AreaInfo?> Function() area) async {
+  /// Of the master services [masters] (`service-settings` ids), those
+  /// offered at [pickup] (core/region_service_switches.dart); null when no
+  /// region around it says anything about them.
+  Future<Set<String>?> servicesFor(
+    LatLng pickup,
+    Future<AreaInfo?> Function() area, {
+    required Iterable<String> masters,
+  }) async {
     final regions = await biddingRegions(at: pickup);
-    if (!regions.any((r) => r.services != null)) return null;
+    if (regions.isEmpty) return null;
     AreaInfo? names;
     try {
       names = await area().timeout(const Duration(seconds: 5));
     } catch (_) {}
-    return servicesAt(regions, pickup, area: names);
+    return servicesAt(regions, pickup, area: names, masters: masters);
   }
 
   /// The regions around [pickup] and their scheduled rules (service hours,

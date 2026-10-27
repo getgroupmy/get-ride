@@ -13,6 +13,8 @@
 // service is off where it, or anything above it, is switched off.
 import 'dart:convert';
 
+import 'region_service_switches.dart';
+
 /// One settings entry that may sit in the tree.
 class ServiceEntry {
   const ServiceEntry({
@@ -197,14 +199,10 @@ Map<String, bool> regionSubServiceSwitches(Object? raw) {
 /// on, given each region's switches, most specific first: for each entry in
 /// the lineage the most specific region that switches it decides, and any
 /// one off turns the service off.
-bool subServiceOn(Iterable<String> lineage, List<Map<String, bool>> switchesMostSpecificFirst) {
-  for (final id in lineage) {
-    for (final own in switchesMostSpecificFirst) {
-      final v = own[id];
-      if (v == null) continue;
-      if (!v) return false;
-      break;
-    }
-  }
-  return true;
-}
+/// (The regions' resolver, core/region_service_switches.dart, with
+/// sub-service switches only.)
+bool subServiceOn(Iterable<String> lineage, List<Map<String, bool>> switchesMostSpecificFirst) => serviceOffered(
+  lineage,
+  [for (final m in switchesMostSpecificFirst) ServiceSwitchLevel(subServices: m)],
+  isMaster: (_) => false,
+);

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/format.dart';
 import '../../../core/region_pricing.dart';
+import '../../../core/region_service_switches.dart';
 import '../../../core/ride_bidding.dart' show RegionBlock;
 import '../../../core/service_tree.dart';
 import '../../../widgets/busy.dart';
@@ -95,10 +97,12 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
     // The level of the row being edited, else of the page: it decides the
     // one name the sheet asks for (its parents are the page).
     final level = entry != null ? regionLevelOf(entry.values) : (row?.level ?? _level);
+    // The regions above it, for what each service follows.
+    final above = regionLevelsAbove(entries, level, country: initial.country, state: initial.state, city: initial.city);
     final form = await showAdminSheet<RegionForm>(
       context,
       title: entry != null ? 'Edit region' : 'Add ${regionLevelLabel(level)}',
-      builder: (_) => _RegionFormBody(initial: initial, level: level, editing: entry != null),
+      builder: (_) => _RegionFormBody(initial: initial, level: level, editing: entry != null, above: above),
     );
     if (form == null || !mounted) return;
     final repo = ref.read(geoAdminRepositoryProvider);
@@ -177,7 +181,10 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
         IconButton(
           tooltip: 'Refresh',
           icon: const Icon(Icons.refresh),
-          onPressed: () => ref.invalidate(regionsProvider),
+          onPressed: () {
+            ref.invalidate(regionsProvider);
+            ref.invalidate(regionServiceCheckProvider);
+          },
         ),
       ],
       addAction: PageAddAction(
@@ -244,9 +251,13 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
                     : ListView.separated(
                         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                         padding: EdgeInsets.only(bottom: addActionListBottomPadding(context)),
-                        itemCount: rows.length,
+                        itemCount: rows.length + (_country.isEmpty ? 1 : 0),
                         separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (_, i) => _RegionTile(
+                        itemBuilder: (_, j) {
+                          // The countries' page opens with the service check (0302).
+                          if (_country.isEmpty && j == 0) return _ServiceCheckCard(canEdit: canEdit);
+                          final i = _country.isEmpty ? j - 1 : j;
+                          return _RegionTile(
                           row: rows[i],
                           canEdit: canEdit,
                           onOpen: () => _open(rows[i]),
@@ -257,7 +268,8 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
                                   iso: countryIsoOf(rows[i])!, name: rows[i].name, canEdit: canEdit),
                           onEdit: () => _edit(entries, row: rows[i]),
                           onDelete: () => _delete(rows[i]),
-                        ),
+                        );
+                        },
                       ),
               ),
             ]),
@@ -359,10 +371,13 @@ class _RegionTile extends StatelessWidget {
 }
 
 class _RegionFormBody extends ConsumerStatefulWidget {
-  const _RegionFormBody({required this.initial, required this.level, required this.editing});
+  const _RegionFormBody({required this.initial, required this.level, required this.editing, this.above = const []});
   final RegionForm initial;
   final RegionLevel level;
   final bool editing;
+
+  /// The regions above it, nearest first (what Inherit follows).
+  final List<ServiceSwitchLevel> above;
 
   @override
   ConsumerState<_RegionFormBody> createState() => _RegionFormBodyState();
@@ -479,6 +494,9 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
       setState(() => _error = err);
       return;
     }
+    // Older apps read only the list of master services on here.
+    final masters = ref.read(regionServicesProvider).value ?? const <ServiceOption>[];
+    f.settleServicesForOlderApps([for (final s in masters) s.id], widget.above);
     Navigator.pop(context, f);
   }
 
@@ -497,27 +515,37 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
     final services = ref.watch(regionServicesProvider).value ?? const <ServiceOption>[];
     final tree = ref.watch(serviceTreeProvider).value;
     final rootById = {for (final n in tree?.roots ?? const <ServiceNode>[]) n.id: n};
+    final masterIds = [for (final s in services) s.id];
+    final levels = [f.switchLevel(), ...widget.above];
+    bool isMaster(String id) => rootById.containsKey(id);
+    String nameOf(String id) =>
+        tree?.all.where((n) => n.id == id).firstOrNull?.entry.name ??
+        services.where((s) => s.id == id).firstOrNull?.name ??
+        id;
     // A sub-service and what sits under it, indented by depth, each with its
-    // own switch (on unless switched off here; else it follows the regions
-    // around it).
+    // own Inherit / On / Off, and what holds here and where it comes from.
     Iterable<Widget> subTree(ServiceNode n) sync* {
-      final own = f.subServices[n.id];
+      final verdict = resolveServiceSwitch(n.id, levels, master: false);
+      var status = serviceSwitchSource(verdict, widget.above);
+      if (verdict.on && tree != null) {
+        final line = tree.lineage(n.id);
+        if (!serviceOffered(line, levels, isMaster: isMaster)) {
+          final off = line.skip(1).where((id) => !resolveServiceSwitch(id, levels, master: isMaster(id)).on).firstOrNull;
+          status = off == null ? 'Off (a service above it is off)' : 'Off (under ${nameOf(off)}, which is off)';
+        }
+      }
       yield Padding(
         padding: EdgeInsets.only(left: 20.0 * n.depth),
-        child: SwitchListTile(
+        child: _ServiceSwitchRow(
           key: ValueKey('region-sub-${n.id}-${n.depth}'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          secondary: Icon(Icons.subdirectory_arrow_right, size: 18, color: t.colorScheme.onSurfaceVariant),
-          title: Text(n.entry.name),
-          subtitle: Text(
-            [
-              if (n.entry.category != 'vehicle-services') n.entry.category,
-              if (own == null) 'On (follows the regions around it)',
-            ].join(' · '),
-          ),
-          value: own ?? true,
-          onChanged: (on) => setState(() => f.subServices = {...f.subServices, n.id: on}),
+          id: n.id,
+          title: n.entry.name,
+          detail: n.entry.category != 'vehicle-services' ? n.entry.category : null,
+          sub: true,
+          value: ServiceSwitch.of(f.subServices[n.id]),
+          status: status,
+          on: !status.startsWith('Off'),
+          onChanged: (v) => setState(() => f.setSubSwitch(n.id, v)),
         ),
       );
       for (final c in n.children) {
@@ -526,7 +554,7 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
     }
 
     const gap = SizedBox(height: 12);
-    final on = f.services.values.where((v) => v).length;
+    final on = masterIds.where((id) => resolveServiceSwitch(id, levels, master: true).on).length;
     final parentLine = regionParentLine(f, widget.level);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       if (parentLine.isNotEmpty) ...[
@@ -619,11 +647,11 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
         Padding(
           padding: const EdgeInsets.only(top: 4),
           child: Text(
-            on == 0
-                ? f.isCountryRow
-                    ? 'None on: every service is offered in this country.'
-                    : 'None on: this region follows its parent\'s services.'
-                : 'Only these are offered here; the app shows the others as coming soon.',
+            f.isCountryRow
+                ? 'Inherit: on, unless a rule says otherwise. Off: the app shows it as coming soon here, and '
+                    'the service check (Regions page) can refuse bookings for it.'
+                : 'Inherit follows ${widget.above.isEmpty ? 'the region above' : widget.above.first.name}. '
+                    'On or Off decides here and in the regions inside this one that inherit.',
             key: const ValueKey('region-services-note'),
             style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
           ),
@@ -635,13 +663,19 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
         )
       else
         for (final s in services) ...[
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text(s.name),
-            subtitle: s.description.isEmpty ? null : Text(s.description, maxLines: 1, overflow: TextOverflow.ellipsis),
-            value: f.services[s.id] == true,
-            onChanged: (v) => setState(() => f.services = {...f.services, s.id: v}),
-          ),
+          Builder(builder: (_) {
+            final verdict = resolveServiceSwitch(s.id, levels, master: true);
+            return _ServiceSwitchRow(
+              key: ValueKey('region-service-${s.id}'),
+              id: s.id,
+              title: s.name,
+              detail: s.description.isEmpty ? null : s.description,
+              value: ServiceSwitch.of(levels.first.say(s.id, master: true)),
+              status: serviceSwitchSource(verdict, widget.above),
+              on: verdict.on,
+              onChanged: (v) => setState(() => f.setMasterSwitch(s.id, v, masterIds)),
+            );
+          }),
           // Its sub-services, to any depth (core/service_tree.dart), each
           // switched on or off here on its own.
           for (final c in rootById[s.id]?.children ?? const <ServiceNode>[]) ...subTree(c),
@@ -746,5 +780,188 @@ class _RegionFormBodyState extends ConsumerState<_RegionFormBody> {
         label: Text(widget.editing ? 'Update' : 'Save'),
       ),
     ]);
+  }
+}
+
+/// One service in the region editor: its name, what holds here and where
+/// it comes from ("On (from Selangor)"), and Inherit / On / Off.
+class _ServiceSwitchRow extends StatelessWidget {
+  const _ServiceSwitchRow({
+    super.key,
+    required this.id,
+    required this.title,
+    required this.value,
+    required this.status,
+    required this.on,
+    required this.onChanged,
+    this.detail,
+    this.sub = false,
+  });
+
+  final String id;
+  final String title;
+  final String? detail;
+  final bool sub;
+  final ServiceSwitch value;
+  final String status;
+  final bool on;
+  final ValueChanged<ServiceSwitch> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final scheme = t.colorScheme;
+    final colour = on ? scheme.primary : scheme.error;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          if (sub) ...[
+            Icon(Icons.subdirectory_arrow_right, size: 18, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+          ],
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(title, style: t.textTheme.bodyLarge),
+              if (detail != null)
+                Text(detail!, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: t.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+              const SizedBox(height: 2),
+              Row(children: [
+                Icon(on ? Icons.check_circle_outline : Icons.block, size: 16, color: colour),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: Text(status,
+                      key: ValueKey('region-switch-status-$id'),
+                      style: t.textTheme.labelMedium?.copyWith(color: colour, fontWeight: FontWeight.w600)),
+                ),
+              ]),
+            ]),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: SegmentedButton<ServiceSwitch>(
+            key: ValueKey('region-switch-$id'),
+            showSelectedIcon: false,
+            style: const ButtonStyle(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+            segments: [
+              for (final v in ServiceSwitch.values) ButtonSegment(value: v, label: Text(v.label)),
+            ],
+            selected: {value},
+            onSelectionChanged: (v) => onChanged(v.first),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+/// Admin → Regions → Service check (migration 0302): what the server does
+/// with a booking whose service is off at its pickup, with the counts and
+/// the latest bookings it kept.
+class _ServiceCheckCard extends ConsumerWidget {
+  const _ServiceCheckCard({required this.canEdit});
+
+  /// EDIT on the Regions page.
+  final bool canEdit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context);
+    final scheme = t.colorScheme;
+    final async = ref.watch(regionServiceCheckProvider);
+    final check = async.value;
+    final editable = canEdit && (check?.canEdit ?? false);
+    Future<void> set(RegionCheckMode m) async {
+      final ok = await runAdminAction(
+        context,
+        () => ref.read(geoAdminRepositoryProvider).setRegionServiceCheck(m),
+        success: 'Service check: ${m.label}',
+      );
+      if (ok) ref.invalidate(regionServiceCheckProvider);
+    }
+
+    return Card(
+      key: const ValueKey('region-service-check'),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Icon(Icons.fact_check_outlined, size: 20, color: scheme.primary),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Service check', style: t.textTheme.titleSmall)),
+          ]),
+          const SizedBox(height: 4),
+          Text(
+            'When a rider books a service that is off at the pickup (an older app, or a direct call).',
+            style: t.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 8),
+          if (async.isLoading && check == null)
+            const Padding(
+              padding: EdgeInsets.all(8),
+              child: Center(child: SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2))),
+            )
+          else if (check == null)
+            Text("Can't read the service check right now.", style: t.textTheme.bodySmall)
+          else ...[
+            SegmentedButton<RegionCheckMode>(
+              key: const ValueKey('region-service-check-mode'),
+              showSelectedIcon: false,
+              segments: [
+                for (final m in RegionCheckMode.values) ButtonSegment(value: m, label: Text(m.label)),
+              ],
+              selected: {check.mode},
+              onSelectionChanged: editable ? (v) => set(v.first) : null,
+            ),
+            const SizedBox(height: 8),
+            Text(check.mode.explanation, key: const ValueKey('region-service-check-explanation'), style: t.textTheme.bodyMedium),
+            const SizedBox(height: 6),
+            Text(
+              'Recorded: ${check.day} in 24 hours · ${check.week} in 7 days · ${check.month} in 30 days',
+              key: const ValueKey('region-service-check-counts'),
+              style: t.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            if (!editable)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('Only an admin who can edit Regions can change it.',
+                    style: t.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant)),
+              ),
+            ExpansionTile(
+              key: const ValueKey('region-service-check-latest'),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              title: Text('Latest recorded (${check.recent.length})', style: t.textTheme.labelLarge),
+              children: [
+                if (check.recent.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text('None yet.', style: t.textTheme.bodySmall),
+                  ),
+                for (final r in check.recent)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(r.refused ? Icons.block : Icons.visibility_outlined,
+                        color: r.refused ? scheme.error : scheme.onSurfaceVariant),
+                    title: Text(r.service),
+                    subtitle: Text([
+                      formatDateTime(r.at),
+                      if (r.place.isNotEmpty) r.place,
+                      if (r.later) 'Booked for later',
+                    ].join(' · ')),
+                    trailing: Text(r.refused ? 'Refused' : 'Recorded',
+                        style: t.textTheme.labelSmall?.copyWith(color: r.refused ? scheme.error : scheme.onSurfaceVariant)),
+                  ),
+              ],
+            ),
+          ],
+        ]),
+      ),
+    );
   }
 }

@@ -50,6 +50,7 @@ void main() {
   const point = LatLng(2.99, 101.79);
   const selangor = AreaInfo(country: 'Malaysia', state: 'Selangor', city: 'Shah Alam');
   const kajang = AreaInfo(country: 'Malaysia', state: 'Selangor', city: 'Kajang');
+  const masters = {'car', 'food'};
 
   List<BiddingRegion> regions() => [
     for (final e in _tables.entries)
@@ -86,9 +87,9 @@ void main() {
     // Selangor sets no pricing of its own: Malaysia's whole fares apply.
     expect(pricingAt(r, point, area: selangor).wholeFare, isTrue);
     // Selangor switches no service on: Malaysia's list applies…
-    expect(servicesAt(r, point, area: selangor), {'car'});
+    expect(servicesAt(r, point, area: selangor, masters: masters), {'car'});
     // …and Kajang's own list wins inside Kajang.
-    expect(servicesAt(r, point, area: kajang), {'car', 'food'});
+    expect(servicesAt(r, point, area: kajang, masters: masters), {'car', 'food'});
     // Nothing switched on anywhere: every service stays available.
     expect(
       servicesAt(
@@ -97,6 +98,7 @@ void main() {
         ],
         point,
         area: selangor,
+        masters: masters,
       ),
       isNull,
     );
@@ -145,7 +147,7 @@ void main() {
     final repo = RideRepository(db);
     expect(await repo.biddingEnabledFor(point, () async => selangor), isFalse);
     expect((await repo.pricingFor(point, () async => selangor)).wholeFare, isTrue);
-    expect(await repo.servicesFor(point, () async => kajang), {'car', 'food'});
+    expect(await repo.servicesFor(point, () async => kajang, masters: masters), {'car', 'food'});
     expect(asked.toSet(), containsAll(['countries', 'states', 'cities', 'suburbs']));
     // One read serves a pickup's three checks.
     expect(asked.where((t) => t == 'countries'), hasLength(1));

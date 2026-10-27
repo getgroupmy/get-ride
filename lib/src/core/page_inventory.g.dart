@@ -144,6 +144,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:notice.remote-action', SurfaceKind.modal, 'Notice · Remote action', 'lib/src/app.dart'),
   SurfaceEntry('modal:notice.ride-call', SurfaceKind.modal, 'Notice · Ride call', 'lib/src/features/ride/ride_call_screen.dart'),
   SurfaceEntry('modal:notice.ride-rating', SurfaceKind.modal, 'Notice · Ride rating', 'lib/src/widgets/ride_rating_card.dart'),
+  SurfaceEntry('modal:notice.ride-service', SurfaceKind.modal, 'Notice · Ride service', 'lib/src/features/ride/service_not_offered.dart'),
   SurfaceEntry('modal:notice.ride-tracking', SurfaceKind.modal, 'Notice · Ride tracking', 'lib/src/features/ride/ride_tracking_screen.dart'),
   SurfaceEntry('modal:notice.route-check', SurfaceKind.modal, 'Notice · Route check', 'lib/src/features/ride/route_check.dart'),
   SurfaceEntry('modal:notice.support-call', SurfaceKind.modal, 'Notice · Support call', 'lib/src/features/support/call/call_screen.dart'),

@@ -15,6 +15,7 @@ import 'package:latlong2/latlong.dart';
 import '../../../core/airport_areas.dart' show groupWord, parseGroupResults, parseGroupWords;
 import '../../../core/place_gates.dart' show partOfKey, partOrderOf;
 import '../../../core/region_rules.dart';
+import '../../../core/region_service_switches.dart';
 import '../../../core/ride_bidding.dart' show RegionBlock, regionBlockOf;
 import '../../../core/service_tree.dart' show regionSubServiceSwitches;
 
@@ -611,6 +612,7 @@ class RegionForm {
     this.lng = '',
     Map<String, bool>? services,
     Map<String, bool>? subServices,
+    Map<String, bool>? serviceSwitches,
     this.biddingEnabled = true,
     this.blocked = false,
     this.blockAt = RegionBlock.both,
@@ -631,10 +633,19 @@ class RegionForm {
     List<RegionRule>? rules,
   })  : services = services ?? {},
         subServices = subServices ?? {},
+        serviceSwitches = serviceSwitches ?? {},
         rules = rules ?? [];
 
   String country, state, city, suburb, lat, lng;
+
+  /// The `services` list older apps read (core/region_service_switches.dart):
+  /// as loaded until a master service is set here, then what is on here
+  /// when saved ([settleServicesForOlderApps]).
   Map<String, bool> services;
+
+  /// Each master service set On (true) or Off (false) here; one not listed
+  /// is Inherit (`serviceSwitches`, migration 0302).
+  Map<String, bool> serviceSwitches;
   bool biddingEnabled;
 
   /// Blocked: no ride starts, ends or stops here — the rider app says
@@ -664,6 +675,54 @@ class RegionForm {
   /// core/region_rules.dart): they override the switches above while they hold.
   List<RegionRule> rules;
 
+  /// What this region says about services (with [name] for "set here").
+  ServiceSwitchLevel switchLevel({String name = ''}) => ServiceSwitchLevel(
+    name: name,
+    list: {for (final e in services.entries) if (e.value) e.key},
+    switches: serviceSwitches,
+    subServices: subServices,
+  );
+
+  /// Sets master service [id] here ([to] Inherit, On or Off). A region
+  /// saved before switches (a list of the master services on, and no
+  /// switches) is first turned into switches for each of [masters], so it
+  /// means what it meant.
+  void setMasterSwitch(String id, ServiceSwitch to, Iterable<String> masters) {
+    final level = switchLevel();
+    if (level.legacyList) {
+      serviceSwitches = {for (final m in masters) m: level.list.contains(m)};
+    }
+    final next = {...serviceSwitches};
+    final v = to.value;
+    if (v == null) {
+      next.remove(id);
+    } else {
+      next[id] = v;
+    }
+    serviceSwitches = next;
+    services = {};
+  }
+
+  /// Sets sub-service [id] here ([to] Inherit, On or Off).
+  void setSubSwitch(String id, ServiceSwitch to) {
+    final next = {...subServices};
+    final v = to.value;
+    if (v == null) {
+      next.remove(id);
+    } else {
+      next[id] = v;
+    }
+    subServices = next;
+  }
+
+  /// Before saving: with master services set here, the `services` list for
+  /// older apps is what is on here ([masters], given the regions [above],
+  /// nearest first).
+  void settleServicesForOlderApps(Iterable<String> masters, List<ServiceSwitchLevel> above) {
+    if (serviceSwitches.isEmpty) return;
+    services = servicesListForOlderApps(masters, switchLevel(), above);
+  }
+
   /// Whether this row's own pricing applies.
   bool get setsPricing => isCountryRow || pricingOverride;
 
@@ -685,6 +744,7 @@ class RegionForm {
       lng: v['lng'] is num ? '${v['lng']}' : '',
       services: parseServicesMap(v['services']),
       subServices: regionSubServiceSwitches(v['subServices']),
+      serviceSwitches: {...parseServiceSwitches(v['serviceSwitches'])},
       biddingEnabled: v['biddingEnabled'] != false,
       blocked: regionBlockOf(v) != RegionBlock.none,
       blockAt: regionBlockOf(v) == RegionBlock.none ? RegionBlock.both : regionBlockOf(v),
@@ -727,6 +787,7 @@ class RegionForm {
     if (sb.isEmpty) values['timezone'] = timezone.trim();
     values['services'] = encodeServicesMap(services);
     values['subServices'] = {...subServices};
+    values['serviceSwitches'] = encodeServiceSwitches(serviceSwitches);
     values['biddingEnabled'] = biddingEnabled;
     // The old switch stays true for a full block only, so apps from before
     // pickup- or drop-off-only blocks don't refuse what is allowed.
@@ -746,6 +807,43 @@ class RegionForm {
     values['handoverSharePercent'] = double.tryParse(handoverShare.trim());
     return values;
   }
+}
+
+/// What the regions above a [level] region at [country] / [state] / [city]
+/// say about services, nearest first, from the saved [entries] (named, for
+/// "On (from Selangor)").
+List<ServiceSwitchLevel> regionLevelsAbove(
+  List<RegionEntry> entries,
+  RegionLevel level, {
+  required String country,
+  String state = '',
+  String city = '',
+}) {
+  final c = country.trim(), s = state.trim(), ci = city.trim();
+  final paths = switch (level) {
+    RegionLevel.country => const <(String, String, String, String)>[],
+    RegionLevel.state => [(c, '', '', '')],
+    RegionLevel.city => [(c, s, '', ''), (c, '', '', '')],
+    RegionLevel.suburb => [(c, s, ci, ''), (c, s, '', ''), (c, '', '', '')],
+  };
+  final byKey = {for (final e in entries) e.key: e};
+  return [
+    for (final (pc, ps, pci, psb) in paths)
+      if (byKey[regionRowKey(pc, ps, pci, psb)] case final e?)
+        ServiceSwitchLevel.fromValues(e.values, name: [psb, pci, ps, pc].firstWhere((n) => n.isNotEmpty)),
+  ];
+}
+
+/// How a service's switch reads in the region editor: "On (from
+/// Selangor)", "Off (set here)", "On (default)". [verdict] is resolved over
+/// this region then [above] (index 0 is this region).
+String serviceSwitchSource(ServiceSwitchVerdict verdict, List<ServiceSwitchLevel> above) {
+  final state = verdict.on ? 'On' : 'Off';
+  final i = verdict.level;
+  if (i == null) return '$state (default)';
+  if (i == 0) return '$state (set here)';
+  final name = above[i - 1].name;
+  return name.isEmpty ? '$state (from the region above)' : '$state (from $name)';
 }
 
 /// Saved entry with the same path (Expo duplicate check on add).
@@ -1613,4 +1711,92 @@ String? handoverShareProblem(String raw) {
   if (s.isEmpty) return null;
   final v = double.tryParse(s);
   return v == null || v < 0 || v > 100 ? 'The handover share is a percentage from 0 to 100.' : null;
+}
+
+// ---- Admin → Regions → Service check (migration 0302) ----------------------
+
+/// What the server does with a booking whose service is off at its pickup
+/// (app_settings `region_service_check`).
+enum RegionCheckMode {
+  off('off', 'Off'),
+  record('record', 'Record only'),
+  refuse('refuse', 'Refuse');
+
+  const RegionCheckMode(this.id, this.label);
+  final String id;
+  final String label;
+
+  static RegionCheckMode fromId(Object? id) => values.where((m) => m.id == id).firstOrNull ?? record;
+
+  /// What it does, for the page.
+  String get explanation => switch (this) {
+    off => "Off: the server doesn't check. The app still hides services that are off at the pickup.",
+    record => "Record only: a booking for a service that's off at its pickup goes through and is listed "
+        'below, so you can see what Refuse would stop.',
+    refuse => "Refuse: a booking for a service that's off at its pickup is refused, and the rider is asked "
+        "to choose another service. Refusals aren't listed: the list shows the last ones recorded "
+        'before Refuse was chosen.',
+  };
+}
+
+/// One booking the check kept (Record only).
+class RegionCheckRow {
+  const RegionCheckRow({required this.at, required this.service, this.place = '', this.refused = false, this.later = false});
+
+  factory RegionCheckRow.fromJson(Map<String, dynamic> j) {
+    String s(String k) => '${j[k] ?? ''}'.trim();
+    return RegionCheckRow(
+      at: DateTime.tryParse(s('at')),
+      service: s('service').isEmpty ? 'Unnamed service' : s('service'),
+      place: [s('city'), s('state'), s('country')].where((p) => p.isNotEmpty).join(', '),
+      refused: j['refused'] == true,
+      later: j['source'] == 'scheduled',
+    );
+  }
+
+  final DateTime? at;
+  final String service;
+
+  /// City, state, country (as known).
+  final String place;
+  final bool refused;
+
+  /// A booking for later.
+  final bool later;
+}
+
+/// The check's setting, counts and latest rows (`admin_region_service_check`).
+class RegionServiceCheck {
+  const RegionServiceCheck({
+    this.mode = RegionCheckMode.record,
+    this.canEdit = false,
+    this.day = 0,
+    this.week = 0,
+    this.month = 0,
+    this.recent = const [],
+  });
+
+  factory RegionServiceCheck.fromJson(Map<String, dynamic> j) {
+    int n(String k) => j[k] is num ? (j[k] as num).toInt() : 0;
+    return RegionServiceCheck(
+      mode: RegionCheckMode.fromId(j['mode']),
+      canEdit: j['canEdit'] == true,
+      day: n('day'),
+      week: n('week'),
+      month: n('month'),
+      recent: [
+        for (final r in j['recent'] is List ? j['recent'] as List : const [])
+          if (r is Map) RegionCheckRow.fromJson(Map<String, dynamic>.from(r)),
+      ],
+    );
+  }
+
+  final RegionCheckMode mode;
+
+  /// Whether the caller may change it (EDIT on Regions).
+  final bool canEdit;
+
+  /// Bookings kept in the last 24 hours, 7 and 30 days.
+  final int day, week, month;
+  final List<RegionCheckRow> recent;
 }
