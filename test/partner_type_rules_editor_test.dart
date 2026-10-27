@@ -38,6 +38,8 @@ final _types = [
     id: 'teksi',
     values: {'name': 'Teksi', 'enabled': true, 'isDefault': true, 'vehicleRequired': true, 'displayPriority': 3},
   ),
+  // Never saved with "Vehicle required": the driver app takes it as on.
+  SettingEntry(id: 'phail', values: {'name': 'pHailing', 'enabled': true, 'displayPriority': 4}),
 ];
 
 /// Example permit types (no real holder's data).
@@ -325,6 +327,16 @@ void main() {
             {'country': 'Singapore'},
           ],
         });
+      });
+
+      testWidgets('"Vehicle required" unset reads as the driver app does: on for pHailing (L1)', (tester) async {
+        final admin = await pump(tester);
+        await open(tester, 'pHailing');
+        final vehicle = find.widgetWithText(SwitchListTile, 'Vehicle service: partners must register a vehicle');
+        await tester.ensureVisible(vehicle);
+        expect(tester.widget<SwitchListTile>(vehicle).value, isTrue);
+        await save(tester);
+        expect(admin.saved.single.$2['vehicleRequired'], isTrue);
       });
 
       testWidgets('saving untouched rules writes none', (tester) async {

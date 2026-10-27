@@ -719,15 +719,19 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
 
   /// The vehicle under the online switch: the one this driver has taken,
   /// else "No vehicle chosen" (not the car on their profile, which they may
-  /// not be driving: going online then asked them to pick one). Where the
-  /// vehicles can't be read, the profile's, as before.
+  /// not be driving: going online then asked them to pick one), or "No
+  /// vehicle needed" when none of their modes needs one. Where the vehicles
+  /// can't be read, the profile's, as before.
   List<String?> _vehicleLine(Partner p) {
     final vehicles = ref.watch(assignableVehiclesProvider);
     if (vehicles.hasError) return [p.vehicle, p.plate];
     final list = vehicles.value;
     if (list == null) return const [];
     final mine = list.where((v) => v.inUseByMe).firstOrNull;
-    return mine == null ? const ['No vehicle chosen'] : [mine.title, mine.plate];
+    if (mine != null) return [mine.title, mine.plate];
+    final entries = ref.watch(partnerTypeEntriesProvider).value;
+    final needed = entries == null || modesNeedVehicle(parseStringList(p.raw['partner_types']), entries);
+    return [needed ? 'No vehicle chosen' : 'No vehicle needed'];
   }
 
   /// Street hail (the meter) is not offered for the driver's types where
@@ -755,11 +759,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   Future<bool?> _vehicleRequired(Partner partner, {required bool teksi}) async {
     try {
       final entries = await ref.read(partnerTypeEntriesProvider.future).timeout(goOnlineCheckTimeout);
-      final modes = [
-        for (final m in partnerModeOptions(parseStringList(partner.raw['partner_types']), entries))
-          if (m.isTeksi == teksi) m.name,
-      ];
-      return (modes.isEmpty ? [teksi ? 'teksi' : 'ehailing'] : modes).any((m) => vehicleRequiredFor(m, entries));
+      return modesNeedVehicle(parseStringList(partner.raw['partner_types']), entries, teksi: teksi);
     } catch (_) {
       return null;
     }

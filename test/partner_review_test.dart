@@ -136,6 +136,7 @@ class _ReviewRepo implements PartnerReviewRepository {
         items: {...items},
         log: [...log],
         names: const {_me: 'Aisyah'},
+        sameIdAccounts: const ['U-TEST-0099'],
       );
 
   @override
@@ -252,6 +253,18 @@ void main() {
       expect(lines.firstWhere((l) => l.key == 'vehicle.owner').flag, 'Owned by someone else');
     });
 
+    test('an ID number another account has is flagged with that account (M8)', () {
+      ReviewLine id(List<String> same, {bool mismatch = false}) => applicationReviewLines(
+            profile: {..._profile, 'id_mismatch': mismatch, 'id_number_typed': '1', 'id_number_read': '2'},
+            partner: _partner(),
+            sameIdAccounts: same,
+          ).firstWhere((l) => l.key == 'details.id_number');
+      expect(id(const []).flag, isNull);
+      expect(id(const ['U0012']).flag, 'Same ID as another account: U0012');
+      expect(id(const ['U0012', 'U0040']).flag, 'Same ID as other accounts: U0012, U0040');
+      expect(id(const ['U0012'], mismatch: true).flag, 'Typed 1, read off the ID 2: they differ · Same ID as another account: U0012');
+    });
+
     test('what an admin may edit, and how', () {
       expect(reviewEditFor('details.birth_date'), ReviewEdit.date);
       expect(reviewEditFor('vehicle.engine_cc'), ReviewEdit.integer);
@@ -347,6 +360,8 @@ void main() {
         expect(find.byKey(const ValueKey('review-reject-vpermit:pt1')), findsNothing);
         expect(find.textContaining('Face match: 91% match'), findsOneWidget);
         expect(find.text('Live'), findsOneWidget);
+        // M8: another account has the same ID number.
+        expect(find.text('Same ID as another account: U-TEST-0099'), findsOneWidget);
         // Nothing decided: neither send back nor approve.
         expect(tester.widget<FilledButton>(find.descendant(
             of: find.byKey(const ValueKey('review-approve')), matching: find.byType(FilledButton))).onPressed, isNull);

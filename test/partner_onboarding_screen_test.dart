@@ -57,8 +57,14 @@ class _FakeOnboarding extends PartnerOnboardingRepository {
     return state;
   }
 
+  /// The server refuses a change of types (0299, an approved partner).
+  bool lockTypes = false;
+
   @override
   Future<Map<String, dynamic>> patchPartner(OnboardingState s, Map<String, dynamic> patch) async {
+    if (lockTypes && patch.containsKey('partner_types')) {
+      throw const PostgrestException(message: 'PARTNER_TYPES_LOCKED', code: '42501', hint: 'Server words');
+    }
     patches.add(patch);
     final next = {...s.partner, ...patch};
     state = state.copyWith(partner: next);
@@ -394,6 +400,19 @@ void main() {
       _noOverflow(tester);
     });
 
+    testWidgets("an approved partner's types are locked: said plainly in a modal (M7, ${b.name})", (tester) async {
+      final h = await _pump(tester, OnboardingState(profile: const {}, partner: _partner({..._photo, ..._area})), brightness: b);
+      h.repo.lockTypes = true;
+      await _tap(tester, find.byKey(const ValueKey('service-card-Delivery')));
+      await _tap(tester, find.text('Continue'));
+      expect(h.repo.patches, isEmpty);
+      expect(find.byType(Dialog), findsOneWidget);
+      expect(find.textContaining("your Partner Service types can't be changed here"), findsOneWidget);
+      expect(find.textContaining('Server words'), findsNothing);
+      expect(find.text('Your national ID number'), findsNothing, reason: 'stays on the step');
+      _noOverflow(tester);
+    });
+
     testWidgets('National ID: number, "Is this your ID number?", photos, then read (${b.name})', (tester) async {
       final h = await _pump(
         tester,
@@ -573,7 +592,10 @@ void main() {
         tester,
         OnboardingState(
           profile: _detailsDone,
-          partner: _partner({..._photo, ..._area, 'partner_types': ['eHailing', 'Delivery'], 'registration_steps': ['details']}),
+          partner: _partner({
+            ..._photo, ..._area, 'phone': '+60123456789', 'partner_types': ['eHailing', 'Delivery'],
+            'registration_steps': ['details'],
+          }),
         ),
         brightness: b,
         texts: {'vehicle-grant/front': _grantText},
@@ -595,6 +617,9 @@ void main() {
       expect(v['vin'], 'PM2B000000000001');
       expect(v['engine_cc'], 1329);
       expect(v['owner_match'], 'driver');
+      // H1: the driver owns it, so their ID and phone are the owner's.
+      expect(v['owner_ic'], '900101-14-5678');
+      expect(v['owner_phone'], '+60123456789');
       expect(v['service_id'], 'ride', reason: 'from the make and model, as today');
       expect(v['grant_front_url'], contains('vehicle-grant/front'));
       expect(h.vehicles.statuses.single['status'], 'paused_age');

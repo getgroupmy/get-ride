@@ -23,6 +23,7 @@ library;
 import 'dart:convert';
 
 import '../admin/screens/people/people_logic.dart' show ServiceArea;
+import 'partner_modes.dart' show defaultVehicleRequired;
 
 /// Whole years a vehicle may be, as the editor accepts them.
 const minVehicleAgeYears = 1;
@@ -285,9 +286,7 @@ class EffectiveTypeRules {
   factory EffectiveTypeRules.of(String type, Iterable<Map<String, dynamic>> entries) {
     final key = partnerTypeNameKey(type);
     final v = entries.where((e) => partnerTypeNameKey(_s(e['name'])) == key).firstOrNull ?? const <String, dynamic>{};
-    final vehicle = v.containsKey('vehicleRequired')
-        ? _flag(v['vehicleRequired'], false)
-        : const {'teksi', 'ehailing', 'phailing'}.contains(key);
+    final vehicle = v.containsKey('vehicleRequired') ? _flag(v['vehicleRequired'], false) : defaultVehicleRequired(key);
     final name = _s(v['name']);
     return EffectiveTypeRules(
       name: name.isEmpty ? type.trim() : name,

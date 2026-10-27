@@ -234,6 +234,10 @@ void main() {
     test('vehicle requirement and doc types follow the selected types', () {
       expect(partnerTypesRequireVehicle(types, ['teksi']), isTrue);
       expect(partnerTypesRequireVehicle(types, ['Delivery']), isFalse);
+      // L1: unset on a driving type (or no entry) is on, as in the driver app.
+      expect(partnerTypesRequireVehicle([{'name': 'eHailing'}], ['E-Hailing']), isTrue);
+      expect(partnerTypesRequireVehicle(const [], ['pHailing']), isTrue);
+      expect(partnerTypesRequireVehicle([{'name': 'eHailing', 'vehicleRequired': false}], ['eHailing']), isFalse);
       expect(partnerTypeDocTypeIds(types, ['Teksi', 'Delivery']), ['dt-partner']);
       expect(partnerTypeDocTypeIds(types, ['Delivery']), isNull);
       expect(partnerTypeDocTypeIds(types, const []), isNull);

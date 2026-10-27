@@ -240,4 +240,11 @@ void main() {
     expect(uploadCountry({'service_countries': []}, {'nationality': 'Singapore'}), 'Singapore');
     expect(uploadCountry(null, null), '');
   });
+
+  test("an approved partner's locked types read plainly (M7)", () {
+    final msg = partnerTypesLockedMessage(Exception('PostgrestException(message: PARTNER_TYPES_LOCKED, code: 42501)'));
+    expect(msg, contains("can't be changed here"));
+    expect(msg, contains('Contact support'));
+    expect(partnerTypesLockedMessage(Exception('PARTNER_TYPE_NOT_AVAILABLE')), isNull);
+  });
 }

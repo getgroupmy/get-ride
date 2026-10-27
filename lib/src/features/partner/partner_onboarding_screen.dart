@@ -351,7 +351,16 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     if (unavailable.isNotEmpty) {
       return showNotice(context, message: '${unavailable.join(', ')} is not offered in your service area.');
     }
-    await save((s) async => s.copyWith(partner: await _repo.patchPartner(s, partnerTypeColumns(_types))));
+    await save((s) async {
+      try {
+        return s.copyWith(partner: await _repo.patchPartner(s, partnerTypeColumns(_types)));
+      } catch (e) {
+        // An approved partner's types are locked (0299): say so plainly.
+        final locked = partnerTypesLockedMessage(e);
+        if (locked != null) throw StateError(locked);
+        rethrow;
+      }
+    });
   }
 
   Future<void> _vehicleDocsDone() async {

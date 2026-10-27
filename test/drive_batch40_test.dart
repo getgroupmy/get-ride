@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/demo_mode.dart';
 import 'package:get_ride/src/core/request_viewers.dart';
 import 'package:get_ride/src/core/vehicle_assignment.dart';
@@ -57,6 +58,8 @@ Future<void> pumpDrive(
   Size size = const Size(390, 844),
   bool demo = false,
   List<AssignableVehicle> vehicles = const [],
+  bool vehicleRequired = false,
+  Brightness? brightness,
 }) async {
   SharedPreferences.setMockInitialValues({});
   tester.view.devicePixelRatio = 1;
@@ -87,11 +90,11 @@ Future<void> pumpDrive(
         currentUserIdProvider.overrideWithValue('me'),
         partnerTypeEntriesProvider.overrideWith(
           (ref) async => [
-            (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false}),
+            (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': vehicleRequired}),
           ],
         ),
       ],
-      child: MaterialApp.router(routerConfig: router),
+      child: MaterialApp.router(theme: brightness == null ? null : appTheme(brightness), routerConfig: router),
     ),
   );
   await tester.pumpAndSettle();
@@ -267,11 +270,20 @@ void main() {
 
   group('123 vehicle on the online card', () {
     testWidgets('"No vehicle chosen" until one is taken, not the profile car', (tester) async {
-      await pumpDrive(tester, vehicles: [car('1', AssignableStatus.available)]);
+      await pumpDrive(tester, vehicles: [car('1', AssignableStatus.available)], vehicleRequired: true);
       expect(find.text('Test Rider · No vehicle chosen'), findsOneWidget);
       expect(find.textContaining('Perodua'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
+
+    for (final b in Brightness.values) {
+      testWidgets('"No vehicle needed" when no mode needs one (L4, ${b.name})', (tester) async {
+        await pumpDrive(tester, vehicles: [car('1', AssignableStatus.available)], brightness: b);
+        expect(find.text('Test Rider · No vehicle needed'), findsOneWidget);
+        expect(find.textContaining('No vehicle chosen'), findsNothing);
+        await tester.pumpWidget(const SizedBox());
+      });
+    }
 
     testWidgets('the vehicle taken, once there is one', (tester) async {
       await pumpDrive(tester, vehicles: [car('1', AssignableStatus.inUseByYou)]);

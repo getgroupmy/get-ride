@@ -706,3 +706,23 @@ List<int> reminderDaysFor(List<ReminderDays> rows, {String? country, String? per
       of(ReminderScope.defaultDays, null) ??
       const [];
 }
+
+/// The country Admin → Vehicle permits opens on: the link's, else the
+/// admin's own ([homeCode], an ISO code from their profile or phone, see
+/// `userDateCountry`) when it is one of [typeCountries] or [countries], else
+/// the first with permit types, else the first in the list.
+String? permitsStartCountry({
+  String? linked,
+  required Iterable<String> typeCountries,
+  required List<String> countries,
+  String? homeCode,
+}) {
+  if ((linked ?? '').trim().isNotEmpty) return linked;
+  final home = (homeCode ?? '').trim().toUpperCase();
+  if (home.isNotEmpty) {
+    for (final c in [...typeCountries, ...countries]) {
+      if (countryCodeFor(c) == home) return c;
+    }
+  }
+  return typeCountries.firstOrNull ?? countries.firstOrNull;
+}

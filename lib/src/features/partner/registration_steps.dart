@@ -1272,7 +1272,14 @@ class _VehicleRegistrationStepState extends ConsumerState<VehicleRegistrationSte
         'grant_back_url': _t(_grantBack).isEmpty ? null : _grantBack,
         'owner_match': match.key,
         'owner_name': _owner.text.trim().toUpperCase(),
-        if (_ownerId.text.trim().isNotEmpty) 'owner_ic': _ownerId.text.trim(),
+        // The driver's own ID and phone when the car is theirs, so it is not
+        // left half set up once approved.
+        ...registeredOwnerContact(
+          driverOwns: match == OwnerMatch.driver,
+          grantOwnerId: _ownerId.text,
+          partner: s.partner,
+          profile: s.profile,
+        ),
         'partner_types': _services,
         if (catalogue != null) ...{
           'service_id': _t(catalogue['service_id']).isEmpty ? null : _t(catalogue['service_id']),
