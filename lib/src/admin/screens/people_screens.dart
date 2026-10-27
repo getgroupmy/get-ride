@@ -11,6 +11,7 @@ import '../../core/auth_utils.dart' show capitaliseName;
 import '../../core/partner_registration.dart' show closerLookReasonText;
 import '../../core/partner_status.dart';
 import '../../data/account_deletion_repository.dart';
+import '../../data/ride_rating_repository.dart' show adminRatingFlagsProvider;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../account_app_version.dart';
@@ -21,6 +22,7 @@ import '../people_paging.dart';
 import '../widgets/admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
 import '../../widgets/net_image.dart';
+import 'driver_rating_admin.dart';
 import 'people/account_deletion_section.dart';
 import 'people/people_data.dart';
 import 'people/people_logic.dart' show permitOptions, serviceAreaText, vehicleStatusOptions;
@@ -694,6 +696,12 @@ class AdminPartnersScreen extends ConsumerWidget {
                     for (final r in (p['closer_look_reasons'] as List?) ?? const []) closerLookReasonText('$r'),
                   ].join('\n'),
               }),
+        // Rider tags on the driver rating (0297): totals and any flag.
+        if (!vehicles && '${p['auth_user_id'] ?? ''}'.isNotEmpty)
+          DriverRatingPanel(
+            partnerUserId: '${p['auth_user_id']}',
+            canEdit: ref.read(pageAccessProvider('admin-partners')) == AccessLevel.edit,
+          ),
         _statusPicker(
           context: ctx,
           label: 'Status',
@@ -745,6 +753,8 @@ class AdminPartnersScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(moduleAccessProvider(_module)) == AccessLevel.edit;
+    // Drivers flagged by riders' low-rating tags (0297).
+    final flags = vehicles ? const <String, List<String>>{} : (ref.watch(adminRatingFlagsProvider).value ?? const {});
     return _RecordList(
         title: vehicles ? 'Vehicles' : 'Partners',
         module: _module,
@@ -774,6 +784,7 @@ class AdminPartnersScreen extends ConsumerWidget {
               ? [p['owner_name'], p['display_id']].whereType<String>().join(' · ')
               : [
                   if (p['needs_closer_look'] == true) 'Needs a closer look',
+                  if (flags['${p['auth_user_id']}'] case final f?) 'Flagged: ${f.join(', ')}',
                   p['phone'],
                   p['plate'],
                   p['display_id'],

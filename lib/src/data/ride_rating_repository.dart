@@ -96,3 +96,61 @@ final myDriverTagTotalsProvider = FutureProvider.autoDispose.family<DriverTagTot
 final myRideRatingProvider = FutureProvider.autoDispose.family<RideRating?, ({String requestId, String riderId})>(
   (ref, key) => ref.watch(rideRatingRepositoryProvider).mine(key.requestId, key.riderId),
 );
+
+// ---- Admin (0297) ------------------------------------------------------------
+
+/// The admin's side of rating tags: the lists, the flag rule, one driver's
+/// totals and flags, and the flags on the Partners list.
+class DriverRatingAdminRepository {
+  DriverRatingAdminRepository(this._db);
+  final SupabaseClient _db;
+
+  Future<DriverRatingTags> tags() async {
+    final rows = await _db.from('driver_rating_tags').select().eq('active', true);
+    return DriverRatingTags.fromRows([for (final r in rows) Map<String, dynamic>.from(r)]);
+  }
+
+  Future<void> setTags(DriverRatingTags t) =>
+      _db.rpc('driver_rating_tags_set', params: {'p_high': t.high, 'p_low': t.low});
+
+  Future<DriverFlagRule> rule() async =>
+      DriverFlagRule.fromRow(await _db.from('driver_rating_flag_rule').select().maybeSingle());
+
+  Future<void> setRule(DriverFlagRule r) =>
+      _db.rpc('driver_rating_flag_rule_set', params: {'p_times': r.times, 'p_days': r.days});
+
+  /// [partnerUserId]: the partner's sign-in id (partners.auth_user_id).
+  Future<AdminDriverTags> driver(String partnerUserId) async =>
+      AdminDriverTags.fromJson(await _db.rpc('admin_driver_rating_tags', params: {'p_partner': partnerUserId}));
+
+  Future<Map<String, List<String>>> flags() async {
+    final rows = await _db.rpc('admin_rating_flags');
+    return driverFlagsByPartner([if (rows is List) for (final r in rows) if (r is Map) Map<String, dynamic>.from(r)]);
+  }
+
+  Future<void> markReviewed(String partnerUserId, String tag) =>
+      _db.rpc('admin_rating_flag_review', params: {'p_partner': partnerUserId, 'p_tag': tag});
+}
+
+final driverRatingAdminRepositoryProvider = Provider((ref) => DriverRatingAdminRepository(ref.watch(supabaseProvider)));
+
+final adminDriverRatingTagsProvider = FutureProvider.autoDispose<DriverRatingTags>(
+  (ref) => ref.watch(driverRatingAdminRepositoryProvider).tags(),
+);
+
+final adminDriverFlagRuleProvider = FutureProvider.autoDispose<DriverFlagRule>(
+  (ref) => ref.watch(driverRatingAdminRepositoryProvider).rule(),
+);
+
+final adminDriverTagsProvider = FutureProvider.autoDispose.family<AdminDriverTags, String>(
+  (ref, partnerUserId) => ref.watch(driverRatingAdminRepositoryProvider).driver(partnerUserId),
+);
+
+/// Flagged drivers for the Partners list; none on a database before 0297.
+final adminRatingFlagsProvider = FutureProvider.autoDispose<Map<String, List<String>>>((ref) async {
+  try {
+    return await ref.watch(driverRatingAdminRepositoryProvider).flags();
+  } catch (_) {
+    return const {};
+  }
+});

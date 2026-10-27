@@ -26,6 +26,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:admin.cancel-place', SurfaceKind.modal, 'Admin · Cancel place', 'lib/src/admin/screens/cancel_rules_card.dart'),
   SurfaceEntry('modal:admin.dispatch-add-driver', SurfaceKind.modal, 'Admin · Dispatch add driver', 'lib/src/admin/screens/dispatch/admin_dispatch_screen.dart'),
   SurfaceEntry('modal:admin.dispatch-group', SurfaceKind.modal, 'Admin · Dispatch group', 'lib/src/admin/screens/dispatch/admin_dispatch_screen.dart'),
+  SurfaceEntry('modal:admin.driver-rating-tag-add', SurfaceKind.modal, 'Admin · Driver rating tag add', 'lib/src/admin/screens/driver_rating_admin.dart'),
   SurfaceEntry('modal:admin.driver-service-locks.drivers', SurfaceKind.modal, 'Admin · Drivers', 'lib/src/admin/screens/catalogue/driver_service_locks_screen.dart'),
   SurfaceEntry('modal:admin.driver-service-locks.remove', SurfaceKind.modal, 'Admin · Remove', 'lib/src/admin/screens/catalogue/driver_service_locks_screen.dart'),
   SurfaceEntry('modal:admin.form-panel', SurfaceKind.modal, 'Admin · Form panel', 'lib/src/admin/widgets/admin_widgets.dart'),
