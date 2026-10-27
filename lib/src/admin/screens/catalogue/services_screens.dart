@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +17,7 @@ import '../../../core/freight.dart' show isCourierTypes, isFreightTypes;
 import '../../../data/permits_repository.dart' show permitsRepositoryProvider;
 import '../../../core/service_tree.dart' show serviceParentIds;
 import '../../../widgets/search_select.dart';
+import 'safe_rename.dart';
 
 /// Shared list for the two `displayPriority`-ordered service categories.
 class _PriorityList extends ConsumerStatefulWidget {
@@ -336,10 +339,17 @@ class VehicleServicesScreen extends ConsumerWidget {
         count: all.length,
         serviceTypes: options,
         parents: parentServiceOptions(all, e?.id),
+        otherNames: [for (final o in all) if (o.id != e?.id) str(o.values['name'])],
         canEdit: canEditPage(ref, vehicleServicesCategory.page),
       ),
     );
-    if (values != null && context.mounted) await _saveEntry(context, ref, vehicleServicesCategory, e, values);
+    if (values == null || !context.mounted) return;
+    // A new name moves every place that uses the old one (0304).
+    if (e != null && renamesEntry(e, values)) {
+      await saveEntryWithRename(context, ref, category: vehicleServicesCategory, entry: e, values: values);
+    } else {
+      await _saveEntry(context, ref, vehicleServicesCategory, e, values);
+    }
   }
 
   @override
@@ -389,16 +399,20 @@ class VehicleServicesScreen extends ConsumerWidget {
       );
 }
 
-class _VehicleServiceEditor extends StatefulWidget {
+class _VehicleServiceEditor extends ConsumerStatefulWidget {
   const _VehicleServiceEditor({
     this.entry,
     required this.count,
     required this.serviceTypes,
     this.parents = const [],
+    this.otherNames = const [],
     required this.canEdit,
     this.permits = const [],
   });
   final SettingEntry? entry;
+
+  /// The other Vehicle Services' names: a new name may not be one of them.
+  final List<String> otherNames;
 
   /// The vehicle permit types (by key) a freight size may ask for.
   final List<({String key, String name})> permits;
@@ -410,13 +424,19 @@ class _VehicleServiceEditor extends StatefulWidget {
   final bool canEdit;
 
   @override
-  State<_VehicleServiceEditor> createState() => _VehicleServiceEditorState();
+  ConsumerState<_VehicleServiceEditor> createState() => _VehicleServiceEditorState();
 }
 
-class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
+class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
   late final v = widget.entry?.values ?? const <String, dynamic>{};
+  late final _name = RenameFieldController(
+    category: vehicleServicesKey,
+    entryId: widget.entry?.id,
+    name: str(v['name']),
+    otherNames: widget.otherNames,
+  )..addListener(_renamed);
   late final _text = {
-    for (final k in ['name', 'description', 'shortDescription']) k: TextEditingController(text: str(v[k])),
+    for (final k in ['description', 'shortDescription']) k: TextEditingController(text: str(v[k])),
   };
   late final _numbers = {
     for (final f in vehicleServiceNumberFields)
@@ -448,12 +468,20 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
     for (final c in [..._text.values, ..._numbers.values, ..._dispatch.values, ..._freight.values]) {
       c.dispose();
     }
+    _name
+      ..removeListener(_renamed)
+      ..dispose();
     super.dispose();
   }
 
-  void _save() {
+  void _renamed() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _save() async {
     final r = buildVehicleServiceValues(
       text: {
+        'name': _name.text.text,
         for (final e in _text.entries) e.key: e.value.text,
         ..._images,
         'mapIconColor': _color,
@@ -470,6 +498,8 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
       existing: widget.entry?.values,
     );
     if (r.error != null) return setState(() => _error = r.error);
+    // A new name: what follows it, then Rename (0304).
+    if (!await reviewRename(context, ref, _name) || !mounted) return;
     Navigator.pop(context, r.values);
   }
 
@@ -510,8 +540,13 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
     final dispatchError = validateVehicleServiceDispatch(_dispatchText);
     return EditorBody(
       error: _error,
-      saveLabel: widget.entry == null ? 'Add Vehicle Service' : 'Save changes',
-      onSave: widget.canEdit ? _save : null,
+      saveLabel: widget.entry == null
+          ? 'Add Vehicle Service'
+          : _name.renaming
+              ? renameSaveLabel(_name.places)
+              : 'Save changes',
+      // Not awaited: the button would spin behind the preview.
+      onSave: widget.canEdit && _name.problem == null ? () => unawaited(_save()) : null,
       children: [
         DataUrlImageField(
             label: 'Vehicle Icon',
@@ -548,9 +583,13 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
             ),
         ]),
         const SizedBox(height: 16),
-        TextField(
-            controller: _text['name'],
-            decoration: const InputDecoration(labelText: 'Service name *', hintText: 'Express')),
+        RenameNameField(
+          controller: _name,
+          label: 'Service name *',
+          hint: 'Express',
+          enabled: widget.canEdit,
+          onReview: widget.canEdit ? () => unawaited(_save()) : null,
+        ),
         const SizedBox(height: 12),
         TextField(
           controller: _text['description'],
@@ -720,6 +759,8 @@ class _VehicleServiceEditorState extends State<_VehicleServiceEditor> {
           value: _status,
           onChanged: (x) => setState(() => _status = x),
         ),
+        if (widget.entry != null)
+          RenameHistoryCard(category: vehicleServicesCategory, entryId: widget.entry!.id, canEdit: widget.canEdit),
       ],
     );
   }

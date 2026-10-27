@@ -29,7 +29,6 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 ## Services, partner types and vehicle services (study of 26 Oct 2026)
 
 Medium:
-- M2 Services, types, switches, locks and promotions are linked by name: renaming breaks them. Link by id.
 - M6 Citizens only, business registration, driver/vehicle permit and age-limit covers are app-only: move into SQL rules.
 
 Low:
