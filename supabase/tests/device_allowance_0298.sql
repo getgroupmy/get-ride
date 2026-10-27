@@ -13,14 +13,16 @@ begin;
 insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000298a1'),  -- the account allowed more
   ('00000000-0000-0000-0000-0000000298c1'),  -- admin, EDIT on Users
-  ('00000000-0000-0000-0000-0000000298c2')   -- admin, READ on Users
+  ('00000000-0000-0000-0000-0000000298c2'),  -- admin, READ on Users
+  ('00000000-0000-0000-0000-0000000298c3')   -- full admin
 on conflict do nothing;
 insert into public.profiles (id, name) select id, 'Fleet Office' from auth.users
  where id::text like '00000000-0000-0000-0000-0000000298%'
 on conflict do nothing;
 insert into public.admin_access (profile_id, page, access_level) values
   ('00000000-0000-0000-0000-0000000298c1', 'admin-users', 'edit'),
-  ('00000000-0000-0000-0000-0000000298c2', 'admin-users', 'read')
+  ('00000000-0000-0000-0000-0000000298c2', 'admin-users', 'read'),
+  ('00000000-0000-0000-0000-0000000298c3', '*', 'edit')
 on conflict do nothing;
 
 -- Four tablets, signed in one after another.
@@ -122,8 +124,15 @@ begin
     raise exception 'FAILED: the list shows three in use';
   end if;
 
-  -- The admin signs B out: B is refused, C still works.
+  -- Signing a device out is for full admins, as "Sign out all devices" is.
   perform pg_temp.as_session('00000000-0000-0000-0000-0000000298c1', '00000000-0000-0000-0000-0000000298f1');
+  begin
+    perform public.admin_sign_out_device(u::uuid, '00000000-0000-0000-0000-00000029800b');
+    raise exception 'FAILED: a Users editor signed a device out';
+  exception when insufficient_privilege then null;
+  end;
+  -- A full admin signs B out: B is refused, C still works.
+  perform pg_temp.as_session('00000000-0000-0000-0000-0000000298c3', '00000000-0000-0000-0000-0000000298f3');
   if not public.admin_sign_out_device(u::uuid, '00000000-0000-0000-0000-00000029800b') then
     raise exception 'FAILED: B was signed out';
   end if;
@@ -149,12 +158,13 @@ begin
   -- Sign out everywhere with an allowance: every device refused.
   perform pg_temp.as_session('00000000-0000-0000-0000-0000000298c1', '00000000-0000-0000-0000-0000000298f1');
   perform public.admin_device_allowance_set(u::uuid, 2);
+  perform pg_temp.as_session('00000000-0000-0000-0000-0000000298c3', '00000000-0000-0000-0000-0000000298f3');
   perform public.admin_sign_out_everywhere(u::uuid);
   perform pg_temp.as_session(u, '00000000-0000-0000-0000-00000029800d');
   if not pg_temp.guard_refuses() then raise exception 'FAILED: signed out everywhere means D too'; end if;
 
-  -- Turned off: everybody is let go.
-  perform pg_temp.as_session('00000000-0000-0000-0000-0000000298c1', '00000000-0000-0000-0000-0000000298f1');
+  -- Turned off (a full admin): everybody is let go.
+  perform pg_temp.as_session('00000000-0000-0000-0000-0000000298c3', '00000000-0000-0000-0000-0000000298f3');
   perform public.set_sign_in_config('{"oneDevice": false}');
   if exists (select 1 from public.account_devices) then raise exception 'FAILED: off clears the lists'; end if;
 

@@ -60,9 +60,10 @@ drop policy if exists account_devices_admin_read on public.account_devices;
 create policy account_devices_admin_read on public.account_devices
   for select to authenticated using ((select public.caller_is_admin()));
 
+-- Allowing more devices: edit on Users. Signing a device out stays with full
+-- admins, as 0223 keeps "Sign out all devices" (no admin_table_pages row).
 insert into public.admin_table_pages (target, page) values
-  ('rpc:admin_device_allowance_set', 'admin-users'),
-  ('rpc:admin_sign_out_device', 'admin-users')
+  ('rpc:admin_device_allowance_set', 'admin-users')
 on conflict do nothing;
 
 -- How many devices an account may be signed in on at once.
@@ -302,7 +303,8 @@ revoke execute on function public.request_guard() from public, anon, authenticat
 grant execute on function public.request_guard() to authenticator, anon, authenticated;
 
 -- ---- Admin ------------------------------------------------------------------------------------------
--- 0179's switches; off also lets go of accounts with several devices.
+-- 0179's switches (full admins only, as 0223 made them); off also lets go
+-- of accounts with several devices.
 create or replace function public.set_sign_in_config(p_config jsonb)
 returns jsonb
 language plpgsql
@@ -312,7 +314,7 @@ as $$
 declare
   v jsonb;
 begin
-  if not public.caller_is_admin() then
+  if not public.caller_admin_can_write('rpc:set_sign_in_config') then
     raise exception 'Only an admin can change sign-in security.' using errcode = '42501';
   end if;
   v := jsonb_build_object(
@@ -333,7 +335,8 @@ $$;
 revoke execute on function public.set_sign_in_config(jsonb) from public, anon;
 grant execute on function public.set_sign_in_config(jsonb) to authenticated;
 
--- 0180's "Sign out all devices", for either kind of account: every Auth
+-- 0180's "Sign out all devices" (full admins only, as 0223 made it), for
+-- either kind of account: every Auth
 -- session ends and a recorded session that matches nothing stops the
 -- tokens still out there.
 create or replace function public.admin_sign_out_everywhere(p_user uuid)
@@ -345,7 +348,7 @@ as $$
 declare
   v_out int := 0;
 begin
-  if not public.caller_is_admin() then
+  if not public.caller_admin_can_write('rpc:admin_sign_out_everywhere') then
     raise exception 'Only an admin can sign an account out.' using errcode = '42501';
   end if;
   if p_user is null then
