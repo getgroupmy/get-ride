@@ -214,7 +214,8 @@ select pg_temp.check(pg_temp.run_as('00000000-0000-0000-0000-0000000308b4',
     = 'PARTNERS_PROTECTED_COLUMN:driving_since',
   'driving since: the driver''s own table write is refused');
 select pg_temp.check(pg_temp.run_as('00000000-0000-0000-0000-0000000308b4',
-    $q$update public.partners set phone = '+60100030814' where auth_user_id = auth.uid()$q$) = 'ok 1',
+    -- (an approved partner's phone is support's to change, 0185, so a free column)
+    $q$update public.partners set updated_at = now() where auth_user_id = auth.uid()$q$) = 'ok 1',
   'driving since: other writes of the driver''s go on as before');
 select pg_temp.check(pg_temp.value_as('00000000-0000-0000-0000-0000000308b4',
     format('select public.c2c_set_driving_since(%L)::text', current_date + 1)) = 'C2C_BAD_DATE',
