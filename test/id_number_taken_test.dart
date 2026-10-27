@@ -49,6 +49,7 @@ void main() {
     test('the words', () {
       expect(idNumberTakenTitle, 'This ID number is already registered');
       expect(idNumberTakenMessage, contains('Sign in to that account, or contact support'));
+      expect(idNumberTakenMessage, contains('900101-14-5678 and 900101145678 are the same'));
       expect('$idNumberTakenTitle $idNumberTakenMessage', isNot(contains('→')));
     });
   });

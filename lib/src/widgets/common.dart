@@ -204,7 +204,8 @@ const idNumberTakenTitle = 'This ID number is already registered';
 
 /// What [showIdNumberTaken] says; the server's hint for ID_NUMBER_TAKEN.
 const idNumberTakenMessage =
-    "Another GET.ride account uses this ID number. Sign in to that account, or contact support if it isn't yours.";
+    "Another GET.ride account uses this ID number. Sign in to that account, or contact support if it isn't yours.\n\n"
+    'ID numbers are compared on letters and digits only: 900101-14-5678 and 900101145678 are the same.';
 
 /// Whether [e] is the server refusing an ID number another live account
 /// has: ID_NUMBER_TAKEN from the profiles trigger, or the unique index
