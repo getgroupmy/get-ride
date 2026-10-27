@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/ride_rating.dart';
 import 'package:get_ride/src/core/trip_receipt.dart';
+import 'package:get_ride/src/data/ride_rating_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ride/trip_receipt_screen.dart';
 import 'package:get_ride/src/widgets/pdf_actions.dart';
@@ -352,4 +354,72 @@ void main() {
     ]), 2.5);
     expect(platformFeesOf(null), 0);
   });
+  for (final b in Brightness.values) {
+    group('the trip summary (${b.name})', () {
+      Future<List<int>> pump(WidgetTester tester, {int? stars}) async {
+        tester.view.physicalSize = const Size(1000, 2000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final closed = <int>[];
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              currentUserIdProvider.overrideWithValue(_rider),
+              tripProvider.overrideWith((ref, id) async => trip()),
+              myRideRatingProvider.overrideWith((ref, key) async => stars == null ? null : RideRating(stars: stars)),
+            ],
+            child: MaterialApp(
+              theme: ThemeData(brightness: b),
+              home: TripSummaryScreen(requestId: 'x', onClose: () => closed.add(1)),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        return closed;
+      }
+
+      String line(WidgetTester tester) =>
+          tester.widget<Text>(find.byKey(const ValueKey('trip-summary-countdown'))).data!;
+
+      testWidgets('it counts down 3 seconds and closes by itself', (tester) async {
+        final closed = await pump(tester, stars: 5);
+        expect(find.text('Trip summary'), findsOneWidget);
+        expect(find.text('Ali'), findsOneWidget);
+        expect(line(tester), 'You rated 5 stars. Closing in 3 s. Touch to pause.');
+        await tester.pump(const Duration(seconds: 1));
+        expect(line(tester), contains('Closing in 2 s'));
+        await tester.pump(const Duration(seconds: 2));
+        expect(closed, [1]);
+        await tester.pump(const Duration(seconds: 3));
+        expect(closed, [1], reason: 'closed once');
+      });
+
+      testWidgets('a touch pauses it; Close still closes', (tester) async {
+        final closed = await pump(tester);
+        expect(line(tester), startsWith('Not rated.'));
+        await tester.tap(find.text('Ali'));
+        await tester.pump();
+        expect(line(tester), contains('Paused while you read'));
+        await tester.pump(const Duration(seconds: 5));
+        expect(closed, isEmpty, reason: 'paused: it waits for the reader');
+        await tester.ensureVisible(find.byKey(const ValueKey('trip-summary-close')));
+        await tester.tap(find.byKey(const ValueKey('trip-summary-close')));
+        expect(closed, [1]);
+      });
+
+      testWidgets('scrolling pauses it; the X closes', (tester) async {
+        final closed = await pump(tester);
+        final scroll = find.byType(Scrollable).first;
+        await tester.timedDragFrom(tester.getCenter(scroll), const Offset(0, -200), const Duration(milliseconds: 300));
+        await tester.pump();
+        expect(line(tester), contains('Paused'));
+        await tester.pump(const Duration(seconds: 4));
+        expect(closed, isEmpty);
+        await tester.tap(find.byKey(const ValueKey('trip-summary-x')));
+        expect(closed, [1]);
+        expect(tester.takeException(), isNull);
+      });
+    });
+  }
 }

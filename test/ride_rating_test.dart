@@ -17,14 +17,16 @@ class _Repo implements RideRatingRepository {
   final bool unavailable;
   final Object? refuse;
   final saved = <(String, int, String?)>[];
+  final tagsSent = <List<String>?>[];
 
   @override
-  Future<RateRideResult> rate(String requestId, int stars, {String? comment}) async {
+  Future<RateRideResult> rate(String requestId, int stars, {String? comment, List<String>? tags}) async {
     if (refuse != null) throw refuse!;
     if (unavailable) return const RatingUnavailable();
     final clean = cleanRatingComment(comment);
     saved.add((requestId, stars, clean));
-    return RatingSaved(RideRating(stars: stars, comment: clean), partnerRating: 4.5);
+    tagsSent.add(tags);
+    return RatingSaved(RideRating(stars: stars, comment: clean, tags: tags ?? const []), partnerRating: 4.5);
   }
 
   @override
@@ -76,6 +78,47 @@ void main() {
       expect(rideRatingError('socket'), contains('connection'));
     });
 
+    test('tags: the list follows the stars, picks keep to it', () {
+      const tags = DriverRatingTags.fallback;
+      expect(tags.forStars(5), contains('Clean car'));
+      expect(tags.forStars(2), contains('Rude'));
+      expect(driverTagQuestion(4), 'What went well?');
+      expect(driverTagQuestion(3), 'What went wrong?');
+      expect(keepDriverTags({'Rude', 'Clean car', 'Friendly'}, 5, tags), ['Clean car', 'Friendly']);
+      expect(keepDriverTags({'Rude', 'Clean car'}, 1, tags), ['Rude']);
+      final rows = DriverRatingTags.fromRows([
+        {'tag': 'B', 'low': false, 'position': 2, 'active': true},
+        {'tag': 'A', 'low': false, 'position': 1, 'active': true},
+        {'tag': 'Gone', 'low': true, 'position': 1, 'active': false},
+        {'tag': 'Late', 'low': true, 'position': 3, 'active': true},
+      ]);
+      expect(rows.high, ['A', 'B']);
+      expect(rows.low, ['Late']);
+      expect(RideRating.fromRow({'stars': 5, 'tags': ['Friendly']}).tags, ['Friendly']);
+      expect(RideRating.fromRow({'stars': 5}).tags, isEmpty, reason: 'a row from before 0297');
+    });
+
+    test('driver totals and the trip summary line', () {
+      final d = DriverTagTotals.fromJson({
+        'days': 30,
+        'rating': 4.8,
+        'rated': 12,
+        'tags': [
+          {'tag': 'Friendly', 'low': false, 'n': 7},
+          {'tag': 'Rude', 'low': true, 'n': 1},
+          {'tag': '', 'low': true, 'n': 9},
+        ],
+      });
+      expect(d.rated, 12);
+      expect(d.liked.single.tag, 'Friendly');
+      expect(d.toWorkOn.single.n, 1);
+      expect(DriverTagTotals.fromJson(null).rated, 0);
+      expect(tripSummaryRatedLine(null), 'Not rated.');
+      expect(tripSummaryRatedLine(1), 'You rated 1 star.');
+      expect(tripSummaryRatedLine(5), 'You rated 5 stars.');
+      expect(tripSummaryCloseAfter, const Duration(seconds: 3));
+    });
+
     test('an older database without rate_ride is told apart from a refusal', () {
       expect(isMissingRatingFunction(const PostgrestException(message: 'x', code: 'PGRST202')), isTrue);
       expect(isMissingRatingFunction(const PostgrestException(message: 'x', code: '42883')), isTrue);
@@ -89,16 +132,19 @@ void main() {
 
   for (final b in Brightness.values) {
     group('the card (${b.name})', () {
-      Future<_Repo> pump(WidgetTester tester, RideRequest ride, {_Repo? repo}) async {
+      Future<_Repo> pump(WidgetTester tester, RideRequest ride, {_Repo? repo, VoidCallback? onSkip}) async {
         final r = repo ?? _Repo();
         await tester.pumpWidget(
           ProviderScope(
-            overrides: [rideRatingRepositoryProvider.overrideWithValue(r)],
+            overrides: [
+              rideRatingRepositoryProvider.overrideWithValue(r),
+              driverRatingTagsProvider.overrideWith((ref) async => DriverRatingTags.fallback),
+            ],
             child: MaterialApp(
               theme: appTheme(b),
               home: Scaffold(
                 body: SingleChildScrollView(
-                  child: RideRatingCard(ride: ride, now: () => _now),
+                  child: RideRatingCard(ride: ride, now: () => _now, onSkip: onSkip),
                 ),
               ),
             ),
@@ -167,6 +213,52 @@ void main() {
         await pump(tester, old);
         expect(find.byKey(const ValueKey('ride-rating-card')), findsNothing);
         expect(find.byKey(const ValueKey('ride-rating-saved')), findsNothing);
+      });
+
+      testWidgets('after a star the tags show; a tap saves them a moment later', (tester) async {
+        final repo = await pump(tester, _ride());
+        expect(find.byKey(const ValueKey('ride-rating-tag-Friendly')), findsNothing, reason: 'no tags before a star');
+        await tester.tap(find.byKey(const ValueKey('rate-star-5')));
+        await tester.pumpAndSettle();
+        expect(find.text('What went well?'), findsOneWidget);
+        expect(find.byKey(const ValueKey('ride-rating-tag-Rude')), findsNothing);
+        await tester.tap(find.byKey(const ValueKey('ride-rating-tag-Friendly')));
+        await tester.tap(find.byKey(const ValueKey('ride-rating-tag-Clean car')));
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(repo.saved, hasLength(1), reason: 'taps are gathered');
+        await tester.pump(rideRatingTagsSaveAfter);
+        await tester.pumpAndSettle();
+        expect(repo.tagsSent.last, ['Clean car', 'Friendly'], reason: 'in the list\'s order');
+
+        // Down to 2 stars: the 4-5 star tags go, the low list shows.
+        await tester.tap(find.byKey(const ValueKey('rate-star-2')));
+        await tester.pumpAndSettle();
+        expect(find.text('What went wrong?'), findsOneWidget);
+        expect(repo.tagsSent.last, isEmpty);
+        expect(find.byKey(const ValueKey('ride-rating-tag-Rude')), findsOneWidget);
+        expect(find.textContaining('Your driver sees totals only'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('Skip shows until a star is given, and calls back', (tester) async {
+        var skipped = 0;
+        await pump(tester, _ride(), onSkip: () => skipped++);
+        final skip = find.byKey(const ValueKey('ride-rating-skip'));
+        expect(skip, findsOneWidget);
+        final size = tester.getSize(skip);
+        expect(size.width >= 120 && size.height >= 48, isTrue, reason: 'an easy target');
+        await tester.tap(skip);
+        expect(skipped, 1);
+        await tester.tap(find.byKey(const ValueKey('rate-star-4')));
+        await tester.pumpAndSettle();
+        expect(skip, findsNothing);
+      });
+
+      testWidgets('no Skip without somewhere to go, or once rated', (tester) async {
+        await pump(tester, _ride());
+        expect(find.byKey(const ValueKey('ride-rating-skip')), findsNothing);
+        await pump(tester, _ride(), repo: _Repo(existing: const RideRating(stars: 4)), onSkip: () {});
+        expect(find.byKey(const ValueKey('ride-rating-skip')), findsNothing);
       });
 
       testWidgets('only a completed trip is rated', (tester) async {

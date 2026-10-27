@@ -58,9 +58,9 @@ insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_f
    '00000000-0000-0000-0000-0000000159b1', 'completed', 20, 20, 'Old', now() - interval '8 days');
 
 -- Nobody signed out can rate, and the table is read-only to clients.
-select pg_temp.check(not has_function_privilege('anon', 'public.rate_ride(uuid, integer, text)', 'execute'),
+select pg_temp.check(not has_function_privilege('anon', 'public.rate_ride(uuid, integer, text, text[])', 'execute'),
                      'anon cannot execute rate_ride');
-select pg_temp.check(has_function_privilege('authenticated', 'public.rate_ride(uuid, integer, text)', 'execute'),
+select pg_temp.check(has_function_privilege('authenticated', 'public.rate_ride(uuid, integer, text, text[])', 'execute'),
                      'a signed-in account can');
 select pg_temp.check(not has_table_privilege('authenticated', 'public.ride_ratings', 'insert')
                        and not has_table_privilege('authenticated', 'public.ride_ratings', 'update')
@@ -110,8 +110,10 @@ select pg_temp.check((public.rate_ride('00000000-0000-0000-0000-0000000159e2', 2
                      'the second rating brings the average to (5 + 2) / 2');
 select pg_temp.check((select count(*) = 1 from public.ride_ratings), 'a passenger sees only their own rating');
 
+-- The driver sees totals only (0297), not who rated them.
 select pg_temp.as_user('00000000-0000-0000-0000-0000000159b1');
-select pg_temp.check((select count(*) = 2 from public.ride_ratings), 'the driver sees the ratings about them');
+select pg_temp.check((select count(*) = 0 from public.ride_ratings), 'the driver does not see the ratings row by row');
+select pg_temp.check((public.my_driver_rating_tags(30)->>'rated')::int = 2, 'the driver sees how many trips were rated');
 
 reset role;
 select pg_temp.check((select rating = 3.50 from public.partners

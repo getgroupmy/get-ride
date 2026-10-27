@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -10,9 +11,11 @@ import 'package:printing/printing.dart';
 
 import '../../core/format.dart';
 import '../../core/region_time.dart';
+import '../../core/ride_rating.dart';
 import '../../core/trip_receipt.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
+import '../../data/ride_rating_repository.dart';
 import '../../providers.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
@@ -67,6 +70,132 @@ class TripReceiptScreen extends ConsumerWidget {
                   ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// After a trip is rated (or Skip): the receipt as a "Trip summary" that
+/// closes by itself after [closeAfter] (owner, 27 Oct), unless the rider
+/// touches or scrolls it to read (WCAG 2.2.1); Close or the cross leave at
+/// once. Closing goes home.
+class TripSummaryScreen extends ConsumerStatefulWidget {
+  const TripSummaryScreen({super.key, required this.requestId, this.closeAfter = tripSummaryCloseAfter, this.onClose});
+  final String requestId;
+  final Duration closeAfter;
+
+  /// Instead of going home (tests).
+  final VoidCallback? onClose;
+
+  @override
+  ConsumerState<TripSummaryScreen> createState() => _TripSummaryScreenState();
+}
+
+class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
+  late int _left = widget.closeAfter.inSeconds;
+  Timer? _tick;
+  bool _paused = false;
+  bool _closed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _paused) return;
+      if (_left <= 1) {
+        _close();
+      } else {
+        setState(() => _left--);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  void _pause() {
+    if (_paused || _closed) return;
+    _tick?.cancel();
+    setState(() => _paused = true);
+  }
+
+  void _close() {
+    if (_closed || !mounted) return;
+    _closed = true;
+    _tick?.cancel();
+    final done = widget.onClose;
+    if (done != null) {
+      done();
+    } else {
+      context.go('/');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final uid = ref.watch(currentUserIdProvider);
+    final stars = uid == null
+        ? null
+        : ref.watch(myRideRatingProvider((requestId: widget.requestId, riderId: uid))).value?.stars;
+    final footer = Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '${tripSummaryRatedLine(stars)} '
+            '${_paused ? 'Paused while you read. Tap Close when done.' : 'Closing in $_left s. Touch to pause.'}',
+            key: const ValueKey('trip-summary-countdown'),
+            textAlign: TextAlign.center,
+            style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            key: const ValueKey('trip-summary-close'),
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            onPressed: _close,
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+    return Scaffold(
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text('Trip summary'),
+        actions: [
+          IconButton(
+            key: const ValueKey('trip-summary-x'),
+            tooltip: 'Close',
+            icon: const Icon(Icons.close),
+            onPressed: _close,
+          ),
+        ],
+      ),
+      // Touching or scrolling the receipt stops the countdown.
+      body: Listener(
+        onPointerDown: (_) => _pause(),
+        child: NotificationListener<ScrollStartNotification>(
+          onNotification: (_) {
+            _pause();
+            return false;
+          },
+          child: AsyncView(
+            value: ref.watch(tripProvider(widget.requestId)),
+            onRetry: () => ref.invalidate(tripProvider(widget.requestId)),
+            data: (r) => r == null
+                ? ListView(padding: const EdgeInsets.all(16), children: [footer])
+                : _ReceiptBody(
+                    receipt: TripReceipt.fromRide(r, asDriver: false),
+                    route: receiptRoute(r),
+                    extra: footer,
+                  ),
+          ),
+        ),
       ),
     );
   }
