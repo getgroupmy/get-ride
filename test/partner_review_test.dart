@@ -15,6 +15,7 @@ import 'package:get_ride/src/core/partner_onboarding.dart';
 import 'package:get_ride/src/core/partner_review.dart';
 import 'package:get_ride/src/core/partner_status.dart';
 import 'package:get_ride/src/core/push_logic.dart' show pushRouteFor;
+import 'package:get_ride/src/core/registration_rules.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/partner_review_repository.dart';
 import 'package:get_ride/src/features/partner/partner_status_panel.dart';
@@ -119,6 +120,10 @@ class _ReviewRepo implements PartnerReviewRepository {
   final log = <ReviewLogEntry>[];
   List<ReviewItem> mine = [];
 
+  /// The server's partner registration checks and overrides (0305).
+  List<RuleProblem> ruleChecks = const [];
+  List<RuleOverride> overrides = const [];
+
   @override
   Future<void> viewed({required String partnerId, required String key}) async {
     calls.add('view $key');
@@ -142,6 +147,8 @@ class _ReviewRepo implements PartnerReviewRepository {
         sameIdAccounts: const ['U-TEST-0099'],
         serviceNames: const {'ride': 'Ride', 'comfort': 'Comfort'},
         services: const [(id: 'ride', name: 'Ride'), (id: 'comfort', name: 'Comfort')],
+        ruleChecks: ruleChecks,
+        overrides: overrides,
       );
 
   @override
@@ -175,7 +182,12 @@ class _ReviewRepo implements PartnerReviewRepository {
   Future<void> sendBack(String partnerId) async => calls.add('send back');
 
   @override
-  Future<void> approve(String partnerId) async => calls.add('approve');
+  Future<void> approve(String partnerId, {String? overrideReason}) async =>
+      calls.add(overrideReason == null ? 'approve' : 'approve override: $overrideReason');
+
+  @override
+  Future<void> askForRules(String partnerId, List<RuleProblem> failed) async =>
+      calls.add('ask ${[for (final p in failed) askLineFor(p)?.key].join(',')}');
 
   @override
   Future<List<ReviewItem>> myItems(String partnerId) async => mine;
@@ -546,6 +558,105 @@ void main() {
       expect(find.byKey(const ValueKey('review-approve-details.name')), findsNothing);
       expect(find.byKey(const ValueKey('review-send-back')), findsNothing);
     });
+
+    // M6: the partner registration rules, checked again by the server on Approve.
+    const failedRules = [
+      RuleProblem(rule: RegRule.citizensOnly, status: 'passed', type: 'TEKSI', place: 'Malaysia', message: 'TEKSI: citizen ID'),
+      RuleProblem(
+        rule: RegRule.businessRegistration,
+        type: 'DEALER',
+        place: 'Malaysia',
+        missing: ['company number', 'registration document'],
+        message: 'DEALER in Malaysia needs a company number and the registration document. Add them, then submit again.',
+      ),
+      RuleProblem(
+        rule: RegRule.driverPermit,
+        type: 'TEKSI',
+        place: 'Malaysia',
+        permit: 'PSV',
+        permitState: 'expired',
+        validUntil: '2026-09-03',
+        message: 'Your PSV expired on 3 Sep 2026: an expired permit counts as missing.',
+      ),
+    ];
+    Map<String, ReviewItem> allApproved() => {
+          for (final l in _lines())
+            l.key: ReviewItem(key: l.key, group: l.group, label: l.label, state: ReviewState.approved),
+        };
+
+    for (final b in Brightness.values) {
+      testWidgets("failed rules: Can't approve, then Approve anyway with a reason (M6, ${b.name})", (tester) async {
+        final repo = await pump(tester, b: b, repo: _ReviewRepo(items: allApproved())..ruleChecks = failedRules);
+        expect(find.text("Can't approve: Business registration missing (DEALER needs it in Malaysia)"), findsOneWidget);
+        expect(find.text('The server checked the partner registration rules again and these failed:'), findsOneWidget);
+        expect(find.byKey(const ValueKey('review-rules-card')), findsOneWidget);
+        for (final (rule, chip) in [
+          ('citizens_only', 'Passed'),
+          ('business_registration', 'Failed'),
+          ('driver_permit', 'Failed'),
+          ('vehicle_permit', 'Not set'),
+          ('vehicle_age', 'Not set'),
+        ]) {
+          expect(find.descendant(of: find.byKey(ValueKey('review-rule-$rule')), matching: find.text(chip)), findsOneWidget,
+              reason: rule);
+        }
+        expect(find.text('Driver permit (PSV)'), findsOneWidget);
+
+        final override = find.byKey(const ValueKey('review-rules-override'));
+        await tester.ensureVisible(override);
+        await tester.tap(override);
+        await _settle(tester);
+        expect(find.text('Override: reason needed'), findsOneWidget);
+        FilledButton confirmButton() => tester.widget<FilledButton>(find.byKey(const ValueKey('review-override-confirm')));
+        expect(confirmButton().onPressed, isNull, reason: 'off while the reason is empty');
+        await tester.enterText(find.byKey(const ValueKey('review-override-reason')), 'SSM received by email (made up).');
+        await tester.pump();
+        expect(confirmButton().onPressed, isNotNull);
+        await tester.tap(find.byKey(const ValueKey('review-override-confirm')));
+        await _settle(tester);
+        expect(repo.calls.last, 'approve override: SSM received by email (made up).');
+        expect(find.text('Approved with override'), findsOneWidget, reason: 'told in a modal');
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('Ask partner for documents sends each failed rule back as a line (M6)', (tester) async {
+      final repo = await pump(tester, repo: _ReviewRepo(items: allApproved())..ruleChecks = failedRules);
+      final ask = find.byKey(const ValueKey('review-rules-ask'));
+      await tester.ensureVisible(ask);
+      await tester.tap(ask);
+      await _settle(tester);
+      expect(find.text('Ask partner for documents?'), findsOneWidget);
+      await tester.tap(find.text('Send back'));
+      await _settle(tester);
+      expect(repo.calls.last, 'ask company.document,permit.valid_until');
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('approved past the rules: "Approved with override", who and why (M6, ${b.name})', (tester) async {
+        await pump(
+          tester,
+          b: b,
+          repo: _ReviewRepo(status: 'approved')
+            ..ruleChecks = failedRules
+            ..overrides = [
+              RuleOverride(
+                reason: 'SSM received by email (made up).',
+                rules: [failedRules[1]],
+                adminId: _me,
+                at: DateTime(2026, 10, 27, 14, 5),
+              ),
+            ],
+        );
+        expect(find.byKey(const ValueKey('review-rules-blocked')), findsNothing, reason: 'already approved');
+        expect(find.text('Approved with override'), findsOneWidget);
+        expect(find.textContaining('by Aisyah: Business registration skipped. Reason saved.'), findsOneWidget);
+        expect(find.text('Reason: SSM received by email (made up).'), findsOneWidget);
+        expect(find.descendant(of: find.byKey(const ValueKey('review-rule-business_registration')),
+            matching: find.text('Overridden')), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   group('the driver: Changes needed', () {

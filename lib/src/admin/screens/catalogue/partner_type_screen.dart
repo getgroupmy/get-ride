@@ -577,6 +577,7 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
             }),
           ),
           PartnerServiceSettingsEditor(
+            typeName: widget.entry == null ? null : str(widget.entry!.values['name']),
             settings: _settings,
             vehicleRequired: _vehicle,
             ageRequired: _rules.ageRequired,

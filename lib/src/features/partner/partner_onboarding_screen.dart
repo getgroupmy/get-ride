@@ -14,6 +14,8 @@ import '../../core/partner_doc_check.dart' show renewalWindowDays;
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_registration.dart';
 import '../../core/partner_type_rules.dart' show EffectiveTypeRules, partnerTypesAvailableIn;
+import '../../core/document_text.dart' show IdDocType;
+import '../../core/registration_rules.dart';
 import '../../core/vehicle_onboarding.dart';
 import '../../data/app_display_repository.dart' show appDisplayProvider;
 import '../../data/identity_repository.dart' show recordProfileSelfie;
@@ -28,6 +30,7 @@ import '../../widgets/loading_skeleton.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/net_image.dart';
 import 'registration_parts.dart';
+import 'registration_rules_parts.dart';
 import 'registration_steps.dart';
 
 typedef _Entries = List<({String id, Map<String, dynamic> values})>;
@@ -370,19 +373,37 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     await save((s) async => s.copyWith(partner: await _repo.patchPartner(s, withRegistrationStep(s.partner, regStepVehicleDocs))));
   }
 
-  /// Partner and vehicle are sent for review together.
+  /// Partner and vehicle are sent for review together. A rule the server
+  /// refuses it for (0305: citizens only, business registration, driver
+  /// permit) is said in its own modal, with the way to the step that fixes it.
   Future<void> _submit() async {
     if (!_docsComplete) {
       return showNotice(context, message: 'Please upload every compulsory document before submitting.');
     }
+    List<RuleProblem> refused = const [];
     await save((s) async {
       final v = _vehicle;
       if (v != null && _needsFor(s.partner).vehicle && v['documents_ok'] != true) {
         final vehicles = ref.read(vehicleOnboardingRepositoryProvider);
         _vehicle = await vehicles.update(v['id'] as String, {'documents_ok': true, 'onboarding_step': 'done'});
       }
-      return s.copyWith(partner: await _repo.patchPartner(s, {'documents_ok': true}));
+      try {
+        return s.copyWith(partner: await _repo.patchPartner(s, {'documents_ok': true}));
+      } catch (e) {
+        refused = ruleProblemsFromError(e);
+        if (refused.isEmpty) rethrow;
+        return s;
+      }
     });
+    if (refused.isEmpty || !mounted) return;
+    final profile = _s?.profile;
+    final step = await showSubmitRefused(
+      context,
+      refused.first,
+      idType: IdDocType.parse(profile?['id_type']),
+      idNumber: '${profile?['ic'] ?? ''}'.trim(),
+    );
+    if (step != null && mounted) goTo(step);
   }
 
   List<RequiredDoc> _docsFor(OnboardingState s) => serviceDocsAfterPermitStep(
@@ -727,7 +748,16 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
           },
         ),
         const SizedBox(height: 16),
-        _continue(_submit, label: _docsComplete ? 'Submit for review' : 'Upload every compulsory document'),
+        // What the server checks on Submit (0305), worked out here first.
+        SubmitChecklist(
+          lead: checklistLead(s.partner),
+          rows: submitChecklist(profile: s.profile, partner: s.partner, entries: typeValues, vehicle: _vehicle,
+              now: widget.now),
+          enabled: !_busy,
+          onFix: goTo,
+          onSubmitAnyway: _submit,
+          submit: _continue(_submit, label: _docsComplete ? 'Submit for review' : 'Upload every compulsory document'),
+        ),
       ],
     );
   }

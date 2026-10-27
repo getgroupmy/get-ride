@@ -8,6 +8,7 @@ import '../../../widgets/search_select.dart';
 import '../../widgets/region_scope_picker.dart';
 import '../people/vehicle_permits_screen.dart' show adminPermitTypesProvider;
 import 'catalogue_widgets.dart';
+import 'partner_rule_failures.dart';
 import 'partner_type_rules_editor.dart' show RegionListEditor;
 
 /// The Partner Service type editor's registration settings: where only
@@ -23,7 +24,12 @@ class PartnerServiceSettingsEditor extends StatelessWidget {
     required this.ageRequired,
     required this.otherTypes,
     required this.onChanged,
+    this.typeName,
   });
+
+  /// The saved type's name, for "Partners affected now" (0305); null for a
+  /// new type.
+  final String? typeName;
 
   final PartnerServiceSettings settings;
   final bool vehicleRequired;
@@ -41,6 +47,7 @@ class PartnerServiceSettingsEditor extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       const SectionLabel('Partner registration', hint: 'What registration asks of partners of this type, by region.'),
+      ServerCheckedNote(type: typeName),
       SwitchListTile(
         key: const ValueKey('pst-citizens-required'),
         contentPadding: EdgeInsets.zero,
