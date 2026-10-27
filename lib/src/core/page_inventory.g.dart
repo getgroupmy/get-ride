@@ -334,6 +334,8 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('route:/admin/m/assign-service-page', SurfaceKind.page, 'Assign service page', 'lib/src/admin/screens/catalogue/catalogue_module.dart', path: '/admin/m/assign-service-page'),
   SurfaceEntry('route:/admin/m/backend', SurfaceKind.page, 'Admin backend', 'lib/src/admin/screens/security/security_module.dart', path: '/admin/m/backend'),
   SurfaceEntry('route:/admin/m/ble-report', SurfaceKind.page, 'Admin ble report', 'lib/src/admin/screens/security/security_module.dart', path: '/admin/m/ble-report'),
+  SurfaceEntry('route:/admin/m/city-to-city', SurfaceKind.page, 'City to city settings', 'lib/src/admin/screens/city_to_city/city_to_city_module.dart', path: '/admin/m/city-to-city'),
+  SurfaceEntry('route:/admin/m/city-to-city-routes', SurfaceKind.page, 'City to city routes', 'lib/src/admin/screens/city_to_city/city_to_city_module.dart', path: '/admin/m/city-to-city-routes'),
   SurfaceEntry('route:/admin/m/claude-access', SurfaceKind.page, 'Admin claude access', 'lib/src/admin/screens/security/security_module.dart', path: '/admin/m/claude-access'),
   SurfaceEntry('route:/admin/m/country-states-cities', SurfaceKind.page, 'Admin regions', 'lib/src/admin/screens/geo/geo_module.dart', path: '/admin/m/country-states-cities'),
   SurfaceEntry('route:/admin/m/display', SurfaceKind.page, 'Admin display settings', 'lib/src/admin/screens/meterapp/meterapp_module.dart', path: '/admin/m/display'),

@@ -14,6 +14,7 @@ import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
 import '../../widgets/page_style_host.dart';
 import 'commission_promotions_tabs.dart';
+import 'commission_service_tab.dart';
 import 'commission_settings_tabs.dart';
 import 'geo/geo_data.dart' show regionsProvider;
 import 'geo/geo_logic.dart' show RegionEntry, RegionLevel, regionNamesAt;
@@ -126,7 +127,7 @@ class AdminCommissionScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(moduleAccessProvider('commission')) == AccessLevel.edit;
     return DefaultTabController(
-      length: 5,
+      length: 6,
       child: AdminPage(
       title: 'Commission',
       module: 'commission',
@@ -139,6 +140,7 @@ class AdminCommissionScreen extends ConsumerWidget {
         ),
         tabs: const [
           Tab(key: ValueKey('commission-tab-rates'), text: 'Rates'),
+          Tab(key: ValueKey('commission-tab-services'), text: 'Per service'),
           Tab(key: ValueKey('commission-tab-settings'), text: 'Settings'),
           Tab(key: ValueKey('commission-tab-tiers'), text: 'Tiers'),
           Tab(key: ValueKey('commission-tab-promotions'), text: 'Promotions'),
@@ -240,6 +242,7 @@ class AdminCommissionScreen extends ConsumerWidget {
           ]);
         },
       ),
+      CommissionServiceTab(canEdit: canEdit),
       CommissionSettingsTab(canEdit: canEdit),
       CommissionTiersTab(canEdit: canEdit),
       CommissionPromotionsTab(canEdit: canEdit),
