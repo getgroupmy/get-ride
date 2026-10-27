@@ -25,12 +25,9 @@ insert into public.admin_access (profile_id, page, access_level) values
   ('00000000-0000-0000-0000-0000000298c3', '*', 'edit')
 on conflict do nothing;
 
--- Four tablets, signed in one after another.
+-- Tablet A, signed in while the account had one device.
 insert into auth.sessions (id, user_id, created_at, updated_at) values
-  ('00000000-0000-0000-0000-00000029800a', '00000000-0000-0000-0000-0000000298a1', now() - interval '40 minutes', now()),
-  ('00000000-0000-0000-0000-00000029800b', '00000000-0000-0000-0000-0000000298a1', now() - interval '30 minutes', now()),
-  ('00000000-0000-0000-0000-00000029800c', '00000000-0000-0000-0000-0000000298a1', now() - interval '20 minutes', now()),
-  ('00000000-0000-0000-0000-00000029800d', '00000000-0000-0000-0000-0000000298a1', now() - interval '10 minutes', now());
+  ('00000000-0000-0000-0000-00000029800a', '00000000-0000-0000-0000-0000000298a1', now() - interval '40 minutes', now());
 
 update public.app_settings set value = value || '{"oneDevice": true}' where key = 'sign_in';
 
@@ -88,6 +85,13 @@ begin
                      where user_id = u::uuid and session_id = '00000000-0000-0000-0000-00000029800a') then
     raise exception 'FAILED: tablet A moved into the list, its old row gone';
   end if;
+
+  -- Three more tablets sign in, one after another (a sign-in at one device
+  -- would have signed the others out, so they come now).
+  insert into auth.sessions (id, user_id, created_at, updated_at) values
+    ('00000000-0000-0000-0000-00000029800b', u::uuid, now() - interval '30 minutes', now()),
+    ('00000000-0000-0000-0000-00000029800c', u::uuid, now() - interval '20 minutes', now()),
+    ('00000000-0000-0000-0000-00000029800d', u::uuid, now() - interval '10 minutes', now());
 
   -- B and C claim: all three work.
   perform pg_temp.as_session(u, '00000000-0000-0000-0000-00000029800b');
