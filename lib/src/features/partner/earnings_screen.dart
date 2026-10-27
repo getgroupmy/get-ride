@@ -106,6 +106,12 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
             icon: const Icon(Icons.description_outlined),
             onPressed: () => context.push('/drive/statements'),
           ),
+          IconButton(
+            key: const ValueKey('earnings-ratings'),
+            tooltip: 'My ratings',
+            icon: const Icon(Icons.star_outline),
+            onPressed: () => context.push('/drive/ratings'),
+          ),
           Builder(
             builder: (button) => IconButton(
               key: const ValueKey('earnings-export'),

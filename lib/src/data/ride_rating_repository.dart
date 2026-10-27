@@ -13,13 +13,34 @@ class RideRatingRepository {
   /// checks the caller is the ride's passenger and reads the driver off the
   /// ride. [RatingUnavailable] on a database without the function; a refusal
   /// is thrown.
-  Future<RateRideResult> rate(String requestId, int stars, {String? comment}) async {
+  ///
+  /// [tags]: the tags picked (0297); null leaves those already given. A
+  /// database before 0297 has no tags: the stars and comment are saved
+  /// without them.
+  Future<RateRideResult> rate(String requestId, int stars, {String? comment, List<String>? tags}) async {
     final clean = cleanRatingComment(comment);
     try {
-      final res = await _db.rpc('rate_ride', params: {'p_request_id': requestId, 'p_stars': stars, 'p_comment': clean});
+      Object? res;
+      try {
+        res = await _db.rpc('rate_ride', params: {
+          'p_request_id': requestId,
+          'p_stars': stars,
+          'p_comment': clean,
+          'p_tags': ?tags,
+        });
+      } on PostgrestException catch (e) {
+        if (tags == null || !isMissingRatingFunction(e)) rethrow;
+        res = await _db.rpc('rate_ride', params: {'p_request_id': requestId, 'p_stars': stars, 'p_comment': clean});
+      }
       final m = res is Map ? res : const {};
+      final saved = m['tags'];
       return RatingSaved(
-        RideRating(stars: stars, comment: clean, updatedAt: DateTime.now()),
+        RideRating(
+          stars: stars,
+          comment: clean,
+          updatedAt: DateTime.now(),
+          tags: saved is List ? [for (final t in saved) if (t is String) t] : (tags ?? const []),
+        ),
         partnerRating: (m['partner_rating'] as num?)?.toDouble(),
       );
     } on PostgrestException catch (e) {
@@ -34,7 +55,7 @@ class RideRatingRepository {
     try {
       final row = await _db
           .from('ride_ratings')
-          .select('stars, comment, updated_at')
+          .select('*')
           .eq('request_id', requestId)
           .eq('rater_id', riderId)
           .maybeSingle();
@@ -52,8 +73,26 @@ bool isMissingRatingFunction(PostgrestException e) =>
 
 final rideRatingRepositoryProvider = Provider((ref) => RideRatingRepository(ref.watch(supabaseProvider)));
 
+/// The tags a rider picks (0297), as the admin keeps them; the built-in
+/// list when they can't be read (a database before 0297, offline).
+final driverRatingTagsProvider = FutureProvider<DriverRatingTags>((ref) async {
+  try {
+    final rows = await ref.watch(supabaseProvider).from('driver_rating_tags').select().eq('active', true);
+    final tags = DriverRatingTags.fromRows([for (final r in rows) Map<String, dynamic>.from(r)]);
+    return tags.high.isEmpty && tags.low.isEmpty ? DriverRatingTags.fallback : tags;
+  } catch (_) {
+    return DriverRatingTags.fallback;
+  }
+});
+
+/// The driver's own totals per tag over the last [days] days (0297).
+final myDriverTagTotalsProvider = FutureProvider.autoDispose.family<DriverTagTotals, int>((ref, days) async {
+  final res = await ref.watch(supabaseProvider).rpc('my_driver_rating_tags', params: {'p_days': days});
+  return DriverTagTotals.fromJson(res);
+});
+
 /// The passenger's rating of a ride (row-level security shows it to that
-/// passenger and the driver); null when there is none.
+/// passenger only since 0297); null when there is none.
 final myRideRatingProvider = FutureProvider.autoDispose.family<RideRating?, ({String requestId, String riderId})>(
   (ref, key) => ref.watch(rideRatingRepositoryProvider).mine(key.requestId, key.riderId),
 );

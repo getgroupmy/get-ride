@@ -80,6 +80,7 @@ import 'features/partner/my_permits_screen.dart';
 import 'features/partner/driver_services_screen.dart';
 import 'features/partner/earnings_screen.dart';
 import 'features/partner/statement_verify_screen.dart';
+import 'features/partner/driver_ratings_screen.dart';
 import 'features/partner/statements_screen.dart';
 import 'features/partner/partner_trip_history_screen.dart';
 import 'features/partner/partner_onboarding_screen.dart';
@@ -368,7 +369,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                         path: ':id',
                         // A demo request has no receipt: the server never saw it.
                         redirect: (_, s) => isDemoRideId(s.pathParameters['id'] ?? '') ? '/trips' : null,
-                        builder: (_, s) => TripReceiptScreen(requestId: s.pathParameters['id']!),
+                        // ?summary=1: after the trip is rated or skipped, it
+                        // closes by itself.
+                        builder: (_, s) => s.uri.queryParameters['summary'] == '1'
+                            ? TripSummaryScreen(requestId: s.pathParameters['id']!)
+                            : TripReceiptScreen(requestId: s.pathParameters['id']!),
                       ),
                     ],
                   ),
@@ -418,6 +423,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                       GoRoute(path: 'telematics', builder: (_, _) => const TelematicsScreen()),
                       GoRoute(path: 'groups', builder: (_, _) => const StandGroupsScreen()),
                       GoRoute(path: 'statements', builder: (_, _) => const StatementsScreen()),
+                      GoRoute(path: 'ratings', builder: (_, _) => const DriverRatingsScreen()),
                       GoRoute(
                         path: 'history',
                         builder: (_, _) => const PartnerTripHistoryScreen(),

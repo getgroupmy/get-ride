@@ -1,7 +1,9 @@
-// After a trip: "Rate your driver" — 1–5 stars and an optional comment,
-// saved through rate_ride (migration 0159) the moment a star is tapped, as
-// Grab and inDrive do, and again as the comment is written; then shown as
-// given with an Edit key while the rating window is open.
+// After a trip: "Rate your driver" — 1–5 stars, tags from the admin's
+// lists (0297: "What went well?" or "What went wrong?") and an optional
+// comment, saved through rate_ride (migration 0159) the moment a star is
+// tapped, as Grab and inDrive do, and again as tags are picked and the
+// comment is written; then shown as given with an Edit key while the
+// rating window is open.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -13,8 +15,12 @@ import '../data/ride_rating_repository.dart';
 import 'app_notice.dart';
 
 class RideRatingCard extends ConsumerStatefulWidget {
-  const RideRatingCard({super.key, required this.ride, this.now});
+  const RideRatingCard({super.key, required this.ride, this.now, this.onSkip});
   final RideRequest ride;
+
+  /// Skip, before a star is picked: on the trip screen it goes on to the
+  /// trip summary. None on the receipt.
+  final VoidCallback? onSkip;
 
   /// The clock, for tests.
   final DateTime Function()? now;
@@ -37,6 +43,14 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
   String _sentComment = '';
   Timer? _commentSave;
 
+  /// The tags picked (0297).
+  Set<String> _tags = {};
+  Timer? _tagSave;
+
+  /// The lists last built with, kept so a send as the card goes needs no ref.
+  DriverRatingTags _tagLists = DriverRatingTags.fallback;
+  List<String> get _keptTags => keepDriverTags(_tags, _stars, _tagLists);
+
   /// What this card saved, ahead of the refetch.
   RideRating? _saved;
 
@@ -54,8 +68,13 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
   @override
   void dispose() {
     _commentSave?.cancel();
-    // A comment still being typed as the screen goes: sent all the same.
-    if (_repoKept != null && _stars != null && _comment.text.trim() != _sentComment) unawaited(_send(quiet: true));
+    final tagsWaiting = _tagSave?.isActive ?? false;
+    _tagSave?.cancel();
+    // A comment still being typed, or tags just picked, as the screen goes:
+    // sent all the same.
+    if (_repoKept != null && _stars != null && (_comment.text.trim() != _sentComment || tagsWaiting)) {
+      unawaited(_send(quiet: true));
+    }
     _comment.dispose();
     super.dispose();
   }
@@ -65,14 +84,25 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
     _stars = from?.stars;
     _comment.text = from?.comment ?? '';
     _sentComment = _comment.text.trim();
+    _tags = {...?from?.tags};
   });
 
   void _pick(int stars) {
     setState(() {
       _stars = stars;
       _editing = true;
+      // From 4-5 stars to 1-3 (or back): the other list's tags go.
+      _tags = keepDriverTags(_tags, stars, _tagLists).toSet();
     });
+    _tagSave?.cancel();
     unawaited(_send());
+  }
+
+  void _toggleTag(String tag) {
+    if (_stars == null) return;
+    setState(() => _tags = _tags.contains(tag) ? ({..._tags}..remove(tag)) : {..._tags, tag});
+    _tagSave?.cancel();
+    _tagSave = Timer(rideRatingTagsSaveAfter, () => unawaited(_send()));
   }
 
   void _commentChanged(String _) {
@@ -87,9 +117,10 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
     final stars = _stars;
     if (!validStars(stars)) return;
     final comment = _comment.text;
+    final tags = _keptTags;
     if (!quiet && mounted) setState(() => _busy = true);
     try {
-      final res = await _repo.rate(widget.ride.id, stars!, comment: comment);
+      final res = await _repo.rate(widget.ride.id, stars!, comment: comment, tags: tags);
       _sentComment = comment.trim();
       if (quiet || !mounted) return;
       switch (res) {
@@ -137,7 +168,13 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
               _Stars(value: saved.stars, size: 18, color: _starColor(t)),
             ],
           ),
-          subtitle: saved.comment == null ? null : Text(saved.comment!, maxLines: 3, overflow: TextOverflow.ellipsis),
+          subtitle: saved.comment == null && saved.tags.isEmpty
+              ? null
+              : Text(
+                  [if (saved.tags.isNotEmpty) saved.tags.join(' · '), ?saved.comment].join('\n'),
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                ),
           trailing: open
               ? TextButton(
                   key: const ValueKey('ride-rating-edit'),
@@ -150,6 +187,8 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
     }
 
     final stars = _stars;
+    final lists = _tagLists = ref.watch(driverRatingTagsProvider).value ?? DriverRatingTags.fallback;
+    final shown = lists.forStars(stars);
     return Card(
       key: const ValueKey('ride-rating-card'),
       child: Padding(
@@ -190,6 +229,39 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
                   ? RatingSavedChip(key: const ValueKey('ride-rating-saved-chip'), busy: _busy)
                   : Text('Tap a star. It saves straight away.', style: t.textTheme.bodySmall),
             ),
+            if (stars == null && saved == null && widget.onSkip != null)
+              Center(
+                child: TextButton(
+                  key: const ValueKey('ride-rating-skip'),
+                  style: TextButton.styleFrom(minimumSize: const Size(120, 48)),
+                  onPressed: widget.onSkip,
+                  child: const Text('Skip'),
+                ),
+              ),
+            if (stars != null && shown.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(driverTagQuestion(stars), style: t.textTheme.titleSmall),
+              const SizedBox(height: 8),
+              Wrap(
+                key: const ValueKey('ride-rating-tags'),
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final tag in shown)
+                    FilterChip(
+                      key: ValueKey('ride-rating-tag-$tag'),
+                      label: Text(tag),
+                      selected: _tags.contains(tag),
+                      onSelected: (_) => _toggleTag(tag),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tags save a moment after you tap them. Your driver sees totals only, never who.',
+                style: t.textTheme.bodySmall,
+              ),
+            ],
             const SizedBox(height: 8),
             TextField(
               key: const ValueKey('ride-rating-comment'),
@@ -225,6 +297,9 @@ class _RideRatingCardState extends ConsumerState<RideRatingCard> {
 
 /// How long after the last keystroke a rating's comment is saved.
 const rideRatingCommentSaveAfter = Duration(milliseconds: 1200);
+
+/// How long after the last tap a rating's tags are saved.
+const rideRatingTagsSaveAfter = Duration(milliseconds: 600);
 
 /// "Rating saved" with a tick, under the stars: the rider's rating card and
 /// the driver's rating of the rider say it alike.

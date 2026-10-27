@@ -557,6 +557,14 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     context.go('/');
   }
 
+  /// The trip's summary (its receipt, closing by itself), after it is
+  /// rated or skipped.
+  void _summary(RideRequest r) {
+    if (_closed || !mounted) return;
+    _closed = true;
+    context.go('/trips/${r.id}?summary=1');
+  }
+
   /// Home, with [trip] filled in on the confirm step ([rideRebookProvider]).
   void _bookAgain(RideRebook? trip) {
     if (_closed || !mounted) return;
@@ -1149,7 +1157,12 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             child: const Text('Book another ride'),
           )
         else if (r.status.isFinished)
-          FilledButton(key: const ValueKey('ride-done'), onPressed: _close, child: const Text('Done')),
+          FilledButton(
+            key: const ValueKey('ride-done'),
+            // A finished trip ends on its summary (owner, 27 Oct).
+            onPressed: r.status == RideStatus.completed && !_isDemo ? () => _summary(r) : _close,
+            child: const Text('Done'),
+          ),
       ];
 
   /// Pinned under the sheet at any height and clear of the home indicator
@@ -1216,7 +1229,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           const SizedBox(height: 16),
           // The trip done: rating it comes first, in view with the sheet all
           // the way down (it saves as a star is tapped).
-          if (r.status == RideStatus.completed && !_isDemo) MapSheetRestLine(child: RideRatingCard(ride: r)),
+          if (r.status == RideStatus.completed && !_isDemo)
+            MapSheetRestLine(child: RideRatingCard(ride: r, onSkip: () => _summary(r))),
           // The driver asking to hand the trip over (0199), or the new one coming.
           if (!_isDemo) ...[
             RiderHandoverCard(ride: r),

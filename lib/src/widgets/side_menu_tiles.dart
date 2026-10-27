@@ -90,6 +90,7 @@ const driveShellPages = [
   '/drive/earnings',
   '/drive/telematics',
   '/drive/statements',
+  '/drive/ratings',
   '/drive/history',
 ];
 
