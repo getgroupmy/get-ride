@@ -331,7 +331,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
   double? get _recommended {
     final r = _route, v = _vehicle;
     if (r == null || v == null) return null;
-    return _pricing.roundFare(quoteFare(_tariff, r.km, r.min, multiplier: v.multiplier, fallbackCurrency: AppConfig.currency).fare);
+    return _pricing.roundFare(quoteFare(_tariff, r.km, r.min, multiplier: v.multiplier, rates: v.rates, fallbackCurrency: AppConfig.currency).fare);
   }
 
   /// The pickup's context (read again only for a new pickup) and the

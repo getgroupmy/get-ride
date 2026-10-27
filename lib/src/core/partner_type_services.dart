@@ -107,6 +107,26 @@ List<String> serviceChoices(Iterable<String> catalogue, Iterable<PartnerTypeServ
   return out;
 }
 
+/// Why a new Partner Service type can't be added with [picked] services
+/// (0300: a new type takes only the services the admin picks), or null.
+String? newTypeServicesProblem(List<String> picked) =>
+    picked.isEmpty ? 'Pick at least one service, or the type takes no jobs.' : null;
+
+/// The Add button of a new type, with how many services it takes.
+String addTypeLabel(int services) =>
+    services == 0 ? 'Add Partner Service type' : 'Add Partner Service type ($services service${services == 1 ? '' : 's'})';
+
+/// The new type's rule: only the [picked] services, in the list's order.
+PartnerTypeServiceRule newTypeRule(String name, List<String> picked, List<String> choices) {
+  final keys = {for (final s in picked) partnerServiceKey(s)};
+  return PartnerTypeServiceRule(
+    typeKey: partnerServiceKey(name),
+    typeName: name.trim(),
+    allServices: false,
+    services: [for (final s in choices) if (keys.remove(partnerServiceKey(s))) s],
+  );
+}
+
 /// The partner types from [names] that have no rule yet, one per key.
 List<String> typesWithoutRule(Iterable<String> names, Iterable<PartnerTypeServiceRule> rules) {
   final taken = {for (final r in rules) r.typeKey};

@@ -27,9 +27,10 @@ bool endsEarly(LatLng? at, LatLng? drop) => at != null && drop != null && _dista
 /// tariff the ride was priced on (its base fare, minimum and booking fee),
 /// as a meter charges at least its flag fall. [card] is the Admin → Fare
 /// tariffs card for the pickup and service; null is the built-in TEKSI
-/// tariff, with the service's [multiplier].
-double earlyEndFloor(FareTariff? card, {double multiplier = 1}) =>
-    quoteFare(card, 0, 0, multiplier: multiplier).fare;
+/// tariff, with the service's [multiplier], or the service's own [rates]
+/// (their minimum fare).
+double earlyEndFloor(FareTariff? card, {double multiplier = 1, ServiceRates? rates}) =>
+    quoteFare(card, 0, 0, multiplier: multiplier, rates: rates).fare;
 
 /// The tariff card a ride was priced on: the pickup's area from the ride row
 /// and its service, matched by name in the catalogue ([services]: catalogue

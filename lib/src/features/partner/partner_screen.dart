@@ -899,6 +899,40 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     return _askForVehicle(needed, teksi: false, action: accepting ? 'accept a request' : 'send an offer');
   }
 
+  /// The server refused an offer for want of a vehicle (0300): say why,
+  /// and "Choose vehicle" asks for one as going online does.
+  Future<void> _vehicleFirst(String reason) async {
+    final choose = await showAppDialog<bool>(id: 'partner.vehicle-first',
+      context: context,
+      builder: (c) => AlertDialog(
+        key: const ValueKey('vehicle-first'),
+        icon: const Icon(Icons.directions_car_outlined),
+        title: const Text('Choose a vehicle first'),
+        content: Text(reason),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('OK')),
+          FilledButton(
+            key: const ValueKey('vehicle-first-choose'),
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Choose vehicle'),
+          ),
+        ],
+      ),
+    );
+    if (choose != true || !mounted) return;
+    ref.invalidate(assignableVehiclesProvider);
+    List<AssignableVehicle> vehicles;
+    try {
+      vehicles = await ref.read(assignableVehiclesProvider.future).timeout(goOnlineCheckTimeout);
+    } catch (e) {
+      if (mounted) showError(context, e);
+      return;
+    }
+    if (!mounted) return;
+    await _askForVehicle(vehicles, teksi: false, action: 'send an offer');
+  }
+
   /// Accept: an offer at the rider's own fare. The rider still says yes,
   /// unless they booked with "Auto-accept offer of RM x" at that fare or
   /// more, which the database takes at once (migration 0141).
@@ -944,7 +978,12 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       if (mounted) {
         // The server's reasons (0269): declined already, offers paused for
         // cancelling too much, an amount out of range.
-        '$e'.contains('OFFER') ? showInfo(context, rideOfferError(e)) : showError(context, e);
+        final vehicle = vehicleRequiredReason(e);
+        if (vehicle != null) {
+          unawaited(_vehicleFirst(vehicle));
+        } else {
+          '$e'.contains('OFFER') ? showInfo(context, rideOfferError(e)) : showError(context, e);
+        }
       }
       return;
     } finally {

@@ -38,6 +38,7 @@ List<RideService> rideServicesFromCatalogue(List<CatalogueEntry> entries, Map<St
         image: _image(v['heroImageUri']) ?? _image(v['iconUri']),
         serviceTypes: types,
         parentIds: serviceParentIds(v),
+        rates: ServiceRates.fromValues(v),
       ),
     );
   }

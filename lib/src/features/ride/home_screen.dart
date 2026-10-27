@@ -1327,7 +1327,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final b = _basis;
     return b == null
         ? 0
-        : quoteFare(_tariffFor(s), b.distanceKm, b.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
+        : quoteFare(_tariffFor(s), b.distanceKm, b.durationMin, multiplier: s.multiplier, rates: s.rates, fallbackCurrency: AppConfig.currency)
             .fare;
   }
 
@@ -1384,7 +1384,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final r = _route;
     if (r == null) return 0;
     final route =
-        quoteFare(_tariffFor(s), r.distanceKm, r.durationMin, multiplier: s.multiplier, fallbackCurrency: AppConfig.currency)
+        quoteFare(_tariffFor(s), r.distanceKm, r.durationMin, multiplier: s.multiplier, rates: s.rates, fallbackCurrency: AppConfig.currency)
             .fare;
     return _pricing.roundFare(route + optionChargesTotal(_optionChargesOn(route, s)));
   }

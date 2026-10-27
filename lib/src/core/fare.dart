@@ -30,6 +30,41 @@ double calculateFare(
 
 double _round2(double v) => double.parse(v.toStringAsFixed(2));
 
+/// A Vehicle Service's own rates (Admin → Vehicle Services: Cost per km,
+/// Cost per min, Minimum fare), which price it when no fare tariff covers
+/// the trip: km × per km + minutes × per minute, never below the minimum.
+class ServiceRates {
+  const ServiceRates({required this.perKm, this.perMinute = 0, this.minimumFare = 0});
+  final double perKm;
+  final double perMinute;
+  final double minimumFare;
+
+  /// From a catalogue entry's values; null without a Cost per km, and for a
+  /// metered taxi (its meter prices it).
+  static ServiceRates? fromValues(Map<String, dynamic> v) {
+    double? n(Object? raw) {
+      final d = raw is num ? raw.toDouble() : double.tryParse('${raw ?? ''}');
+      return d == null || !d.isFinite || d < 0 ? null : d;
+    }
+
+    final km = n(v['costPerKm']);
+    if (km == null || km <= 0) return null;
+    bool taxi(Object? x) {
+      final l = '${x ?? ''}'.toLowerCase();
+      return l.contains('teksi') || l.contains('taxi');
+    }
+
+    final types = v['serviceTypes'];
+    if (taxi(v['name']) || (types is List && types.any(taxi))) return null;
+    return ServiceRates(perKm: km, perMinute: n(v['costPerMin']) ?? 0, minimumFare: n(v['minFareAmount']) ?? 0);
+  }
+
+  /// What a trip of [distanceKm] and [durationMin] costs on these rates.
+  double fare(double distanceKm, double durationMin) => _round2(
+    math.max(minimumFare, math.max(0.0, distanceKm) * perKm + math.max(0.0, durationMin) * perMinute),
+  );
+}
+
 /// Ride services offered on the booking sheet. `name` is what lands in
 /// `ride_requests.service`.
 class RideService {
@@ -42,11 +77,16 @@ class RideService {
     this.image,
     this.serviceTypes = const [],
     this.parentIds = const [],
+    this.rates,
   });
   final String name;
   final String description;
   final double multiplier;
   final int seats;
+
+  /// Its own rates, for a trip no fare tariff covers; null: the built-in
+  /// TEKSI tariff × [multiplier].
+  final ServiceRates? rates;
 
   /// The catalogue's picture of the vehicle (hero image, else icon).
   final String? image;

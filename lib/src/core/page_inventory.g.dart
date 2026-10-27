@@ -179,6 +179,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:partner.online-selfie-sending', SurfaceKind.modal, 'Partner · Online selfie sending', 'lib/src/features/partner/online_selfie_check.dart'),
   SurfaceEntry('modal:partner.ride-extras', SurfaceKind.modal, 'Partner · Ride extras', 'lib/src/features/partner/ride_extras_parts.dart'),
   SurfaceEntry('modal:partner.type-rules-blocked', SurfaceKind.modal, 'Partner · Type rules blocked', 'lib/src/features/partner/partner_screen.dart'),
+  SurfaceEntry('modal:partner.vehicle-first', SurfaceKind.modal, 'Partner · Vehicle first', 'lib/src/features/partner/partner_screen.dart'),
   SurfaceEntry('modal:partner.vehicle-permit-blocked', SurfaceKind.modal, 'Partner · Vehicle permit blocked', 'lib/src/features/partner/partner_screen.dart'),
   SurfaceEntry('modal:partner.vehicle-ready', SurfaceKind.modal, 'Partner · Vehicle ready', 'lib/src/features/partner/partner_screen.dart'),
   SurfaceEntry('modal:passkeys.remove', SurfaceKind.modal, 'Passkeys · Remove', 'lib/src/features/settings/passkeys_screen.dart'),

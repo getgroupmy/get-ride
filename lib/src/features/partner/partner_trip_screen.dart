@@ -575,7 +575,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       vehicleServiceId: service?.id,
       serviceTypes: service == null ? const {} : serviceTypeIds(service, names ?? const {}),
     );
-    return earlyEndFloor(card, multiplier: service?.multiplier ?? 1);
+    return earlyEndFloor(card, multiplier: service?.multiplier ?? 1, rates: service?.rates);
   }
 
   /// Works out the early-end fare and asks the driver to confirm it; null

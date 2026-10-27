@@ -12,7 +12,10 @@ import 'catalogue_logic.dart';
 import 'catalogue_widgets.dart';
 import 'partner_service_settings_editor.dart';
 import 'partner_type_rules_editor.dart';
-import 'partner_type_services_screen.dart' show partnerTypeServicesPath;
+import 'partner_type_services_screen.dart' show partnerTypeServicesPath, savePartnerTypeServiceRule;
+import '../../../core/partner_type_services.dart';
+import '../../../widgets/search_select.dart';
+import '../geo/geo_data.dart' show regionVehicleTypesProvider;
 import '../../../core/partner_modes.dart' show defaultVehicleRequired;
 import '../../../core/partner_type_rules.dart';
 import '../../../widgets/page_style_host.dart';
@@ -44,15 +47,20 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
       docTypes = [];
     }
     if (!mounted) return;
-    final values = await openEditor<Map<String, dynamic>>(
+    final saved = await openEditor<_TypeSave>(
       context,
       e == null ? 'Add Partner Service type' : 'Edit Partner Service type',
       _PartnerTypeEditor(entries: all, entry: e, docTypes: docTypes, canEdit: canEditPage(ref, _page)),
     );
-    if (values == null || !mounted) return;
+    if (saved == null || !mounted) return;
+    final rule = saved.rule;
     if (await runAdminAction(
       context,
-      () => ref.read(adminRepositoryProvider).saveSetting(c, id: e?.id, values: values, position: 0),
+      () async {
+        await ref.read(adminRepositoryProvider).saveSetting(c, id: e?.id, values: saved.values, position: 0);
+        // A new type takes only the services picked for it (0300).
+        if (rule != null) await savePartnerTypeServiceRule(ref, rule);
+      },
       success: 'Saved',
     )) {
       _refresh();
@@ -222,6 +230,10 @@ class _PartnerTypeScreenState extends ConsumerState<PartnerTypeScreen> {
   }
 }
 
+/// What the editor saves: the type's entry, and for a new type the
+/// services it takes.
+typedef _TypeSave = ({Map<String, dynamic> values, PartnerTypeServiceRule? rule});
+
 class _PartnerTypeEditor extends ConsumerStatefulWidget {
   const _PartnerTypeEditor({required this.entries, this.entry, required this.docTypes, required this.canEdit});
   final List<SettingEntry> entries;
@@ -252,6 +264,9 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
   bool _settingsTouched = false;
   bool _tried = false;
   String? _error;
+  // A new type: the services it takes, picked here (required).
+  late final bool _isNew = widget.entry == null;
+  List<String> _takes = const [];
 
   @override
   void dispose() {
@@ -356,19 +371,111 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
       // The same for the registration settings: untouched, kept as stored.
       settings: _settingsTouched ? _settings : null,
     );
-    if (r.error != null) {
+    final takesProblem = _isNew ? newTypeServicesProblem(_takes) : null;
+    if (r.error != null || takesProblem != null) {
       return setState(() {
-        _error = r.error;
+        _error = r.error ?? takesProblem;
         _tried = true;
       });
     }
-    Navigator.pop(context, r.values);
+    final choices = _serviceChoices();
+    Navigator.pop<_TypeSave>(context, (
+      values: r.values,
+      rule: _isNew ? newTypeRule(_name.text, _takes, choices) : null,
+    ));
+  }
+
+  List<String> _serviceChoices() =>
+      serviceChoices([for (final o in ref.read(regionVehicleTypesProvider).value ?? const []) o.name], const []);
+
+  /// "Services this type takes *": every service to tick, Select all and
+  /// Clear, and a search box for a long list.
+  Widget _takesPicker(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant);
+    final loaded = ref.watch(regionVehicleTypesProvider);
+    final choices = serviceChoices([for (final o in loaded.value ?? const []) o.name], const []);
+    final ticked = {for (final s in _takes) partnerServiceKey(s)};
+    final missing = _tried && _takes.isEmpty;
+    final body = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(child: Text('Services this type takes *', style: t.textTheme.titleSmall)),
+        TextButton(
+          key: const ValueKey('partner-type-takes-all'),
+          onPressed: choices.isEmpty ? null : () => setState(() => _takes = [...choices]),
+          child: const Text('Select all'),
+        ),
+        TextButton(
+          key: const ValueKey('partner-type-takes-clear'),
+          onPressed: _takes.isEmpty ? null : () => setState(() => _takes = const []),
+          child: const Text('Clear'),
+        ),
+      ]),
+      Text('Partners of this type see and take only these. Change them later in Services each type sees.', style: muted),
+      if (loaded.isLoading && choices.isEmpty)
+        const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()))
+      else
+        ListSearchFilter(
+          count: choices.length,
+          hint: 'Search services',
+          fieldKey: const ValueKey('partner-type-takes-search'),
+          builder: (context, q) {
+            final shown = [for (final s in choices) if (q.isEmpty || s.toLowerCase().contains(q.toLowerCase())) s];
+            if (shown.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(choices.isEmpty ? 'No vehicle services yet (Vehicle Services).' : 'No service matches.',
+                    style: muted),
+              );
+            }
+            return Column(children: [
+              for (final s in shown)
+                CheckboxListTile(
+                  key: ValueKey('partner-type-takes-$s'),
+                  contentPadding: EdgeInsets.zero,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(s),
+                  value: ticked.contains(partnerServiceKey(s)),
+                  onChanged: (on) => setState(() {
+                    final k = partnerServiceKey(s);
+                    _takes = [for (final x in _takes) if (partnerServiceKey(x) != k) x, if (on == true) s];
+                  }),
+                ),
+            ]);
+          },
+        ),
+      if (missing)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Row(children: [
+            Icon(Icons.error_outline, size: 18, color: t.colorScheme.error),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(newTypeServicesProblem(_takes)!,
+                  style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.error)),
+            ),
+          ]),
+        ),
+    ]);
+    // A Material, not a coloured box, so the ticks' ripples show.
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Material(
+        key: const ValueKey('partner-type-takes'),
+        color: t.colorScheme.surfaceContainerHighest,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: missing ? BorderSide(color: t.colorScheme.error) : BorderSide.none,
+        ),
+        child: Padding(padding: const EdgeInsets.all(12), child: body),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) => EditorBody(
         error: _error,
-        saveLabel: widget.entry == null ? 'Add Partner Service type' : 'Save changes',
+        saveLabel: _isNew ? addTypeLabel(_takes.length) : 'Save changes',
         onSave: widget.canEdit ? _save : null,
         children: [
           if (jsBool(v['isDefault']))
@@ -389,6 +496,7 @@ class _PartnerTypeEditorState extends ConsumerState<_PartnerTypeEditor> {
               helperText: 'Appears below the Partner Service type name when users pick a service.',
             ),
           ),
+          if (_isNew) _takesPicker(context),
           const SectionLabel('Icon (optional)', hint: 'Square image. Shown globally in the "Select your service" popup.'),
           Row(children: [
             StoredImage(_icon, size: 56, fallback: Icons.add_photo_alternate_outlined),

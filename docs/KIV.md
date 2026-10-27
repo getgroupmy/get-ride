@@ -28,10 +28,6 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 
 ## Services, partner types and vehicle services (study of 26 Oct 2026)
 
-High:
-- H3 A new partner type takes every service, and a partner with no vehicle can offer on a vehicle service. Decide: no row means none, or a required picker on the type form; the server refuses offers on vehicle services without a vehicle.
-- H4 A service's per-minute rate and minimum fare are never used when there's no fare tariff. Decide: price with them, or remove the fields.
-
 Medium:
 - M1 Register vehicle has no Vehicle service picker, and the review has no Vehicle service line.
 - M2 Services, types, switches, locks and promotions are linked by name: renaming breaks them. Link by id.
