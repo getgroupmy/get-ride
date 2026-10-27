@@ -54,7 +54,7 @@ final partnerTypeNamesForServicesProvider = FutureProvider.autoDispose<List<Stri
   ];
 });
 
-Future<void> _saveRule(WidgetRef ref, PartnerTypeServiceRule r) =>
+Future<void> savePartnerTypeServiceRule(WidgetRef ref, PartnerTypeServiceRule r) =>
     ref.read(supabaseProvider).from('partner_type_services').upsert(r.toRow(), onConflict: 'type_key');
 
 Future<void> _removeRule(WidgetRef ref, String key) =>
@@ -162,7 +162,7 @@ class _PartnerTypeServicesScreenState extends ConsumerState<PartnerTypeServicesS
       services: ordered,
       note: d.note,
     );
-    if (await runAdminAction(context, () => _saveRule(ref, row),
+    if (await runAdminAction(context, () => savePartnerTypeServiceRule(ref, row),
         success: 'Saved. Partners see the change straight away.')) {
       _dirty = false;
       ref.invalidate(partnerTypeServicesProvider);
@@ -201,7 +201,7 @@ class _PartnerTypeServicesScreenState extends ConsumerState<PartnerTypeServicesS
     );
     if (picked == null || !mounted) return;
     final rule = PartnerTypeServiceRule(typeKey: partnerServiceKey(picked), typeName: picked);
-    if (await runAdminAction(context, () => _saveRule(ref, rule),
+    if (await runAdminAction(context, () => savePartnerTypeServiceRule(ref, rule),
         success: 'Added $picked. It sees every service until you choose some.')) {
       _dirty = false;
       _sel = rule.typeKey;

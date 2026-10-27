@@ -23,9 +23,19 @@ bool isMeteredService(RideService s) {
 String rateMoney(double v, String currency) => formatMoney(v, currency, v == v.roundToDouble() ? 0 : 2);
 
 /// The rates [s] is priced on at the pickup, one per line ("Base fare: RM 4").
-/// [card] is the pickup's tariff card for it; null is the built-in TEKSI
-/// tariff. The vehicle's own multiplier is applied where the fare applies it.
+/// [card] is the pickup's tariff card for it; null is the
+/// service's own rates when it has them, else the built-in TEKSI tariff.
+/// The vehicle's own multiplier is applied where the fare applies it.
 List<String> fareRateLines(FareTariff? card, RideService s, {String fallbackCurrency = 'MYR'}) {
+  final own = s.rates;
+  if (card == null && own != null) {
+    String money(double v) => rateMoney(double.parse(v.toStringAsFixed(2)), fallbackCurrency);
+    return [
+      'Fare per km: ${money(own.perKm)}',
+      if (own.perMinute > 0) 'Fare per minute: ${money(own.perMinute)}',
+      if (own.minimumFare > 0) 'Minimum fare: ${money(own.minimumFare)}',
+    ];
+  }
   if (card == null) {
     final m = s.multiplier;
     String money(double v) => rateMoney(double.parse((v * m).toStringAsFixed(2)), fallbackCurrency);

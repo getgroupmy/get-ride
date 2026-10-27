@@ -238,6 +238,18 @@ String? lowestOfferKey<T>(List<T> offers, {required double? Function(T) amount, 
 /// "+3 more waiting" under the cards; null with none.
 String? offersWaitingLabel(int waiting) => waiting <= 0 ? null : '+$waiting more waiting';
 
+/// The server's reason when an offer or a take on a job that needs a
+/// vehicle was refused for want of one (VEHICLE_REQUIRED, 0300), else null.
+String? vehicleRequiredReason(Object e) {
+  final s = '$e';
+  if (!s.contains('VEHICLE_REQUIRED')) return null;
+  // PostgrestException(message: ..., code: ..., details: ..., hint: <reason>)
+  final hint = RegExp(r'hint: (.+?)\)?$').firstMatch(s)?.group(1)?.trim();
+  return hint != null && hint.contains('need a vehicle')
+      ? hint
+      : 'This job needs a vehicle. Pick the vehicle you\'re driving in Partner, then you can offer on it.';
+}
+
 /// The server's refusal of an offer or an accept, in words.
 String rideOfferError(Object e) {
   final s = '$e';

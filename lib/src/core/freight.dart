@@ -94,6 +94,7 @@ class FreightVehicle {
     this.multiplier = 1,
     this.serviceTypes = const [freightServiceType],
     this.parentIds = const [],
+    this.rates,
   });
 
   /// The Vehicle Services entry; [name] is what lands in `ride_requests.service`.
@@ -112,9 +113,21 @@ class FreightVehicle {
   final List<String> serviceTypes;
   final List<String> parentIds;
 
+  /// Its own rates, for a trip no fare tariff covers (see [ServiceRates]).
+  final ServiceRates? rates;
+
   /// As a ride service, for the fare tariff and the region rules.
-  RideService get service =>
-      RideService(name, description, multiplier, 1, id: id, image: image, serviceTypes: serviceTypes, parentIds: parentIds);
+  RideService get service => RideService(
+    name,
+    description,
+    multiplier,
+    1,
+    id: id,
+    image: image,
+    serviceTypes: serviceTypes,
+    parentIds: parentIds,
+    rates: rates,
+  );
 
   /// Whether it is a courier vehicle (core/courier.dart), not a freight size.
   bool get isCourier => isCourierTypes(serviceTypes);
@@ -196,6 +209,7 @@ List<FreightVehicle> freightVehiclesFrom(
             multiplier: cost == null ? 1 : cost / 1.5,
             serviceTypes: [for (final t in v['serviceTypes'] as List) '$t'],
             parentIds: serviceParentIds(v),
+            rates: ServiceRates.fromValues(v),
           );
         }(),
   ];

@@ -219,7 +219,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     final r = _route;
     if (r == null || v == null) return null;
     return _pricing.roundFare(
-      quoteFare(_tariffFor(v), r.km, r.min, multiplier: v.multiplier, fallbackCurrency: AppConfig.currency).fare,
+      quoteFare(_tariffFor(v), r.km, r.min, multiplier: v.multiplier, rates: v.rates, fallbackCurrency: AppConfig.currency).fare,
     );
   }
 

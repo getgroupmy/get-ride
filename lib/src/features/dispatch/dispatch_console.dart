@@ -314,7 +314,8 @@ class _NewOrderFormState extends ConsumerState<NewOrderForm> {
   double _estimate() {
     final list = ref.read(rideServicesProvider).value ?? rideServices;
     final svc = list.where((s) => s.name == _service).firstOrNull;
-    return calculateFare(_km ?? 0, (_min ?? 0).toDouble(), multiplier: svc?.multiplier ?? 1);
+    final km = _km ?? 0, min = (_min ?? 0).toDouble();
+    return svc?.rates?.fare(km, min) ?? calculateFare(km, min, multiplier: svc?.multiplier ?? 1);
   }
 
   Future<void> _send() async {

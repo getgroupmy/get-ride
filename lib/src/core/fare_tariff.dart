@@ -2,8 +2,8 @@
 // country / state / city / suburb overrides, the narrowest card that
 // matches the pickup winning, resolved like commission rates. A card may be
 // for one service type or one vehicle service (migration 0123). With no
-// card the built-in TEKSI tariff (calculateFare) prices the trip in
-// ringgit. Pure.
+// card the service's own rates (ServiceRates, 0300) price it, else the
+// built-in TEKSI tariff (calculateFare), in ringgit. Pure.
 import 'dart:math' as math;
 
 import 'commission.dart' show Geo;
@@ -156,15 +156,19 @@ double tariffFare(FareTariff t, double distanceKm, double durationMin, {double m
 }
 
 /// A trip's quote: on the card for the pickup when there is one, else on
-/// the built-in TEKSI tariff in ringgit.
+/// the service's own [rates], else on the built-in TEKSI tariff in ringgit.
 ({double fare, String currency}) quoteFare(
   FareTariff? card,
   double distanceKm,
   double durationMin, {
   double multiplier = 1,
+  ServiceRates? rates,
   String fallbackCurrency = 'MYR',
 }) => card == null
-    ? (fare: calculateFare(distanceKm, durationMin, multiplier: multiplier), currency: fallbackCurrency)
+    ? (
+        fare: rates?.fare(distanceKm, durationMin) ?? calculateFare(distanceKm, durationMin, multiplier: multiplier),
+        currency: fallbackCurrency,
+      )
     : (
         fare: tariffFare(card, distanceKm, durationMin, multiplier: card.vehicleService == null ? multiplier : 1),
         currency: card.currency,
