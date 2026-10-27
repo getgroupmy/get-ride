@@ -36,6 +36,7 @@ import '../../data/models.dart';
 import '../../data/ride_draft_store.dart';
 import '../../data/ride_option_places_repository.dart';
 import '../../providers.dart';
+import 'service_not_offered.dart';
 import '../../widgets/common.dart' show showError, showInfo;
 import '../../widgets/page_style_host.dart';
 import '../../widgets/media_image.dart' show MediaIcon;
@@ -407,7 +408,8 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     } on DuplicateRideRequest catch (e) {
       if (mounted) showInfo(context, e.toString());
     } catch (e) {
-      if (mounted) showError(context, e);
+      // Refused by the server's service check (0302): its own modal.
+      if (mounted && !showServiceNotOffered(context, e)) showError(context, e);
     } finally {
       if (mounted) setState(() => _booking = false);
     }

@@ -30,7 +30,6 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 
 Medium:
 - M2 Services, types, switches, locks and promotions are linked by name: renaming breaks them. Link by id.
-- M4 Region service switches: Inherit / On / Off, and a server check that the service is offered at the pickup.
 - M6 Citizens only, business registration, driver/vehicle permit and age-limit covers are app-only: move into SQL rules.
 - M8 Two accounts can register the same MyKad number: the review flags it ("Same ID as another account"); only the unique index is left.
 

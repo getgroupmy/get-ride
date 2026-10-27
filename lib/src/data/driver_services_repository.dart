@@ -185,6 +185,7 @@ final driverServicesRegionOffProvider = FutureProvider.autoDispose<Set<String>>(
           types: {for (final t in s.typeNames) ?idsByName[t.trim().toLowerCase()]},
           vehicleType: s.id,
           lineage: tree.lineage(s.id),
+          masterIds: masters.keys.toSet(),
           nowUtc: now,
         ))
           s.id,
