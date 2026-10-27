@@ -95,7 +95,7 @@ alter table public.ride_ratings add column if not exists tags text[] not null de
 -- app never read a driver's ratings row by row (0159 allowed it).
 drop policy if exists "ride_ratings parties read" on public.ride_ratings;
 create policy "ride_ratings parties read" on public.ride_ratings
-  for select using (rater_id = auth.uid() or public.caller_is_admin());
+  for select using (rater_id = (select auth.uid()) or (select public.caller_is_admin()));
 create index if not exists ride_ratings_partner_tags on public.ride_ratings (partner_id, updated_at desc)
   where tags <> '{}';
 
