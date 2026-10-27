@@ -72,6 +72,35 @@ bool rideSendLacksClientId(String? code, String message) =>
 /// The longest message the database takes.
 const rideMessageMaxLength = 1000;
 
+// ---- City to City threads (migration 0308) ----------------------------------------
+// A City to City booking's chat is a thread of the same table, keyed by
+// `c2c_booking_id` instead of `request_id`. The app names a thread by one
+// string: a ride's id, or "c2c:<booking id>"; the outbox, the cache and the
+// screen pass it around unchanged, and only the rows and the files' folder
+// use the bare id.
+
+/// What a City to City thread's name starts with.
+const c2cChatPrefix = 'c2c:';
+
+/// The thread of City to City booking [bookingId].
+String c2cChatThread(String bookingId) => '$c2cChatPrefix$bookingId';
+
+/// Whether [thread] is a City to City booking's.
+bool isC2cChatThread(String thread) => thread.startsWith(c2cChatPrefix);
+
+/// The column a message of [thread] is kept under, and the id in it.
+({String column, String id}) rideChatThreadKey(String thread) => isC2cChatThread(thread)
+    ? (column: 'c2c_booking_id', id: thread.substring(c2cChatPrefix.length))
+    : (column: 'request_id', id: thread);
+
+/// The thread a stored row belongs to: its ride, or `c2c:<booking id>`.
+String rideChatThreadOf(Map<String, dynamic> r) {
+  final ride = r['request_id'], booking = r['c2c_booking_id'];
+  if (ride is String && ride.isNotEmpty) return ride;
+  if (booking is String && booking.isNotEmpty) return c2cChatThread(booking);
+  return '';
+}
+
 class RideMessage {
   const RideMessage({
     required this.id,
@@ -129,7 +158,7 @@ class RideMessage {
     if (id == null || role == null) return null;
     return RideMessage(
       id: id,
-      requestId: (r['request_id'] as String?) ?? '',
+      requestId: rideChatThreadOf(r),
       senderId: (r['sender_id'] as String?) ?? '',
       senderRole: role,
       type: RideMessageType.parse(r['type'] as String?),
@@ -198,10 +227,11 @@ const rideVoiceNoteMin = Duration(milliseconds: 700);
 /// How long a signed link to a file stays good.
 const rideChatMediaLinkTtl = Duration(hours: 1);
 
-/// `<request>/<kind>-<ms>-<tag>.<ext>`: in the ride's own folder, which is
-/// what the bucket's policies and the message's check both look at.
+/// `<request>/<kind>-<ms>-<tag>.<ext>`: in the ride's own folder (a City to
+/// City booking's: the booking's id), which is what the bucket's policies
+/// and the message's check both look at.
 String rideChatMediaPath(String requestId, RideMessageType kind, String ext, DateTime now, String tag) =>
-    '$requestId/${kind.name}-${now.millisecondsSinceEpoch}-$tag.${ext.toLowerCase()}';
+    '${rideChatThreadKey(requestId).id}/${kind.name}-${now.millisecondsSinceEpoch}-$tag.${ext.toLowerCase()}';
 
 /// The upload's content type for a photo's or a voice note's extension.
 String rideChatContentType(RideMessageType kind, String ext) {

@@ -22,8 +22,16 @@ class RideChatRepository {
   RideChatRepository(this._db);
   final SupabaseClient _db;
 
+  /// The row's thread column: request_id, or a City to City booking's
+  /// c2c_booking_id (0308).
+  static Map<String, dynamic> _thread(String requestId) {
+    final key = rideChatThreadKey(requestId);
+    return {key.column: key.id};
+  }
+
   Future<List<RideMessage>> messages(String requestId) async {
-    final rows = await _db.from('ride_messages').select().eq('request_id', requestId).order('created_at', ascending: true);
+    final key = rideChatThreadKey(requestId);
+    final rows = await _db.from('ride_messages').select().eq(key.column, key.id).order('created_at', ascending: true);
     unawaited(_saveCache(requestId, rows));
     return [for (final r in rows) ?RideMessage.fromRow(r)];
   }
@@ -111,7 +119,11 @@ class RideChatRepository {
       refresh();
       channel = RealtimeHub.of(_db).listen(
         table: 'ride_messages',
-        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'request_id', value: requestId),
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: rideChatThreadKey(requestId).column,
+          value: rideChatThreadKey(requestId).id,
+        ),
         onChange: (_) => refresh(),
         onStatus: backup!.onStatus,
       );
@@ -174,11 +186,11 @@ class RideChatRepository {
   Future<void> sendText(String requestId, RideChatRole role, String body, {bool quick = false}) async {
     final text = rideMessageText(body);
     if (text == null) return;
-    await _send({'request_id': requestId, 'sender_role': role.name, 'type': quick ? 'quick' : 'text', 'body': text});
+    await _send({..._thread(requestId), 'sender_role': role.name, 'type': quick ? 'quick' : 'text', 'body': text});
   }
 
   Future<void> sendLocation(String requestId, RideChatRole role, double lat, double lng) =>
-      _send({'request_id': requestId, 'sender_role': role.name, 'type': 'location', 'latitude': lat, 'longitude': lng});
+      _send({..._thread(requestId), 'sender_role': role.name, 'type': 'location', 'latitude': lat, 'longitude': lng});
 
   /// Uploads a file into the ride's folder of the private bucket; its path.
   Future<String> _upload(String requestId, RideMessageType kind, Uint8List bytes, String ext) async {
@@ -197,7 +209,7 @@ class RideChatRepository {
     final path = await _upload(requestId, RideMessageType.image, bytes, ext.isEmpty ? 'jpg' : ext);
     final c = caption?.trim() ?? '';
     await _send({
-      'request_id': requestId,
+      ..._thread(requestId),
       'sender_role': role.name,
       'type': 'image',
       'media_path': path,
@@ -211,7 +223,7 @@ class RideChatRepository {
     if (bytes.length > rideChatMediaMaxBytes) throw StateError('That voice note is too long to send.');
     final path = await _upload(requestId, RideMessageType.audio, bytes, ext);
     await _send({
-      'request_id': requestId,
+      ..._thread(requestId),
       'sender_role': role.name,
       'type': 'audio',
       'media_path': path,

@@ -64,6 +64,7 @@ import 'request_sheet.dart';
 import 'ride_extras_parts.dart';
 import 'partner_status_panel.dart';
 import 'scheduled_jobs_screen.dart' show PartnerUpcomingBookingCard;
+import 'city_to_city_driver_screen.dart' show PartnerCityToCityCard;
 import 'vehicle_picker.dart';
 import 'remote_action.dart';
 import '../../core/partner_remote_action.dart' show DriverRemoteActions;
@@ -1239,6 +1240,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     if (_online) const AirportQueueCard(),
                     // The next scheduled ride the driver took, under the switch.
                     const PartnerUpcomingBookingCard(),
+                    // City to City requests and the next trip (0308).
+                    const PartnerCityToCityCard(),
                     if (modes.length > 1 || modes.any((m) => m.isTeksi))
                       Card(
                         key: const ValueKey('partner-modes'),

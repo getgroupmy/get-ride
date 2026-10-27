@@ -818,6 +818,16 @@ class C2cBooking {
     this.cancelFeeStatus,
     this.riderStars,
     this.createdAt,
+    this.pickupLat,
+    this.pickupLng,
+    this.dropLat,
+    this.dropLng,
+    this.note,
+    this.riderId,
+    this.commissionRate,
+    this.commissionAmount,
+    this.driverDroppedAt,
+    this.completedAt,
   });
 
   factory C2cBooking.fromRow(Map<String, dynamic> r) {
@@ -858,6 +868,16 @@ class C2cBooking {
       cancelFeeStatus: _nz(r['cancel_fee_status']),
       riderStars: _numOrNull(r['rider_stars'])?.round(),
       createdAt: at(r['created_at']),
+      pickupLat: _numOrNull(r['pickup_lat']),
+      pickupLng: _numOrNull(r['pickup_lng']),
+      dropLat: _numOrNull(r['drop_lat']),
+      dropLng: _numOrNull(r['drop_lng']),
+      note: _nz(r['note']),
+      riderId: _nz(r['rider_id']),
+      commissionRate: _numOrNull(r['commission_rate']),
+      commissionAmount: _numOrNull(r['commission_amount']),
+      driverDroppedAt: at(r['driver_dropped_at']),
+      completedAt: at(r['completed_at']),
     );
   }
 
@@ -895,6 +915,21 @@ class C2cBooking {
   final String? cancelFeeStatus;
   final int? riderStars;
   final DateTime? createdAt;
+
+  /// The points; null on a request the driver may not take (0308 leaves
+  /// them out).
+  final double? pickupLat, pickupLng, dropLat, dropLng;
+
+  /// The rider's note for the driver.
+  final String? note;
+  final String? riderId;
+
+  /// The commission locked as it was booked (0307), and charged at completion.
+  final double? commissionRate, commissionAmount;
+
+  /// When the booked driver last gave the trip up (0308): it went back to open.
+  final DateTime? driverDroppedAt;
+  final DateTime? completedAt;
 
   /// What the trip costs now: the agreed fare once booked, else the rider's.
   double get price => agreedFare ?? fare;
@@ -1163,6 +1198,14 @@ const c2cErrorWords = <String, String>{
   'C2C_DRIVER_BUSY': 'This driver has just been booked for another trip at that time.',
   'C2C_ON_TRIP': 'The trip has started. Talk to your driver, or contact support.',
   'C2C_RATED': 'You have already rated this trip.',
+  'C2C_OWN_TRIP': "You can't offer on your own trip.",
+  'C2C_NOT_FOR_YOU': 'This trip starts outside your service area.',
+  'C2C_DRIVER_NOT_ELIGIBLE': "You can't take this route yet.",
+  'C2C_LEAVE_OUT_OF_WINDOW': "That time is outside the rider's window.",
+  'C2C_BAD_STEP': "This trip can't move to that step now.",
+  'C2C_TOO_LATE': 'It is past the time to leave. Contact support to cancel this trip.',
+  'C2C_DRIVING_SINCE_SET': 'Your driving start date is already on file. Ask support to change it.',
+  'C2C_BAD_DATE': 'Enter the date your driving licence was first issued.',
 };
 
 /// One end of a trip as the rider picked it.
@@ -1222,3 +1265,277 @@ Map<String, dynamic> c2cBookingRow({
   'payment': payment.key,
   'timezone': ?timezone,
 };
+
+// ---- The driver (migration 0308) -------------------------------------------------------------------
+
+/// The driver's City to City page, under Drive.
+const c2cDriverRoute = '/drive/city-to-city';
+
+/// Whether a driver may take a trip, as the server says (0307's
+/// c2c_driver_eligibility): the years of driving and the permits missing.
+class C2cEligibility {
+  const C2cEligibility({this.ok = true, this.minYears, this.years, this.experienceOk = true, this.needs = const []});
+
+  factory C2cEligibility.fromJson(Object? v) {
+    final m = v is Map ? Map<String, dynamic>.from(v) : const <String, dynamic>{};
+    return C2cEligibility(
+      ok: m['ok'] == true,
+      minYears: _numOrNull(m['minYears'])?.round(),
+      years: _numOrNull(m['years'])?.round(),
+      experienceOk: m['experienceOk'] != false,
+      needs: [
+        for (final n in m['needs'] is List ? m['needs'] as List : const [])
+          if (n is Map && _nz(n['name']) != null) _nz(n['name'])!,
+      ],
+    );
+  }
+
+  final bool ok;
+  final int? minYears, years;
+  final bool experienceOk;
+
+  /// The permits missing, by name.
+  final List<String> needs;
+}
+
+/// What a request the driver may not take says on its card: "Needs:
+/// Singapore permit", "Needs: 5 years of driving"; null when they may.
+String? c2cLockLine(C2cEligibility e) {
+  if (e.ok) return null;
+  final parts = [
+    ...e.needs,
+    if (!e.experienceOk && e.minYears != null) '${e.minYears} ${e.minYears == 1 ? 'year' : 'years'} of driving',
+  ];
+  return parts.isEmpty ? "You can't take this route yet" : 'Needs: ${parts.join(', ')}';
+}
+
+/// The years of driving under a lock: "You have 2 years of driving.", or
+/// "Add when your licence was first issued." when the server knows no date.
+String? c2cYearsLine(C2cEligibility e) {
+  if (e.experienceOk) return null;
+  final y = e.years;
+  if (y == null) return 'Add when your licence was first issued.';
+  return 'You have $y ${y == 1 ? 'year' : 'years'} of driving.';
+}
+
+/// The driver's own open offer on a request.
+class C2cMyOffer {
+  const C2cMyOffer({required this.id, required this.price, required this.leaveAt});
+  final String id;
+  final double price;
+  final DateTime leaveAt;
+}
+
+/// A request in the driver's list (c2c_driver_requests, 0308).
+class C2cRequest {
+  const C2cRequest({
+    required this.booking,
+    this.riderName = 'Rider',
+    this.riderRating,
+    this.eligibility = const C2cEligibility(),
+    this.commissionRate,
+    this.myOffer,
+  });
+
+  factory C2cRequest.fromJson(Map<String, dynamic> j) {
+    final mine = j['my_offer'] is Map ? Map<String, dynamic>.from(j['my_offer'] as Map) : null;
+    return C2cRequest(
+      booking: C2cBooking.fromRow(j),
+      riderName: _nz(j['rider_name']) ?? 'Rider',
+      riderRating: _numOrNull(j['rider_rating']),
+      eligibility: C2cEligibility.fromJson(j['eligibility']),
+      commissionRate: _numOrNull(j['commission_rate_now']),
+      myOffer: mine == null
+          ? null
+          : C2cMyOffer(
+              id: '${mine['id']}',
+              price: _num(mine['price']),
+              leaveAt: DateTime.tryParse('${mine['leave_at'] ?? ''}')?.toLocal() ?? DateTime.now(),
+            ),
+    );
+  }
+
+  final C2cBooking booking;
+
+  /// "Farah T.": the server never sends more.
+  final String riderName;
+  final double? riderRating;
+  final C2cEligibility eligibility;
+
+  /// What the driver would pay on it now (a fraction); null on a locked one.
+  final double? commissionRate;
+  final C2cMyOffer? myOffer;
+
+  String get id => booking.id;
+  bool get locked => !eligibility.ok;
+}
+
+/// The driver's list and what the page's header needs (0308).
+class C2cDriverFeed {
+  const C2cDriverFeed({
+    this.approved = false,
+    this.hasArea = false,
+    this.years,
+    this.canSetDrivingSince = false,
+    this.requests = const [],
+  });
+
+  factory C2cDriverFeed.fromJson(Object? v) {
+    final m = v is Map ? Map<String, dynamic>.from(v) : const <String, dynamic>{};
+    return C2cDriverFeed(
+      approved: m['approved'] == true,
+      hasArea: m['hasArea'] == true,
+      years: _numOrNull(m['years'])?.round(),
+      canSetDrivingSince: m['canSetDrivingSince'] == true,
+      requests: [
+        for (final r in m['requests'] is List ? m['requests'] as List : const [])
+          if (r is Map) C2cRequest.fromJson(Map<String, dynamic>.from(r)),
+      ],
+    );
+  }
+
+  static const empty = C2cDriverFeed();
+
+  final bool approved, hasArea;
+  final int? years;
+
+  /// The server knows no driving start date: the driver may give it once.
+  final bool canSetDrivingSince;
+  final List<C2cRequest> requests;
+}
+
+/// Why the driver gets no requests at all, or null.
+String? c2cDriverBlock(C2cDriverFeed f) {
+  if (!f.approved) return 'City to City opens once your partner account is approved.';
+  if (!f.hasArea) return "Your service area isn't set. Ask support to add the states you drive in.";
+  return null;
+}
+
+/// "1 person", "2 people".
+String c2cPeople(int n) => n == 1 ? '1 person' : '$n people';
+
+/// "Farah T. 4.8", or "Farah T., new rider".
+String c2cRiderLine(String name, double? rating) =>
+    rating == null || rating <= 0 ? '$name, new rider' : '$name ${rating.toStringAsFixed(1)}';
+
+/// A request's time and size: "Fri 30 Oct, 9:00 (± 30 min), 2 people".
+String c2cRequestWhen(C2cBooking b) =>
+    '${c2cDayTime(b.leaveAt)}${b.flexible ? ' (± 30 min)' : ''}, ${c2cPeople(b.passengers)}';
+
+/// A booked trip's time and size: "Thu 29 Oct, 18:00, whole car, 1 person".
+String c2cBookedWhen(C2cBooking b) => '${c2cDayTime(b.leaves)}, whole car, ${c2cPeople(b.passengers)}';
+
+/// "Ampang, Kuala Lumpur": the suburb and the city of [place], else [name].
+String c2cAreaLine(Geo place, String name) {
+  final parts = [?place.suburb, ?(place.city ?? place.state)];
+  return parts.isEmpty ? name : parts.join(', ');
+}
+
+/// The page's header: "Commission 12%", or "Commission 10% to 12%" when
+/// the requests differ; null when none is known.
+String? c2cCommissionHeader(Iterable<double?> rates) {
+  final known = [for (final r in rates) ?r]..sort();
+  if (known.isEmpty) return null;
+  final lo = _pct(c2cRound2(known.first * 100)), hi = _pct(c2cRound2(known.last * 100));
+  return lo == hi ? 'Commission $lo%' : 'Commission $lo% to $hi%';
+}
+
+/// "RM 90, you keep RM 79.20 after 12%": the price less [rate]; the price
+/// alone when the rate is not known.
+String c2cKeepLine(double price, double? rate, [String currency = 'MYR']) {
+  if (rate == null || rate <= 0) return c2cMoney(price, currency);
+  return '${c2cMoney(price, currency)}, you keep ${c2cMoney(c2cRound2(price * (1 - rate)), currency)} '
+      'after ${_pct(c2cRound2(rate * 100))}%';
+}
+
+/// The price an offer starts at: the fixed fare, else RM 10 over the
+/// rider's fare, within the range.
+double c2cOfferStart(C2cBooking b) {
+  final q = b.quote;
+  if (q == null) return b.fare;
+  if (q.fareMode == C2cFareMode.fixed) return c2cRound2(q.suggested);
+  return c2cClampFare(b.fare + 10, q);
+}
+
+/// Why [price] can't be offered on [b], as the server says it (0307,
+/// C2C_FARE_OUT_OF_RANGE), or null.
+String? c2cOfferPriceProblem(double price, C2cBooking b) {
+  final q = b.quote;
+  if (q == null) return null;
+  if (q.fareMode == C2cFareMode.fixed) {
+    return c2cRound2(price) == c2cRound2(q.suggested)
+        ? null
+        : 'This route has a fixed fare of ${c2cMoney(q.suggested, b.currency)}.';
+  }
+  final lo = q.low, hi = q.high;
+  if (lo != null && hi != null && (price < lo || price > hi)) {
+    return 'Offer between ${c2cMoney(lo, b.currency)} and ${c2cMoney(hi, b.currency)}.';
+  }
+  return null;
+}
+
+/// The times a driver may offer to leave: every 15 minutes within ± 30 of
+/// the rider's time when they are flexible, else the rider's time.
+List<DateTime> c2cLeaveChoices(DateTime leaveAt, bool flexible) => flexible
+    ? [for (var m = -30; m <= 30; m += 15) leaveAt.add(Duration(minutes: m))]
+    : [leaveAt];
+
+/// "Offer of RM 150 sent. Waiting for the rider."
+String c2cOfferSentLine(double price, [String currency = 'MYR']) =>
+    'Offer of ${c2cMoney(price, currency)} sent. Waiting for the rider.';
+
+/// The driver's next step on a booked trip and its button, or null.
+({C2cStatus to, String label})? c2cNextStep(C2cStatus s) => switch (s) {
+  C2cStatus.booked => (to: C2cStatus.driverArriving, label: 'On my way'),
+  C2cStatus.driverArriving => (to: C2cStatus.onTrip, label: 'Rider picked up'),
+  C2cStatus.onTrip => (to: C2cStatus.completed, label: 'Complete trip'),
+  _ => null,
+};
+
+/// Whether the booked driver may give the trip up at [now] (0308): booked
+/// or on the way, before the time to leave.
+bool c2cDriverCanCancel(C2cBooking b, DateTime now) =>
+    (b.status == C2cStatus.booked || b.status == C2cStatus.driverArriving) && now.isBefore(b.leaveAt);
+
+/// A trip's tag in My trips.
+String c2cDriverTag(C2cStatus s) => switch (s) {
+  C2cStatus.open || C2cStatus.offered => 'Offered',
+  C2cStatus.booked => 'Booked',
+  C2cStatus.driverArriving => 'On the way',
+  C2cStatus.onTrip => 'On the trip',
+  C2cStatus.completed => 'Done',
+  C2cStatus.cancelled => 'Cancelled',
+  C2cStatus.expired => 'Expired',
+};
+
+/// The driver's booked trips at [now]: today (under way, or leaving today
+/// or earlier), later, and done (the last ten, newest first).
+({List<C2cBooking> today, List<C2cBooking> later, List<C2cBooking> done}) c2cDriverTrips(
+  List<C2cBooking> mine,
+  DateTime now,
+) {
+  final endOfDay = DateTime(now.year, now.month, now.day + 1);
+  final today = <C2cBooking>[], later = <C2cBooking>[], done = <C2cBooking>[];
+  for (final b in mine) {
+    if (b.status.ended) {
+      done.add(b);
+    } else if (!b.status.withDriver) {
+      continue;
+    } else if (b.status != C2cStatus.booked || b.leaves.isBefore(endOfDay)) {
+      today.add(b);
+    } else {
+      later.add(b);
+    }
+  }
+  int soonest(C2cBooking a, C2cBooking b) => a.leaves.compareTo(b.leaves);
+  today.sort(soonest);
+  later.sort(soonest);
+  done.sort((a, b) => b.leaves.compareTo(a.leaves));
+  return (today: today, later: later, done: done.take(10).toList());
+}
+
+/// The trips tab: "My trips (3)", counting today's, later and offered.
+String c2cTripsTabLabel(int n) => n == 0 ? 'My trips' : 'My trips ($n)';
+
+/// What the rider's page says once their driver gave the trip up (0308).
+const c2cDriverDroppedLine = 'Your request is open to drivers again, and no fee applies.';

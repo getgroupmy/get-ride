@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/city_to_city.dart' show C2cBooking, C2cStatus;
 import '../../core/format.dart';
 import '../../core/ride_chat.dart';
 import '../../core/ble_chat.dart';
@@ -13,6 +14,7 @@ import '../../data/models.dart';
 import '../../data/photo_picker.dart';
 import '../../data/reliability_repository.dart';
 import '../../data/ble_chat.dart';
+import '../../data/city_to_city_repository.dart' show c2cBookingProvider, c2cContactProvider;
 import '../../data/ride_chat_outbox.dart';
 import '../../data/ride_chat_repository.dart';
 import '../../data/voice_recorder.dart';
@@ -38,8 +40,15 @@ const rideChatToolbarHeight = 76.0;
 
 /// The in-app chat between a ride's rider and its driver, from either side.
 /// It takes messages while the ride is running and is read-only after.
+/// A City to City booking's chat is the same screen on the booking's thread
+/// (migration 0308): open while booked, on the way or on the trip.
 class RideChatScreen extends ConsumerStatefulWidget {
   const RideChatScreen({super.key, required this.requestId});
+
+  /// The chat of City to City booking [bookingId].
+  RideChatScreen.cityToCity({super.key, required String bookingId}) : requestId = c2cChatThread(bookingId);
+
+  /// The thread: a ride's id, or a City to City booking's ([c2cChatThread]).
   final String requestId;
 
   @override
@@ -219,6 +228,7 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
 
   @override
   Widget build(BuildContext context) {
+    if (isC2cChatThread(widget.requestId)) return _buildCityToCity(context);
     final ride = ref.watch(rideStreamProvider(widget.requestId));
     final uid = ref.watch(currentUserIdProvider);
     final r = ride.value;
@@ -291,6 +301,83 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
                   children: [
                     Expanded(child: _thread(role)),
                     if (rideChatOpen(r.status)) _composer(role) else _closed(t, r),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  /// A City to City booking's chat: the booking says who is who and whether
+  /// it takes messages; Call rings the other side's phone.
+  Widget _buildCityToCity(BuildContext context) {
+    final id = rideChatThreadKey(widget.requestId).id;
+    final booking = ref.watch(c2cBookingProvider(id));
+    final uid = ref.watch(currentUserIdProvider);
+    final b = booking.value;
+    final role = b == null || uid == null
+        ? null
+        : b.riderId == uid
+        ? RideChatRole.rider
+        : b.driverId == uid
+        ? RideChatRole.partner
+        : null;
+    _role = role;
+    final contact = role == null ? null : ref.watch(c2cContactProvider(id)).value;
+    final peer = contact?.name ?? (role == RideChatRole.partner ? 'Your passenger' : 'Your driver');
+    final phone = contact?.phone;
+    final t = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        toolbarHeight: rideChatToolbarHeight,
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              role == null ? 'Chat' : peer,
+              key: const ValueKey('ride-chat-peer'),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: t.appBarTheme.titleTextStyle?.copyWith(fontSize: 18, height: 1.2) ??
+                  t.textTheme.titleMedium?.copyWith(height: 1.2),
+            ),
+            if (role != null)
+              Text(
+                role == RideChatRole.rider ? 'Your driver · City to City' : 'Your passenger · City to City',
+                style: t.textTheme.labelMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+              ),
+          ],
+        ),
+        actions: [
+          if (phone != null && b != null && b.status.withDriver)
+            IconButton(
+              key: const ValueKey('ride-chat-call'),
+              tooltip: 'Call $peer',
+              onPressed: () => ref.read(rideChatLauncherProvider)(Uri(scheme: 'tel', path: phone)),
+              icon: const Icon(Icons.call),
+            ),
+        ],
+      ),
+      body: AsyncView<C2cBooking?>(
+        value: booking,
+        data: (b) => b == null || role == null
+            ? const EmptyState(
+                icon: Icons.lock_outline,
+                title: 'Not your trip',
+                message: 'Only the rider and the driver of this trip can chat here.',
+              )
+            : ResponsiveCenter(
+                maxWidth: 760,
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: [
+                    Expanded(child: _thread(role)),
+                    if (b.status.withDriver) _composer(role) else _closedLine(t, switch (b.status) {
+                      C2cStatus.completed => 'This trip has ended. The chat is read-only.',
+                      C2cStatus.cancelled || C2cStatus.expired => 'This trip was cancelled. The chat is read-only.',
+                      _ => 'The chat opens once a driver is booked.',
+                    }),
                   ],
                 ),
               ),
@@ -438,7 +525,14 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
     );
   }
 
-  Widget _closed(ThemeData t, RideRequest r) => SafeArea(
+  Widget _closed(ThemeData t, RideRequest r) => _closedLine(t, switch (r.status) {
+    RideStatus.open => 'The chat opens once a driver accepts the ride.',
+    RideStatus.completed => 'This ride has ended. The chat is read-only.',
+    RideStatus.cancelled => 'This ride was cancelled. The chat is read-only.',
+    _ => 'This ride is over. The chat is read-only.',
+  });
+
+  Widget _closedLine(ThemeData t, String line) => SafeArea(
     top: false,
     child: Container(
       key: const ValueKey('ride-chat-closed'),
@@ -450,12 +544,7 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
           Icon(Icons.lock_outline, size: 18, color: t.colorScheme.onSurfaceVariant),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(switch (r.status) {
-              RideStatus.open => 'The chat opens once a driver accepts the ride.',
-              RideStatus.completed => 'This ride has ended. The chat is read-only.',
-              RideStatus.cancelled => 'This ride was cancelled. The chat is read-only.',
-              _ => 'This ride is over. The chat is read-only.',
-            }, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+            child: Text(line, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant)),
           ),
         ],
       ),

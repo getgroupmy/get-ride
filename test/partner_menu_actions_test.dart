@@ -12,7 +12,7 @@ void main() {
     '/ev', '/drive', '/wallet', '/trips', '/drive/vehicles', '/meter/vehicle', '/drive/my-ride', '/drive/onboarding',
     '/account/support', '/account/help', '/account/settings', '/account/my-qr', '/account/notifications',
     '/drive/earnings', '/drive/history', '/drive/scheduled', '/drive/groups', '/drive/permits',
-    '/drive/telematics', '/drive/services',
+    '/drive/telematics', '/drive/services', '/drive/city-to-city',
   ];
 
   Future<(String, bool?)> tap(WidgetTester tester, String id) async {
@@ -49,6 +49,7 @@ void main() {
     myQrMenuItemId: '/account/my-qr',
     'trip-history': '/drive/history',
     'scheduled-rides': '/drive/scheduled',
+    'city-to-city': '/drive/city-to-city',
     'vehicle': '/drive/vehicles',
     'stand-groups': '/drive/groups',
     'my-permit': '/drive/permits',

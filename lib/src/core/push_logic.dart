@@ -129,6 +129,12 @@ String? pushRouteFor(Map<String, dynamic> data) {
           ? '/admin/m/online-selfie-check?id=${Uri.encodeComponent(check)}'
           : '/admin/documents?kind=signin';
     case 'ride_message':
+      // A City to City booking's chat (migration 0308), on the recipient's side.
+      final booking = data['c2c_booking_id'];
+      if (booking is String && booking.isNotEmpty) {
+        final b = Uri.encodeComponent(booking);
+        return data['role'] == 'partner' ? '/drive/city-to-city/$b/chat' : '/city-to-city/$b/chat';
+      }
       // The chat over the recipient's own trip screen (migration 0129 says
       // which side they are on).
       final id = data['request_id'];

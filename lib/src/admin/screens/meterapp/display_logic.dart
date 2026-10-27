@@ -60,6 +60,10 @@ const serviceMenuItemIds = <String>{
   'insurance',
 };
 
+/// City to City: the rider's service row, and the driver's requests and
+/// trips (0308); the driver's row shows only while the service is on.
+const cityToCityMenuItemId = 'city-to-city';
+
 /// The driver's My Ride code (QR and the riders who added them); shown only
 /// where the database has My Ride (migration 0160).
 const myRideCodeMenuItemId = 'my-ride-code';
@@ -126,6 +130,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   (myQrMenuItemId, 'My QR'), // GET.Referral / GET.me / GET.now (0161); this app's own
   ('trip-history', 'Trip history'),
   (scheduledRidesMenuItemId, 'Scheduled rides'), // this app's own; the Expo menu skips it
+  (cityToCityMenuItemId, 'City to City'), // this app's own (0308): requests and trips between cities
   ('vehicle', 'Vehicle'),
   (servicesMenuItemId, 'Services'), // this app's own (0263): the services the car in use takes
   (myPermitMenuItemId, 'My permit'), // this app's own (0254): the vehicle's and driver's permits
@@ -217,6 +222,7 @@ const defaultMenuIconNames = <String, Map<String, String>>{
     'telematics': 'Clock',
     'trip-history': 'Clock',
     'scheduled-rides': 'Clock',
+    'city-to-city': 'Navigation',
     'vehicle': 'Car',
     'documents': 'FileText',
     'notifications': 'Bell',

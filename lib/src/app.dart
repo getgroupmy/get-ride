@@ -74,6 +74,7 @@ import 'features/auth/registration_closed_screen.dart';
 import 'features/auth/signup_photo_screen.dart';
 import 'features/auth/set_pin_screen.dart';
 import 'features/partner/scheduled_jobs_screen.dart';
+import 'features/partner/city_to_city_driver_screen.dart';
 import 'features/partner/demo_jobs.dart';
 import 'features/partner/my_ride_code_screen.dart';
 import 'features/partner/my_permits_screen.dart';
@@ -419,6 +420,20 @@ final routerProvider = Provider<GoRouter>((ref) {
                         builder: (_, s) =>
                             ScheduledJobsScreen(initialTab: s.uri.queryParameters['tab'] == 'mine' ? 1 : 0),
                       ),
+                      // City to City requests and trips (0308).
+                      GoRoute(
+                        path: 'city-to-city',
+                        builder: (_, s) => CityToCityDriverScreen(
+                          initialTab: s.uri.queryParameters['tab'] == 'trips' ? C2cDriverTab.trips : C2cDriverTab.requests,
+                        ),
+                        routes: [
+                          // The booking's chat, the ride chat's screen (0308).
+                          GoRoute(
+                            path: ':id/chat',
+                            builder: (_, s) => RideChatScreen.cityToCity(bookingId: s.pathParameters['id']!),
+                          ),
+                        ],
+                      ),
                       GoRoute(path: 'earnings', builder: (_, _) => const EarningsScreen()),
                       GoRoute(path: 'telematics', builder: (_, _) => const TelematicsScreen()),
                       GoRoute(path: 'groups', builder: (_, _) => const StandGroupsScreen()),
@@ -522,6 +537,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                 builder: (_, s) => RideChatScreen(requestId: s.pathParameters['id']!),
               ),
             ],
+          ),
+          // A City to City booking's chat, the rider's side (0308).
+          GoRoute(
+            path: '/city-to-city/:id/chat',
+            builder: (_, s) => RideChatScreen.cityToCity(bookingId: s.pathParameters['id']!),
           ),
           GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
           // Order dispatch (0251): a stand's console, its staff and charges, a fleet.

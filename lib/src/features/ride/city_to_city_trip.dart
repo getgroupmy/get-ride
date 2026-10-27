@@ -3,11 +3,12 @@
 // locked offer motion (lib/src/widgets/offer_motion.dart: in from the
 // right, out to the left with a tilt) and Accept / Decline, Cancel request
 // and Change fare; once booked, the driver, the car and plate, Call and
-// Chat, the payment and the cancel rule with Cancel booking (the fee as
+// Chat (the in-app ride chat, 0308), the payment and the cancel rule with Cancel booking (the fee as
 // the settings say); after the trip, the fare and the rating; a cancelled
 // or expired trip says so. All of it follows the rows live.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/city_to_city.dart';
@@ -18,6 +19,7 @@ import '../../widgets/offer_motion.dart';
 import '../../widgets/page_style_host.dart';
 import 'city_to_city_parts.dart';
 import 'city_to_city_steps.dart' show c2cClockProvider, openC2cSteps;
+import 'ride_chat_screen.dart' show RideChatScreen;
 
 /// Opens trip [id]; [replace] swaps it for the page that opened it (the
 /// steps, once the request is sent).
@@ -27,7 +29,22 @@ Future<void> openC2cTrip(BuildContext context, String id, {bool replace = false}
   return replace ? nav.pushReplacement(route) : nav.push(route);
 }
 
-/// Opens a phone link (tel: or sms:). Overridden in tests.
+/// Opens booking [bookingId]'s chat in the app (the ride chat, 0308): its
+/// route where the app's router is (so a push for it while it is open is
+/// not shown again), else as a page; [driver] for the driver's side.
+Future<void> openC2cChat(BuildContext context, String bookingId, {bool driver = false}) async {
+  final router = GoRouter.maybeOf(context);
+  if (router != null) {
+    final id = Uri.encodeComponent(bookingId);
+    await router.push<void>(driver ? '/drive/city-to-city/$id/chat' : '/city-to-city/$id/chat');
+    return;
+  }
+  await Navigator.of(context).push<void>(
+    AppPageRoute(id: 'city-to-city.chat', builder: (_) => RideChatScreen.cityToCity(bookingId: bookingId)),
+  );
+}
+
+/// Opens a phone link (tel:). Overridden in tests.
 final c2cLauncherProvider = Provider<Future<bool> Function(Uri)>((_) => (u) => launchUrl(u));
 
 class C2cTripScreen extends ConsumerWidget {
@@ -168,6 +185,17 @@ class _OffersView extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
             children: [
+              if (booking.driverDroppedAt != null) ...[
+                C2cBanner(
+                  key: const ValueKey('c2c-driver-dropped'),
+                  icon: Icons.info_outline,
+                  title: 'Your driver had to cancel',
+                  line: c2cDriverDroppedLine,
+                  fill: C2cLook.of(context).warn,
+                  ink: C2cLook.of(context).onWarn,
+                ),
+                const SizedBox(height: 12),
+              ],
               _TripSummary(booking: booking),
               const SizedBox(height: 12),
               Text(c2cOffersLine(open.length, booking.expiresAt, now),
@@ -517,7 +545,7 @@ class _BookedView extends ConsumerWidget {
                   Expanded(
                     child: OutlinedButton.icon(
                       key: const ValueKey('c2c-chat'),
-                      onPressed: () => _contact(context, ref, 'sms'),
+                      onPressed: () => openC2cChat(context, booking.id),
                       icon: const Icon(Icons.chat),
                       label: const Text('Chat'),
                     ),

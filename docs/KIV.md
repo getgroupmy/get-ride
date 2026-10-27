@@ -4,8 +4,6 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 
 ## City ride, before launch
 
-- Online payment: DuitNow QR, FPX and e-wallets through Fiuu or Billplz into GET.wallet. Waits for the merchant account; turn Card back on once the keys are set.
-- Driver selfie check before going online, plus random checks (through `document-ai-verify`).
 - Report a trip from the receipt (opens a support ticket with the ride attached), and let the rider block a driver.
 - Driver request filters: minimum fare, maximum pickup distance, sort by price or distance.
 - Passenger insurance and APAD permit info on the receipt and the Safety page.
@@ -13,9 +11,9 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 ## City ride, after launch
 
 - Tips after the trip (GET.wallet).
-- Waiting-time charge on city rides.
-- Luggage option on city rides.
-- Rider-side audio recording.
+- Waiting-time charge on city rides (Freight and Courier have one).
+- Luggage option when the rider books a city ride (fares already have a luggage charge; the driver and meter show luggage).
+- Rider-side audio recording (the driver side already records trip audio).
 - Premium tier.
 
 ## Freight and Courier, after launch
@@ -23,18 +21,19 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 - Parcel cover.
 - Round trip.
 - Floor (stairs) and cold-truck add-ons.
-- Cash on delivery for items.
+- Cash on delivery for the item's value (Courier already lets the recipient pay the delivery fee in cash).
 - Business accounts.
 
 ## Services, partner types and vehicle services (study of 26 Oct 2026)
 
 Low:
-- L8 City to City: C1 server + admin and C2 bookings + rider app done; C3 driver app next.
+- L8 City to City: C1 server + admin, C2 bookings + rider app and C3 driver app done. Left: in-app payment for City to City trips (the money is cash today; In app is only recorded), collecting a cancel fee left owed ('due') when the rider's GET wallet was short, reminders before a trip (push the day before and 1 hour before), and per-seat trips a driver posts (Post a trip, coming later).
 
 (M3, the list's quick Approve, and L3, the step count, are in the partner review fixes.)
 
 ## Owner setup
 
+- Online payment: wallet top-up through the payment gateway is built (Fiuu, Billplz; FPX and e-wallets). Add the merchant account keys in Admin › Payment gateways, then turn Card back on. DuitNow QR top-up is not built.
 - AI Reports email: add the Resend key in Admin › Settings › API Keys (Email › Resend) and verify the getride.my domain in Resend. Until then scheduled report emails don't send; downloads work.
 - Sign-in checks face match, AWS Rekognition (later): add the key in Admin › Settings › API Keys (Amazon Web Services › Rekognition) as `ACCESS_KEY_ID:SECRET_ACCESS_KEY` (or add `:region`), an IAM user allowed `rekognition:CompareFaces` and `rekognition:ListCollections` only. Until then Admin › Documents › Sign-in checks shows "Not checked · No AWS key yet". AWS is the default in Admin › Dispatch › Accounts › Face match.
 - Sign-in checks face match, self-hosted server (later): run `deploy/face-server` on the Synology NAS behind a Cloudflare Tunnel (face.getride.my), then add it in API Keys (Face match server) and pick Self-hosted server or Self-hosted, then AWS. Steps in [deploy/face-server/README.md](../deploy/face-server/README.md).
@@ -42,7 +41,7 @@ Low:
 
 ## Synology DS224+ (see docs/NAS.md)
 
-- Face match on the NAS: built (`deploy/face-server`, OpenCV SFace, runs on the J4125); setting it up is under Owner setup. Still parked: the in-browser check (human) as a last fallback, and flagging low matches "Needs a closer look".
+- Face match on the NAS: built (`deploy/face-server`, OpenCV SFace, runs on the J4125); setting it up is under Owner setup. Still parked: the in-browser check (human) as a last fallback.
 - Nightly backups of the database and storage buckets to the NAS.
 - Own maps routing and address search for Malaysia (OSRM or Valhalla, Photon or Nominatim) as a provider before Google.
 - Uptime monitor (Uptime Kuma) with alerts.
