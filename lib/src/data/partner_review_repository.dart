@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/partner_registration.dart' show makeModelService;
 import '../core/partner_review.dart';
+import '../core/registration_rules.dart';
 import '../core/vehicle_onboarding.dart' show VehicleServiceOption, vehicleServiceOptions;
 import '../providers.dart';
 
@@ -27,6 +28,8 @@ class ReviewApplication {
     this.serviceNames = const {},
     this.services = const [],
     this.makeModelService = '',
+    this.ruleChecks = const [],
+    this.overrides = const [],
   });
 
   final Map<String, dynamic> partner;
@@ -58,6 +61,16 @@ class ReviewApplication {
 
   /// The service the Vehicle Make & Model list sets for the vehicle ('' for none).
   final String makeModelService;
+
+  /// Every partner registration rule of the partner's types, as the server
+  /// checks it today (0305).
+  final List<RuleProblem> ruleChecks;
+
+  /// Approvals past failed rules, newest first (0305).
+  final List<RuleOverride> overrides;
+
+  /// The rules that fail today: approving needs an override.
+  List<RuleProblem> get failedRules => [for (final c in ruleChecks) if (c.failed) c];
 
   String get partnerId => '${partner['id']}';
   String get status => '${partner['status'] ?? 'unapproved'}';
@@ -111,6 +124,9 @@ class PartnerReviewRepository {
           .eq('category', 'vehicle-services')
           .order('position', ascending: true)
           .order('created_at', ascending: true)),
+      // Before 0305 there are no server checks: nothing to show.
+      _optional(_db.rpc('partner_registration_checks', params: {'p_partner': partnerId})),
+      _optional(_db.from('partner_rule_overrides').select().eq('partner_id', partnerId).order('at', ascending: false)),
     ]);
     final vehicle = results[1] as Map<String, dynamic>?;
     final make = '${vehicle?['make'] ?? ''}'.trim(), model = '${vehicle?['model'] ?? ''}'.trim();
@@ -128,7 +144,12 @@ class PartnerReviewRepository {
         (id: '${r['id']}', values: Map<String, dynamic>.from((r['values'] as Map?) ?? const {})),
     ];
     final log = [for (final r in _rows(results[7])) ?ReviewLogEntry.tryParse(r)];
-    final ids = {for (final e in log) ?e.actorId, if (partner['approved_by'] != null) '${partner['approved_by']}'};
+    final overrides = [for (final r in _rows(results[11] ?? const [])) RuleOverride.fromRow(r)];
+    final ids = {
+      for (final e in log) ?e.actorId,
+      if (partner['approved_by'] != null) '${partner['approved_by']}',
+      for (final o in overrides) ?o.adminId,
+    };
     var names = const <String, String>{};
     if (ids.isNotEmpty) {
       try {
@@ -159,6 +180,8 @@ class PartnerReviewRepository {
       },
       services: vehicleServiceOptions(serviceEntries),
       makeModelService: makeModelService(makeModels, make, model),
+      ruleChecks: ruleProblemsFromJson(results[10]),
+      overrides: overrides,
     );
   }
 
@@ -213,8 +236,40 @@ class PartnerReviewRepository {
   /// Sends the application back to the driver ('changes-needed').
   Future<void> sendBack(String partnerId) => _db.rpc('partner_review_send_back', params: {'p_partner': partnerId});
 
-  /// Approves the partner and their registration vehicle together.
-  Future<void> approve(String partnerId) => _db.rpc('partner_review_approve', params: {'p_partner': partnerId});
+  /// Approves the partner and their registration vehicle together. With
+  /// [overrideReason], past the partner registration rules that fail (0305):
+  /// the reason, the admin and the failed rules are recorded.
+  Future<void> approve(String partnerId, {String? overrideReason}) => _db.rpc('partner_review_approve', params: {
+        'p_partner': partnerId,
+        'p_override_reason': ?overrideReason,
+      });
+
+  /// "Ask partner for documents": each failed rule's line ([askLineFor]) is
+  /// rejected with the server's words, then the application goes back to
+  /// the driver, who fixes it in that step and sends it again.
+  Future<void> askForRules(String partnerId, List<RuleProblem> failed) async {
+    final seen = <String>{};
+    for (final p in failed) {
+      final line = askLineFor(p);
+      if (line == null || !seen.add(line.key)) continue;
+      await _db.rpc('partner_review_set', params: {
+        'p_partner': partnerId,
+        'p_key': line.key,
+        'p_group': line.group,
+        'p_label': line.label,
+        'p_state': 'rejected',
+        'p_note': p.message.isEmpty ? '${p.rule.label} is missing.' : p.message,
+      });
+    }
+    await sendBack(partnerId);
+  }
+
+  /// The partners of [type], submitted or approved, that would fail its
+  /// partner registration rules now (0305).
+  Future<List<RuleFailure>> ruleFailures(String type) async => [
+        for (final r in _rows(await _db.rpc('admin_partner_rule_failures', params: {'p_type': type})))
+          ruleFailureFromRow(r),
+      ];
 
   /// The driver's own lines (only those sent back are readable).
   Future<List<ReviewItem>> myItems(String partnerId) async => [

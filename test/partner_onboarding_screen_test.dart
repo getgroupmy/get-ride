@@ -62,11 +62,15 @@ class _FakeOnboarding extends PartnerOnboardingRepository {
   /// The server refuses a change of types (0299, an approved partner).
   bool lockTypes = false;
 
+  /// The server refuses the Submit with this (0305), when set.
+  PostgrestException? refuseSubmit;
+
   @override
   Future<Map<String, dynamic>> patchPartner(OnboardingState s, Map<String, dynamic> patch) async {
     if (lockTypes && patch.containsKey('partner_types')) {
       throw const PostgrestException(message: 'PARTNER_TYPES_LOCKED', code: '42501', hint: 'Server words');
     }
+    if (refuseSubmit != null && patch['documents_ok'] == true) throw refuseSubmit!;
     patches.add(patch);
     final next = {...s.partner, ...patch};
     state = state.copyWith(partner: next);
@@ -220,6 +224,15 @@ const _detailsDone = {
   'birth_date': '1990-01-01',
   'address': 'NO 12 JALAN SS2/24, 47300 PETALING JAYA',
   'nationality': 'Malaysian',
+};
+
+/// A company and an in-date Kad Pemandu, as their steps keep them.
+const _companyAndPermit = {
+  'company_reg_no': '201901012345',
+  'company_document_url': 'https://x/ssm.pdf',
+  'driver_permit_card_no': 'KP/B/2024/0000001',
+  'driver_permit_front_url': 'https://x/kp-front.jpg',
+  'driver_permit_valid_until': '2027-05-01',
 };
 
 const _myKadText = 'KAD PENGENALAN\nMALAYSIA\n900101-14-5678\nAINA BINTI RAHMAN\nNO 12 JALAN SS2/24\n47300 PETALING JAYA\n'
@@ -729,6 +742,7 @@ void main() {
             'partner_types': ['Teksi'],
             'registration_steps': ['details', 'company', 'driver-permit', 'vehicle', 'vehicle-documents'],
             'registration_vehicle_id': 'v1',
+            ..._companyAndPermit,
           }),
         ),
         brightness: b,
@@ -738,6 +752,8 @@ void main() {
         ]),
       );
       expect(find.text('Upload service documents'), findsOneWidget);
+      expect(find.text('Before you submit'), findsOneWidget);
+      expect(find.byKey(const ValueKey('checklist-needed')), findsNothing, reason: 'nothing missing');
       expect(find.text('Driving licence'), findsOneWidget);
       expect(find.text('Taxi permit'), findsNothing, reason: 'read in the Driver permit step');
       await _tap(tester, find.text('Submit for review'));
@@ -745,6 +761,96 @@ void main() {
       expect(h.repo.patches.last, {'documents_ok': true});
       expect(find.byKey(const ValueKey('pending-approval')), findsOneWidget);
       expect(find.text('Pending admin approval'), findsOneWidget);
+      _noOverflow(tester);
+    });
+
+    testWidgets('Before you submit: Needed rows, Fix the first one, Submit anyway (M6, ${b.name})', (tester) async {
+      final vehicles = _FakeVehicles()..v = {'id': 'v1', 'plate': 'WXY 1234', 'year': '2021', 'documents_ok': false};
+      final h = await _pump(
+        tester,
+        OnboardingState(
+          profile: _detailsDone,
+          partner: _partner({
+            ..._photo,
+            ..._area,
+            'partner_types': ['eHailing', 'Teksi'],
+            'registration_steps': ['details', 'company', 'driver-permit', 'vehicle', 'vehicle-documents'],
+            'registration_vehicle_id': 'v1',
+            'company_reg_no': '201901012345',
+            'company_document_url': 'https://x/ssm.pdf',
+          }),
+        ),
+        brightness: b,
+        vehicles: vehicles,
+        people: _FakePeople(uploads: [
+          {'doc_id': 'licence', 'status': 'Pending Review'},
+        ]),
+      );
+      expect(find.text('You chose eHailing and Teksi in Malaysia. These are the rules the server checks when you submit.'),
+          findsOneWidget);
+      for (final (name, chip) in [
+        ('Citizens only', 'Done'),
+        ('Company registration', 'Done'),
+        ('Driver permit (Kad Pemandu)', 'Needed'),
+        ('Driver permit expiry', 'Needed'),
+        ('Vehicle permit (EVP)', 'Later'),
+        ('Vehicle age', 'Done'),
+      ]) {
+        final row = find.byKey(ValueKey('checklist-$name'));
+        expect(row, findsOneWidget, reason: name);
+        expect(find.descendant(of: row, matching: find.text(chip)), findsOneWidget, reason: '$name: $chip');
+      }
+      expect(find.text('eHailing, also Teksi: paused until uploaded'), findsOneWidget);
+      expect(find.text('2 needed before you can submit'), findsOneWidget);
+      expect(find.text('Submit for review'), findsNothing);
+      await _tap(tester, find.byKey(const ValueKey('checklist-fix')));
+      expect(find.byKey(const ValueKey('step-driver-permit')), findsOneWidget, reason: 'the first one needed');
+      expect(h.repo.patches, isEmpty);
+      _noOverflow(tester);
+    });
+
+    testWidgets('a Submit the server refuses: the rule\'s modal, and its action opens the step (M6, ${b.name})',
+        (tester) async {
+      final h = await _pump(
+        tester,
+        OnboardingState(
+          profile: {..._detailsDone, 'id_type': 'passport', 'ic': 'P48210771', 'nationality': 'Indonesian'},
+          partner: _partner({
+            ..._photo,
+            ..._area,
+            'partner_types': ['Delivery'],
+            'registration_steps': ['details'],
+          }),
+        ),
+        brightness: b,
+        people: _FakePeople(uploads: [
+          {'doc_id': 'licence', 'status': 'Pending Review'},
+        ]),
+      );
+      h.repo.refuseSubmit = const PostgrestException(
+        message: 'CITIZENS_ONLY',
+        code: '42501',
+        hint: 'eHailing in Malaysia is for citizens only.',
+        details: '[{"rule":"citizens_only","status":"failed","type":"eHailing","place":"Malaysia",'
+            '"id_type":"passport","id_number":"P48210771","message":"eHailing in Malaysia is for citizens only."}]',
+      );
+      await _tap(tester, find.text('Submit for review'));
+      expect(find.byKey(const ValueKey('submit-refused')), findsOneWidget);
+      expect(find.text('eHailing is for Malaysian citizens'), findsOneWidget);
+      expect(
+        find.text('eHailing in Malaysia takes partners with a MyKad only. Your ID is a passport (P48210771). '
+            'Choose another Partner Service type, or sign up with a MyKad.'),
+        findsOneWidget,
+      );
+      expect(find.text('Not submitted'), findsOneWidget);
+      expect(find.text('Sent back by the server, so it applies to every app version. Your answers are kept.'),
+          findsOneWidget);
+      _noOverflow(tester);
+      await _tap(tester, find.text('Change type'));
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const ValueKey('submit-refused')), findsNothing);
+      expect(find.byKey(const ValueKey('step-partner-type')), findsOneWidget);
+      expect(h.repo.state.partner['documents_ok'], false);
       _noOverflow(tester);
     });
 

@@ -29,6 +29,7 @@ import '../../widgets/reject_reason.dart';
 import '../documents_screen.dart' show documentFaceText;
 import 'people_data.dart';
 import 'people_logic.dart' show partnerTypeOptions;
+import 'partner_review_rules.dart';
 import 'vehicle_service_checks.dart' show VehicleServiceCheckRows;
 
 /// The admin's edit: the new value and the note for the driver.
@@ -202,6 +203,50 @@ class _ReviewBody extends ConsumerWidget {
     ref.invalidate(adminPartnersProvider);
   }
 
+  /// "Approve anyway (override)": the reason, then the approval past the
+  /// failed rules (0305).
+  Future<void> _override(BuildContext context, WidgetRef ref) async {
+    final reason = await askOverrideReason(context);
+    if (reason == null || !context.mounted) return;
+    try {
+      await _repo(ref).approve(app.partnerId, overrideReason: reason);
+      if (context.mounted) {
+        await showNotice(
+          context,
+          title: 'Approved with override',
+          message: 'Your reason, your name and the failed rules are recorded on the partner and in the audit log.',
+        );
+      }
+    } catch (e) {
+      if (context.mounted) await showErrorNotice(context, e);
+    }
+    _reload(ref);
+    ref.invalidate(adminPartnersProvider);
+  }
+
+  /// "Ask partner for documents": each failed rule goes back to the driver
+  /// as a rejected line with the server's words.
+  Future<void> _ask(BuildContext context, WidgetRef ref) async {
+    final ok = await confirm(
+      context,
+      'Ask partner for documents?',
+      'The application goes back to the driver with each missing rule and the reason. They add it and send the '
+          'application again.',
+      ok: 'Send back',
+    );
+    if (!ok || !context.mounted) return;
+    try {
+      await _repo(ref).askForRules(app.partnerId, app.failedRules);
+      if (context.mounted) {
+        await showNotice(context, title: 'Sent back', message: 'The driver has been told what to add.');
+      }
+    } catch (e) {
+      if (context.mounted) await showErrorNotice(context, e);
+    }
+    _reload(ref);
+    ref.invalidate(adminPartnersProvider);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
@@ -279,6 +324,17 @@ class _ReviewBody extends ConsumerWidget {
                   ]),
                 ),
               ),
+              // The partner registration rules (0305): checked again on Approve.
+              if (!closed && !withDriver && app.failedRules.isNotEmpty)
+                RulesBlockedBanner(
+                  failed: app.failedRules,
+                  onAsk: open ? () => _ask(context, ref) : null,
+                  onOverride: open && tally.canApprove ? () => _override(context, ref) : null,
+                ),
+              if (app.overrides.isNotEmpty)
+                OverrideNote(entry: app.overrides.first, adminName: _name(app.overrides.first.adminId)),
+              if (app.ruleChecks.isNotEmpty || app.overrides.isNotEmpty)
+                ReviewRulesCard(checks: app.ruleChecks, overridden: app.overrides.isNotEmpty && closed),
               for (final (group, list) in reviewGroups(lines, (l) => l.group)) ...[
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
