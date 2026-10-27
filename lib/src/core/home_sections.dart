@@ -9,6 +9,7 @@ import 'dart:ui' show Offset;
 import '../admin/screens/meterapp/display_logic.dart';
 import 'expo_routes.dart';
 import 'service_boxes.dart';
+import 'city_to_city.dart' show c2cPageRoute, c2cServiceName;
 import 'courier.dart' show courierPageRoute;
 import 'freight.dart' show DeliveryKind, freightPageRoute;
 
@@ -137,6 +138,7 @@ class ServiceBoxView {
     this.route,
     this.freight = false,
     this.courier = false,
+    this.cityToCity = false,
     this.look = const BoxLook({}),
     this.badgeWords = const [],
   });
@@ -167,6 +169,10 @@ class ServiceBoxView {
   /// there is a courier vehicle to book (migration 0268).
   final bool courier;
 
+  /// The City to City box: it opens the City to City page ([c2cPageRoute])
+  /// once the City to City Vehicle Service is switched on (migration 0307).
+  final bool cityToCity;
+
   /// Box 0 is the large card.
   bool get featured => index == 0;
 }
@@ -187,6 +193,12 @@ DeliveryKind? serviceBoxDelivery({String? route, required String title, String? 
   return null;
 }
 
+/// Whether a home box is City to City: set to its page, or titled or linked
+/// to a service named City to City.
+bool serviceBoxIsCityToCity({String? route, required String title, String? linked}) =>
+    route?.trim() == c2cPageRoute ||
+    [title, ?linked].any((n) => n.replaceAll('\n', ' ').trim().toLowerCase() == c2cServiceName.toLowerCase());
+
 /// What a Freight or Courier box opens, as the admin reads it: its page,
 /// and that it opens once one of its Vehicle Services is active
 /// ([active] of them now).
@@ -206,6 +218,9 @@ String serviceBoxOpensText({
 }) {
   final k = serviceBoxDelivery(route: route, title: title, linked: linked);
   if (k != null) return serviceBoxDeliveryLabel(k, active[k] ?? 0);
+  if (serviceBoxIsCityToCity(route: route, title: title, linked: linked)) {
+    return 'City to City page — opens once the City to City Vehicle Service is switched on';
+  }
   return route != null && route.isNotEmpty ? routeLabelFor(route) : 'Nothing yet — shows Coming Soon';
 }
 
@@ -216,7 +231,8 @@ String serviceBoxOpensText({
 /// opens the Freight page only while [freightAvailable] (an active Vehicle
 /// Service under Freight, core/freight.dart), else it is "coming soon"; the
 /// Couriers box (box 4 by default) the Courier page while
-/// [courierAvailable] (core/courier.dart).
+/// [courierAvailable] (core/courier.dart); the City to City box the City to
+/// City page while [cityToCityAvailable] (the Vehicle Service is on, 0307).
 List<ServiceBoxView> serviceBoxViews(
   Map<String, dynamic> settings, {
   List<Map<String, dynamic>>? boxes,
@@ -226,6 +242,7 @@ List<ServiceBoxView> serviceBoxViews(
   Set<String>? regionServices,
   bool freightAvailable = false,
   bool courierAvailable = false,
+  bool cityToCityAvailable = false,
 }) {
   // The Home page's own boxes (any number), else the five of Display
   // Settings, which may not be all there: each over its defaults.
@@ -251,12 +268,15 @@ List<ServiceBoxView> serviceBoxViews(
         final delivery = serviceBoxDelivery(route: str('route'), title: title, linked: linked);
         final freight = delivery == DeliveryKind.freight;
         final courier = delivery == DeliveryKind.courier;
+        final cityToCity = delivery == null && serviceBoxIsCityToCity(route: str('route'), title: title, linked: linked);
         final route = !serviceEnabled || offHere
             ? null
             : freight
                 ? (freightAvailable ? freightPageRoute : null)
                 : courier
                     ? (courierAvailable ? courierPageRoute : null)
+                    : cityToCity
+                    ? (cityToCityAvailable ? c2cPageRoute : null)
                     : b['comingSoon'] == true
                         ? null
                         : str('route') == rideSearchRoute
@@ -279,6 +299,7 @@ List<ServiceBoxView> serviceBoxViews(
           },
           freight: freight,
           courier: courier,
+          cityToCity: cityToCity,
           look: look,
         );
       }(),

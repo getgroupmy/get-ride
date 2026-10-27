@@ -73,6 +73,10 @@ const liveSettingTables = <String>[
   'c2c_country_permits',
   'c2c_route_rules',
   'commission_service_rates',
+  // City to City bookings and offers (0307): the rider's trips and the
+  // offers on them, a driver's own (row-level security keeps them to those).
+  'c2c_bookings',
+  'c2c_offers',
   // Not settings, but the balances on screen: a commission or a transfer
   // lands without a pull to refresh (row-level security limits it to the
   // signed-in account's own wallets).

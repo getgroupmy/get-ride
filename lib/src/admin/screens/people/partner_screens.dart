@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth_utils.dart' show capitaliseName;
+import '../../../widgets/date_boxes.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../admin_access.dart';
@@ -536,6 +537,16 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
   late Map<String, dynamic>? _vehicle = vehicleForPlate(widget.data.vehicles, p['plate']);
   bool _saving = false;
 
+  /// When the driver's licence was first issued (0306): City to City counts
+  /// the years of driving from it.
+  late final _drivingSince = TextEditingController(text: '${p['driving_since'] ?? ''}'.trim());
+
+  @override
+  void dispose() {
+    _drivingSince.dispose();
+    super.dispose();
+  }
+
   Future<void> _save() async {
     final err = validatePartnerForm(
       hasUser: true,
@@ -545,6 +556,8 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
       hasVehicle: _vehicle != null,
     );
     if (err != null) return showError(context, err);
+    final since = partnerDrivingSince(_drivingSince.text, DateTime.now());
+    if (since.error != null) return showError(context, since.error!);
     setState(() => _saving = true);
     final ok = await runAdminAction(
       context,
@@ -552,6 +565,7 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
         ...partnerVehicleColumns(_vehicle),
         ...partnerTypeColumns(_types),
         ..._area.toRow(),
+        'driving_since': since.value,
       }),
       success: 'Partner has been updated.',
     );
@@ -612,6 +626,25 @@ class _PartnerEditFormState extends ConsumerState<_PartnerEditForm> {
                     icon: const Icon(Icons.rule),
                     label: Text(p['status'] == 'changes-needed' ? 'Review application (with the driver)' : 'Review application'),
                     onPressed: () => context.push('/admin/m/partner-review?id=${p['id']}'),
+                  ),
+                ]),
+              ),
+            ),
+            Card(
+              key: const ValueKey('partner-driving-since'),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Text('Driving experience', style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  DateBoxesField(
+                    label: 'Driving since (licence first issued)',
+                    controller: _drivingSince,
+                    firstDate: DateTime(1930),
+                    lastDate: DateTime.now(),
+                    enabled: canEdit,
+                    helperText: 'City to City counts the years of driving from this date. '
+                        'Left blank, it uses the earliest approved driving licence.',
                   ),
                 ]),
               ),

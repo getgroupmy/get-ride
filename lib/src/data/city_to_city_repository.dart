@@ -1,10 +1,12 @@
 // City to City (migration 0306): the settings, permits by country and route
 // rules the admin keeps, and commission per service. The apps read the
 // same rows (everyone signed in reads them); admins with EDIT write.
+// Bookings (0307): the rider's quote, request, offers and booking.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/city_to_city.dart';
+import '../core/commission.dart' show Geo;
 import '../core/fare.dart' show ServiceRates;
 import '../core/fare_tariff.dart';
 import '../providers.dart';
@@ -134,6 +136,97 @@ class CityToCityRepository {
       active: !const {'false', '0', 'off', 'inactive'}.contains(status),
     );
   }
+
+  // ---- Bookings (0307) ----------------------------------------------------------------------------
+
+  Map<String, dynamic> _geo(Geo g) => {'country': ?g.country, 'state': ?g.state, 'city': ?g.city, 'suburb': ?g.suburb};
+
+  /// Whether City to City is on at [place] (0306's c2c_available_at).
+  Future<bool> availableAt(Geo place) async =>
+      await _db.rpc('c2c_available_at', params: {'p_place': _geo(place)}) == true;
+
+  /// The quote for a whole-car trip from [pickup] (at [lat], [lng]) to
+  /// [drop], [km] km and [min] minutes (0306's c2c_quote).
+  Future<C2cQuote> quote({
+    required double lat,
+    required double lng,
+    required Geo pickup,
+    required Geo drop,
+    required double km,
+    required double min,
+  }) async {
+    final r = await _db.rpc('c2c_quote', params: {
+      'p_lat': lat,
+      'p_lng': lng,
+      'p_pickup': _geo(pickup),
+      'p_drop': _geo(drop),
+      'p_km': km,
+      'p_min': min,
+    });
+    return c2cQuoteFromJson(Map<String, dynamic>.from(r as Map));
+  }
+
+  /// Sends the request ([c2cBookingRow]); the server checks it (0307).
+  Future<C2cBooking> book(Map<String, dynamic> row) async =>
+      C2cBooking.fromRow(await _db.from('c2c_bookings').insert(row).select().single());
+
+  /// The signed-in rider's trips, newest first.
+  Future<List<C2cBooking>> myTrips() async {
+    final uid = _db.auth.currentUser?.id;
+    if (uid == null) return const [];
+    final rows = await _db
+        .from('c2c_bookings')
+        .select()
+        .eq('rider_id', uid)
+        .order('created_at', ascending: false)
+        .limit(50);
+    return [for (final r in rows) C2cBooking.fromRow(r)];
+  }
+
+  Future<C2cBooking?> booking(String id) async {
+    final r = await _db.from('c2c_bookings').select().eq('id', id).maybeSingle();
+    return r == null ? null : C2cBooking.fromRow(r);
+  }
+
+  /// The offers on request [bookingId], oldest first.
+  Future<List<C2cOffer>> offers(String bookingId) async {
+    final rows = await _db
+        .from('c2c_offers')
+        .select()
+        .eq('booking_id', bookingId)
+        .order('created_at', ascending: true);
+    return [for (final r in rows) C2cOffer.fromRow(r)];
+  }
+
+  Future<void> acceptOffer(String offerId) => _db.rpc('c2c_accept_offer', params: {'p_offer': offerId});
+
+  Future<void> declineOffer(String offerId) => _db.rpc('c2c_decline_offer', params: {'p_offer': offerId});
+
+  /// A new fare for a request with no driver yet, within its range.
+  Future<void> setFare(String bookingId, double fare) =>
+      _db.rpc('c2c_set_fare', params: {'p_booking': bookingId, 'p_fare': fare});
+
+  /// Cancels [bookingId]; the fee taken (0 for none) and whether it was
+  /// charged or is due.
+  Future<({double fee, String feeStatus})> cancel(String bookingId, {String? reason}) async {
+    final r = await _db.rpc('c2c_cancel', params: {'p_booking': bookingId, 'p_reason': reason});
+    final m = r is Map ? r : const {};
+    final fee = m['fee'];
+    return (fee: fee is num ? fee.toDouble() : 0.0, feeStatus: '${m['feeStatus'] ?? 'none'}');
+  }
+
+  /// The driver's name and phone once booked; null before or after.
+  Future<({String name, String? phone})?> contact(String bookingId) async {
+    final r = await _db.rpc('c2c_contact', params: {'p_booking': bookingId});
+    if (r is! Map) return null;
+    final phone = '${r['phone'] ?? ''}'.trim();
+    return (name: '${r['name'] ?? 'Your driver'}', phone: phone.isEmpty ? null : phone);
+  }
+
+  Future<void> rateDriver(String bookingId, int stars, {String? comment}) => _db.rpc(
+    'c2c_rate_driver',
+    params: {'p_booking': bookingId, 'p_stars': stars, 'p_comment': comment},
+  );
 }
 
 final cityToCityRepositoryProvider = Provider((ref) => CityToCityRepository(ref.watch(supabaseProvider)));
@@ -177,4 +270,33 @@ final c2cFareContextProvider =
   } catch (_) {
     return (cards: const <FareTariff>[], service: (id: null, types: const <String>{}, rates: null, active: false));
   }
+});
+
+/// Whether the City to City Vehicle Service is switched on (the home box
+/// opens the page only then).
+final c2cServiceActiveProvider = FutureProvider.autoDispose<bool>((ref) async {
+  ref.watchLive('settings_entries');
+  try {
+    return (await ref.watch(cityToCityRepositoryProvider).service()).active;
+  } catch (_) {
+    return false;
+  }
+});
+
+/// The signed-in rider's City to City trips, live.
+final c2cMyTripsProvider = FutureProvider.autoDispose<List<C2cBooking>>((ref) {
+  ref.watchLive('c2c_bookings');
+  return ref.watch(cityToCityRepositoryProvider).myTrips();
+});
+
+/// One trip, live.
+final c2cBookingProvider = FutureProvider.autoDispose.family<C2cBooking?, String>((ref, id) {
+  ref.watchLive('c2c_bookings');
+  return ref.watch(cityToCityRepositoryProvider).booking(id);
+});
+
+/// The offers on one request, live.
+final c2cOffersProvider = FutureProvider.autoDispose.family<List<C2cOffer>, String>((ref, id) {
+  ref.watchLive('c2c_offers');
+  return ref.watch(cityToCityRepositoryProvider).offers(id);
 });
