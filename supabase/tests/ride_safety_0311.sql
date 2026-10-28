@@ -131,9 +131,9 @@ select pg_temp.check(pg_temp.run_as('00000000-0000-0000-0000-0000000311a1',
                      'a rider can''t add a category');
 
 -- ---- Trips ----------------------------------------------------------------------------------------------
-insert into public.partners (id, auth_user_id, name, status) values
-  ('00000000-0000-0000-0000-0000000311e1', '00000000-0000-0000-0000-0000000311b1', 'Hafiz Rahman 311', 'approved'),
-  ('00000000-0000-0000-0000-0000000311e2', '00000000-0000-0000-0000-0000000311b2', 'Driver Dua 311', 'approved');
+insert into public.partners (id, auth_user_id, name, phone, status) values
+  ('00000000-0000-0000-0000-0000000311e1', '00000000-0000-0000-0000-0000000311b1', 'Hafiz Rahman 311', '+60100031101', 'approved'),
+  ('00000000-0000-0000-0000-0000000311e2', '00000000-0000-0000-0000-0000000311b2', 'Driver Dua 311', '+60100031102', 'approved');
 
 insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_fare, pickup_name, drop_name,
                                   partner_name, partner_plate, country, state, completed_at) values
