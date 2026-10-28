@@ -874,7 +874,7 @@ create trigger trg_scheduled_rides_a_business
   before insert on public.scheduled_rides
   for each row execute function public.scheduled_rides_business();
 
--- As 0268, with the business keys (0313).
+-- As 0312 (0268 plus the add-ons), with the business keys (0313).
 create or replace function public.scheduled_request_clean(p_request jsonb, p_fee numeric default null)
 returns jsonb
 language sql
@@ -915,6 +915,8 @@ as $$
        'recipient_name', 'recipient_phone',
        -- 0268: a courier booking's parcel size and who pays.
        'parcel_size', 'payer',
+       -- 0312: the add-ons booked (the server's own columns are set at release).
+       'parcel_cover', 'round_trip', 'stairs_pickup', 'stairs_drop', 'cold_level', 'cod_amount',
        -- 0313: the business account it is charged to, and its note (the
        -- approval is the server's: scheduled_rides_business sets it).
        'business_account_id', 'business_note', 'business_approval_id'])
