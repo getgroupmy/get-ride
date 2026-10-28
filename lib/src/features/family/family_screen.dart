@@ -556,6 +556,7 @@ class FamilyInviteScreen extends ConsumerWidget {
 
   static const _icons = {
     'payments': Icons.payments_outlined,
+    'workspace_premium': Icons.workspace_premium_outlined,
     'location_on': Icons.location_on_outlined,
     'visibility': Icons.visibility_outlined,
     'logout': Icons.logout,

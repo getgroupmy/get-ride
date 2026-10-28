@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/booking_modules.dart' show bookingModule;
 import '../../../core/family.dart';
 import '../../../core/format.dart' show formatMoney;
 import '../../../data/family_repository.dart';
@@ -401,12 +402,28 @@ class _MatrixCard extends ConsumerWidget {
                   Builder(builder: (context) {
                     final own = rows.where((r) => r.moduleKey == m.key && r.place.key == place.key).firstOrNull ??
                         FamilyModuleRule(place: place, moduleKey: m.key);
+                    final known = bookingModule(m.key);
+                    // GET.Plus (0323): only "Family pays" means something.
+                    final payOnly = known?.familyPaysOnly ?? false;
                     return Container(
                       constraints: const BoxConstraints(minHeight: 44),
                       decoration: BoxDecoration(border: Border(top: BorderSide(color: t.dividerColor))),
                       child: Row(children: [
-                        Expanded(flex: 2, child: Text(m.name, style: const TextStyle(fontWeight: FontWeight.w500))),
+                        Expanded(
+                          flex: 2,
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(m.name, style: const TextStyle(fontWeight: FontWeight.w500)),
+                            if (known?.note case final note?)
+                              Text(note, key: ValueKey('family-matrix-${m.key}-note'), style: t.textTheme.bodySmall),
+                          ]),
+                        ),
                         for (var i = 0; i < 4; i++)
+                          if (payOnly && i > 0)
+                            Expanded(
+                              child: Text('–', key: ValueKey('family-matrix-${m.key}-$i'), textAlign: TextAlign.center,
+                                  semanticsLabel: '${m.name}: ${FamilyModuleSwitches.names[i]} does not apply'),
+                            )
+                          else
                           Expanded(
                             child: Checkbox(
                               key: ValueKey('family-matrix-${m.key}-$i'),

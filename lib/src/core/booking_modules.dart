@@ -15,6 +15,8 @@ class BookingModule {
     this.repositories = const [],
     this.screens = const [],
     this.built = true,
+    this.familyPaysOnly = false,
+    this.note,
   });
 
   /// As registered in `booking_modules`.
@@ -36,6 +38,13 @@ class BookingModule {
 
   /// False for a key registered ahead of a module being built elsewhere.
   final bool built;
+
+  /// Only the matrix's "Family pays" box means something for it (GET.Plus:
+  /// the host's membership covers members; nobody books it for anyone).
+  final bool familyPaysOnly;
+
+  /// What "Family pays" means for it, under its name in the admin matrix.
+  final String? note;
 }
 
 const familyModuleRide = 'ride';
@@ -45,6 +54,7 @@ const familyModuleFreight = 'freight';
 const familyModuleCourier = 'courier';
 const familyModuleTips = 'tips';
 const familyModuleSeatTrip = 'seat_trip';
+const familyModuleGetPlus = 'get_plus';
 
 const bookingModules = <BookingModule>[
   BookingModule(familyModuleRide, 'Ride',
@@ -89,9 +99,16 @@ const bookingModules = <BookingModule>[
   BookingModule('courier_addons', 'Courier add-ons',
       repositories: ['lib/src/data/ride_repository.dart'],
       screens: ['lib/src/features/ride/courier_screen.dart']),
-  // Not Family: a membership, not a trip; and a business trip is paid by the
-  // company, never by a family (FAMILY_BUSINESS, 0317).
-  BookingModule('get_plus', 'GET.Plus', built: false),
+  // A membership, not a booking (migration 0323): with "Family pays" on,
+  // the host's GET.Plus covers the family's members. Its screen is GET.Plus
+  // under Wallet, which says "Covered by <host>'s family plan".
+  BookingModule(familyModuleGetPlus, 'GET.Plus',
+      repositories: ['lib/src/data/premium_plus_repository.dart'],
+      screens: ['lib/src/features/wallet/plus_screen.dart'],
+      familyPaysOnly: true,
+      note: 'The host\'s membership covers members'),
+  // Not Family: a business trip is paid by the company, never by a family
+  // (FAMILY_BUSINESS, 0317).
   BookingModule('business_account', 'Business account', built: false),
 ];
 
