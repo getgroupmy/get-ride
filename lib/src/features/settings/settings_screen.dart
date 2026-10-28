@@ -13,6 +13,7 @@ import '../../widgets/common.dart';
 import '../partner/ride_extras_parts.dart' show RideExtrasSettingsTile;
 import '../safety/voice_protection_card.dart';
 import 'app_icon_screen.dart';
+import 'blocked_drivers_screen.dart';
 import 'change_pin_screen.dart';
 import 'navigation_app_card.dart';
 import 'passkeys_screen.dart';
@@ -63,6 +64,8 @@ class SettingsScreen extends ConsumerWidget {
             // The switch alone here; the whole story is on the Safety page.
             const VoiceProtectionCard(compact: true),
             const NavigationAppCard(),
+            // Riders: the drivers they blocked (0311).
+            const BlockedDriversTile(),
             Card(
               child: ListTile(
                 key: const ValueKey('change-phone'),

@@ -108,6 +108,7 @@ import 'features/ride/ride_chat_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
 import 'features/ride/trips_screen.dart';
+import 'features/settings/blocked_drivers_screen.dart';
 import 'features/settings/app_icon_screen.dart';
 import 'features/settings/change_phone_screen.dart';
 import 'features/settings/confirm_number_screen.dart';
@@ -500,6 +501,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                           GoRoute(path: 'show-location', builder: (_, _) => const ShowLocationScreen()),
                           GoRoute(path: 'app-icon', builder: (_, _) => const AppIconScreen()),
                           GoRoute(path: 'ride-extras', builder: (_, _) => const RideExtrasScreen()),
+                          GoRoute(path: 'blocked-drivers', builder: (_, _) => const BlockedDriversScreen()),
                         ],
                       ),
                       GoRoute(

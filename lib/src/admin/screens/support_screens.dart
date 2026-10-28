@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/format.dart';
+import '../../core/ride_safety.dart' show ticketReportChip, ticketUrgentOpen, urgentTicketsFirst;
 import '../../data/models.dart' show SupportMessage;
 import '../../data/realtime_backup.dart';
 import '../../features/support/call/call_screen.dart';
@@ -125,24 +126,29 @@ class _AdminSupportScreenState extends ConsumerState<AdminSupportScreen> {
                 if (q.isEmpty) return true;
                 return '${t['ticket_number']} ${t['subject']} ${t['last_message']}'.toLowerCase().contains(q);
               }).toList();
+              // Urgent trip reports still open go on top (0311).
+              final sorted = urgentTicketsFirst(list);
               if (list.isEmpty) return const EmptyState(icon: Icons.support_agent, title: 'No tickets');
               return ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: list.length,
+                itemCount: sorted.length,
                 separatorBuilder: (_, _) => const Divider(height: 1),
                 itemBuilder: (_, i) {
-                  final t = list[i];
+                  final t = sorted[i];
+                  final report = ticketReportChip(t);
                   final unread = (t['unread_admin'] as num?)?.toInt() ?? 0;
                   final assignee = t['assigned_admin_id'] as String?;
                   return ListTile(
                     leading: Badge(
                       isLabelVisible: unread > 0,
                       label: Text('$unread'),
-                      child: const Icon(Icons.forum_outlined),
+                      child: ticketUrgentOpen(t)
+                          ? Icon(Icons.priority_high, key: ValueKey('ticket-urgent-${t['id']}'), color: Theme.of(context).colorScheme.error)
+                          : Icon(report == null ? Icons.forum_outlined : Icons.flag_outlined),
                     ),
                     title: Text(ticketTitle(t)),
                     subtitle: Text(
-                      [t['last_message'] ?? 'No messages', t['assigned_admin_name'] ?? 'unassigned'].join(' · '),
+                      [?report, t['last_message'] ?? 'No messages', t['assigned_admin_name'] ?? 'unassigned'].join(' · '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -337,6 +343,22 @@ class _AdminSupportChatScreenState extends ConsumerState<AdminSupportChatScreen>
               leading: StatusChip(ticketStatusLabels[ticket['status']] ?? '${ticket['status']}'),
               title: Text('Assigned: ${ticket['assigned_admin_name'] ?? 'nobody'}'),
               subtitle: Text('Opened ${dateText(ticket['created_at'])}'),
+            ),
+          // A trip report (0311): its category and the ride.
+          if (ticket != null && ticketReportChip(ticket) != null)
+            ListTile(
+              key: const ValueKey('ticket-report'),
+              dense: true,
+              leading: Icon(ticket['priority'] == 'urgent' ? Icons.priority_high : Icons.flag_outlined,
+                  color: ticket['priority'] == 'urgent' ? t.colorScheme.error : null),
+              title: Text('Trip report: ${ticketReportChip(ticket)}'),
+              trailing: ticket['request_id'] == null
+                  ? null
+                  : TextButton(
+                      key: const ValueKey('ticket-open-ride'),
+                      onPressed: () => context.go('/admin/rides?ride=${ticket['request_id']}'),
+                      child: const Text('Open the trip'),
+                    ),
             ),
           if (ticket != null && ticket['profile_id'] != null)
             TripAudioPanel(profileId: '${ticket['profile_id']}', ticketId: widget.ticketId, canEdit: canEdit),

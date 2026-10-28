@@ -75,7 +75,9 @@ begin
     -- City to City bookings and offers (migration 0307).
     'c2c_bookings', 'c2c_offers',
     -- City to City give-up and in-app payment rules, give-up fees owed (migration 0309).
-    'c2c_giveup_rules', 'c2c_pay_rules', 'c2c_driver_fees'
+    'c2c_giveup_rules', 'c2c_pay_rules', 'c2c_driver_fees',
+    -- Ride safety: settings, report categories, passenger cover, rider blocks (migration 0311).
+    'ride_safety_settings', 'trip_report_categories', 'passenger_cover_rules', 'rider_blocks'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

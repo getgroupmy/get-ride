@@ -82,6 +82,12 @@ const liveSettingTables = <String>[
   'c2c_giveup_rules',
   'c2c_pay_rules',
   'c2c_driver_fees',
+  // Ride safety (0311): settings, report categories, passenger cover; and a
+  // rider's own blocks (row-level security: their own, or every one for admins).
+  'ride_safety_settings',
+  'trip_report_categories',
+  'passenger_cover_rules',
+  'rider_blocks',
   // Not settings, but the balances on screen: a commission or a transfer
   // lands without a pull to refresh (row-level security limits it to the
   // signed-in account's own wallets).

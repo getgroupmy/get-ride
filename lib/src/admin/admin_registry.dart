@@ -8,6 +8,7 @@ import 'screens/geo/geo_module.dart';
 import 'screens/help/help_module.dart';
 import 'screens/meterapp/meterapp_module.dart';
 import 'screens/people/people_module.dart';
+import 'screens/ride_safety/ride_safety_screen.dart';
 import 'screens/security/security_module.dart';
 
 /// A ported admin screen, listed on the Settings hub under [section] and
@@ -50,6 +51,7 @@ const adminSections = [
 /// Every ported screen, in hub order.
 final allAdminEntries = <AdminScreenEntry>[
   ...helpEntries,
+  ...rideSafetyEntries,
   ...peopleEntries,
   ...catalogueEntries,
   ...cityToCityEntries,
@@ -62,6 +64,7 @@ final allAdminEntries = <AdminScreenEntry>[
 /// Routes of every ported screen (paths under `/admin/m/`).
 final allPortedAdminRoutes = <RouteBase>[
   ...helpRoutes,
+  ...rideSafetyRoutes,
   ...peopleRoutes,
   ...catalogueRoutes,
   ...cityToCityRoutes,
