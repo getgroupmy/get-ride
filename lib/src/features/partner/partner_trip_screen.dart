@@ -63,6 +63,8 @@ import '../../data/freight_repository.dart' show freightRepositoryProvider;
 import '../ride/pet_parts.dart' show RidePetsView;
 import '../ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
 import '../../core/ride_option_settings.dart' show RideOptionKind;
+import '../../core/delivery_addons.dart' show RideAddons;
+import 'delivery_addons_driver.dart';
 
 LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : LatLng(lat, lng);
 
@@ -505,9 +507,14 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     if (r.isFreight && r.dropoffProofPath == null) {
       return showInfo(context, 'Take the photo of the ${r.isCourier ? 'parcel' : 'cargo'} at drop-off first.');
     }
+    // The add-ons (0312): the cash on delivery settled, a round trip's
+    // return leg on its way.
+    final addons = RideAddons.fromRow(r.raw);
+    if (addonsCompleteProblem(addons) case final why?) return showInfo(context, why);
     // Courier (0268): the recipient's confirmation code, checked by the
-    // server, before the delivery can end.
-    if (r.isCourier && r.deliveryCodeOkAt == null) {
+    // server, before the delivery can end (not on a parcel coming back
+    // because the recipient wouldn't pay).
+    if (r.isCourier && r.deliveryCodeOkAt == null && !addons.codRefused) {
       final ok = await showAppDialog<bool>(id: 'partner-trip.courier-code',
         context: context,
         builder: (_) => CourierCodeDialog(rideId: r.id),
@@ -935,6 +942,12 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                 child: FreightDriverPanel(key: const ValueKey('trip-freight-panel'), request: r),
+              ),
+            // The add-ons (0312): cash on delivery, cover, the return leg.
+            if (r.isFreight && RideAddons.fromRow(r.raw).any)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: DeliveryAddonsDriverPanel(key: const ValueKey('trip-addons-panel'), request: r),
               ),
             if (r.pets.isNotEmpty)
               Padding(

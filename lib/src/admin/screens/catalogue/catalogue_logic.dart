@@ -191,6 +191,10 @@ const vehicleServiceFreightFields = [
 /// A covered van or lorry: what the rider's "Closed body" option books.
 const closedBodyKey = 'closedBody';
 
+/// A refrigerated van or lorry: what the rider's cold truck add-on books
+/// (migration 0312), and the only drivers who see those requests.
+const refrigeratedKey = 'refrigerated';
+
 /// The goods-vehicle permit a freight size asks for: a Permits type key
 /// (migration 0267). Without it approved on the vehicle, its driver gets no
 /// requests of this size.
@@ -227,6 +231,7 @@ ValuesResult buildVehicleServiceValues({
   Map<String, String> dispatch = const {},
   Map<String, String> freight = const {},
   bool? closedBody,
+  bool? refrigerated,
   String? goodsPermit,
   Map<String, dynamic>? existing,
 }) {
@@ -286,6 +291,13 @@ ValuesResult buildVehicleServiceValues({
       values[closedBodyKey] = true;
     } else {
       values.remove(closedBodyKey);
+    }
+  }
+  if (refrigerated != null) {
+    if (refrigerated) {
+      values[refrigeratedKey] = true;
+    } else {
+      values.remove(refrigeratedKey);
     }
   }
   for (final f in vehicleServiceDispatchFields) {
@@ -470,6 +482,7 @@ String vehicleServiceMeta(Map<String, dynamic> v) {
     if (has('minFareAmount')) 'Min Fare ${v['minFareAmount']}',
     if (has('maxLoadKg')) 'Load ${v['maxLoadKg']} kg',
     if (v[closedBodyKey] == true) 'Closed body',
+    if (v[refrigeratedKey] == true) 'Refrigerated',
   ].join(' • ');
 }
 

@@ -118,6 +118,10 @@ const liveSettingTables = <String>[
   // The locks get.ride keeps on driver services (0263; a driver reads the
   // ones that apply to them, an admin every one).
   'driver_service_locks',
+  // Freight and Courier add-ons (0312): the rules every sender prices from,
+  // and parcel cover claims (a sender's own; admins every one).
+  'delivery_addon_rules',
+  'cover_claims',
 ];
 
 /// The signed-in account's own rows that an admin decides on (approving,

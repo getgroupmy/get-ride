@@ -454,6 +454,7 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
       f.key: TextEditingController(text: v[f.key] == null || v[f.key] == 0 ? '' : '${v[f.key]}'),
   };
   late bool _closedBody = v[closedBodyKey] == true;
+  late bool _refrigerated = v[refrigeratedKey] == true;
   late String _permit = str(v[goodsPermitKey]);
   late final _images = {for (final k in ['iconUri', 'heroImageUri', 'mapIconUri']) k: str(v[k])};
   late String _color = str(v['mapIconColor']);
@@ -494,6 +495,7 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
       dispatch: _dispatchText,
       freight: {for (final e in _freight.entries) e.key: e.value.text},
       closedBody: _closedBody,
+      refrigerated: _refrigerated,
       goodsPermit: _permit,
       existing: widget.entry?.values,
     );
@@ -695,6 +697,7 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
             ),
         ] else if (isFreightTypes(_serviceTypes) ||
             _closedBody ||
+            _refrigerated ||
             _permit.isNotEmpty ||
             _freight.values.any((c) => c.text.trim().isNotEmpty)) ...[
           const SectionLabel(
@@ -720,6 +723,15 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
             subtitle: const Text('A covered van or lorry. Riders who ask for a closed body can only book these.'),
             value: _closedBody,
             onChanged: widget.canEdit ? (x) => setState(() => _closedBody = x) : null,
+          ),
+          SwitchListTile(
+            key: const ValueKey('vs-refrigerated'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Refrigerated'),
+            subtitle: const Text('A refrigerated van or lorry. Riders who ask for a cold truck can only book these, and '
+                'only drivers of these see those requests.'),
+            value: _refrigerated,
+            onChanged: widget.canEdit ? (x) => setState(() => _refrigerated = x) : null,
           ),
           SearchableDropdownFormField<String>(
             key: const ValueKey('vs-goodsPermit'),

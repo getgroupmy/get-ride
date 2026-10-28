@@ -28,6 +28,8 @@ import 'stand_order_label.dart';
 import 'my_ride_badges.dart';
 import '../ride/promo_parts.dart' show PromoAppliedIcon, rideHasPromo;
 import '../ride/freight_parts.dart' show FreightCargoView;
+import '../ride/delivery_addons_parts.dart' show bookedAddonsText;
+import '../../core/delivery_addons.dart' show RideAddons;
 import '../ride/pet_parts.dart' show RidePetsView;
 import '../ride/assistance_parts.dart' show OptionChargesLine, RideAssistanceView;
 import '../../core/ride_option_settings.dart' show RideOptionKind;
@@ -492,6 +494,16 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: FreightCargoView(request: r, locked: r.status == RideStatus.open),
+              ),
+            // The add-ons (0312): COD to collect, round trip, stairs, cold truck, cover.
+            if (r.isFreight && RideAddons.fromRow(r.raw).any)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  bookedAddonsText(RideAddons.fromRow(r.raw), r.fareText),
+                  key: const ValueKey('request-addons'),
+                  style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+                ),
               ),
             // "Pet with me": the photos come with the ride once it is taken.
             if (r.pets.isNotEmpty)
