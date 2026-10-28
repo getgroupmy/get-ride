@@ -22,6 +22,7 @@ import '../../core/rider_audio.dart' show riderAudioPage;
 import '../../core/premium_plus.dart' show premiumPlusPage;
 import '../../core/family.dart' show familyAdminPage;
 import '../../core/office_nas.dart' show officeNasPage;
+import '../../core/rider_live_map.dart' show riderLiveMapPage;
 import 'geo/place_types_screen.dart' show placeTypesPage;
 import '../god_view_people.dart';
 import '../widgets/admin_widgets.dart';
@@ -60,6 +61,7 @@ final grantablePages = <String, String>{
   premiumPlusPage: 'Settings · Premium and GET.Plus',
   familyAdminPage: 'People · Family',
   officeNasPage: 'Settings · Office NAS',
+  riderLiveMapPage: 'Settings · Rider live map',
 };
 
 String _personLabel(Map<String, dynamic>? p, String id) => '${p?['name'] ?? p?['phone'] ?? p?['email'] ?? id}'.trim();

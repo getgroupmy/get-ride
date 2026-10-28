@@ -9,6 +9,7 @@ import 'screens/commerce/commerce_module.dart';
 import 'screens/family/family_module.dart';
 import 'screens/geo/geo_module.dart';
 import 'screens/help/help_module.dart';
+import 'screens/live_map/rider_live_map_module.dart';
 import 'screens/meterapp/meterapp_module.dart';
 import 'screens/office_nas/office_nas_module.dart';
 import 'screens/people/people_module.dart';
@@ -69,6 +70,7 @@ final allAdminEntries = <AdminScreenEntry>[
   ...commerceEntries,
   ...geoEntries,
   ...meterappEntries,
+  ...riderLiveMapEntries,
   ...securityEntries,
   ...officeNasEntries,
 ];
@@ -88,6 +90,7 @@ final allPortedAdminRoutes = <RouteBase>[
   ...commerceRoutes,
   ...geoRoutes,
   ...meterappRoutes,
+  ...riderLiveMapRoutes,
   ...securityRoutes,
   ...officeNasRoutes,
 ];

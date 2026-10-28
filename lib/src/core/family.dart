@@ -675,6 +675,7 @@ class FamilyTripStatus {
     this.shared = false,
     this.left,
     this.viewers = const [],
+    this.mine = false,
   });
   final bool family;
   final bool child;
@@ -684,7 +685,12 @@ class FamilyTripStatus {
   /// The host can see this trip now: the chip shows exactly then.
   final bool shared;
   final double? left;
-  final List<({String name, String what})> viewers;
+  /// Who can see it: the host, and (rider live map, 0322) the family's
+  /// members where the admin's rule lets them.
+  final List<({String name, String what, String role})> viewers;
+
+  /// The caller is the member on this trip (0322): they may stop sharing it.
+  final bool mine;
 
   factory FamilyTripStatus.fromJson(Object? json) {
     final m = json is Map ? json : const {};
@@ -694,11 +700,12 @@ class FamilyTripStatus {
       familyPays: _b(m['familyPays']),
       payer: _s(m['payer']),
       shared: _b(m['shared']),
+      mine: _b(m['mine']),
       left: _d(m['left']),
       viewers: [
         if (m['viewers'] is List)
           for (final v in m['viewers'] as List)
-            if (v is Map) (name: _s(v['name']) ?? 'Family host', what: _s(v['what']) ?? ''),
+            if (v is Map) (name: _s(v['name']) ?? 'Family host', what: _s(v['what']) ?? '', role: _s(v['role']) ?? 'host'),
       ],
     );
   }
@@ -707,7 +714,8 @@ class FamilyTripStatus {
 /// "Who can see this ride": the family viewers, then the safety team's
 /// logged access (the only other way, never hidden).
 List<String> whoCanSeeLines(FamilyTripStatus s) => [
-  for (final v in s.viewers) '${v.name} (family host): ${v.what.isEmpty ? 'live location' : v.what.toLowerCase()}.',
+  for (final v in s.viewers)
+    '${v.name}${v.role == 'host' ? ' (family host)' : ''}: ${v.what.isEmpty ? 'live location' : v.what.toLowerCase()}.',
   'GET.ride safety team: only when they open it for a report or SOS; every look is logged and you can ask to see the log.',
 ];
 

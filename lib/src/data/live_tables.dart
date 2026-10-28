@@ -324,6 +324,8 @@ const liveAdminTables = <String>[
   'driver_service_lock_events',
   // Freight (0267): the recipient's tracking link, on the ride's admin page.
   'freight_recipient_notices',
+  // Rider live map (0322): its admin page follows the rules live.
+  'rider_live_map_rules',
 ];
 
 /// Rides and sessions change every few seconds while trips run; an admin

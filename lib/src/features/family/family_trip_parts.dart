@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/family.dart';
 import '../../core/format.dart' show formatMoney;
 import '../../data/family_repository.dart';
+import '../../data/rider_live_map_repository.dart' show riderLiveMapRepositoryProvider;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/net_image.dart';
@@ -42,8 +43,11 @@ class SharedWithFamilyChip extends StatelessWidget {
 
 /// "Who can see this ride".
 class WhoCanSeeCard extends StatelessWidget {
-  const WhoCanSeeCard({super.key, required this.status});
+  const WhoCanSeeCard({super.key, required this.status, this.onStop});
   final FamilyTripStatus status;
+
+  /// Stops sharing the trip; shown to the member on it.
+  final Future<void> Function()? onStop;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +62,16 @@ class WhoCanSeeCard extends StatelessWidget {
           const SizedBox(height: 6),
           for (final l in whoCanSeeLines(status))
             Padding(padding: const EdgeInsets.only(bottom: 4), child: Text(l, style: t.textTheme.bodyMedium)),
+          // The member stops sharing this trip at once (rider live map, 0322).
+          if (status.mine && onStop != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: BusyButton.text(
+                key: const ValueKey('family-stop-sharing'),
+                onPressed: onStop,
+                child: const Text('Stop sharing this trip'),
+              ),
+            ),
         ]),
       ),
     );
@@ -91,7 +105,20 @@ class _FamilyTripStripState extends ConsumerState<FamilyTripStrip> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (s.shared) ...[
           SharedWithFamilyChip(open: _who, onTap: () => setState(() => _who = !_who)),
-          if (_who) WhoCanSeeCard(status: s),
+          if (_who)
+            WhoCanSeeCard(
+              status: s,
+              onStop: () async {
+                try {
+                  await ref.read(riderLiveMapRepositoryProvider).stopSharing(widget.tripId);
+                } catch (e) {
+                  if (context.mounted) showError(context, e);
+                  return;
+                }
+                ref.invalidate(familyTripStatusProvider(widget.tripId));
+                if (mounted) setState(() => _who = false);
+              },
+            ),
         ],
         if (s.familyPays && s.payer != null)
           Padding(

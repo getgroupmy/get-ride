@@ -137,6 +137,10 @@ import '../../widgets/web_overlay_back.dart';
 import '../../data/rider_audio_repository.dart' show riderAudioSupported;
 import '../safety/rider_audio_controller.dart' show riderAudioProvider;
 import '../safety/rider_audio_widgets.dart' show RiderAudioConfirmRow;
+import '../../core/rider_live_map.dart';
+import '../../data/rider_live_map_repository.dart';
+import 'live_map_feed.dart';
+import 'live_map_overlays.dart';
 
 enum _PinTarget { none, pickup, drop }
 
@@ -532,6 +536,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// Bumped as the demo cars step: only the map rebuilds for them.
   final _carsTick = ValueNotifier<int>(0);
 
+  /// Rider live map (0322): the overlays and cars the server allows this
+  /// rider, kept fresh while on; the honeycomb cell and the person or trip
+  /// whose sheet is open.
+  late final LiveMapFeed _liveFeed = LiveMapFeed(() => ref.read(riderLiveMapRepositoryProvider))
+    ..addListener(_liveChanged);
+  BusyCell? _liveCell;
+  String? _livePicked;
+
+  void _liveChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// The pickup's place as the live map's rules read it.
+  Map<String, String> get _livePlace => {
+    for (final e in (_optionPlace?.toJson() ?? const <String, dynamic>{}).entries) e.key: '${e.value}',
+  };
+
+  /// A tap on the honeycomb opens that cell's sheet.
+  Future<void> _openBusyCell(BusyCell cell) async {
+    final areas = _liveFeed.busy;
+    setState(() => _liveCell = cell);
+    await showBusyAreaSheet(context, cell: cell, areas: areas, onSetPickup: () => _setPickupAt(cell.centre));
+    if (mounted) setState(() => _liveCell = null);
+  }
+
+  Future<void> _openLivePerson(LivePerson p, {required bool team}) async {
+    setState(() => _livePicked = p.id);
+    if (team) {
+      await showTeamTripSheet(context, trip: p, at: _liveFeed.team.at);
+    } else {
+      final i = _liveFeed.people.items.indexWhere((x) => x.id == p.id);
+      await showFamilyMemberSheet(context, person: p, colour: personColour(i < 0 ? 0 : i), at: _liveFeed.people.at);
+    }
+    if (mounted) setState(() => _livePicked = null);
+  }
+
+  /// "Set pickup here": the pickup moves to [p], named once the geocoder
+  /// answers, as a pickup picked on the map.
+  Future<void> _setPickupAt(LatLng p) async {
+    setState(() => _pickup = Place(name: 'Finding address…', address: '', point: p));
+    _flyToPickup();
+    final place = await ref.read(geoServiceProvider).reverse(p);
+    if (!mounted || _pickup?.point != p) return;
+    setState(() => _pickup = place);
+    await _syncPickupGate();
+    if (!mounted) return;
+    _updateRoute();
+  }
+
   /// The home map as last built, and what it was built from: the sheet's
   /// providers and settings rebuild the screen around it, not the map
   /// ([_homeMap]).
@@ -759,6 +812,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _changes.dispose();
     _carsTick.dispose();
     _carsTimer?.cancel();
+    _liveFeed.dispose();
     _lifecycle?.dispose();
     _promoTimer?.cancel();
     _draftTimer?.cancel();
@@ -1207,7 +1261,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _onMapTap(LatLng p) async {
     final target = _pinTarget;
-    if (target == _PinTarget.none) return;
+    if (target == _PinTarget.none) {
+      // The rider live map (0322): a busy cell's sheet.
+      final cell = _liveFeed.busy.on ? _liveFeed.busy.cellAt(p) : null;
+      if (cell != null && _drop == null) await _openBusyCell(cell);
+      return;
+    }
     setState(() => _pinTarget = _PinTarget.none);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
@@ -2723,6 +2782,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final autoFit = !_pinMoving && (_drop != null || _pickup == null || _pickup!.point != _dragged);
     final fitTop = confirming ? _confirmFitTop : 64.0;
     final fitBottom = confirming ? _confirmFitBottom : 64.0;
+    // Rider live map (0322): the overlays the server lets this rider use
+    // here, the ones they have on, and the cars near them. Off (and the
+    // home unchanged) until an admin turns a mode on.
+    final livePlace = _livePlace;
+    final liveConfig = ref.watch(liveMapConfigProvider(jsonEncode(livePlace))).value ?? LiveMapConfig.off;
+    final livePrefs = ref.watch(liveMapPrefsProvider);
+    final liveOn = confirming ? const <LiveOverlay>{} : activeOverlays(livePrefs.overlays, liveConfig);
+    final liveCarsOn = !confirming && _drop == null && liveConfig.showCars(riderHides: livePrefs.hideCars);
+    _liveFeed.update(
+      config: liveConfig,
+      overlays: liveOn,
+      cars: liveCarsOn,
+      centre: _pickup?.point ?? _me,
+      place: livePlace,
+    );
+    final liveBusy = liveOn.contains(LiveOverlay.busy) ? _liveFeed.busy : BusyAreas.none;
+    final livePeople = liveOn.contains(LiveOverlay.people) ? _liveFeed.people : LivePeople.none;
+    final liveTeam = liveOn.contains(LiveOverlay.team) ? _liveFeed.team : LivePeople.none;
+    final liveCars = liveCarsOn ? _liveFeed.cars : LiveCars.none;
     final map = Stack(children: [
       Positioned(
         // Map height: the map reaches above the top of the screen.
@@ -2754,6 +2832,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 _me, _pickup, _pinMoving, confirming, wide, _routeMoved, autoFit, fitTop, fitBottom, _drop?.point,
                 _route, satellite, _cars, serviceIndex, showPill, screenWidth, mapLayout.pillGap, ai, tolls.length,
                 _stops.length, for (final p in _stops) p.point, _gateArea, _pickupDoor,
+                liveBusy, livePeople, liveTeam, liveCars, liveCarsOn, _liveCell, _livePicked,
               ], () => RideMap(
               controller: _map,
               me: _me,
@@ -2775,6 +2854,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // The pickup's airport or place (0258): its boundary and gates
               // stay drawn, before and after the gate is chosen.
               extraLayers: [
+                // The rider live map's honeycomb and kept routes (0322).
+                ...busyLayers(context, liveBusy, selected: _liveCell),
+                ...trailLayers(livePeople),
                 if (_gateArea case final g? when _pickup != null && g.area.contains(_pickup!.point, bufferM: 0))
                   ...gateAreaLayers(
                     context,
@@ -2788,7 +2870,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
               ],
               extraMarkers: [
-                for (final c in _cars) demoCarMarker(c, serviceIndex),
+                // Free cars near the rider where the region shows them
+                // (0322), anonymous and moved; else the admin's demo cars.
+                if (liveCarsOn && liveCars.on)
+                  ...carMarkers(liveCars)
+                else
+                  for (final c in _cars) demoCarMarker(c, serviceIndex),
+                ...personMarkers(livePeople.items, team: false, picked: _livePicked,
+                    onTap: (p) => _openLivePerson(p, team: false)),
+                ...personMarkers(liveTeam.items, team: true, picked: _livePicked,
+                    onTap: (p) => _openLivePerson(p, team: true)),
                 // At a gate: "Pickup point / <gate> >" over the pin, which
                 // opens the gate picker again.
                 if (_gateArea != null && _pickup != null && !_pinMoving && !confirming &&
@@ -2858,6 +2949,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       // The menu button (Expo's top-left hamburger): the side menu, on
       // phones, where there is no tab bar. It slides off with the others.
+      // The honeycomb's legend, under the menu button (0322).
+      if (liveBusy.on && liveBusy.cells.isNotEmpty && !_pinMoving)
+        Positioned(
+          top: 16 + 50 + 14,
+          left: 16 + MediaQuery.paddingOf(context).left,
+          child: SafeArea(child: BusyLegend(colours: liveBusy.colours)),
+        ),
       if (SideMenuHost.of(context) != null && !confirming)
         Positioned(
           left: 16,
@@ -2909,6 +3007,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Rider live map (0322): the overlays, only when the
+                      // rider has one they may use.
+                      if (liveConfig.hasOverlays) ...[
+                        MapOverlaysButton(
+                          count: liveOn.length,
+                          onPressed: () => showOverlayPicker(
+                            context,
+                            config: liveConfig,
+                            offMap: [...livePeople.offMap, ...liveTeam.offMap],
+                            onOpen: (p) {
+                              Navigator.of(context).maybePop();
+                              _openLivePerson(p, team: p.company != null);
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                      ],
                       const MapTypeButton(),
                       if (display?.recenterButton ?? true) ...[
                         const SizedBox(height: 8),

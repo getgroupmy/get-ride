@@ -87,7 +87,9 @@ begin
     -- City ride extras by place, and tips on the driver's trip card (migration 0314).
     'city_ride_extra_places', 'ride_tips',
     -- Premium service rules and GET.Plus by place (migration 0316).
-    'premium_plus_places'
+    'premium_plus_places',
+    -- Rider live map: the rules by region (migration 0322).
+    'rider_live_map_rules'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables
