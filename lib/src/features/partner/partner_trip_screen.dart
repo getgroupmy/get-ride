@@ -1378,6 +1378,7 @@ class _CollectCard extends ConsumerWidget {
                   RidePayMethod.cash => 'Cash received',
                   RidePayMethod.getCoin => 'Paid with GET.coin',
                   RidePayMethod.getWallet => 'Paid with GET.wallet',
+                  RidePayMethod.business => 'Paid by the business account',
                   null => 'Paid',
                 }),
                 trailing: r.paidAmount == null ? null : Text(formatMoney(r.paidAmount, r.currency)),

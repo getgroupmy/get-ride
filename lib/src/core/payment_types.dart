@@ -4,8 +4,9 @@
 /// method's name, which is what the driver sees. Pure.
 library;
 
-/// What a method is, for its icon and colour.
-enum PaymentKind { cash, wallet, card, other }
+/// What a method is, for its icon and colour. [business]: charged to a
+/// business account the rider belongs to (0313).
+enum PaymentKind { cash, wallet, card, other, business }
 
 class PaymentChoice {
   const PaymentChoice(this.value, this.label, this.kind, {this.icon});
@@ -44,6 +45,7 @@ PaymentKind paymentKindOf(String name, [String? code]) {
   for (final raw in [code, name]) {
     final s = (raw ?? '').trim().toLowerCase();
     if (s.isEmpty) continue;
+    if (s.startsWith('business')) return PaymentKind.business;
     if (s.contains('cash')) return PaymentKind.cash;
     if (s.contains('wallet') || s.contains('get pay') || s.contains('getpay') || s.contains('ewallet')) {
       return PaymentKind.wallet;

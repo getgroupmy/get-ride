@@ -10,10 +10,6 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 - Rider-side audio recording (the driver side already records trip audio).
 - Premium tier.
 
-## Freight and Courier, after launch
-
-- Business accounts.
-
 ## Services, partner types and vehicle services (study of 26 Oct 2026)
 
 Low:

@@ -15,6 +15,7 @@ import 'catalogue/driver_service_locks_screen.dart' show driverServiceLocksPage;
 import 'catalogue/partner_type_services_screen.dart' show partnerTypeServicesPage;
 import '../../core/city_to_city.dart' show c2cPage;
 import '../../core/ride_safety.dart' show rideSafetyPage;
+import '../../core/business_accounts.dart' show businessAccountsPage;
 import 'geo/place_types_screen.dart' show placeTypesPage;
 import '../god_view_people.dart';
 import '../widgets/admin_widgets.dart';
@@ -46,6 +47,7 @@ final grantablePages = <String, String>{
   placeTypesPage: 'Settings · Place types',
   c2cPage: 'Settings · City to City',
   rideSafetyPage: 'Settings · Ride safety',
+  businessAccountsPage: 'People · Business accounts',
 };
 
 String _personLabel(Map<String, dynamic>? p, String id) => '${p?['name'] ?? p?['phone'] ?? p?['email'] ?? id}'.trim();
