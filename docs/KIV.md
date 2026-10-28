@@ -12,10 +12,6 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 
 ## Freight and Courier, after launch
 
-- Parcel cover.
-- Round trip.
-- Floor (stairs) and cold-truck add-ons.
-- Cash on delivery for the item's value (Courier already lets the recipient pay the delivery fee in cash).
 - Business accounts.
 
 ## Services, partner types and vehicle services (study of 26 Oct 2026)

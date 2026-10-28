@@ -77,7 +77,9 @@ begin
     -- City to City give-up and in-app payment rules, give-up fees owed (migration 0309).
     'c2c_giveup_rules', 'c2c_pay_rules', 'c2c_driver_fees',
     -- Ride safety: settings, report categories, passenger cover, rider blocks (migration 0311).
-    'ride_safety_settings', 'trip_report_categories', 'passenger_cover_rules', 'rider_blocks'
+    'ride_safety_settings', 'trip_report_categories', 'passenger_cover_rules', 'rider_blocks',
+    -- Freight and Courier add-ons: the rules and cover claims (migration 0312).
+    'delivery_addon_rules', 'cover_claims'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

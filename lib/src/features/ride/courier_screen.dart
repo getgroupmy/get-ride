@@ -17,6 +17,7 @@ import '../../config.dart';
 import '../../core/book_for.dart' show DuplicateRideRequest;
 import '../../core/commission.dart' show Geo;
 import '../../core/courier.dart';
+import '../../core/delivery_addons.dart';
 import '../../core/early_end.dart' show serviceTypeIds;
 import '../../core/fare_tariff.dart';
 import '../../core/format.dart';
@@ -24,10 +25,12 @@ import '../../core/freight.dart';
 import '../../core/partner_type_rules.dart' show RegionScope;
 import '../../core/payment_types.dart';
 import '../../core/region_pricing.dart';
+import '../../core/ride_option_charges.dart' show OptionChargeLine;
 import '../../core/ride_option_places.dart';
 import '../../core/ride_request_metadata.dart';
 import '../../core/saved_drafts.dart';
 import '../../data/app_display_repository.dart';
+import '../../data/delivery_addons_repository.dart';
 import '../../data/device_access.dart';
 import '../../data/fare_tariff_repository.dart';
 import '../../data/freight_repository.dart';
@@ -42,6 +45,7 @@ import '../../widgets/page_style_host.dart';
 import '../../widgets/media_image.dart' show MediaIcon;
 import '../../widgets/search_select.dart' show ListSearchFilter, searchSelectMatches;
 import 'confirm_parts.dart' show paymentLook;
+import 'delivery_addons_parts.dart';
 import 'delivery_look.dart';
 import 'freight_parts.dart' show FreightVehicleImage;
 import 'freight_screen.dart';
@@ -88,6 +92,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
   double? _offer;
   double? _declared;
   bool _ack = false;
+  AddonPicks _addons = const AddonPicks();
   FreightPickupContext? _context;
   LatLng? _contextAt;
   ({double km, double min})? _route;
@@ -141,6 +146,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
       'offer': ?_offer,
       if (_offer != null) 'currency': _currency,
       'declared': ?_declared,
+      if (_addons.any) 'addons': _addons.toJson(),
     };
   }
 
@@ -165,6 +171,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     _payment = draftText(m['payment']) ?? _payment;
     _offer = draftNumber(m['offer']);
     _declared = draftNumber(m['declared']);
+    _addons = AddonPicks.fromJson(m['addons']);
   }
 
   @override
@@ -206,6 +213,29 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
   }
 
   RegionPricing get _pricing => _context?.pricing ?? RegionPricing.none;
+
+  /// The add-ons' rule at the pickup (migration 0312).
+  DeliveryAddons get _addonRule =>
+      (ref.read(deliveryAddonRulesProvider).value ?? AddonRules.none).here(_context?.place ?? RegionScope.all);
+
+  /// The add-ons picked that are still offered here.
+  AddonPicks get _addonPicks => _addons.offeredBy(_addonRule, freight: false);
+
+  /// What they add to the offer.
+  List<OptionChargeLine> get _addonCharges =>
+      addonLines(_addonPicks, _addonRule, offer: _offer ?? 0, declared: _declared);
+
+  String? get _addonProblem =>
+      addonPicksProblem(_addonPicks, _addonRule, freight: false, declared: _declared, money: _money);
+
+  /// The declared value's cap: the cover's highest value on a covered
+  /// booking, else the place's.
+  double get _declaredCap => _addonPicks.cover ? _addonRule.coverMax : _placeValues.declaredCap;
+
+  void _changeAddons(AddonPicks next) => setState(() {
+    if (next.cover && !_addons.cover && (_declared ?? 0) <= 0) _declared = 100;
+    _addons = next;
+  });
 
   FreightPlaceValues get _placeValues => freightPlaceValues(
     ref.read(rideOptionPlacesProvider).value ?? OptionPlaces.none,
@@ -292,7 +322,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
 
   Future<void> _declare() async {
     final style = currencyStyles[_currency.trim().toUpperCase()];
-    final cap = _placeValues.declaredCap;
+    final cap = _declaredCap;
     final v = await showAppSheet<double>(id: 'ride.courier-declared',
       context: context,
       isScrollControlled: true,
@@ -323,14 +353,14 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     vehicle: _vehicle,
     recipientPhone: _recipient?.phone ?? '',
     declaredValue: _declared,
-    declaredCap: _placeValues.declaredCap,
+    declaredCap: _declaredCap,
     prohibitedAck: _ack,
     offer: _offer,
   );
 
   Future<void> _create() async {
     final a = _pickup, b = _drop, v = _vehicle;
-    final problem = courierDraftProblem(_draft, _config);
+    final problem = courierDraftProblem(_draft, _config) ?? _addonProblem;
     if (problem != null) return showInfo(context, problem);
     setState(() => _booking = true);
     try {
@@ -348,6 +378,8 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
         profile = await ref.read(profileProvider.future);
       } catch (_) {}
       final route = _route;
+      final addons = _addonPicks;
+      final charges = _addonCharges;
       final items = courierItemText(_items, _note.text);
       final payments = ref.read(paymentChoicesProvider).value ?? builtInPayments;
       // The recipient pays in cash; the sender any way offered.
@@ -372,7 +404,8 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
         dropLng: b.point.longitude,
         distanceKm: route?.km ?? const Distance().as(LengthUnit.Meter, a.point, b.point) / 1000,
         durationMin: (route?.min ?? 0).round(),
-        fare: _offer!,
+        fare: freightFare(_offer!, charges),
+        optionCharges: charges,
         paymentMode: payment,
         note: note,
         riderName: profile?.name,
@@ -390,9 +423,11 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
         recipient: _recipient,
         parcelSize: _size,
         payer: _payer,
+        addons: addons,
       );
       if (!mounted) return;
       setState(() {
+        _addons = const AddonPicks();
         _items = const [];
         _note.clear();
         _offer = null;
@@ -423,6 +458,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     ref.watch(rideOptionPlacesProvider);
     ref.watch(fareTariffsProvider);
     ref.watch(paymentChoicesProvider);
+    ref.watch(deliveryAddonRulesProvider);
     final mine = _tabs.index == 1;
     return Scaffold(
       appBar: AppBar(
@@ -446,7 +482,9 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
     final config = _config;
-    final problem = courierDraftProblem(_draft, config);
+    final problem = courierDraftProblem(_draft, config) ?? _addonProblem;
+    final addonRule = _addonRule;
+    final addonPicks = _addonPicks;
     final vehicles = _vehicles;
     final v = _vehicle;
     final payments = ref.read(paymentChoicesProvider).value ?? builtInPayments;
@@ -585,6 +623,19 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
                 value: _declared == null ? null : _money(_declared!),
                 onTap: _declare,
               ),
+              if (addonRule.offered(freight: false).isNotEmpty) ...[
+                label('Add-ons'),
+                DeliveryAddonsSection(
+                  freight: false,
+                  addons: addonRule,
+                  picks: addonPicks,
+                  onChanged: _changeAddons,
+                  money: _money,
+                  declared: _declared,
+                  onDeclared: (x) => setState(() => _declared = x),
+                ),
+                const SizedBox(height: 8),
+              ],
               CheckboxListTile(
                 key: const ValueKey('courier-prohibited-ack'),
                 contentPadding: EdgeInsets.zero,
@@ -646,6 +697,21 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
                 },
                 onTap: _offerPrice,
               ),
+              if (_offer != null && addonPicks.any)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: () {
+                    final b = addonBreakdown(
+                      tripLabel: [v?.shortName ?? 'Courier', if (_route case final r?) '${r.km.round()} km'].join(', '),
+                      offer: _offer!,
+                      lines: _addonCharges,
+                      picks: addonPicks,
+                      a: addonRule,
+                      money: _money,
+                    );
+                    return DeliveryBreakdown(lines: b.lines, total: b.total, money: _money);
+                  }(),
+                ),
               if (config.codeChannels.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 12),

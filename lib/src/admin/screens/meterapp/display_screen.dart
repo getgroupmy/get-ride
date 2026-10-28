@@ -34,6 +34,7 @@ import 'home_layout_screen.dart' show HomeLayoutScreen;
 import 'ride_option_places_screen.dart' show RideOptionPlacesScreen;
 import 'freight_settings_screen.dart' show FreightSettingsScreen;
 import 'courier_settings_screen.dart' show CourierSettingsScreen;
+import 'delivery_addons_screen.dart' show DeliveryAddonsScreen;
 import '../../../core/freight.dart' show DeliveryKind, freightVehiclesFrom;
 import '../../../core/home_sections.dart' show serviceBoxDelivery, serviceBoxOpensText, serviceBoxPresets;
 import '../../../core/ride_option_places.dart' show OptionChargeKey;
@@ -1619,6 +1620,16 @@ class RideOptionsCard extends ConsumerWidget {
           'Confirmation code, parcel sizes, cancel after pickup, prohibited items',
           () => Navigator.of(context).push(AppPageRoute(id: 'display.courier-settings',
             builder: (_) => const CourierSettingsScreen(),
+          )),
+        ),
+        const Divider(height: 1),
+        // Freight and Courier add-ons (0312): rules by region, cover claims.
+        settingsRow(
+          'ride-option-delivery-addons',
+          'Add-ons, cover and cash on delivery',
+          'Parcel cover, round trip, stairs, cold truck and item cash on delivery, by region',
+          () => Navigator.of(context).push(AppPageRoute(id: 'display.delivery-addons',
+            builder: (_) => const DeliveryAddonsScreen(),
           )),
         ),
         const Divider(height: 1),

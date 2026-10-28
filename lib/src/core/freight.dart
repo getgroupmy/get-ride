@@ -91,6 +91,7 @@ class FreightVehicle {
     this.widthM,
     this.heightM,
     this.closedBody = false,
+    this.refrigerated = false,
     this.multiplier = 1,
     this.serviceTypes = const [freightServiceType],
     this.parentIds = const [],
@@ -109,6 +110,10 @@ class FreightVehicle {
 
   /// A covered van or lorry (the "Closed body" option books only these).
   final bool closedBody;
+
+  /// A refrigerated van or lorry: the only ones the cold truck add-on
+  /// books (migration 0312).
+  final bool refrigerated;
   final double multiplier;
   final List<String> serviceTypes;
   final List<String> parentIds;
@@ -206,6 +211,7 @@ List<FreightVehicle> freightVehiclesFrom(
             widthM: _num(v['loadWidthM']),
             heightM: _num(v['loadHeightM']),
             closedBody: v['closedBody'] == true,
+            refrigerated: v['refrigerated'] == true,
             multiplier: cost == null ? 1 : cost / 1.5,
             serviceTypes: [for (final t in v['serviceTypes'] as List) '$t'],
             parentIds: serviceParentIds(v),

@@ -20,6 +20,7 @@ import '../../core/early_end.dart' show serviceTypeIds;
 import '../../core/fare_tariff.dart';
 import '../../core/format.dart';
 import '../../core/courier.dart' show deliveryStatusLabel, recipientPaysText;
+import '../../core/delivery_addons.dart';
 import '../../core/freight.dart';
 import '../../core/saved_drafts.dart';
 import '../../core/option_charge.dart';
@@ -34,6 +35,7 @@ import '../../core/ride_option_settings.dart';
 import '../../core/ride_request_metadata.dart';
 import '../../core/scheduled_rides.dart';
 import '../../data/app_display_repository.dart';
+import '../../data/delivery_addons_repository.dart';
 import '../../data/device_access.dart';
 import '../../data/fare_tariff_repository.dart';
 import '../../data/freight_repository.dart';
@@ -53,6 +55,7 @@ import '../../widgets/media_image.dart' show MediaIcon;
 import '../../widgets/search_select.dart' show ListSearchFilter, searchSelectMatches;
 import 'confirm_parts.dart' show paymentLook;
 import 'courier_parts.dart' show CourierCodeCard;
+import 'delivery_addons_parts.dart';
 import 'delivery_look.dart';
 import 'freight_parts.dart';
 import 'map_place_picker.dart';
@@ -197,6 +200,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
   double? _offer;
   double? _declared;
   bool _ack = false;
+  AddonPicks _addons = const AddonPicks();
   FreightRecipient? _recipient;
   FreightPickupContext? _context;
   LatLng? _contextAt;
@@ -252,6 +256,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
       'offer': ?_offer,
       if (_offer != null) 'currency': _currency,
       'declared': ?_declared,
+      if (_addons.any) 'addons': _addons.toJson(),
       if (_recipient case final r?) 'recipient': {'name': r.name, 'phone': r.phone},
     };
   }
@@ -274,6 +279,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     _payment = draftText(m['payment']) ?? _payment;
     _offer = draftNumber(m['offer']);
     _declared = draftNumber(m['declared']);
+    _addons = AddonPicks.fromJson(m['addons']);
     final r = m['recipient'];
     if (r is Map && draftText(r['phone']) != null) _recipient = (name: '${r['name'] ?? ''}', phone: '${r['phone']}');
   }
@@ -302,6 +308,58 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
   Set<RideOptionKind> get _picked => _options.intersection(_offered.toSet());
 
   List<OptionChargeLine> get _charges => freightOptionCharges(_picked, _here, _config, offer: _offer ?? 0);
+
+  /// The add-ons' rule at the pickup (migration 0312).
+  DeliveryAddons get _addonRule =>
+      (ref.read(deliveryAddonRulesProvider).value ?? AddonRules.none).here(_context?.place ?? RegionScope.all);
+
+  /// The add-ons picked that are still offered here.
+  AddonPicks get _addonPicks => _addons.offeredBy(_addonRule, freight: true);
+
+  /// What they add to the offer.
+  List<OptionChargeLine> get _addonCharges =>
+      addonLines(_addonPicks, _addonRule, offer: _offer ?? 0, declared: _declared);
+
+  /// Every line: the options', then the add-ons'.
+  List<OptionChargeLine> get _allCharges => [..._charges, ..._addonCharges];
+
+  /// Why the add-ons can't go as they are; null when they can.
+  String? get _addonProblem => addonPicksProblem(
+    _addonPicks,
+    _addonRule,
+    freight: true,
+    declared: _declared,
+    refrigerated: _vehicle?.refrigerated ?? false,
+    hasHelper: _picked.contains(RideOptionKind.helperOne) || _picked.contains(RideOptionKind.helperTwo),
+    money: _money,
+  );
+
+  /// The declared value's cap: the cover's highest value on a covered
+  /// booking, else the place's.
+  double get _declaredCap => _addonPicks.cover ? _addonRule.coverMax : _placeValues.declaredCap;
+
+  void _changeAddons(AddonPicks next) {
+    // The cold truck books a refrigerated vehicle: move to the first one.
+    final v = _vehicle;
+    if (next.coldLevel != null && _addons.coldLevel == null && v != null && !v.refrigerated) {
+      final cold = _vehicles.where((x) => x.refrigerated).firstOrNull;
+      if (cold == null) return showInfo(context, 'No refrigerated vehicle is offered yet.');
+      setState(() {
+        _vehicleId = cold.id;
+        _addons = next;
+      });
+      showInfo(context, 'Changed to ${cold.name}, a refrigerated vehicle.');
+      return;
+    }
+    if (next.cover && !_addons.cover && (_declared ?? 0) <= 0) {
+      setState(() {
+        _addons = next;
+        _declared = 100;
+      });
+      return;
+    }
+    setState(() => _addons = next);
+  }
 
   FareTariff? get _tariff {
     final v = _vehicle;
@@ -378,7 +436,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     }
     if (!mounted) return;
     if (!c.enabled) return showInfo(context, 'Scheduled rides are not available.');
-    final fare = freightFare(_offer ?? 0, _charges);
+    final fare = freightFare(_offer ?? 0, _allCharges);
     final fee = schedulingFee(fare, c);
     final at = await showPickupTimeSheet(
       context,
@@ -500,7 +558,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
 
   Future<void> _declare() async {
     final style = currencyStyles[_currency.trim().toUpperCase()];
-    final cap = _placeValues.declaredCap;
+    final cap = _declaredCap;
     final v = await showAppSheet<double>(id: 'ride.freight-declared',
       context: context,
       isScrollControlled: true,
@@ -542,13 +600,13 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     offer: _offer,
     photoUploading: _uploading,
     declaredValue: _declared,
-    declaredCap: _placeValues.declaredCap,
+    declaredCap: _declaredCap,
     prohibitedAck: _ack,
   );
 
   Future<void> _create() async {
     final a = _pickup, b = _drop, v = _vehicle;
-    final problem = freightDraftProblem(_draft);
+    final problem = freightDraftProblem(_draft) ?? _addonProblem;
     if (problem != null) return showInfo(context, problem);
     setState(() => _booking = true);
     try {
@@ -578,7 +636,8 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
         profile = await ref.read(profileProvider.future);
       } catch (_) {}
       final picked = _picked;
-      final charges = _charges;
+      final charges = _allCharges;
+      final addons = _addonPicks;
       final names = _config.freightNamesFor(picked);
       final route = _route;
       final booked = await ref.read(rideRepositoryProvider).createRequest(
@@ -613,9 +672,11 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
         declaredValue: _declared,
         prohibitedAck: _ack,
         recipient: _recipient,
+        addons: addons,
       );
       if (!mounted) return;
       setState(() {
+        _addons = const AddonPicks();
         _description = '';
         _photo = null;
         _photoPath = null;
@@ -665,6 +726,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     ref.watch(fareTariffsProvider);
     ref.watch(paymentChoicesProvider);
     ref.watch(freightConfigProvider);
+    ref.watch(deliveryAddonRulesProvider);
     final mine = _tabs.index == 1;
     return Scaffold(
       appBar: AppBar(
@@ -684,11 +746,14 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
   Widget _form(BuildContext context) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
-    final problem = freightDraftProblem(_draft);
+    final problem = freightDraftProblem(_draft) ?? _addonProblem;
     final v = _vehicle;
     final offered = _offered;
     final picked = _picked;
     final charges = _charges;
+    final addonRule = _addonRule;
+    final addonPicks = _addonPicks;
+    final addonCharges = _addonCharges;
     final payments = ref.read(paymentChoicesProvider).value ?? builtInPayments;
     final payment = resolvePayment(_payment, payments);
     final added = optionChargesTotal(charges);
@@ -775,6 +840,18 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
                       onSelected: (_) => _toggle(k),
                     ),
                 ]),
+              ],
+              if (addonRule.offered(freight: true).isNotEmpty) ...[
+                label('Add-ons'),
+                DeliveryAddonsSection(
+                  freight: true,
+                  addons: addonRule,
+                  picks: addonPicks,
+                  onChanged: _changeAddons,
+                  money: _money,
+                  declared: _declared,
+                  onDeclared: (x) => setState(() => _declared = x),
+                ),
               ],
               const SizedBox(height: 12),
               FreightField(
@@ -866,7 +943,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
                 emphasis: true,
                 onTap: _offerFare,
               ),
-              if (_offer != null && added > 0)
+              if (_offer != null && added > 0 && !addonPicks.any)
                 Padding(
                   padding: const EdgeInsets.only(top: 6, left: 4),
                   child: Text(
@@ -875,6 +952,22 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
                     key: const ValueKey('freight-total'),
                     style: t.textTheme.bodySmall?.copyWith(color: muted),
                   ),
+                ),
+              if (_offer != null && addonPicks.any)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: () {
+                    final b = addonBreakdown(
+                      tripLabel: [v?.name ?? 'Freight', if (_route case final r?) '${trimNumber(r.km.roundToDouble())} km']
+                          .join(', '),
+                      offer: _offer!,
+                      lines: [...charges, ...addonCharges],
+                      picks: addonPicks,
+                      a: addonRule,
+                      money: _money,
+                    );
+                    return DeliveryBreakdown(lines: b.lines, total: b.total, money: _money);
+                  }(),
                 ),
             ],
           ),
@@ -1768,6 +1861,22 @@ class _FreightRequestCardState extends ConsumerState<FreightRequestCard> {
             Text(r.dropLabel, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.textTheme.bodySmall),
             if (r.cargoDescription case final d?)
               Text(d, maxLines: 2, overflow: TextOverflow.ellipsis, style: t.textTheme.bodySmall?.copyWith(color: muted)),
+            // The add-ons (0312), and a covered delivery's claim once it ended.
+            if (RideAddons.fromRow(r.raw) case final addons when addons.any) ...[
+              Text(
+                bookedAddonsText(addons, r.fareText),
+                key: ValueKey('$p-request-addons-${r.id}'),
+                style: t.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              if (addons.picks.cover && (r.status == RideStatus.completed || r.status == RideStatus.cancelled))
+                CoverClaimTile(
+                  rideId: r.id,
+                  declared: (r.raw['declared_value'] as num?)?.toDouble() ?? 0,
+                  claimDays: addons.rule.claimDays,
+                  ended: DateTime.tryParse('${r.raw['completed_at'] ?? r.raw['cancelled_at'] ?? ''}')?.toLocal(),
+                  money: r.fareText,
+                ),
+            ],
             // Courier (0268): the size, who pays and the code to pass on.
             if (courier) ...[
               if (r.recipientPays)
