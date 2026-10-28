@@ -12,6 +12,9 @@ import '../../core/partner_registration.dart' show closerLookReasonText;
 import '../../core/partner_status.dart';
 import '../../data/account_deletion_repository.dart';
 import '../../data/ride_rating_repository.dart' show adminRatingFlagsProvider;
+import '../../core/ride_safety.dart' show DriverSafetyFlag;
+import '../../data/ride_safety_repository.dart' show adminDriverSafetyFlagsProvider;
+import 'ride_safety/driver_safety_panel.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../account_app_version.dart';
@@ -702,6 +705,12 @@ class AdminPartnersScreen extends ConsumerWidget {
             partnerUserId: '${p['auth_user_id']}',
             canEdit: ref.read(pageAccessProvider('admin-partners')) == AccessLevel.edit,
           ),
+        // Trip reports and riders' blocks (0311), with the review flag.
+        if (!vehicles && '${p['auth_user_id'] ?? ''}'.isNotEmpty)
+          DriverSafetyPanel(
+            partnerUserId: '${p['auth_user_id']}',
+            canEdit: ref.read(pageAccessProvider('admin-partners')) == AccessLevel.edit,
+          ),
         _statusPicker(
           context: ctx,
           label: 'Status',
@@ -755,6 +764,8 @@ class AdminPartnersScreen extends ConsumerWidget {
     final canEdit = ref.watch(moduleAccessProvider(_module)) == AccessLevel.edit;
     // Drivers flagged by riders' low-rating tags (0297).
     final flags = vehicles ? const <String, List<String>>{} : (ref.watch(adminRatingFlagsProvider).value ?? const {});
+    // Trip reports and blocks (0311).
+    final safety = vehicles ? const <String, DriverSafetyFlag>{} : (ref.watch(adminDriverSafetyFlagsProvider).value ?? const {});
     return _RecordList(
         title: vehicles ? 'Vehicles' : 'Partners',
         module: _module,
@@ -785,6 +796,7 @@ class AdminPartnersScreen extends ConsumerWidget {
               : [
                   if (p['needs_closer_look'] == true) 'Needs a closer look',
                   if (flags['${p['auth_user_id']}'] case final f?) 'Flagged: ${f.join(', ')}',
+                  safety['${p['auth_user_id']}']?.line,
                   p['phone'],
                   p['plate'],
                   p['display_id'],

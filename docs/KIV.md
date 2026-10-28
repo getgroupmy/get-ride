@@ -2,12 +2,6 @@
 
 Items the owner has parked. Remove an item in the same PR that ships it.
 
-## City ride, before launch
-
-- Report a trip from the receipt (opens a support ticket with the ride attached), and let the rider block a driver.
-- Driver request filters: minimum fare, maximum pickup distance, sort by price or distance.
-- Passenger insurance and APAD permit info on the receipt and the Safety page.
-
 ## City ride, after launch
 
 - Tips after the trip (GET.wallet).

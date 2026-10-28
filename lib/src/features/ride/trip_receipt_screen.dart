@@ -24,6 +24,7 @@ import '../../widgets/pdf_actions.dart';
 import '../../widgets/ride_map.dart';
 import '../../widgets/ride_rating_card.dart';
 import '../../widgets/trip_safety.dart';
+import 'trip_safety_parts.dart';
 
 final tripProvider = FutureProvider.autoDispose.family<RideRequest?, String>((ref, id) async {
   final repo = ref.watch(rideRepositoryProvider);
@@ -66,7 +67,12 @@ class TripReceiptScreen extends ConsumerWidget {
                 ? null
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [RideRatingCard(ride: r), LostItemCard(ride: r)],
+                    children: [
+                      RideRatingCard(ride: r),
+                      LostItemCard(ride: r),
+                      // Cover, permit, report and block (0311).
+                      TripSafetySection(requestId: r.id),
+                    ],
                   ),
           );
         },

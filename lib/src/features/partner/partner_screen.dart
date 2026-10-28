@@ -85,6 +85,9 @@ import 'trip_handover_panel.dart' show HandoverOffersCard;
 import '../../widgets/page_style_host.dart';
 import '../ride/promo_parts.dart' show PromoAppliedIcon, rideHasPromo;
 import '../../widgets/focus_order.dart';
+import 'request_filters_sheet.dart';
+import '../../core/ride_safety.dart' show applyRequestFilters, requestQueueOrder;
+import '../../data/ride_safety_repository.dart' show effectiveRequestFiltersProvider;
 import 'airport_queue_card.dart';
 
 final openRequestsProvider = StreamProvider.autoDispose<List<RideRequest>>(
@@ -268,7 +271,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       // ends — pops up as new just as an INSERT does.
       final ordered = pinDirectFirst(
         pinStarredFirst(
-          destinationOrder(_pinned(open), toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo),
+          _order(_pinned(open), toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo),
           _starred,
         ),
         _myId,
@@ -393,7 +396,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   String _queueView() {
     if (!_online) return '';
     final open = ref.read(openRequestsProvider).value ?? const <RideRequest>[];
-    final order = destinationOrder(_pinned(open), toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo);
+    final order = _order(_pinned(open), toward: (r) => _destinationOn && _towardDestination(r), awayKm: _distanceTo);
     return [for (final r in order) '${r.id}${_distanceTo(r) == null ? '' : '+'}'].join('|');
   }
 
@@ -1148,6 +1151,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     // and re-filters as they arrive (both empty when unavailable).
     ref.watch(favouriteRiderIdsProvider);
     ref.watch(serviceDispatchConfigsProvider);
+    // The driver's request filters (0311): the queue re-filters as they change.
+    ref.watch(effectiveRequestFiltersProvider);
     ref.listen(openRequestsProvider, (_, next) {
       final open = _notHere ? const <RideRequest>[] : next.value;
       if (open != null) {
@@ -1288,6 +1293,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                                 : 'Take requests at the rider\'s price only'),
                           ),
                           _destinationTile(),
+                          RequestFiltersTile(
+                            hidden: showRequests ? _filtered(ref.watch(openRequestsProvider).value ?? const []).hidden : 0,
+                          ),
                         ]),
                       ),
                     const DriverWalletPills(),
@@ -1522,13 +1530,36 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// also the map's pins: those whose pickup is inside their service's max
   /// search radius ([filterByPickupRadius]), starred ones wherever they are,
   /// and every one while the driver's position is not known.
-  List<RideRequest> _pinned(List<RideRequest> open) {
+  List<RideRequest> _pinned(List<RideRequest> open) => _filtered(open).shown;
+
+  /// The queue's order under the driver's sort (0311): nearest first unless
+  /// they picked newest or price.
+  List<RideRequest> _order(
+    List<RideRequest> items, {
+    required bool Function(RideRequest) toward,
+    required double? Function(RideRequest) awayKm,
+  }) =>
+      requestQueueOrder(items, ref.read(effectiveRequestFiltersProvider).sort, toward: toward, awayKm: awayKm);
+
+  /// The requests in reach ([filterByPickupRadius]), then the driver's own
+  /// filters (minimum fare, pickup distance, sort; 0311): what they keep and
+  /// how many they hide. Booked directly with this driver, or starred, always
+  /// stays.
+  ({List<RideRequest> shown, int hidden}) _filtered(List<RideRequest> open) {
     final configs = ref.read(serviceDispatchConfigsProvider).value ?? const {};
-    return filterByPickupRadius(
+    final inReach = filterByPickupRadius(
       open,
       awayKm: _distanceTo,
       maxKm: (r) => dispatchConfigFor(configs, r.service).searchRadiusMaxKm,
       uncapped: _starred,
+    );
+    final me = _myId;
+    return applyRequestFilters(
+      inReach,
+      ref.read(effectiveRequestFiltersProvider),
+      fare: (r) => r.effectiveFare,
+      awayKm: _distanceTo,
+      exempt: (r) => _starred(r) || (me != null && r.directDriverId == me),
     );
   }
 
@@ -1579,7 +1610,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       pinAssignedFirst(
         pinDirectFirst(
           pinStarredFirst(
-            destinationOrder(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+            _order(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
             _starred,
           ),
           _myId,

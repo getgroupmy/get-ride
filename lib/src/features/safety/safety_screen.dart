@@ -11,6 +11,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../profile/emergency_contacts_screen.dart';
 import 'voice_protection_card.dart';
+import '../ride/trip_safety_parts.dart' show PassengerCoverCard;
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/page_style_host.dart';
 
@@ -134,6 +135,8 @@ class SafetyScreen extends ConsumerWidget {
                   ),
                 ),
                 const VoiceProtectionCard(),
+                // Passenger cover and permits (0311).
+                const PassengerCoverCard(),
                 const SizedBox(height: 16),
                 // No contacts: greyed, with the reason under it; a tap
                 // still offers to add one.
