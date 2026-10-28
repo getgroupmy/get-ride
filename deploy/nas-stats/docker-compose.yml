@@ -1,0 +1,65 @@
+# GET.ride visitor stats on the NAS: Umami (Postgres-backed) for getride.my
+# and qr.getride.my, reached from the internet only through a Cloudflare
+# Tunnel at https://stats.getride.my (no port opened on the NAS or the
+# router). Values come from .env next to this file (copy .env.example). See
+# README.md.
+services:
+  umami-db:
+    image: postgres:16.6-alpine
+    container_name: nas-stats-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: umami
+      POSTGRES_USER: umami
+      POSTGRES_PASSWORD: ${UMAMI_DB_PASSWORD:?Set UMAMI_DB_PASSWORD in .env}
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U umami -d umami"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+
+  umami:
+    image: ${UMAMI_IMAGE:-ghcr.io/umami-software/umami:postgresql-v2.13.2}
+    platform: linux/amd64
+    container_name: nas-stats
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD}@umami-db:5432/umami
+      APP_SECRET: ${UMAMI_APP_SECRET:?Set UMAMI_APP_SECRET in .env}
+      # The tracker is served as /s.js (fewer blockers mistake it for an ad).
+      TRACKER_SCRIPT_NAME: s.js
+      # The visitor's address as Cloudflare saw it (used for the country,
+      # then dropped: Umami stores no IP addresses).
+      CLIENT_IP_HEADER: cf-connecting-ip
+      DISABLE_TELEMETRY: "1"
+      DISABLE_UPDATES: "1"
+    depends_on:
+      umami-db:
+        condition: service_healthy
+    # Only the tunnel reaches it: no port on the NAS.
+    expose:
+      - "3000"
+    networks: [internal]
+    mem_limit: 768m
+
+  cloudflared:
+    image: cloudflare/cloudflared:2024.10.1
+    container_name: nas-stats-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN in .env}
+    depends_on:
+      - umami
+    networks: [internal, outside]
+
+networks:
+  # Umami and its database have no internet of their own; only the tunnel
+  # goes out (to Cloudflare).
+  internal:
+    internal: true
+  outside: {}

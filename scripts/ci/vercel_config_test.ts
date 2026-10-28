@@ -123,6 +123,9 @@ Deno.test("report-only policy: what the Flutter build and backend need", () => {
   for (const s of ["'self'", "'wasm-unsafe-eval'", "'unsafe-eval'", "https://maps.googleapis.com"]) {
     assert(script.includes(s), `script-src ${s}`);
   }
+  // Visitor stats (web/stats.js, deploy/nas-stats): Umami's script from the
+  // NAS; it sends its counts to the same host (connect-src *.getride.my).
+  assert(script.includes("https://stats.getride.my"), "script-src stats.getride.my");
   // index.html has inline boot scripts, and Flutter writes inline styles.
   assert(script.includes("'unsafe-inline'"));
   assert((d.get("style-src") ?? []).includes("'unsafe-inline'"));

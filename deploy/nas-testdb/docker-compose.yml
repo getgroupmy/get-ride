@@ -1,0 +1,54 @@
+# GET.ride test database on the NAS: a Supabase-style Postgres holding a
+# nightly copy of the live database (personal data scrambled), and the
+# runner that refreshes it and tries PRs' migrations on it. The runner only
+# calls out to get.ride and GitHub; no port is opened on the NAS or the
+# router. The database has NO internet (the "internal" network): whatever a
+# migration under test tries to send out goes nowhere. Values come from .env
+# next to this file (copy .env.example). See README.md.
+services:
+  db:
+    # Supabase's own Postgres: the same roles (anon, authenticated,
+    # service_role, supabase_admin …) and extensions (pg_net, pgcrypto …) as
+    # the live database. Keep the major version the live one's (17).
+    image: ${PG_IMAGE:-supabase/postgres:17.4.1.054}
+    platform: linux/amd64
+    container_name: nas-testdb-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:?Set LOCAL_DB_PASSWORD in .env}
+      JWT_SECRET: ${LOCAL_JWT_SECRET:-test-copy-only-not-a-real-secret-0000000000}
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    networks: [internal]
+    shm_size: 256m
+    mem_limit: 4g
+    # To look at the copy from a PC on the office network, uncomment (the NAS
+    # firewall still decides who reaches it; never forward it on the router):
+    # ports:
+    #   - "55433:5432"
+
+  runner:
+    build: .
+    platform: linux/amd64
+    image: getride-nas-testdb:1
+    container_name: nas-testdb
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      LOCAL_DB_URL: postgresql://supabase_admin:${LOCAL_DB_PASSWORD}@db:5432/postgres
+      TZ: ${TZ:-Asia/Kuala_Lumpur}
+    volumes:
+      # The runner's key and what it last did.
+      - ./data:/data
+      # Downloaded dumps and the migration files being tried.
+      - ./work:/work
+      # Nightly database backups (deploy/nas-backup), read-only.
+      - ${BACKUPS_HOST_DIR:-./backups}:/backups:ro
+    depends_on: [db]
+    networks: [internal, outside]
+    mem_limit: 1g
+
+networks:
+  internal:
+    internal: true
+  outside: {}

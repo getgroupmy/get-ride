@@ -13,6 +13,8 @@ import '../../widgets/admin_widgets.dart';
 import 'office_nas_backups.dart';
 import 'office_nas_id_face.dart';
 import 'office_nas_maps.dart';
+import 'office_nas_stats.dart';
+import 'office_nas_test_db.dart';
 import 'office_nas_overview.dart';
 import 'office_nas_uptime.dart';
 
@@ -34,6 +36,8 @@ final officeNasTabs = <OfficeNasTab>[
   OfficeNasTab('maps', 'Maps', (_) => const OfficeNasMapsTab()),
   OfficeNasTab('uptime', 'Uptime', (_) => const OfficeNasUptime()),
   OfficeNasTab('id-face', 'ID and face', (_) => const OfficeNasIdFace()),
+  OfficeNasTab('test-db', 'Test database', (_) => const OfficeNasTestDbTab()),
+  OfficeNasTab('stats', 'Visitor stats', (_) => const OfficeNasStatsTab()),
 ];
 
 class OfficeNasScreen extends ConsumerStatefulWidget {

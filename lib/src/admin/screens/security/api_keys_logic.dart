@@ -272,6 +272,12 @@ final defaultApiProviders = <ApiProviderDef>[
     _svc('server', 'Self-hosted server',
         "Compares a selfie with the ID photo on your own server. Save as the server's https address, a colon, then its key: https://face.getride.my:FACE_API_KEY"),
   ]),
+  // Visitor stats on the office NAS (0321, deploy/nas-stats): the nas-stats
+  // function reads today's numbers from Umami with it.
+  ApiProviderDef(id: 'umami', name: 'Umami', description: 'Visitor stats on the office NAS (deploy/nas-stats)', category: 'Analytics', services: [
+    _svc('api', 'Umami (view-only user)',
+        "Reads today's visitor numbers. Save as the address, a space, then a view-only Umami user's name, a colon and its password: https://stats.getride.my getride:PASSWORD"),
+  ]),
 ];
 
 /// Adds missing default providers/services without touching edits; defaults
