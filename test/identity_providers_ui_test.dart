@@ -188,8 +188,8 @@ void main() {
         expect(unreadableTexts(tester, find.byKey(const ValueKey('identity-providers'))), isEmpty);
 
         await _tap(tester, find.byKey(const ValueKey('face-order-down-aws')));
-        expect(identity.calls, ['face nas:true,aws:true,browser:true']);
-        expect(find.textContaining('NAS, then AWS, then in-browser'), findsOneWidget);
+        expect(identity.calls, ['face nas:true,browser:true,aws:true']);
+        expect(find.textContaining('NAS, then in-browser, then AWS'), findsOneWidget);
 
         await _tap(tester, find.byKey(const ValueKey('id-reader-switch-vision')));
         expect(identity.calls.last, 'read phone:true,nas:true,vision:true');

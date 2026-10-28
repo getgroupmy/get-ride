@@ -47,7 +47,8 @@ function deps(over: Partial<FaceCompareDeps> = {}) {
     check: (id) => Promise.resolve(id === ID ? selfie : null),
     counterpart: () => Promise.resolve(card),
     apiProviders: () => Promise.resolve(providers),
-    verifySettings: () => Promise.resolve(null),
+    // AWS chosen, as the admin can; unset (the NAS first) is tested on its own.
+    verifySettings: () => Promise.resolve({ faceProvider: "aws" }),
     download: () => Promise.resolve(new Uint8Array([1, 2, 3])),
     compare: () => Promise.resolve({ status: 200, body: { FaceMatches: [{ Similarity: 97.123 }] } }),
     compareSelfHosted: () => Promise.resolve({ status: 200, body: { similarity: 0.82, model: "SFace" } }),
@@ -88,6 +89,13 @@ Deno.test("only an admin with a Documents page", async () => {
   assertEquals((await handleFaceCompare({ check_id: ID }, "Bearer rider", d)).status, 403);
   assertEquals((await handleFaceCompare({ check_id: "nope" }, "Bearer admin", d)).status, 400);
   assertEquals((await handleFaceCompare({ check_id: "00000000-0000-0000-0000-000000000000" }, "Bearer admin", d)).status, 404);
+});
+
+Deno.test("unset: the free NAS check first", async () => {
+  const { d, saved } = deps({ verifySettings: () => Promise.resolve(null) });
+  const r = await handleFaceCompare({ check_id: ID }, "Bearer admin", d);
+  assertEquals(r, { status: 200, body: { state: "match", score: 82, provider: "self_hosted" } });
+  assertEquals(saved[0], `${ID} match 82 self_hosted null`);
 });
 
 Deno.test("compares the selfie with the ID and keeps the score on both", async () => {
@@ -251,7 +259,8 @@ function docDeps(over: Partial<DocumentFaceDeps> = {}) {
         ? { user_id: "u1", file_url: `${URL}/u1/id_1.jpg`, selfie_url: `${URL}/u1/signin/selfie_1.jpg` }
         : null),
     apiProviders: () => Promise.resolve(providers),
-    verifySettings: () => Promise.resolve(null),
+    // AWS chosen, as the admin can; unset (the NAS first) is tested on its own.
+    verifySettings: () => Promise.resolve({ faceProvider: "aws" }),
     download: () => Promise.resolve(new Uint8Array([1, 2, 3])),
     compare: () => Promise.resolve({ status: 200, body: { FaceMatches: [{ Similarity: 41.5 }] } }),
     compareSelfHosted: () => Promise.resolve({ status: 200, body: { similarity: 0.9 } }),
@@ -320,7 +329,8 @@ function onlineDeps(over: Partial<OnlineFaceDeps> = {}, scores: Record<string, n
         }
         : null),
     apiProviders: () => Promise.resolve(providers),
-    verifySettings: () => Promise.resolve(null),
+    // AWS chosen, as the admin can; unset (the NAS first) is tested on its own.
+    verifySettings: () => Promise.resolve({ faceProvider: "aws" }),
     // The bytes say which photo it is: 1 the selfie, 2 the profile photo, 3 the ID.
     download: (_b, path) =>
       Promise.resolve(new Uint8Array([path.includes("selfie") ? 1 : path.includes("me.jpg") ? 2 : 3])),
@@ -390,9 +400,9 @@ Deno.test("online: no provider, or nothing to compare with, is kept as not check
   });
   const n = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, none.d);
   assertEquals(n.body, { state: "not_checked", score: null, reason: "no_pair" });
-  const noKey = onlineDeps({ apiProviders: () => Promise.resolve([]) });
+  const noKey = onlineDeps({ apiProviders: () => Promise.resolve([]), verifySettings: () => Promise.resolve(null) });
   const k = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, noKey.d);
-  assertEquals(k.body.reason, "no_provider", "unset: AWS, then the NAS; neither set up");
+  assertEquals(k.body.reason, "no_provider", "unset: the NAS, then AWS; neither set up");
 });
 
 Deno.test("online: self-hosted, then AWS when the server fails", async () => {

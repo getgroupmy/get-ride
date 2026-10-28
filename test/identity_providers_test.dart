@@ -91,7 +91,7 @@ void main() {
     final moved = movedSlot(c.faceOrder, 'nas', -1);
     expect(moved.map((x) => x.id), ['browser', 'nas', 'aws']);
     expect(movedSlot(moved, 'browser', -1), moved, reason: 'the first stays first');
-    expect(const IdentityConfig().faceOrder.map((x) => x.id), ['nas', 'aws', 'browser']);
+    expect(legacyFaceOrder('').map((x) => x.id), ['nas', 'aws', 'browser'], reason: 'with no choice saved: the free NAS check first');
   });
 
   test('why no server can check a face, from the order', () {

@@ -11,6 +11,7 @@ import 'package:get_ride/src/admin/admin_registry.dart';
 import 'package:get_ride/src/admin/screens/office_nas/office_nas_id_face.dart';
 import 'package:get_ride/src/admin/screens/office_nas/office_nas_screen.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/core/office_nas.dart' show officeNasPage, officeNasPath;
 import 'package:get_ride/src/core/signin_checks.dart';
 import 'package:get_ride/src/data/identity_repository.dart';
 import 'package:get_ride/src/providers.dart';
@@ -75,7 +76,7 @@ Future<_Identity> _pump(WidgetTester tester, Brightness b, {bool edit = true}) a
         adminAccessProvider.overrideWith((_) async => AdminAccess([AdminGrant(page: officeNasPage, edit: edit)])),
         identityRepositoryProvider.overrideWithValue(identity),
       ],
-      child: MaterialApp(theme: appTheme(b), home: const OfficeNasScreen()),
+      child: MaterialApp(theme: appTheme(b), home: const OfficeNasScreen(initialTab: 'id-face')),
     ),
   );
   await tester.pumpAndSettle();
