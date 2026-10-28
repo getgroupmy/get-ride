@@ -76,7 +76,11 @@
 --    c2c_bookings through `family` and payment 'family'. Each booking is
 --    checked with family_payer_for and registered; a child's trip can't start
 --    without the pickup code; women drivers for children where the admin
---    says so; the host is told at pickup and drop-off of a child.
+--    says so; the host is told at pickup and drop-off of a child. A trip
+--    booked for a member or child with a name and no phone gets a contact
+--    phone (family_contact_phone: the member's, else the booker's, else the
+--    host's), so 0107's booked-for shape holds when a driver takes it.
+--    scheduled_request_clean keeps 0312's and 0313's keys plus 'family'.
 -- 8. Admin › People › Family (page admin-settings-family): the values and the
 --    module matrix (table writes), families, member caps, requests, and the
 --    logged God View look.
@@ -1225,6 +1229,71 @@ end;
 $$;
 revoke execute on function public.family_ride_module(public.ride_requests) from public, anon, authenticated;
 
+-- The phone the driver calls for a family trip booked with a name and no
+-- phone: a member's own, else the booker's, else the host's (a child has no
+-- phone of their own). Null when none of them has one that fits 0107's
+-- booked_for_phone (6 to 32 characters).
+create or replace function public.family_contact_phone(p_member uuid, p_booker uuid, p_booker_phone text default null)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select x.phone
+    from (select 1 as o, nullif(btrim(p.phone), '') as phone
+            from public.family_members m join public.profiles p on p.id = m.profile_id
+           where m.id = p_member and m.kind = 'member'
+          union all
+          select 2, nullif(btrim(p_booker_phone), '')
+          union all
+          select 3, nullif(btrim(p.phone), '') from public.profiles p where p.id = p_booker
+          union all
+          select 4, nullif(btrim(p.phone), '')
+            from public.family_members m join public.families f on f.id = m.family_id
+            join public.profiles p on p.id = f.host_id
+           where m.id = p_member) x
+   where char_length(x.phone) between 6 and 32
+   order by x.o
+   limit 1;
+$$;
+revoke execute on function public.family_contact_phone(uuid, uuid, text) from public, anon, authenticated;
+
+-- Fills the contact phone of a family trip booked with a name and no phone,
+-- so the request still meets 0107's ride_requests_booked_for_shape when the
+-- driver takes it. Runs after trg_ride_requests_zz_privacy (0195/0220): an
+-- open request keeps the name and phone aside in ride_request_private, which
+-- puts them back on the row at accept, so that is where the phone goes.
+create or replace function public.family_fill_contact_phone(r public.ride_requests, p_member uuid)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  pv public.ride_request_private;
+  v_phone text;
+begin
+  if r.status = 'open' then
+    select * into pv from public.ride_request_private where request_id = r.id;
+    if not found or pv.booked_for_name is null or nullif(btrim(pv.booked_for_phone), '') is not null then
+      return null;
+    end if;
+    v_phone := public.family_contact_phone(p_member, r.rider_id, pv.rider_phone);
+    if v_phone is not null then
+      update public.ride_request_private set booked_for_phone = v_phone, updated_at = now()
+       where request_id = r.id;
+    end if;
+    return v_phone;
+  end if;
+  if r.booked_for_name is null or nullif(btrim(r.booked_for_phone), '') is not null then
+    return null;
+  end if;
+  return public.family_contact_phone(p_member, r.rider_id, r.rider_phone);
+end;
+$$;
+revoke execute on function public.family_fill_contact_phone(public.ride_requests, uuid) from public, anon, authenticated;
+
 -- A new ride (now, a released booking, Freight, Courier): checked and registered.
 create or replace function public.ride_requests_family()
 returns trigger
@@ -1237,9 +1306,24 @@ declare
                                       'suburb', new.suburb);
   v_pays boolean := lower(btrim(coalesce(new.payment_mode, ''))) = 'family';
   v_passenger uuid := public.family_passenger_of(new.family);
+  v_member uuid;
+  v_phone text;
   s public.family_trips;
   m public.family_members;
 begin
+  -- Booked for a member or a child with a name and no phone: the driver
+  -- calls the member, else whoever booked it, else the host.
+  v_member := coalesce(v_passenger,
+    (select t.member_id from public.family_trips t where t.trip_id = new.scheduled_ride_id));
+  if v_member is not null then
+    v_phone := public.family_fill_contact_phone(new, v_member);
+    if v_phone is not null then
+      new.booked_for_other := true;
+      if new.status is distinct from 'open' then
+        new.booked_for_phone := v_phone;
+      end if;
+    end if;
+  end if;
   if new.scheduled_ride_id is not null then
     -- The booking was checked when it was made; its ride carries it on while
     -- the member is still in the family.
@@ -1442,7 +1526,8 @@ create trigger trg_c2c_bookings_family_events
   after update of status on public.c2c_bookings
   for each row execute function public.family_trip_events();
 
--- As 0268, plus 'family' (who the booking is for), so a scheduled booking keeps it.
+-- As 0313 (0268, 0312's add-ons and 0313's business keys), plus 'family'
+-- (who the booking is for), so a scheduled booking keeps it.
 create or replace function public.scheduled_request_clean(p_request jsonb, p_fee numeric default null)
 returns jsonb
 language sql
@@ -1483,6 +1568,11 @@ as $$
        'recipient_name', 'recipient_phone',
        -- 0268: a courier booking's parcel size and who pays.
        'parcel_size', 'payer',
+       -- 0312: the add-ons booked (the server's own columns are set at release).
+       'parcel_cover', 'round_trip', 'stairs_pickup', 'stairs_drop', 'cold_level', 'cod_amount',
+       -- 0313: the business account it is charged to, and its note (the
+       -- approval is the server's: scheduled_rides_business sets it).
+       'business_account_id', 'business_note', 'business_approval_id',
        -- 0317: who it is for in the family.
        'family'])
        and (e.key <> 'charges' or jsonb_typeof(e.value) = 'array')

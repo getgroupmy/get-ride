@@ -403,8 +403,16 @@ select pg_temp.check(exists (select 1 from public.family_pickup_codes where trip
 select pg_temp.refused($q$update public.ride_requests set partner_id = '00000000-0000-0000-0000-0000000317b2', status = 'accepted'
                            where id = '00000000-0000-0000-0000-0000000317d7'$q$, 'FAMILY_WOMEN_DRIVERS_ONLY',
   'a man taking a child''s trip');
+select pg_temp.check((select booked_for_phone from public.ride_request_private
+                       where request_id = '00000000-0000-0000-0000-0000000317d7') = '+60100317001'
+  and (select booked_for_other and booked_for_phone is null from public.ride_requests
+        where id = '00000000-0000-0000-0000-0000000317d7'),
+  'a child has no phone: the host''s is kept aside as the contact while the request is open');
 update public.ride_requests set partner_id = '00000000-0000-0000-0000-0000000317b1', status = 'accepted'
  where id = '00000000-0000-0000-0000-0000000317d7';
+select pg_temp.check((select booked_for_name = 'Iman' and booked_for_phone = '+60100317001' from public.ride_requests
+                       where id = '00000000-0000-0000-0000-0000000317d7'),
+  'the driver who takes it gets the child''s name and the host''s phone (0107''s booked-for shape holds)');
 select pg_temp.check(exists (select 1 from public.notification_outbox
                               where profile_id = '00000000-0000-0000-0000-0000000317a1'
                                 and event_id = 'family:00000000-0000-0000-0000-0000000317d7:accepted'),
@@ -528,5 +536,11 @@ select pg_temp.check(not public.family_can_view_location('00000000-0000-0000-000
   '00000000-0000-0000-0000-0000000317a2'), 'nothing is shared after leaving');
 select pg_temp.check((public.family_payer_for('ride', '00000000-0000-0000-0000-0000000317a2', null, 1)->>'code')
   = 'FAMILY_NOT_MEMBER', 'and the family pays nothing more');
+
+-- ---- 9. A scheduled booking keeps the keys of 0312, 0313 and Family -------------------------------
+select pg_temp.check(public.scheduled_request_clean('{"family": {"passenger": "x"}, "cod_amount": 5, "parcel_cover": true,
+  "business_account_id": "b", "business_note": "n", "not_a_key": 1}'::jsonb)
+  = '{"family": {"passenger": "x"}, "cod_amount": 5, "parcel_cover": true, "business_account_id": "b",
+      "business_note": "n"}'::jsonb, 'scheduled_request_clean keeps the add-on, business and family keys');
 
 rollback;
