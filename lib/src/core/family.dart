@@ -10,6 +10,7 @@
 /// region. Nothing hidden.
 library;
 
+import 'booking_modules.dart' show bookingModule, familyModuleGetPlus;
 import 'commission.dart' show Geo;
 import 'payment_types.dart';
 
@@ -558,7 +559,12 @@ List<(String, String)> familyJoinTerms(FamilyInvite i, String Function(num) mone
   final host = i.hostName.trim().split(RegExp(r'\s+')).first;
   final limit = i.member.monthlyLimit;
   final perTrip = i.member.perRideLimit;
-  final services = i.modules.isEmpty ? 'no services yet' : familyList(i.modules);
+  // GET.Plus is the host's membership covering the member (0323), not a
+  // payment from the GET.wallet: said on its own line.
+  final plusName = bookingModule(familyModuleGetPlus)?.name ?? 'GET.Plus';
+  final plus = i.modules.contains(plusName);
+  final paid = [for (final m in i.modules) if (m != plusName) m];
+  final services = paid.isEmpty ? 'no services yet' : familyList(paid);
   final pays = StringBuffer("You can pay with ${possessive(i.hostName)} GET.wallet");
   if (limit != null) pays.write(', up to ${money(limit)} a month');
   if (perTrip != null) pays.write(' and ${money(perTrip)} a trip');
@@ -572,6 +578,9 @@ List<(String, String)> familyJoinTerms(FamilyInvite i, String Function(num) mone
   };
   return [
     ('payments', pays.toString()),
+    if (plus)
+      ('workspace_premium', "${possessive(i.hostName)} GET.Plus covers you too while $host is a member: "
+          "member prices, priority matching and the family's free cancels each month."),
     ('location_on', where),
     ('visibility', 'You can always see who can see you. Nobody can watch you without you knowing.'),
     ('logout', 'You can leave at any time; sharing stops at once.'),

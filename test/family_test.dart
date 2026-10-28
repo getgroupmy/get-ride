@@ -119,6 +119,17 @@ void main() {
       expect(terms[3].$2, 'You can leave at any time; sharing stops at once.');
     });
 
+    test('GET.Plus covered by the host\'s membership: its own line, not a GET.wallet payment (0323)', () {
+      final i = FamilyInvite.fromJson({'id': 'm3', 'name': 'Amir', 'location': 'ride', 'hostName': 'Karpal Contoh',
+        'modules': ['Ride', 'GET.Plus']});
+      final terms = familyJoinTerms(i, _m);
+      expect([for (final (k, _) in terms) k], ['payments', 'workspace_premium', 'location_on', 'visibility', 'logout']);
+      expect(terms[0].$2, endsWith('for Ride.'));
+      expect(terms[1].$2, startsWith("Karpal's GET.Plus covers you too while Karpal is a member"));
+      expect(familyJoinTerms(invite, _m).any((t) => t.$1 == 'workspace_premium'), isFalse,
+          reason: 'not listed when the family doesn\'t cover GET.Plus');
+    });
+
     test('no location: said so', () {
       final i = FamilyInvite.fromJson({'id': 'm2', 'name': 'Raj', 'location': 'never', 'hostName': 'Karpal'});
       expect(familyJoinTerms(i, _m)[1].$2, contains("doesn't see your location"));

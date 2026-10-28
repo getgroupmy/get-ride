@@ -4,6 +4,7 @@
 // member's price, the server's answers, and the places that read them.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/catalogue/catalogue_logic.dart';
+import 'package:get_ride/src/core/booking_modules.dart';
 import 'package:get_ride/src/core/commission.dart' show Geo;
 import 'package:get_ride/src/core/premium_plus.dart';
 import 'package:get_ride/src/core/ride_services.dart';
@@ -236,6 +237,29 @@ void main() {
       final r = RideRequest({'id': 'x', 'status': 'completed', 'fare': 30, 'ride_fare': 30, 'plus_discount': 6,
         'plus_priority': true, 'currency': 'MYR'});
       expect([r.plusDiscount, r.plusPriority, r.cashDue], [6, true, 24]);
+    });
+  });
+
+  group('the family plan (0323)', () {
+    test('the benefits say whose plan covers the rider', () {
+      final own = PlusBenefits.fromJson({'pct': 10, 'freeCancels': 2, 'freeCancelsLeft': 2, 'family': false})!;
+      expect([own.family, own.hostName, own.familyLine], [false, null, null]);
+      final fam = PlusBenefits.fromJson({'pct': 10, 'freeCancels': 2, 'freeCancelsLeft': 0, 'family': true,
+        'hostName': ' Karpal Contoh '})!;
+      expect(fam.family, isTrue);
+      expect(fam.familyLine, "Covered by Karpal's family plan");
+      expect(plusBannerLine(fam), "GET.Plus · Covered by Karpal's family plan: 10% off, no free cancels left this month");
+      expect(plusFamilyLine(null), 'Covered by your family plan');
+      expect(plusFamilyLine('James Tan'), "Covered by James' family plan");
+      expect(plusBannerLine(const PlusBenefits(family: true, hostName: 'Aisha')), "GET.Plus · Covered by Aisha's family plan");
+    });
+
+    test('GET.Plus is a built Family module where only "Family pays" applies', () {
+      final m = bookingModule(familyModuleGetPlus)!;
+      expect([m.name, m.built, m.familyPaysOnly, m.tables], ['GET.Plus', true, true, isEmpty]);
+      expect(m.screens, ['lib/src/features/wallet/plus_screen.dart']);
+      expect(m.note, isNotNull);
+      expect(bookingModules.where((x) => x.familyPaysOnly).map((x) => x.key), [familyModuleGetPlus]);
     });
   });
 }

@@ -6,6 +6,7 @@
 // plus_settle_ride) and is the one that enforces and charges;
 // supabase/tests/premium_getplus_0316.sql checks it on the same cases.
 import 'commission.dart' show Geo;
+import 'family.dart' show possessive;
 import 'format.dart' show formatMoney;
 
 /// The admin page's key (grantable to sub-admins).
@@ -471,16 +472,27 @@ class PlusMembership {
 
 /// What a live membership gives at a place.
 class PlusBenefits {
-  const PlusBenefits({this.pct = 0, this.maxDiscount = 0, this.priority = false, this.freeCancels = 0, this.freeCancelsLeft = 0});
+  const PlusBenefits({
+    this.pct = 0,
+    this.maxDiscount = 0,
+    this.priority = false,
+    this.freeCancels = 0,
+    this.freeCancelsLeft = 0,
+    this.family = false,
+    this.hostName,
+  });
 
   static PlusBenefits? fromJson(Object? j) {
     if (j is! Map) return null;
+    final host = j['hostName'];
     return PlusBenefits(
       pct: _num(j['pct']),
       maxDiscount: _num(j['maxDiscount']),
       priority: j['priority'] == true,
       freeCancels: _num(j['freeCancels']).round(),
       freeCancelsLeft: _num(j['freeCancelsLeft']).round(),
+      family: j['family'] == true,
+      hostName: host is String && host.trim().isNotEmpty ? host.trim() : null,
     );
   }
 
@@ -488,7 +500,16 @@ class PlusBenefits {
   final double maxDiscount;
   final bool priority;
   final int freeCancels;
+
+  /// Left this month; under a family plan, the family's (migration 0323).
   final int freeCancelsLeft;
+
+  /// The family host's membership holds, not the rider's own (0323).
+  final bool family;
+  final String? hostName;
+
+  /// "Covered by Karpal's family plan", or null for the rider's own.
+  String? get familyLine => family ? plusFamilyLine(hostName) : null;
 
   /// What a member pays for a ride of [fare] (the driver's fare): less the
   /// discount, at most [maxDiscount] off when set. As plus_settle_ride.
@@ -515,7 +536,14 @@ String plusBannerLine(PlusBenefits b) {
           ? 'no free cancels left this month'
           : '${b.freeCancelsLeft} free ${b.freeCancelsLeft == 1 ? 'cancel' : 'cancels'} left this month',
   ];
-  return parts.isEmpty ? 'GET.Plus member' : 'GET.Plus member: ${parts.join(', ')}';
+  final who = b.family ? 'GET.Plus · ${plusFamilyLine(b.hostName)}' : 'GET.Plus member';
+  return parts.isEmpty ? who : '$who: ${parts.join(', ')}';
+}
+
+/// "Covered by Karpal's family plan" (a family host's GET.Plus, 0323).
+String plusFamilyLine(String? hostName) {
+  final host = hostName?.trim() ?? '';
+  return host.isEmpty ? 'Covered by your family plan' : 'Covered by ${possessive(host)} family plan';
 }
 
 /// premium_plus_terms: the rules at a place and the caller's membership.

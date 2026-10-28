@@ -8,8 +8,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/booking_modules.dart' show familyModuleGetPlus;
 import '../../core/format.dart' show formatMoney;
 import '../../core/premium_plus.dart';
+import '../../data/family_repository.dart' show familyPayOptionProvider;
 import '../../data/geo_service.dart' show knownPosition;
 import '../../data/premium_plus_repository.dart';
 import '../../widgets/app_notice.dart';
@@ -152,6 +154,11 @@ class _PlusScreenState extends ConsumerState<PlusScreen> {
     final m = terms.membership;
     final live = m != null && m.live;
     final o = terms.plus;
+    // A family host's GET.Plus covering this rider (0323), when they have
+    // no live membership of their own.
+    final covered = !live && (terms.benefits?.family ?? false) ? terms.benefits : null;
+    // Family covers GET.Plus for this member, but the host isn't a member.
+    final familyRow = covered == null && !live ? ref.watch(familyPayOptionProvider(familyModuleGetPlus)).value : null;
     final c = plusBannerColors(t);
     final receipts = ref.watch(plusReceiptsProvider);
     return ListView(
@@ -169,14 +176,24 @@ class _PlusScreenState extends ConsumerState<PlusScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      live ? 'You\'re a GET.Plus member' : 'GET.Plus',
+                      live
+                          ? 'You\'re a GET.Plus member'
+                          : covered != null
+                              ? 'You\'re covered by GET.Plus'
+                              : 'GET.Plus',
                       key: const ValueKey('plus-title'),
                       style: t.textTheme.titleLarge?.copyWith(color: c.text),
                     ),
                   ),
                 ]),
                 const SizedBox(height: 8),
-                if (o.on)
+                if (covered != null)
+                  Text(
+                    covered.familyLine!,
+                    key: const ValueKey('plus-family-covered'),
+                    style: t.textTheme.bodyLarge?.copyWith(color: c.text, fontWeight: FontWeight.w600),
+                  )
+                else if (o.on)
                   Text(
                     '${formatMoney(o.price)} a month, paid from GET.wallet.',
                     key: const ValueKey('plus-price'),
@@ -213,7 +230,19 @@ class _PlusScreenState extends ConsumerState<PlusScreen> {
                 ),
               const SizedBox(height: 12),
             ],
-            if (m != null) _MembershipCard(m: m, freeCancels: o.freeCancels),
+            if (covered != null)
+              _FamilyPlanCard(b: covered)
+            else if (m != null)
+              _MembershipCard(m: m, freeCancels: o.freeCancels),
+            if (familyRow != null && familyRow.available && o.on)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Your family plan covers GET.Plus here while ${familyRow.hostName.split(' ').first} is a member.',
+                  key: const ValueKey('plus-family-hint'),
+                  style: muted,
+                ),
+              ),
             const SizedBox(height: 12),
             if (o.on && m?.status == PlusStatus.grace) ...[
               FilledButton(
@@ -237,14 +266,14 @@ class _PlusScreenState extends ConsumerState<PlusScreen> {
                 onPressed: _keep,
                 child: const Text('Keep GET.Plus'),
               )
-            else if (o.on && !live)
+            else if (o.on && !live && covered == null)
               FilledButton(
                 key: const ValueKey('plus-join'),
                 style: FilledButton.styleFrom(minimumSize: const Size(0, 48)),
                 onPressed: () => _join(at, terms),
                 child: Text('Join for ${formatMoney(o.price)} a month'),
               ),
-            if (o.on && (!live || m.status == PlusStatus.grace))
+            if (o.on && covered == null && (!live || m.status == PlusStatus.grace))
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text('GET.wallet: ${formatMoney(terms.walletBalance)}', key: const ValueKey('plus-wallet'),
@@ -300,6 +329,44 @@ class _Benefit extends StatelessWidget {
       leading: Icon(icon, color: t.colorScheme.primary),
       title: Text(title),
       subtitle: Text(body),
+    );
+  }
+}
+
+/// A member covered by their family host's GET.Plus (0323): whose plan,
+/// and the family's free cancels this month.
+class _FamilyPlanCard extends StatelessWidget {
+  const _FamilyPlanCard({required this.b});
+  final PlusBenefits b;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final left = b.freeCancelsLeft;
+    return Card(
+      key: const ValueKey('plus-family-plan'),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Family plan', style: t.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text(
+            '${b.familyLine}. You don\'t pay for GET.Plus while you are in the family.',
+            key: const ValueKey('plus-family-line'),
+          ),
+          if (b.freeCancels > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              left <= 0
+                  ? 'No free cancels left for the family this month.'
+                  : '$left free ${left == 1 ? 'cancel' : 'cancels'} left for the family this month.',
+              key: const ValueKey('plus-family-cancels'),
+              style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
+            ),
+          ],
+        ]),
+      ),
     );
   }
 }

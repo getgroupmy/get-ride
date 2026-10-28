@@ -152,6 +152,7 @@ class _Repo extends FamilyRepository {
   Future<List<({String key, String name})>> registeredModules() async => const [
     (key: 'ride', name: 'Ride'),
     (key: 'freight', name: 'Freight'),
+    (key: 'get_plus', name: 'GET.Plus'),
     (key: 'new_module', name: 'New module (example)'),
   ];
   @override
@@ -250,7 +251,7 @@ void main() {
           FamilyInvite.fromJson(_member('m1', 'Aisha', status: 'invited', more: {
             'hostName': 'Karpal Contoh',
             'adminLocationRule': 'ride',
-            'modules': ['Ride', 'City to City', 'Courier'],
+            'modules': ['Ride', 'City to City', 'Courier', 'GET.Plus'],
           })),
         ];
       await _pump(tester, const FamilyScreen(), b: b, repo: repo);
@@ -258,6 +259,8 @@ void main() {
       await _tap(tester, find.byKey(const ValueKey('family-invite-m1')));
       expect(find.text('Read what joining means. Nothing is shared until you tap Join.'), findsOneWidget);
       expect(find.textContaining('up to ${_m(200)} a month, for Ride, City to City and Courier.'), findsOneWidget);
+      // GET.Plus covered by the host's membership (0323): its own line.
+      expect(find.textContaining("Karpal's GET.Plus covers you too"), findsOneWidget);
       expect(find.text('You can leave at any time; sharing stops at once.'), findsOneWidget);
       await _tap(tester, find.byKey(const ValueKey('family-join')));
       await closeNotice(tester);
@@ -333,6 +336,15 @@ void main() {
       await _tap(tester, find.byKey(const ValueKey('family-matrix-new_module-0')));
       expect(repo.savedRules.single.moduleKey, 'new_module');
       expect(repo.savedRules.single.familyPays, isTrue);
+      // GET.Plus (0323): a real row, only "Family pays" applies, off by default.
+      expect(find.text('GET.Plus'), findsOneWidget);
+      expect(find.byKey(const ValueKey('family-matrix-get_plus-note')), findsOneWidget);
+      expect(tester.widget<Checkbox>(find.byKey(const ValueKey('family-matrix-get_plus-0'))).value, isFalse);
+      for (var i = 1; i < 4; i++) {
+        expect(find.descendant(of: find.byKey(ValueKey('family-matrix-get_plus-$i')), matching: find.byType(Checkbox)),
+            findsNothing);
+        expect(tester.widget<Text>(find.byKey(ValueKey('family-matrix-get_plus-$i'))).data, '–');
+      }
       expect(find.text('God View access to family members'), findsOneWidget);
     });
 

@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
+import 'package:get_ride/src/core/family.dart' show FamilyPayOption;
 import 'package:get_ride/src/core/fare.dart' show RideService;
 import 'package:get_ride/src/core/premium_plus.dart';
+import 'package:get_ride/src/data/family_repository.dart' show familyPayOptionProvider;
 import 'package:get_ride/src/data/premium_plus_repository.dart';
 import 'package:get_ride/src/features/partner/driver_services_screen.dart' show PremiumStatusCard;
 import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmServiceCard;
@@ -24,8 +26,11 @@ const _offer = {'on': true, 'price': 19.9, 'discountPct': 10, 'maxDiscount': 0, 
   'graceDays': 3};
 
 class _Repo extends PremiumPlusRepository {
-  _Repo(this.membership, {this.balance = 50}) : super(_db);
+  _Repo(this.membership, {this.balance = 50, this.family}) : super(_db);
   Map<String, dynamic>? membership;
+
+  /// A family host's plan covering the rider (0323): the benefits' answer.
+  Map<String, dynamic>? family;
   double balance;
   final joins = <double>[];
   final autoRenew = <bool>[];
@@ -36,7 +41,8 @@ class _Repo extends PremiumPlusRepository {
     'premium': {'on': true, 'maxCarAge': 5, 'modelsListed': true, 'minRating': 4.8},
     'plus': _offer,
     'membership': membership,
-    'benefits': membership == null ? null : {'pct': 10, 'priority': true, 'freeCancels': 2, 'freeCancelsLeft': 1},
+    'benefits': family ??
+        (membership == null ? null : {'pct': 10, 'priority': true, 'freeCancels': 2, 'freeCancelsLeft': 1}),
     'walletBalance': balance,
   });
 
@@ -62,7 +68,7 @@ class _Repo extends PremiumPlusRepository {
   ];
 }
 
-Future<void> _pumpPage(WidgetTester tester, _Repo repo, {Brightness b = Brightness.light}) async {
+Future<void> _pumpPage(WidgetTester tester, _Repo repo, {Brightness b = Brightness.light, FamilyPayOption? familyRow}) async {
   tester.view.physicalSize = const Size(400, 1400);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -72,6 +78,7 @@ Future<void> _pumpPage(WidgetTester tester, _Repo repo, {Brightness b = Brightne
       ...quietLiveOverrides,
       premiumPlusRepositoryProvider.overrideWithValue(repo),
       plusPositionProvider.overrideWithValue(() async => null),
+      familyPayOptionProvider.overrideWith((ref, module) async => familyRow),
     ],
     child: MaterialApp(theme: appTheme(b), home: const PlusScreen()),
   ));
@@ -108,6 +115,32 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  for (final b in Brightness.values) {
+    testWidgets('a family member covered by the host\'s plan: no join, the family\'s free cancels (${b.name})',
+        (tester) async {
+      final repo = _Repo(null, family: {'pct': 10, 'priority': true, 'freeCancels': 2, 'freeCancelsLeft': 1,
+        'family': true, 'hostName': 'Karpal Contoh'});
+      await _pumpPage(tester, repo, b: b);
+      expect(find.text('You\'re covered by GET.Plus'), findsOneWidget);
+      expect(find.text('Covered by Karpal\'s family plan'), findsOneWidget);
+      expect(find.byKey(const ValueKey('plus-family-plan')), findsOneWidget);
+      expect(find.text('1 free cancel left for the family this month.'), findsOneWidget);
+      expect(find.byKey(const ValueKey('plus-join')), findsNothing, reason: 'nothing to pay while covered');
+      expect(find.byKey(const ValueKey('plus-wallet')), findsNothing);
+      expect(find.byKey(const ValueKey('plus-family-hint')), findsNothing);
+      expect(find.text('10% off your rides'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('the family covers GET.Plus but the host is not a member: said, and join stays', (tester) async {
+    await _pumpPage(tester, _Repo(null),
+        familyRow: const FamilyPayOption(available: true, hostName: 'Karpal Contoh', left: 100));
+    expect(find.text('Your family plan covers GET.Plus here while Karpal is a member.'), findsOneWidget);
+    expect(find.byKey(const ValueKey('plus-join')), findsOneWidget);
+    expect(find.byKey(const ValueKey('plus-family-covered')), findsNothing);
+  });
 
   testWidgets('a short wallet: the notice says top up', (tester) async {
     final repo = _Repo(null, balance: 2)..short = true;
@@ -157,6 +190,10 @@ void main() {
             const PlusMemberBanner(
               benefits: PlusBenefits(pct: 10, priority: true, freeCancels: 2, freeCancelsLeft: 2),
             ),
+            const PlusMemberBanner(
+              key: ValueKey('family-banner'),
+              benefits: PlusBenefits(pct: 10, freeCancels: 2, freeCancelsLeft: 1, family: true, hostName: 'Karpal Contoh'),
+            ),
             ConfirmServiceCard(
               service: premium,
               price: 'RM20.79',
@@ -171,6 +208,8 @@ void main() {
       ));
       await tester.pumpAndSettle();
       expect(find.text('GET.Plus member: 10% off, priority matching, 2 free cancels left this month'), findsOneWidget);
+      expect(find.text('GET.Plus · Covered by Karpal\'s family plan: 10% off, 1 free cancel left this month'),
+          findsOneWidget, reason: 'a covered member\'s banner says whose plan (0323)');
       expect(find.text('RM20.79'), findsOneWidget);
       final was = tester.widget<Text>(find.byKey(const ValueKey('service-was-Premium')));
       expect(was.data, 'RM23.10');
