@@ -14,6 +14,7 @@ import '../sub_admin_grants.dart';
 import 'catalogue/driver_service_locks_screen.dart' show driverServiceLocksPage;
 import 'catalogue/partner_type_services_screen.dart' show partnerTypeServicesPage;
 import '../../core/city_to_city.dart' show c2cPage;
+import '../../core/city_to_city_seats.dart' show c2cSeatsPage;
 import '../../core/ride_safety.dart' show rideSafetyPage;
 import '../../core/business_accounts.dart' show businessAccountsPage;
 import 'geo/place_types_screen.dart' show placeTypesPage;
@@ -46,6 +47,7 @@ final grantablePages = <String, String>{
   driverServiceLocksPage: 'Settings · Driver service locks',
   placeTypesPage: 'Settings · Place types',
   c2cPage: 'Settings · City to City',
+  c2cSeatsPage: 'Settings · City to City per-seat trips',
   rideSafetyPage: 'Settings · Ride safety',
   businessAccountsPage: 'People · Business accounts',
 };

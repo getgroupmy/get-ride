@@ -82,6 +82,9 @@ const liveSettingTables = <String>[
   'c2c_giveup_rules',
   'c2c_pay_rules',
   'c2c_driver_fees',
+  // City to City per-seat rules by region and the trips drivers post (0310).
+  'c2c_seat_rules',
+  'c2c_trips',
   // Ride safety (0311): settings, report categories, passenger cover; and a
   // rider's own blocks (row-level security: their own, or every one for admins).
   'ride_safety_settings',

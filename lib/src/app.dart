@@ -428,7 +428,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                       GoRoute(
                         path: 'city-to-city',
                         builder: (_, s) => CityToCityDriverScreen(
-                          initialTab: s.uri.queryParameters['tab'] == 'trips' ? C2cDriverTab.trips : C2cDriverTab.requests,
+                          initialTab: switch (s.uri.queryParameters['tab']) {
+                            'trips' => C2cDriverTab.trips,
+                            'post' => C2cDriverTab.post,
+                            _ => C2cDriverTab.requests,
+                          },
                         ),
                         routes: [
                           // The booking's chat, the ride chat's screen (0308).

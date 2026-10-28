@@ -85,7 +85,7 @@ class _CityToCityRoutesScreenState extends ConsumerState<CityToCityRoutesScreen>
     ref.watch(regionsProvider);
     ref.watch(c2cFareContextProvider);
     final settings = ref.watch(c2cSettingsProvider);
-    final rules = ref.watch(c2cRulesProvider);
+    final rules = ref.watch(c2cWholeCarRulesProvider);
     final t = Theme.of(context);
     return AdminPage(
       title: 'Route rules and fares',

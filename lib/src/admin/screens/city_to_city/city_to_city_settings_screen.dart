@@ -20,6 +20,7 @@ import 'c2c_widgets.dart';
 const cityToCityPath = '/admin/m/city-to-city';
 const cityToCityRoutesPath = '/admin/m/city-to-city-routes';
 const _moneyPath = '/admin/m/city-to-city-money';
+const _seatsPath = '/admin/m/city-to-city-seats';
 const _regionsPath = '/admin/m/country-states-cities';
 
 class CityToCitySettingsScreen extends ConsumerStatefulWidget {
@@ -68,6 +69,12 @@ class _CityToCitySettingsScreenState extends ConsumerState<CityToCitySettingsScr
           tooltip: 'Route rules and fares',
           icon: const Icon(Icons.route_outlined),
           onPressed: () => context.push(cityToCityRoutesPath),
+        ),
+        IconButton(
+          key: const ValueKey('c2c-open-seats'),
+          tooltip: 'Per-seat trips',
+          icon: const Icon(Icons.event_seat_outlined),
+          onPressed: () => context.push(_seatsPath),
         ),
       ],
       body: AsyncView(
@@ -252,6 +259,16 @@ class _PaymentCard extends StatelessWidget {
               onPressed: () => context.push(_moneyPath),
               icon: const Icon(Icons.account_balance_wallet_outlined),
               label: const Text('In-app payment, fees and reminders'),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              key: const ValueKey('c2c-open-seats-card'),
+              onPressed: () => context.push(_seatsPath),
+              icon: const Icon(Icons.event_seat_outlined),
+              label: const Text('Per-seat trips'),
             ),
           ),
         ]),

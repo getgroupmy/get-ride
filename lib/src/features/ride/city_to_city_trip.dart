@@ -12,6 +12,7 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/city_to_city.dart';
+import '../../core/city_to_city_seats.dart' show c2cBookingKind, c2cSeatEndLine;
 import '../../data/city_to_city_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show AsyncView, EmptyState, showError, showInfo;
@@ -19,6 +20,7 @@ import '../../widgets/offer_motion.dart';
 import '../../widgets/page_style_host.dart';
 import 'city_to_city_parts.dart';
 import 'city_to_city_pay.dart';
+import 'city_to_city_seats.dart' show C2cSeatDriverCard, C2cSeatRequestedView, openC2cSeatSearch;
 import 'city_to_city_steps.dart' show c2cClockProvider, openC2cSteps;
 import 'ride_chat_screen.dart' show RideChatScreen;
 
@@ -60,6 +62,8 @@ class C2cTripScreen extends ConsumerWidget {
         ? 'City to City'
         : b.status.waiting
         ? 'Offers from drivers'
+        : b.status == C2cStatus.requested
+        ? 'Seat request'
         : b.status == C2cStatus.completed
         ? 'Trip done'
         : 'Your trip';
@@ -73,6 +77,8 @@ class C2cTripScreen extends ConsumerWidget {
               ? const EmptyState(icon: Icons.route, title: 'Trip not found')
               : b.status.waiting
               ? _OffersView(booking: b)
+              : b.status == C2cStatus.requested
+              ? C2cSeatRequestedView(booking: b, onCancel: () => _cancelRequest(context, ref, b))
               : b.status.withDriver
               ? _BookedView(booking: b)
               : b.status == C2cStatus.completed
@@ -81,6 +87,36 @@ class C2cTripScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// Cancels seat request [b] (free: no driver has taken it yet).
+Future<void> _cancelRequest(BuildContext context, WidgetRef ref, C2cBooking b) async {
+  final ok = await showAppDialog<bool>(
+    id: 'city-to-city.seat-request-cancel',
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Cancel this request?'),
+      content: Text(b.payStatus == 'held'
+          ? 'It is free. The fare held comes back to you.'
+          : 'It is free. The driver is told.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep request')),
+        FilledButton(
+          key: const ValueKey('c2c-seat-request-cancel-confirm'),
+          onPressed: () => Navigator.pop(c, true),
+          child: const Text('Cancel request'),
+        ),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  try {
+    await ref.read(cityToCityRepositoryProvider).cancel(b.id);
+    _refresh(ref, b.id);
+    if (context.mounted) showInfo(context, 'Request cancelled.');
+  } catch (e) {
+    if (context.mounted) showError(context, e);
   }
 }
 
@@ -475,6 +511,25 @@ class _BookedView extends ConsumerWidget {
     final b = booking;
     final s = ref.watch(c2cSettingsProvider).value ?? const C2cSettings();
     final offer = _acceptedOf(ref.watch(c2cOffersProvider(b.id)).value ?? const [], b);
+    final contact = Row(children: [
+      Expanded(
+        child: OutlinedButton.icon(
+          key: const ValueKey('c2c-chat'),
+          onPressed: () => openC2cChat(context, booking.id),
+          icon: const Icon(Icons.chat),
+          label: const Text('Chat'),
+        ),
+      ),
+      const SizedBox(width: 10),
+      Expanded(
+        child: OutlinedButton.icon(
+          key: const ValueKey('c2c-call'),
+          onPressed: () => _contact(context, ref, 'tel'),
+          icon: const Icon(Icons.call),
+          label: const Text('Call'),
+        ),
+      ),
+    ]);
     final (bannerTitle, bannerIcon) = switch (b.status) {
       C2cStatus.driverArriving => ('Your driver is on the way', Icons.directions_car),
       C2cStatus.onTrip => ('On the trip', Icons.route),
@@ -489,7 +544,7 @@ class _BookedView extends ConsumerWidget {
               key: const ValueKey('c2c-booked-banner'),
               icon: bannerIcon,
               title: bannerTitle,
-              line: 'Booking ${b.ref} · whole car · ${c2cMoney(b.price, b.currency)}',
+              line: 'Booking ${b.ref} · ${c2cBookingKind(b)} · ${c2cMoney(b.price, b.currency)}',
               fill: look.good,
               ink: look.onGood,
             ),
@@ -504,7 +559,11 @@ class _BookedView extends ConsumerWidget {
               icon: Icons.trip_origin,
               color: look.accent,
               text: b.pickupLine,
-              sub: 'Pickup at the address',
+              sub: !b.perSeat
+                  ? 'Pickup at the address'
+                  : b.pickupKind == 'door'
+                  ? 'Door pickup${b.doorExtra == null ? '' : ', + ${c2cMoney(b.doorExtra!, b.currency)}'}'
+                  : 'Meeting point',
               style: t.textTheme.titleSmall,
             ),
             C2cIconLine(
@@ -516,7 +575,14 @@ class _BookedView extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: _Tile(label: 'Trip', value: '${c2cCarLine(b.passengers)}, ${b.luggage.label.toLowerCase()}')),
+              Expanded(
+                child: _Tile(
+                  label: 'Trip',
+                  value: b.perSeat
+                      ? '${c2cBookingKind(b)}${b.seatPrice == null ? '' : ' at ${c2cMoney(b.seatPrice!, b.currency)}'}'
+                      : '${c2cCarLine(b.passengers)}, ${b.luggage.label.toLowerCase()}',
+                ),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: _Tile(
@@ -527,6 +593,9 @@ class _BookedView extends ConsumerWidget {
               ),
             ]),
             const SizedBox(height: 12),
+            if (b.perSeat)
+              C2cSeatDriverCard(booking: b, actions: contact)
+            else
             C2cBox(
               color: Colors.transparent,
               border: look.line,
@@ -551,25 +620,7 @@ class _BookedView extends ConsumerWidget {
                   C2cIconLine(icon: Icons.directions_car, text: offer.carLine),
                 ],
                 const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      key: const ValueKey('c2c-chat'),
-                      onPressed: () => openC2cChat(context, booking.id),
-                      icon: const Icon(Icons.chat),
-                      label: const Text('Chat'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      key: const ValueKey('c2c-call'),
-                      onPressed: () => _contact(context, ref, 'tel'),
-                      icon: const Icon(Icons.call),
-                      label: const Text('Call'),
-                    ),
-                  ),
-                ]),
+                contact,
               ]),
             ),
             const SizedBox(height: 14),
@@ -764,7 +815,10 @@ class _EndedView extends ConsumerWidget {
     final b = booking;
     final expired = b.status == C2cStatus.expired;
     final fee = b.cancelFee ?? 0;
-    final line = expired
+    final seatLine = b.perSeat ? c2cSeatEndLine(b) : '';
+    final line = seatLine.isNotEmpty
+        ? seatLine
+        : expired
         ? 'No driver took this trip before the time to leave.'
         : b.payStatus == 'refunded' && fee == 0
         ? 'Cancelled. The fare held in the app was given back.'
@@ -783,7 +837,7 @@ class _EndedView extends ConsumerWidget {
         C2cBanner(
           key: const ValueKey('c2c-ended-banner'),
           icon: expired ? Icons.hourglass_disabled : Icons.cancel,
-          title: expired ? 'Expired' : 'Cancelled',
+          title: b.status.label,
           line: line,
           fill: look.box,
           ink: look.onBox,
@@ -793,9 +847,9 @@ class _EndedView extends ConsumerWidget {
         const SizedBox(height: 14),
         FilledButton.icon(
           key: const ValueKey('c2c-plan-again'),
-          onPressed: () => openC2cSteps(context),
+          onPressed: () => b.perSeat ? openC2cSeatSearch(context) : openC2cSteps(context),
           icon: const Icon(Icons.route),
-          label: const Text('Plan the trip again'),
+          label: Text(b.perSeat ? 'Find another trip' : 'Plan the trip again'),
         ),
       ],
     );

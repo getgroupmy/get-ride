@@ -4,10 +4,13 @@
 // Bookings (0307): the rider's quote, request, offers and booking.
 // Money and reminders (0309): the give-up and in-app payment rules by
 // region, paying in the app, fees owed.
+// Per-seat trips (0310): the seat rules, posting a trip, searching and
+// booking seats, the driver's requests, passengers, start and finish.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/city_to_city.dart';
+import '../core/city_to_city_seats.dart';
 import '../core/commission.dart' show Geo;
 import '../core/fare.dart' show ServiceRates;
 import '../core/fare_tariff.dart';
@@ -341,7 +344,187 @@ class CityToCityRepository {
     'p_since': '${since.year.toString().padLeft(4, '0')}-${since.month.toString().padLeft(2, '0')}-'
         '${since.day.toString().padLeft(2, '0')}',
   });
+  // ---- Per-seat trips (0310) ------------------------------------------------------------------------
+
+  Future<List<C2cSeatRule>> seatRules() async {
+    final rows = await _db.from('c2c_seat_rules').select().order('created_at', ascending: true);
+    return [for (final r in rows) C2cSeatRule.fromRow(r)];
+  }
+
+  /// Adds [r] (no id) or changes it.
+  Future<void> saveSeatRule(C2cSeatRule r) async {
+    if (r.id == null) {
+      await _db.from('c2c_seat_rules').insert(r.toRow());
+    } else {
+      await _db.from('c2c_seat_rules').update(r.toRow()).eq('id', r.id!);
+    }
+  }
+
+  Future<void> deleteSeatRule(String id) => _db.from('c2c_seat_rules').delete().eq('id', id);
+
+  /// What the post screen needs for a trip from [from] to [to].
+  Future<C2cPostTerms> postTerms({required C2cEnd from, required C2cEnd to, required double km, required double min}) async =>
+      C2cPostTerms.fromJson(await _db.rpc('c2c_post_terms', params: {
+        'p_lat': from.lat,
+        'p_lng': from.lng,
+        'p_from': from.placeJson,
+        'p_to': to.placeJson,
+        'p_km': km,
+        'p_min': min,
+      }));
+
+  /// Posts a trip (and its repeats); the trips made and the repeats skipped.
+  Future<({List<String> ids, int posted, int skipped})> postTrip({
+    required C2cEnd from,
+    required C2cEnd to,
+    required double km,
+    required double min,
+    required DateTime leaveAt,
+    required List<C2cMeetingPoint> points,
+    required int seats,
+    required double seatPrice,
+    C2cJoinMode? join,
+    bool womenOnly = false,
+    bool door = false,
+    int parcelSlots = 0,
+    C2cParcelSize? parcelSize,
+    double? parcelPrice,
+    C2cRepeat repeat = C2cRepeat.none,
+    DateTime? repeatUntil,
+    bool suitcase = false,
+    String? note,
+    String? timezone,
+  }) async {
+    Map<String, dynamic> end(C2cEnd e) => {'name': e.name, 'address': ?e.address, 'lat': e.lat, 'lng': e.lng, 'place': e.placeJson};
+    final r = await _db.rpc('c2c_post_trip', params: {
+      'p_from': end(from),
+      'p_to': end(to),
+      'p_km': double.parse(km.toStringAsFixed(2)),
+      'p_min': double.parse(min.toStringAsFixed(1)),
+      'p_leave_at': leaveAt.toUtc().toIso8601String(),
+      'p_meeting_points': [for (final p in points) p.toJson()],
+      'p_seats': seats,
+      'p_seat_price': c2cRound2(seatPrice),
+      'p_join': join?.key,
+      'p_women_only': womenOnly,
+      'p_door': door,
+      'p_parcel_slots': parcelSlots,
+      'p_parcel_size': parcelSize?.key,
+      'p_parcel_price': parcelPrice,
+      'p_repeat': repeat == C2cRepeat.none ? null : repeat.key,
+      'p_repeat_until': repeatUntil == null ? null : _day(repeatUntil),
+      'p_luggage': suitcase ? 'suitcase' : 'small',
+      'p_note': note,
+      'p_timezone': timezone,
+    });
+    final m = r is Map ? r : const {};
+    return (
+      ids: [for (final e in m['ids'] is List ? m['ids'] as List : const []) '$e'],
+      posted: (m['posted'] as num?)?.round() ?? 0,
+      skipped: (m['skipped'] as num?)?.round() ?? 0,
+    );
+  }
+
+  String _day(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+  /// The trips from [from] to [to] on [day] (null: the next 14 days) with
+  /// [seats] seats left (0: room for a parcel).
+  Future<List<C2cTrip>> searchTrips({required Geo from, required Geo to, DateTime? day, int seats = 1}) async {
+    final r = await _db.rpc('c2c_search_trips', params: {
+      'p_from': _geo(from),
+      'p_to': _geo(to),
+      'p_day': day == null ? null : _day(day),
+      'p_seats': seats,
+    });
+    return [
+      for (final e in r is List ? r : const [])
+        if (e is Map) C2cTrip.fromJson(Map<String, dynamic>.from(e)),
+    ];
+  }
+
+  /// One trip as riders see it; null when it can't be read.
+  Future<C2cTrip?> tripForRider(String id) async {
+    final r = await _db.rpc('c2c_trip_for_rider', params: {'p_trip': id});
+    return r is Map ? C2cTrip.fromJson(Map<String, dynamic>.from(r)) : null;
+  }
+
+  /// The pay sheet before booking on [tripId].
+  Future<C2cPayInfo> seatPayInfo(String tripId) async =>
+      C2cPayInfo.fromJson(await _db.rpc('c2c_seat_pay_info', params: {'p_trip': tripId}));
+
+  /// Books seats (or a parcel slot) on [tripId]; the booking's id and status.
+  Future<({String id, String status})> bookSeat({
+    required String tripId,
+    required int seats,
+    required Map<String, dynamic> pickup,
+    required C2cPayment payment,
+    List<C2cPassenger> passengers = const [],
+    C2cPayWay? way,
+    double? expected,
+    Map<String, dynamic>? parcel,
+    String? note,
+  }) async {
+    final r = await _db.rpc('c2c_book_seat', params: {
+      'p_trip': tripId,
+      'p_seats': seats,
+      'p_pickup': pickup,
+      'p_payment': payment.key,
+      'p_passengers': passengers.isEmpty ? null : c2cPassengersJson(passengers),
+      'p_method': way?.key,
+      'p_expected': expected == null ? null : c2cRound2(expected),
+      'p_parcel': parcel,
+      'p_note': note,
+    });
+    final m = r is Map ? r : const {};
+    return (id: '${m['id']}', status: '${m['status'] ?? ''}');
+  }
+
+  /// Who else rides on the trip of [bookingId] (where the rule shows them).
+  Future<List<({String name, double? rating, String pickup, int seats})>> coriders(String bookingId) async {
+    final r = await _db.rpc('c2c_coriders', params: {'p_booking': bookingId});
+    return [
+      for (final e in r is List ? r : const [])
+        if (e is Map)
+          (
+            name: '${e['name'] ?? 'Rider'}',
+            rating: (e['rating'] as num?)?.toDouble(),
+            pickup: '${e['pickup'] ?? ''}',
+            seats: (e['seats'] as num?)?.round() ?? 1,
+          ),
+    ];
+  }
+
+  /// The driver approves or declines seat request [bookingId].
+  Future<void> seatDecide(String bookingId, {required bool approve, String? reason}) =>
+      _db.rpc('c2c_seat_decide', params: {'p_booking': bookingId, 'p_approve': approve, 'p_reason': reason});
+
+  /// The driver's posted trips with their requests and passengers.
+  Future<List<C2cTrip>> driverSeatTrips() async {
+    final r = await _db.rpc('c2c_driver_seat_trips');
+    return [
+      for (final e in r is List ? r : const [])
+        if (e is Map) C2cTrip.fromJson(Map<String, dynamic>.from(e)),
+    ];
+  }
+
+  /// Starts (on the trip) or finishes (done) trip [tripId].
+  Future<void> tripProgress(String tripId, C2cTripStatus to) =>
+      _db.rpc('c2c_trip_progress', params: {'p_trip': tripId, 'p_status': to.key});
+
+  /// Cancels trip [tripId] (and the later trips of its repeat with
+  /// [series]); the riders told and the give-up fees charged.
+  Future<({int cancelled, double fees, int riders})> tripCancel(String tripId, {String? reason, bool series = false}) async {
+    final r = await _db.rpc('c2c_trip_cancel', params: {'p_trip': tripId, 'p_reason': reason, 'p_series': series});
+    final m = r is Map ? r : const {};
+    return (
+      cancelled: (m['cancelled'] as num?)?.round() ?? 0,
+      fees: (m['fees'] as num?)?.toDouble() ?? 0,
+      riders: (m['riders'] as num?)?.round() ?? 0,
+    );
+  }
 }
+
 
 final cityToCityRepositoryProvider = Provider((ref) => CityToCityRepository(ref.watch(supabaseProvider)));
 
@@ -354,6 +537,12 @@ final c2cRulesProvider = FutureProvider.autoDispose<List<C2cRule>>((ref) {
   ref.watchLive('c2c_route_rules');
   return ref.watch(cityToCityRepositoryProvider).rules();
 });
+
+/// The whole-car route rules only (the routes page; 0310's per-seat route
+/// rules are on the per-seat page).
+final c2cWholeCarRulesProvider = Provider.autoDispose<AsyncValue<List<C2cRule>>>(
+  (ref) => ref.watch(c2cRulesProvider).whenData((l) => [for (final r in l) if (r.tripKind == 'whole_car') r]),
+);
 
 final c2cCountryPermitsProvider = FutureProvider.autoDispose<List<C2cCountryPermit>>((ref) {
   ref.watchLive('c2c_country_permits');
@@ -463,3 +652,43 @@ final c2cMyOwedProvider = FutureProvider.autoDispose<C2cOwed>((ref) async {
     return C2cOwed.none;
   }
 });
+
+/// The per-seat rules by region, live (0310).
+final c2cSeatRulesProvider = FutureProvider.autoDispose<List<C2cSeatRule>>((ref) {
+  ref.watchLive('c2c_seat_rules');
+  return ref.watch(cityToCityRepositoryProvider).seatRules();
+});
+
+/// The driver's posted trips with their bookings, live (0310).
+final c2cDriverSeatTripsProvider = FutureProvider.autoDispose<List<C2cTrip>>((ref) {
+  ref.watchLive('c2c_trips');
+  ref.watchLive('c2c_bookings');
+  return ref.watch(cityToCityRepositoryProvider).driverSeatTrips();
+});
+
+/// One posted trip as riders see it, live; null when it can't be read.
+final c2cRiderTripProvider = FutureProvider.autoDispose.family<C2cTrip?, String>((ref, id) async {
+  ref.watchLive('c2c_trips');
+  ref.watchLive('c2c_bookings');
+  try {
+    return await ref.watch(cityToCityRepositoryProvider).tripForRider(id);
+  } catch (_) {
+    return null;
+  }
+});
+
+/// Who else rides with the rider of a seat booking; none when it can't be read.
+final c2cCoridersProvider =
+    FutureProvider.autoDispose.family<List<({String name, double? rating, String pickup, int seats})>, String>(
+        (ref, id) async {
+  ref.watchLive('c2c_bookings');
+  try {
+    return await ref.watch(cityToCityRepositoryProvider).coriders(id);
+  } catch (_) {
+    return const [];
+  }
+});
+
+/// Who rides on a seat booking, filled by the Family module later: the
+/// rider's family members as passengers to pick from (none until then).
+final c2cPassengerChoicesProvider = FutureProvider.autoDispose<List<C2cPassenger>>((ref) async => const []);

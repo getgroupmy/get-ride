@@ -146,6 +146,10 @@ String? pushRouteFor(Map<String, dynamic> data) {
       // A City to City trip reminder or "Pay for your trip" (0309): the
       // trips, on the recipient's side.
       return data['role'] == 'partner' ? '/drive/city-to-city?tab=trips' : '/city-to-city';
+    case 'c2c_seat':
+      // A seat request, booking or answer on a posted trip (0310): the
+      // driver's posted trips, the rider's trips.
+      return data['role'] == 'partner' ? '/drive/city-to-city?tab=post' : '/city-to-city';
     case 'ride_call':
       // The full-screen incoming call (migration 0131); it goes back to the
       // trip once the call is over.
