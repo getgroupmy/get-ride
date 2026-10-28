@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../family/family_trip_parts.dart' show DriverChildCheck;
 import '../../core/city_to_city.dart';
 import '../../core/navigation_app.dart' show navigationUri;
 import '../../data/city_to_city_repository.dart';
@@ -634,6 +635,8 @@ class _BookedView extends ConsumerWidget {
                 ]),
               ),
             ],
+            // Family (0317): a child passenger's photo and pickup code before pickup.
+            if (b.status != C2cStatus.onTrip) DriverChildCheck(tripId: b.id),
             const SizedBox(height: 12),
             Wrap(spacing: 8, runSpacing: 8, children: [
               if (goTo.$1 != null && goTo.$2 != null)

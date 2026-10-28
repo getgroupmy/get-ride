@@ -6,6 +6,7 @@ import 'screens/catalogue/catalogue_module.dart';
 import 'screens/city_ride_extras_screen.dart';
 import 'screens/city_to_city/city_to_city_module.dart';
 import 'screens/commerce/commerce_module.dart';
+import 'screens/family/family_module.dart';
 import 'screens/geo/geo_module.dart';
 import 'screens/help/help_module.dart';
 import 'screens/meterapp/meterapp_module.dart';
@@ -58,6 +59,7 @@ final allAdminEntries = <AdminScreenEntry>[
   ...rideSafetyEntries,
   ...peopleEntries,
   ...businessEntries,
+  ...familyAdminEntries,
   ...catalogueEntries,
   ...cityToCityEntries,
   ...cityRideExtrasEntries,
@@ -75,6 +77,7 @@ final allPortedAdminRoutes = <RouteBase>[
   ...rideSafetyRoutes,
   ...peopleRoutes,
   ...businessRoutes,
+  ...familyAdminRoutes,
   ...catalogueRoutes,
   ...cityToCityRoutes,
   ...cityRideExtrasRoutes,

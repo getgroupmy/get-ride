@@ -8,6 +8,7 @@
 // a request waiting for the driver and one declined.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart' show AccessLevel;
 import 'package:get_ride/src/admin/admin_providers.dart' show pageAccessProvider;
@@ -20,14 +21,18 @@ import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/city_to_city.dart';
 import 'package:get_ride/src/core/city_to_city_seats.dart';
 import 'package:get_ride/src/core/commission.dart' show Geo;
+import 'package:get_ride/src/core/booking_modules.dart' show familyModuleSeatTrip;
+import 'package:get_ride/src/core/family.dart' show FamilyPayOption, FamilyPick;
 import 'package:get_ride/src/core/inbox.dart' show InboxIcon, inboxIconFor;
 import 'package:get_ride/src/core/push_logic.dart' show pushRouteFor;
 import 'package:get_ride/src/data/city_to_city_repository.dart';
+import 'package:get_ride/src/data/family_repository.dart' show familyPayOptionProvider;
 import 'package:get_ride/src/data/geo_service.dart' show Place;
 import 'package:get_ride/src/features/partner/city_to_city_driver_screen.dart';
 import 'package:get_ride/src/features/partner/city_to_city_post_trip.dart';
 import 'package:get_ride/src/features/ride/city_to_city_screen.dart';
 import 'package:get_ride/src/features/ride/city_to_city_steps.dart' show c2cAreaProvider, c2cClockProvider;
+import 'package:get_ride/src/features/ride/city_to_city_seats.dart' show C2cSeatBookScreen;
 import 'package:get_ride/src/features/ride/city_to_city_trip.dart';
 import 'package:get_ride/src/features/ride/freight_screen.dart' show freightPlaceSearchProvider, freightRouteProvider;
 import 'package:get_ride/src/providers.dart' show currentUserIdProvider, partnerProvider, profileProvider;
@@ -287,9 +292,10 @@ class _Repo extends CityToCityRepository {
     double? expected,
     Map<String, dynamic>? parcel,
     String? note,
+    FamilyPick? family,
   }) async {
     booked.add({'trip': tripId, 'seats': seats, 'pickup': pickup, 'payment': payment, 'names': [for (final p in passengers) p.name],
-        'way': way, 'expected': expected});
+        'way': way, 'expected': expected, 'family': family});
     return (id: 'sb1', status: 'booked');
   }
 
@@ -326,7 +332,8 @@ final _regions = [
 /// The places the search returns, one call after another.
 List<Place> _places = [];
 
-Future<_Repo> _pump(WidgetTester tester, Widget home, {Brightness b = Brightness.light, _Repo? repo}) async {
+Future<_Repo> _pump(WidgetTester tester, Widget home,
+    {Brightness b = Brightness.light, _Repo? repo, List<Override> extra = const []}) async {
   final r = repo ?? _Repo();
   tester.view.physicalSize = const Size(420, 1000);
   tester.view.devicePixelRatio = 1;
@@ -348,6 +355,7 @@ Future<_Repo> _pump(WidgetTester tester, Widget home, {Brightness b = Brightness
             _places.isEmpty ? null : _places.removeAt(0)),
         c2cAreaProvider.overrideWithValue((p) async => p.latitude > 4 ? _ipoh : _cheras),
         freightRouteProvider.overrideWithValue((a, b) async => (km: 205.0, min: 150.0)),
+        ...extra,
       ],
       child: MaterialApp(theme: appTheme(b), home: home),
     ),
@@ -642,13 +650,44 @@ void main() {
       await closeNotice(tester);
       expect(repo.booked.single, {
         'trip': 't1', 'seats': 2, 'pickup': {'kind': 'meeting', 'index': 1}, 'payment': C2cPayment.inApp,
-        'names': ['Aina', 'Wei'], 'way': C2cPayWay.wallet, 'expected': 90.0,
+        'names': ['Aina', 'Wei'], 'way': C2cPayWay.wallet, 'expected': 90.0, 'family': null,
       });
       // The trip page: booked, the driver and who else rides.
       expect(find.text('Booking CC-20510 · 2 seats · RM 90'), findsOneWidget);
       expect(find.text('Meeting point'), findsOneWidget);
       expect(find.text('Kumar 4.7 (Cheras)'), findsOneWidget);
       expect(find.text('Riding: Aina, Wei'), findsOneWidget);
+    });
+
+    testWidgets('rider: a seat paid by the family (${b.name})', (tester) async {
+      // Family (0317): the member's own seat on the host's GET.wallet.
+      final repo = await _pump(tester, C2cSeatBookScreen(trip: C2cTrip.fromJson(_trip())), b: b, extra: [
+        familyPayOptionProvider.overrideWith((ref, module) async => module == familyModuleSeatTrip
+            ? const FamilyPayOption(available: true, hostName: 'Karim', left: 300)
+            : null),
+      ]);
+      expect(find.text("Family · Karim's GET.wallet"), findsOneWidget);
+      expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('c2c-seat-pay-family'))).selected, isTrue);
+      expect(find.text("Paid now from Karim's GET wallet."), findsOneWidget);
+      await _tap(tester, find.byKey(const ValueKey('c2c-seat-book')));
+      await closeNotice(tester);
+      expect(repo.booked.single, {
+        'trip': 't1', 'seats': 1, 'pickup': {'kind': 'meeting', 'index': 0}, 'payment': C2cPayment.family,
+        'names': <String>[], 'way': C2cPayWay.wallet, 'expected': 45.0, 'family': null,
+      });
+    });
+
+    testWidgets('rider: a host books a seat for a family member (${b.name})', (tester) async {
+      final repo = await _pump(tester, C2cSeatBookScreen(trip: C2cTrip.fromJson(_trip())), b: b, extra: [
+        c2cPassengerChoicesProvider.overrideWith((ref) async => const [(name: 'Lina', familyMemberId: 'fm1')]),
+      ]);
+      expect(find.byKey(const ValueKey('c2c-seat-pay-family')), findsNothing);
+      await _tap(tester, find.byKey(const ValueKey('c2c-seat-who-fm1')));
+      await _tap(tester, find.byKey(const ValueKey('c2c-seat-pay-cash')));
+      await _tap(tester, find.byKey(const ValueKey('c2c-seat-book')));
+      await closeNotice(tester);
+      expect(repo.booked.single['names'], ['Lina']);
+      expect(repo.booked.single['family'], (id: 'fm1', withAdult: false));
     });
 
     testWidgets('rider: a request waiting, then declined (${b.name})', (tester) async {

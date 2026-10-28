@@ -8,6 +8,7 @@ import '../config.dart';
 
 import 'package:latlong2/latlong.dart';
 
+import '../core/family.dart' show FamilyPick, familyBookingColumns, familyRefusal;
 import '../core/book_for.dart';
 import '../core/driver_eta.dart';
 import '../core/request_viewers.dart';
@@ -120,6 +121,7 @@ class RideRepository {
     String? businessAccountId,
     String? businessNote,
     bool riderAudio = false,
+    FamilyPick? family,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -208,6 +210,10 @@ class RideRepository {
       'business_account_id': ?businessAccountId,
       if (businessAccountId != null && businessNote != null && businessNote.trim().isNotEmpty)
         'business_note': businessNote.trim(),
+      // Family (0317): the member or child the host books for. Never
+      // dropped: a child's trip without it would start without the pickup
+      // code. Payment by the family is paymentMode 'Family'.
+      ...familyBookingColumns(passengerId: family?.id, withAdult: family?.withAdult ?? false),
     };
     // Stops, the metadata, the region's pricing and its time zone are
     // extras: a database without one of their columns (stops needs 0098,
@@ -950,6 +956,21 @@ class RideRepository {
     } on PostgrestException catch (e) {
       if (e.code != 'PGRST202') rethrow;
       await _db.rpc('ride_pay', params: params);
+    }
+  }
+
+  /// `Family · <host>'s GET.wallet` (migration 0317): the member's trip paid
+  /// from the family host's GET.wallet within the member's limits. A refusal
+  /// (the limit, no longer in the family) comes back in plain words.
+  Future<void> payRideFamily(String id, {double? expected}) async {
+    try {
+      await _db.rpc('ride_pay', params: {
+        'p_ride': id,
+        'p_method': 'family',
+        if (expected != null) 'p_expected': double.parse(expected.toStringAsFixed(2)),
+      });
+    } on PostgrestException catch (e) {
+      throw familyRefusal(e.message, e.hint) ?? e;
     }
   }
 

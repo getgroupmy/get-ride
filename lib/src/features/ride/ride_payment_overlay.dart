@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
+import '../../core/family.dart' show FamilyException, familyPayLabel, familyPaymentMode;
 import '../../core/format.dart';
+import '../../data/family_repository.dart' show familyTripStatusProvider;
 import '../../core/ride_payment.dart';
 import '../../data/app_display_repository.dart' show paymentChoicesProvider;
 import '../../data/coin_trade_repository.dart' show coinSettingsProvider;
@@ -100,6 +102,19 @@ class _RidePaymentOverlayState extends ConsumerState<RidePaymentOverlay> {
     }
   }
 
+  /// Family (0317): from the family host's GET.wallet.
+  Future<void> _payFamily() async {
+    setState(() => _stage = _Stage.paying);
+    try {
+      await ref.read(rideRepositoryProvider).payRideFamily(_r.id, expected: _r.cashDue);
+      if (!mounted) return;
+      _refreshWallet();
+      setState(() => _paidHere = true);
+    } catch (e) {
+      if (mounted) _fail(e);
+    }
+  }
+
   Future<void> _payCash() async {
     try {
       await ref.read(rideRepositoryProvider).payRideCash(_r.id);
@@ -114,7 +129,7 @@ class _RidePaymentOverlayState extends ConsumerState<RidePaymentOverlay> {
     _timer?.cancel();
     setState(() {
       _stage = _Stage.failed;
-      _failure = ridePaymentFailure(e);
+      _failure = e is FamilyException ? e.message : ridePaymentFailure(e);
       _countdown = paymentFailedHold.inSeconds;
     });
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
@@ -331,6 +346,23 @@ class _RidePaymentOverlayState extends ConsumerState<RidePaymentOverlay> {
           ],
         ),
         const SizedBox(height: 8),
+        // Family (0317): a trip the member booked with Family; another way
+        // means they pay this trip themselves.
+        if (r.paymentMode == familyPaymentMode)
+          Card(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            child: ListTile(
+              key: const ValueKey('payment-option-family'),
+              leading: const Icon(Icons.family_restroom),
+              title: Text(familyPayLabel(ref.watch(familyTripStatusProvider(r.id)).value?.payer ?? 'Family host')),
+              subtitle: Text(switch (ref.watch(familyTripStatusProvider(r.id)).value?.left) {
+                final left? => '${_money(left)} left this month for you',
+                null => 'Within your family limit',
+              }),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _payFamily,
+            ),
+          ),
         for (final o in options)
           Card(
             margin: const EdgeInsets.symmetric(vertical: 4),

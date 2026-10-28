@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../family/family_trip_parts.dart' show FamilyTripStrip;
 import '../../core/city_to_city.dart';
 import '../../core/city_to_city_seats.dart' show c2cBookingKind, c2cSeatEndLine;
 import '../../data/city_to_city_repository.dart';
@@ -548,6 +549,8 @@ class _BookedView extends ConsumerWidget {
               fill: look.good,
               ink: look.onGood,
             ),
+            // Family (0317): "Shared with family" and who can see, "Paid with Family".
+            FamilyTripStrip(tripId: b.id, host: true),
             const SizedBox(height: 12),
             Text.rich(TextSpan(children: [
               TextSpan(text: c2cLeaveText(b.leaves), style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
@@ -588,7 +591,11 @@ class _BookedView extends ConsumerWidget {
                 child: _Tile(
                   label: 'Payment',
                   value: c2cRiderPayLabel(b),
-                  icon: b.payment == C2cPayment.inApp ? Icons.credit_card : Icons.payments,
+                  icon: switch (b.payment) {
+                    C2cPayment.inApp => Icons.credit_card,
+                    C2cPayment.family => Icons.family_restroom,
+                    C2cPayment.cash => Icons.payments,
+                  },
                 ),
               ),
             ]),

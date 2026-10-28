@@ -78,6 +78,10 @@ const liveSettingTables = <String>[
   'c2c_country_permits',
   'c2c_route_rules',
   'commission_service_rates',
+  // Family (0317): the module registry, the values by place and the module matrix.
+  'booking_modules',
+  'family_places',
+  'family_module_rules',
   // City to City bookings and offers (0307): the rider's trips and the
   // offers on them, a driver's own (row-level security keeps them to those).
   'c2c_bookings',

@@ -14,6 +14,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
+import '../../core/booking_modules.dart' show familyModuleCourier;
+import '../../core/family.dart' show withFamilyPayment;
+import '../../data/family_repository.dart' show familyPayOptionProvider;
 import '../../core/book_for.dart' show DuplicateRideRequest;
 import '../../core/commission.dart' show Geo;
 import '../../core/courier.dart';
@@ -94,10 +97,14 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
   String _payment = 'Cash';
 
   /// The admin's methods, then the member's business accounts that may book Courier (0313).
-  List<PaymentChoice> get _paymentChoices => withBusinessPayments(
-    ref.read(paymentChoicesProvider).value ?? builtInPayments,
-    ref.read(myBusinessAccountsProvider).value ?? const [],
-    BusinessService.courier,
+  List<PaymentChoice> get _paymentChoices => withFamilyPayment(
+    withBusinessPayments(
+      ref.read(paymentChoicesProvider).value ?? builtInPayments,
+      ref.read(myBusinessAccountsProvider).value ?? const [],
+      BusinessService.courier,
+    ),
+    // Family (0317): the member's "Family · <host>'s GET.wallet" row where the admin allows it.
+    ref.read(familyPayOptionProvider(familyModuleCourier)).value,
   );
   double? _offer;
   double? _declared;
@@ -491,6 +498,8 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     ref.watch(fareTariffsProvider);
     ref.watch(paymentChoicesProvider);
     ref.watch(deliveryAddonRulesProvider);
+    // Family (0317): the member's "Family · <host>'s GET.wallet" row where the admin allows it.
+    ref.watch(familyPayOptionProvider(familyModuleCourier));
     final mine = _tabs.index == 1;
     return Scaffold(
       appBar: AppBar(

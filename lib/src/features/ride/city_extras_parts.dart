@@ -8,9 +8,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/booking_modules.dart' show familyModuleTips;
 import '../../core/city_ride_extras.dart';
+import '../../core/family.dart' show familyPayLabel;
 import '../../core/format.dart';
 import '../../data/city_ride_extras_repository.dart';
+import '../../data/family_repository.dart' show familyPayOptionProvider, familyTripStatusProvider;
 import '../../data/models.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -252,6 +255,13 @@ class _TipCardState extends ConsumerState<TipCard> {
       );
     }
     final picked = _picked;
+    // Family (0317): a GET.wallet tip on a trip the family pays comes from
+    // the host's GET.wallet, where the admin lets the family pay tips.
+    final familyTrip = ref.watch(familyTripStatusProvider(widget.ride.id)).value;
+    final familyTips = ref.watch(familyPayOptionProvider(familyModuleTips)).value;
+    final familyPayer = familyTrip != null && familyTrip.familyPays && (familyTips?.available ?? false)
+        ? familyTrip.payer
+        : null;
     return Listener(
       onPointerDown: (_) => _touch(),
       child: Column(
@@ -302,6 +312,11 @@ class _TipCardState extends ConsumerState<TipCard> {
             selected: {_method},
             onSelectionChanged: (s) => setState(() => _method = s.first),
           ),
+          if (familyPayer != null && _method == TipMethod.wallet) ...[
+            const SizedBox(height: 6),
+            Text('From ${familyPayLabel(familyPayer)}, as the trip was.',
+                key: const ValueKey('tip-family'), style: t.textTheme.bodySmall?.copyWith(color: muted)),
+          ],
           const SizedBox(height: 10),
           BusyButton.filled(
             key: const ValueKey('tip-send'),

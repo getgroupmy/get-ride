@@ -30,6 +30,7 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
     'scheduled-rides': '/trips/scheduled',
     'my-ride': '/account/my-ride',
     'my-qr': '/account/my-qr',
+    'family': '/account/family',
     'freight': '/freight',
     'courier': '/courier',
     'wallet': '/wallet',
