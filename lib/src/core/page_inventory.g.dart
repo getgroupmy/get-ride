@@ -233,6 +233,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:rider-handover.ask', SurfaceKind.modal, 'Rider handover · Ask', 'lib/src/features/ride/rider_handover_card.dart'),
   SurfaceEntry('modal:safety-incidents.resolve', SurfaceKind.modal, 'Safety incidents · Resolve', 'lib/src/admin/screens/safety/safety_incidents_screen.dart'),
   SurfaceEntry('modal:safety.no-emergency-contacts', SurfaceKind.modal, 'Safety · No emergency contacts', 'lib/src/features/safety/safety_screen.dart'),
+  SurfaceEntry('modal:safety.rider-audio-consent', SurfaceKind.modal, 'Safety · Rider audio consent', 'lib/src/features/safety/rider_audio_widgets.dart'),
   SurfaceEntry('modal:safety.send-sos', SurfaceKind.modal, 'Safety · Send sos', 'lib/src/features/safety/safety_screen.dart'),
   SurfaceEntry('modal:saved-place-form.delete', SurfaceKind.modal, 'Saved place form · Delete', 'lib/src/features/ride/saved_place_form.dart'),
   SurfaceEntry('modal:scheduled-jobs.let-go', SurfaceKind.modal, 'Scheduled jobs · Let go', 'lib/src/features/partner/scheduled_jobs_screen.dart'),

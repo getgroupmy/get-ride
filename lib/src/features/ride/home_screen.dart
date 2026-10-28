@@ -128,6 +128,9 @@ import '../../core/early_end.dart' show serviceTypeIds;
 import '../my_ride/my_ride_settings.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/web_overlay_back.dart';
+import '../../data/rider_audio_repository.dart' show riderAudioSupported;
+import '../safety/rider_audio_controller.dart' show riderAudioProvider;
+import '../safety/rider_audio_widgets.dart' show RiderAudioConfirmRow;
 
 enum _PinTarget { none, pickup, drop }
 
@@ -2018,6 +2021,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // Checked again by the server: at booking, and for a ride for
             // later at its pickup time and again when it is dispatched.
             promoCodeId: _promo?.codeId,
+            // Rider audio protection (0315): their own trip, on a phone.
+            riderAudio: forWhom == null && riderAudioSupported && ref.read(riderAudioProvider).enabled,
           );
       // Sent: nothing left to offer again.
       _forgetDraft();
@@ -3085,6 +3090,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onEdit: () => _pickMyRide(myRideFavs, myRideSettings),
                   )
                 : null,
+            // The rider's own trip only: not when booking for someone else.
+            audioProtection: _forOtherOn || _pickup == null
+                ? null
+                : RiderAudioConfirmRow(lat: _pickup!.point.latitude, lng: _pickup!.point.longitude),
           )
         : null;
     // The nearest drivers to the pickup, on the confirm step: real ones from

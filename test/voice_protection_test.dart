@@ -103,7 +103,16 @@ class _FakeRepo implements VoiceProtectionRepository {
   }
 
   @override
+  Future<void> Function() watchRide(String rideId, void Function() onChange) {
+    this.onChange = onChange;
+    return () async => this.onChange = null;
+  }
+
+  @override
   Future<List<VoiceRecording>> forProfile(String profileId) async => recordings;
+
+  @override
+  Future<List<VoiceRecording>> forRide(String rideId) async => [for (final r in recordings) if (r.rideId == rideId) r];
 
   @override
   Future<void> requestUpload(String recordingId, {required String? adminId, String? ticketId}) async =>

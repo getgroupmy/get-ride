@@ -16,6 +16,7 @@ import '../admin_filters.dart';
 import '../admin_providers.dart';
 import '../widgets/admin_widgets.dart';
 import '../../data/live_tables.dart';
+import '../widgets/trip_audio_panel.dart';
 
 /// A row's second line, as the rider's trip list words it: when (in the
 /// trip's region), then who: "12 Mar 2026, 3:15 PM · Rider Aisyah · Driver Ali".
@@ -115,6 +116,10 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
               : '${formatMoney(r.raw['commission_amount'] as num, r.currency)} '
                   '(${((r.raw['commission_rate'] as num? ?? 0) * 100).toStringAsFixed(1)}%)',
         }),
+        // Trip audio (0315): the driver's VoiceProtection and the rider's
+        // audio protection recordings of this ride, to request and play.
+        const SizedBox(height: 12),
+        TripAudioPanel.forRide(key: const ValueKey('admin-ride-audio'), rideId: r.id, canEdit: canEdit),
         // Freight (0267): the cargo and its photo.
         if (r.isFreight) ...[
           const SizedBox(height: 12),

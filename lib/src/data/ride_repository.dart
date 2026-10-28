@@ -119,6 +119,7 @@ class RideRepository {
     AddonPicks addons = const AddonPicks(),
     String? businessAccountId,
     String? businessNote,
+    bool riderAudio = false,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -161,6 +162,9 @@ class RideRepository {
       // The names the options were offered under (the admin may rename them).
       if (optionNames.isNotEmpty) 'option_names': optionNames,
       'offer_me': offerMe,
+      // Rider audio protection (0315): the driver is told; the server books
+      // it off where it isn't offered.
+      if (riderAudio) 'rider_audio': true,
       'otp': otp,
       'device_os': deviceOs,
       'user_accept_lat': pickupLat,
@@ -229,6 +233,8 @@ class RideRepository {
       'assistance',
       'option_charges',
       'option_names',
+      // 0315; without it the phone turns it on when the trip starts.
+      'rider_audio',
     };
     if (scheduleAt != null) {
       // Favourites and a scanned driver are for a ride now; the server

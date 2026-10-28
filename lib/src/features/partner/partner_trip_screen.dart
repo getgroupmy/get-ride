@@ -54,6 +54,7 @@ import '../../widgets/offline_ride_banner.dart';
 import '../ride/ride_tracking_screen.dart' show SteadyRide, rideStreamProvider;
 import '../safety/ride_sos.dart';
 import '../safety/voice_protection_controller.dart';
+import '../safety/rider_audio_widgets.dart' show RiderAudioDriverLine;
 import 'my_permits_screen.dart' show DriverPermitButton;
 import 'trip_handover_panel.dart';
 import '../../widgets/page_style_host.dart';
@@ -1022,6 +1023,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         ],
         const SizedBox(height: 12),
         const _VoiceProtectionPill(),
+        // The rider records the trip on their phone (0315).
+        if (r.status.isOngoing) RiderAudioDriverLine(ride: r),
         if (r.status.isOngoing && target != null)
           restLine(restAt == _RestAt.navigate, OutlinedButton.icon(
             key: const ValueKey('trip-navigate'),

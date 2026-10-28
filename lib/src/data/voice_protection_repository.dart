@@ -27,6 +27,10 @@ abstract class TripAudioRecorder {
   Future<String?> stop();
 }
 
+/// A recorder on the phone's microphone (the rider's audio protection keeps
+/// its own, so the two never share one).
+TripAudioRecorder newMicRecorder() => _MicRecorder();
+
 class _MicRecorder implements TripAudioRecorder {
   AudioRecorder? _rec;
 
@@ -154,19 +158,25 @@ class VoiceProtectionRepository {
 
   /// Calls [onChange] whenever one of [profileId]'s rows changes (an
   /// agent's request, or the phone answering it). Answers the unsubscribe.
-  Future<void> Function() watch(String profileId, void Function() onChange) {
+  Future<void> Function() watch(String profileId, void Function() onChange) =>
+      _watch('profile_id', profileId, onChange);
+
+  /// The same for a ride's recordings (the driver's and the rider's).
+  Future<void> Function() watchRide(String rideId, void Function() onChange) => _watch('ride_id', rideId, onChange);
+
+  Future<void> Function() _watch(String column, String value, void Function() onChange) {
     final backup = RealtimeBackup(
       onChange,
       every: const Duration(seconds: 15),
       healthy: realtimeBackupSlowHealthyInterval,
     );
     final channel = _db
-        .channel('voice_protection_${profileId}_${DateTime.now().microsecondsSinceEpoch}')
+        .channel('voice_protection_${value}_${DateTime.now().microsecondsSinceEpoch}')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: _table,
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'profile_id', value: profileId),
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: column, value: value),
           callback: (_) => onChange(),
         )
         .subscribe(backup.onStatus);
@@ -180,6 +190,12 @@ class VoiceProtectionRepository {
 
   Future<List<VoiceRecording>> forProfile(String profileId) async {
     final rows = await _db.from(_table).select().eq('profile_id', profileId).order('recorded_at', ascending: false);
+    return rows.map(VoiceRecording.fromRow).toList();
+  }
+
+  /// A ride's recordings: the driver's and the rider's (migration 0315).
+  Future<List<VoiceRecording>> forRide(String rideId) async {
+    final rows = await _db.from(_table).select().eq('ride_id', rideId).order('recorded_at', ascending: false);
     return rows.map(VoiceRecording.fromRow).toList();
   }
 

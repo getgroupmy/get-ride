@@ -1314,6 +1314,7 @@ class ConfirmFooter extends StatelessWidget {
     this.chargesNote,
     this.whoRiding,
     this.myRide,
+    this.audioProtection,
     this.onOptions,
     this.optionsOn = false,
     this.payments = builtInPayments,
@@ -1360,6 +1361,9 @@ class ConfirmFooter extends StatelessWidget {
   /// The "My Ride" switch (favourite drivers first), under who's riding;
   /// none when the rider has no favourite to offer it to.
   final Widget? myRide;
+
+  /// The rider's "Audio protection" switch (migration 0315), under My Ride.
+  final Widget? audioProtection;
 
   /// The options button right of "Find a driver"; none without it.
   final VoidCallback? onOptions;
@@ -1450,6 +1454,7 @@ class ConfirmFooter extends StatelessWidget {
                 ),
               ?whoRiding,
               ?myRide,
+              ?audioProtection,
               if (autoAcceptLabel != null)
                 Row(
                   children: [
