@@ -1,0 +1,42 @@
+# GET.ride backups and uptime on the NAS. It only calls out to GET.ride: no
+# port is opened on the NAS or the router. Values come from .env next to this
+# file (copy .env.example). See README.md.
+services:
+  nas-backup:
+    build: .
+    platform: linux/amd64
+    image: getride-nas-backup:1
+    container_name: nas-backup
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # The app's key and state (kept across restarts and updates).
+      - ./data:/data
+      # Where the encrypted backups go: a shared folder of its own (README step 2).
+      - ${BACKUP_PATH:-/volume1/getride-backups}:/backups
+      # Optional: Hyper Backup's log, so Admin shows the off-site copy (README step 5).
+      # - /var/log/synolog:/hyperbackup:ro
+    networks: [default, restore]
+    depends_on: [restore-db]
+    mem_limit: 1g
+
+  # The monthly restore test restores into this, never into the live database.
+  # Reached only by the app (an internal network: no way in or out).
+  restore-db:
+    image: ${RESTORE_IMAGE:?Set RESTORE_IMAGE in .env (README.md, step 2)}
+    platform: linux/amd64
+    container_name: nas-restore-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${RESTORE_DB_PASSWORD:?Set RESTORE_DB_PASSWORD in .env}
+    volumes:
+      - restore-db:/var/lib/postgresql/data
+    networks: [restore]
+    mem_limit: 2g
+
+networks:
+  restore:
+    internal: true
+
+volumes:
+  restore-db:
