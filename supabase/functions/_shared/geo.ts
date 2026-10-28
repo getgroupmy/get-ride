@@ -27,6 +27,9 @@
  * OpenStreetMap's usage policy needs); the rest go through `geo`, which
  * holds the keys. Fetching is in geo/index.ts.
  *
+ * nas is the office NAS (migration 0319, geo_nas.ts): OSRM, Photon and its own
+ * vector map (web), through its Cloudflare Tunnel, while it is on.
+ *
  * amazon is Amazon Location Service (migration 0206): in its Malaysia and
  * Singapore regions it answers with GrabMaps data. Its map (amazon_js, web)
  * comes as vector tiles only, which the browser draws with MapLibre.
@@ -268,6 +271,8 @@ export interface TileSource {
    * tiles are vector only), with [key] added to each of its requests.
    */
   style?: string;
+  /** The style and its tiles need no key (the office NAS's map, migration 0319). */
+  keyless?: boolean;
 }
 
 const ATTRIBUTION: Record<string, string> = {
@@ -515,6 +520,8 @@ export interface HttpRequest {
   method?: "GET" | "POST";
   headers?: Record<string, string>;
   body?: string;
+  /** How long to wait for the answer (8 s when not set; the office NAS's own, migration 0319). */
+  timeoutMs?: number;
 }
 
 export interface SearchParams {

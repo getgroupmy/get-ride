@@ -670,7 +670,7 @@ class _Order extends StatelessWidget {
                   DropdownMenuItem(
                     value: o,
                     child: Text(
-                      '${mapProviderLabel(o)}${freeProviders.contains(o) ? '' : ' · key'}',
+                      '${mapProviderLabel(o)}${keylessProviders.contains(o) ? '' : ' · key'}',
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),

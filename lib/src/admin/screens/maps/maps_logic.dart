@@ -35,15 +35,15 @@ String tileSlotLabel(String s) => switch (s) {
 /// Android and iOS; 'google_js' (Google's JavaScript map, 0204) on the web
 /// and, in a web view, on desktop and phones (0213); 'apple_native' (Apple's
 /// own map, MapKit, 0214) on iOS; 'amazon_js' (Amazon Location's GrabMaps
-/// map, 0206) on the web; 'google' traffic with either Google map: see
-/// [tileOptionsFor].
+/// map, 0206) and 'nas' (the office NAS's OpenStreetMap map, 0319) on the
+/// web; 'google' traffic with either Google map: see [tileOptionsFor].
 const tileOptions = <String, List<String>>{
   'light': [
-    'app', 'osm', 'google', 'google_native', 'google_js', 'apple_native', 'amazon_js', //
+    'app', 'osm', 'google', 'google_native', 'google_js', 'apple_native', 'amazon_js', 'nas', //
     'mapbox', 'here', 'tomtom', 'maptiler', 'google_xyz',
   ],
   'dark': [
-    'app', 'osm', 'google', 'google_native', 'google_js', 'apple_native', 'amazon_js', //
+    'app', 'osm', 'google', 'google_native', 'google_js', 'apple_native', 'amazon_js', 'nas', //
     'mapbox', 'here', 'tomtom', 'maptiler', 'google_xyz',
   ],
   'satellite': [
@@ -64,14 +64,16 @@ List<String> tileOptionsFor(String slot, String device) => [
     if (switch (p) {
       'google_native' => p == googleMapFor(device),
       'apple_native' => device == 'ios',
-      'amazon_js' => device == 'web',
+      'amazon_js' || 'nas' => device == 'web',
       _ => true,
     })
       p,
 ];
 
-const placeProviders = ['nominatim', 'google', 'mapbox', 'here', 'tomtom', 'locationiq', 'maptiler', 'amazon'];
-const routeProviders = ['osrm', 'google', 'mapbox', 'here', 'tomtom', 'locationiq', 'amazon'];
+/// 'nas': the office NAS (migration 0319), asked through the geo function
+/// while it is online; the next provider in the list when it isn't.
+const placeProviders = ['nominatim', 'google', 'mapbox', 'here', 'tomtom', 'locationiq', 'maptiler', 'amazon', 'nas'];
+const routeProviders = ['osrm', 'google', 'mapbox', 'here', 'tomtom', 'locationiq', 'amazon', 'nas'];
 
 /// Who measures place search results' distance from the user (migration
 /// 0205); `straight` is as the crow flies, worked out on the phone.
@@ -79,6 +81,9 @@ const distanceProviders = [...routeProviders, 'straight'];
 
 /// Providers the phone calls itself (no key).
 const freeProviders = {'nominatim', 'osrm', 'osm', 'esri', 'straight', 'google_xyz', 'apple_native'};
+
+/// Providers that need no API key: the free ones and the office NAS.
+const keylessProviders = {...freeProviders, 'nas'};
 
 String mapProviderLabel(String p, {String slot = '', String device = ''}) => switch (p) {
   // The iPhone app's own map is Apple's (migration 0214).
@@ -106,6 +111,7 @@ String mapProviderLabel(String p, {String slot = '', String device = ''}) => swi
   'locationiq' => 'LocationIQ',
   'amazon' => 'Amazon Location (GrabMaps)',
   'amazon_js' => 'Amazon Location map (GrabMaps)',
+  'nas' => 'Office NAS (OpenStreetMap)',
   'nominatim' => 'OpenStreetMap (Nominatim)',
   'osrm' => 'OpenStreetMap (OSRM)',
   'straight' => 'Straight line (no roads)',

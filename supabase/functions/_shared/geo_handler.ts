@@ -42,6 +42,12 @@
  * Each also as a POST with the same parameters in a JSON body ([geoParams]), which the
  * app sends: one URL, so a browser asks its CORS preflight once and keeps it (PERF-74).
  *
+ * provider "nas" is the office NAS (migration 0319, geo_nas.ts): asked through its tunnel with
+ * the secret header, waiting at most its timeoutMs; 503 at once while it is offline, 403 where
+ * the admin's rules switch that part off, 502 when it is slower than its timeout. The profile
+ * leaves it out while it is off. A "nas" map slot is { engine: "maplibre", style, key: "",
+ * keyless: true }.
+ *
  * A provider is only asked for a role and device whose profile lists it.
  * 429 { error: "rate_limited" } past the per-address limit, or the per-user one.
  * 401 { error: "sign_in_required" }: search, locate, reverse, route, distance,
@@ -93,6 +99,23 @@ import {
   tileSource,
   trafficTileUrl,
 } from "./geo.ts";
+import {
+  isTimeout,
+  NAS,
+  nasDistanceRequest,
+  type NasLink,
+  nasPart,
+  nasReverseRequest,
+  nasRouteRequest,
+  nasSearchRequest,
+  nasTileSource,
+  parseNasDistances,
+  parseNasReverse,
+  parseNasRoute,
+  parseNasSearch,
+  profileUsesNas,
+  withNas,
+} from "./geo_nas.ts";
 
 export interface GeoDeps {
   /** map_config and api_providers from app_settings. */
@@ -133,6 +156,14 @@ export interface GeoDeps {
   redirect?(url: string): Promise<string | null>;
   /** Google tile sessions refused lately, kept per function instance (see [RefusedSessions]). */
   refusedSessions?: RefusedSessions;
+  /**
+   * The office NAS (migration 0319): where it is, whether it is up, and which
+   * parts are on at [point] (the Default rule when null); null when none is
+   * paired. Asked only when a profile names it.
+   */
+  nas?(point: [number, number] | null): Promise<NasLink | null>;
+  /** One call to the NAS counted for Admin → Office NAS → Maps (nas_maps_count). Never awaited. */
+  nasCount?(kind: Kind, ok: boolean, ms: number, timedOut: boolean): Promise<void>;
   /**
    * Keeps [p] (a count, a cache write) running after the answer is sent, as
    * EdgeRuntime.waitUntil does; [p] never rejects. Without it, [p] is left to finish alone.
@@ -351,7 +382,7 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   // Who is asking and the settings at once (PERF-73): only the rate limit waits on the user.
   const caller = KEYED.has(action) ? deps.caller().catch(() => null) : Promise.resolve(null);
   const { config, apiProviders } = await deps.settings();
-  const profile = profileOf(config, role, device);
+  let profile = profileOf(config, role, device);
   const keys = ((config as { keys?: Record<string, string> } | null)?.keys) ?? {};
   // Admin → API Keys first; the function's own secret (synced from GitHub) when that slot is empty.
   const key = (provider: string, use: "tiles" | Kind) =>
@@ -365,8 +396,18 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   if (action === "profile") {
     // Why a set map slot fell back to the app's own (Admin → Maps → Test shows it; the app ignores it).
     const why: Partial<Record<"light" | "dark" | "satellite", string>> = {};
+    // The office NAS only while it is on (migration 0319); asked only when the profile names it.
+    let nas: NasLink | null = null;
+    if (profileUsesNas(profile)) {
+      nas = await (deps.nas?.(null) ?? Promise.resolve(null)).catch(() => null);
+      for (const slot of ["light", "dark"] as const) {
+        if (profile.tiles[slot] === NAS && !nas?.tiles) why[slot] = nas?.online ? "The NAS map is off" : "The office NAS is offline";
+      }
+      profile = withNas(profile, nas);
+    }
     const tile = async (slot: "light" | "dark" | "satellite"): Promise<TileSource | null> => {
       const provider = profile.tiles[slot];
+      if (provider === NAS) return nasTileSource(slot, nas);
       if (provider === "app") return null;
       const k = key(provider, "tiles");
       let session: string | null = null;
@@ -504,6 +545,11 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
   if (DIRECT.has(provider) || !(locate ? profile.locate : profile[kind]).includes(provider)) {
     return bad("That provider is not set for this profile.", 403);
   }
+  if (provider === NAS) {
+    const refusal = await mayLookUp(deps, ip, caller);
+    if (refusal) return refusal;
+    return await askNas(kind, params, lang, deps, later);
+  }
   const k = key(provider, kind);
   if (!k) return bad("No key for that provider.", 503);
   const refusal = await mayLookUp(deps, ip, caller);
@@ -619,6 +665,93 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     return { status: 200, body: answer };
   } catch (e) {
     later(deps.count(provider, kind, false, false, errorDetail(e)));
+    return bad("The provider did not answer.", 502);
+  }
+}
+
+/** "lat,lng;lat,lng" → points, or null when one isn't a point. */
+function pointList(v: string | null, max: number): [number, number][] | null {
+  const out: [number, number][] = [];
+  for (const p of (v ?? "").split(";").filter((x) => x.trim() !== "").slice(0, max)) {
+    const [a, b] = p.split(",");
+    const la = coord(a, 90), ln = coord(b, 180);
+    if (la == null || ln == null) return null;
+    out.push([la, ln]);
+  }
+  return out;
+}
+
+/**
+ * One lookup on the office NAS (migration 0319): the rule where it is asked
+ * (the first point), its own timeout, and its answer as any provider's.
+ * Counted under provider "nas" in Admin → Maps → Usage, and for Admin →
+ * Office NAS → Maps (served instead of a paid provider, failed, timed out).
+ */
+async function askNas(
+  kind: Kind,
+  params: URLSearchParams,
+  lang: string,
+  deps: GeoDeps,
+  later: (p: Promise<unknown>) => void,
+): Promise<GeoAnswer> {
+  let point: [number, number] | null = null;
+  let req: (link: NasLink) => HttpRequest;
+  let parse: (body: unknown) => Record<string, unknown>;
+  if (kind === "search") {
+    const q = (params.get("q") ?? "").trim().slice(0, 120);
+    if (q.length < 3) return { status: 200, body: { places: [] } };
+    const lat = coord(params.get("lat"), 90), lng = coord(params.get("lng"), 180);
+    if (lat != null && lng != null) point = [lat, lng];
+    req = (l) => nasSearchRequest(l, q, lang, lat ?? undefined, lng ?? undefined);
+    parse = (b) => ({ places: parseNasSearch(b) });
+  } else if (kind === "reverse") {
+    const lat = coord(params.get("lat"), 90), lng = coord(params.get("lng"), 180);
+    if (lat == null || lng == null) return bad("Give lat and lng.");
+    point = [lat, lng];
+    req = (l) => nasReverseRequest(l, lat, lng, lang);
+    parse = (b) => ({ place: parseNasReverse(b, lat, lng) });
+  } else if (kind === "distance") {
+    const from = pointList(params.get("from"), 1)?.[0] ?? null;
+    const to = pointList(params.get("to"), 10);
+    if (!from || !to?.length) return bad("Give from=lat,lng and to=lat,lng;lat,lng.");
+    point = from;
+    req = (l) => nasDistanceRequest(l, from, to);
+    parse = (b) => {
+      const distances = parseNasDistances(b, to.length);
+      if (!distances) throw new Error("not a table");
+      return { distances };
+    };
+  } else {
+    const points = pointList(params.get("points"), 12);
+    if (!points || points.length < 2) return bad("Give points=lat,lng;lat,lng.");
+    point = points[0];
+    req = (l) => nasRouteRequest(l, points);
+    parse = (b) => ({ route: parseNasRoute(b) });
+  }
+
+  const link = await (deps.nas?.(point) ?? Promise.resolve(null)).catch(() => null);
+  if (!link?.online) {
+    later(deps.count(NAS, kind, false, false, link ? "The office NAS is offline" : "No office NAS is connected"));
+    return bad("The office NAS is offline.", 503);
+  }
+  if (!link[nasPart(kind)]) return bad("The office NAS is off here.", 403);
+
+  const started = Date.now();
+  try {
+    const answer = parse(await deps.call(req(link)));
+    const ms = Date.now() - started;
+    const list = answer.places ?? answer.distances;
+    const empty = Array.isArray(list)
+      ? (answer.distances ? list.every((d) => d == null) : list.length === 0)
+      : Object.values(answer)[0] == null;
+    later(deps.count(NAS, kind, !empty, false, empty ? "Answered, but found nothing" : undefined));
+    if (deps.nasCount) later(deps.nasCount(kind, !empty, ms, false));
+    return { status: 200, body: answer };
+  } catch (e) {
+    const timedOut = isTimeout(e);
+    const detail = timedOut ? `No answer within ${(link.timeoutMs / 1000).toFixed(1)} s` : errorDetail(e);
+    later(deps.count(NAS, kind, false, false, detail));
+    if (deps.nasCount) later(deps.nasCount(kind, false, Date.now() - started, timedOut));
     return bad("The provider did not answer.", 502);
   }
 }

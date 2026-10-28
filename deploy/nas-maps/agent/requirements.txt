@@ -1,0 +1,2 @@
+# The maps agent only checks the services and calls GET.ride.
+requests==2.34.2

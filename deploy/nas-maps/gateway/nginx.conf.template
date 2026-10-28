@@ -1,0 +1,113 @@
+# The maps gateway (see ../README.md). The Cloudflare Tunnel sends
+#   maps.getride.my  here, to port 8080: routes (OSRM) and search (Photon),
+#                    only with the right X-Nas-Maps-Key (the geo function's)
+#   tiles.getride.my here, to port 8081: the map (tiles, styles, fonts,
+#                    icons), public, cached by Cloudflare
+# The container fills in the MAPS_SECRET and TILES_ORIGINS of .env.
+
+# The services are looked up when asked, so the gateway starts (and says
+# "not available") while one of them is down or being refreshed.
+resolver 127.0.0.11 valid=30s ipv6=off;
+
+limit_req_zone $binary_remote_addr zone=maps:1m rate=30r/s;
+limit_req_status 429;
+# The secret is up to 200 characters.
+map_hash_bucket_size 256;
+
+map $http_x_nas_maps_key $maps_key_ok {
+    default        0;
+    "${MAPS_SECRET}" 1;
+}
+
+map $http_origin $tiles_cors {
+    default            "";
+    "~${TILES_ORIGINS}" $http_origin;
+}
+
+log_format maps '$time_iso8601 $status $request_method $uri $request_time';
+
+server {
+    listen 8080;
+    server_name _;
+    access_log /var/log/nginx/access.log maps;  # paths only: no query, no places
+    server_tokens off;
+    client_max_body_size 1k;
+
+    proxy_connect_timeout 2s;
+    proxy_read_timeout 6s;
+    proxy_http_version 1.1;
+
+    if ($maps_key_ok = 0) {
+        return 401;
+    }
+    limit_req zone=maps burst=60 nodelay;
+
+    location /route/v1/driving/ {
+        limit_except GET { deny all; }
+        set $osrm http://osrm:5000;
+        proxy_pass $osrm;
+    }
+    location /table/v1/driving/ {
+        limit_except GET { deny all; }
+        set $osrm http://osrm:5000;
+        proxy_pass $osrm;
+    }
+    location = /api {
+        limit_except GET { deny all; }
+        set $photon http://photon:2322;
+        proxy_pass $photon;
+    }
+    location = /reverse {
+        limit_except GET { deny all; }
+        set $photon http://photon:2322;
+        proxy_pass $photon;
+    }
+    location / {
+        return 404;
+    }
+}
+
+server {
+    listen 8081;
+    server_name _;
+    access_log off;
+    server_tokens off;
+    client_max_body_size 1k;
+
+    add_header Access-Control-Allow-Origin $tiles_cors always;
+    add_header Vary Origin always;
+
+    # TileJSON (names the tile addresses) and the tiles themselves.
+    location = /basemap.json {
+        limit_except GET { deny all; }
+        set $tiles http://tiles:8080;
+        proxy_pass $tiles;
+        proxy_hide_header Access-Control-Allow-Origin;
+        add_header Access-Control-Allow-Origin $tiles_cors always;
+        add_header Vary Origin always;
+        add_header Cache-Control "public, max-age=3600";
+    }
+    location /basemap/ {
+        limit_except GET { deny all; }
+        set $tiles http://tiles:8080;
+        proxy_pass $tiles;
+        proxy_hide_header Access-Control-Allow-Origin;
+        add_header Access-Control-Allow-Origin $tiles_cors always;
+        add_header Vary Origin always;
+        # A week: the data changes weekly and Cloudflare keeps the copy.
+        add_header Cache-Control "public, max-age=86400, s-maxage=604800";
+    }
+
+    # MapLibre styles (light, dark), fonts and icons, made by refresh.sh.
+    location ~ ^/(styles|fonts|sprites)/ {
+        limit_except GET { deny all; }
+        root /srv/style;
+        add_header Access-Control-Allow-Origin $tiles_cors always;
+        add_header Vary Origin always;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    location / {
+        return 404;
+    }
+}

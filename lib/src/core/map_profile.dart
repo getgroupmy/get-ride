@@ -23,7 +23,8 @@ MapDevice currentMapDevice({bool web = kIsWeb, TargetPlatform? platform}) {
 /// macOS in a web view since 0210): no template, the browser key and the map
 /// type, drawn under the app's own layers. Or Google's own map in the phone
 /// app (0210), drawn the same way. Or a MapLibre style (Amazon Location's
-/// map, migration 0206, web only).
+/// map, migration 0206, or the office NAS's, 0319, which needs no key; web
+/// only).
 @immutable
 class MapTileSpec {
   const MapTileSpec({
@@ -111,7 +112,8 @@ class MapTileSpec {
     if (json['engine'] == 'maplibre') {
       final style = '${json['style'] ?? ''}'.trim();
       final key = '${json['key'] ?? ''}'.trim();
-      if (!style.startsWith('https://') || key.isEmpty) return null;
+      // The office NAS's map (migration 0319) has no key: its tiles are public.
+      if (!style.startsWith('https://') || (key.isEmpty && json['keyless'] != true)) return null;
       return MapTileSpec.maplibre(style, key, attribution: '${json['attribution'] ?? ''}');
     }
     final url = '${json['url'] ?? ''}'.trim();
