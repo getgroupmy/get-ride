@@ -1,0 +1,94 @@
+# GET.ride maps on the office NAS (see README.md): routes (OSRM), place search
+# (Photon) and the map (Protomaps vector tiles) for Malaysia, Singapore and
+# Brunei, from OpenStreetMap. Reached only through the Cloudflare Tunnel: no
+# port is opened on the NAS or the router.
+#
+#   maps.getride.my  -> gateway:8080  routes and search; needs X-Nas-Maps-Key
+#   tiles.getride.my -> gateway:8081  the map (public, cached by Cloudflare)
+#
+# The data lives in ./maps and is built and swapped in by refresh.sh (weekly,
+# DSM Task Scheduler). Values come from .env next to this file (copy
+# .env.example). Memory caps add up to about 4.8 GB.
+services:
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v26.4.0
+    platform: linux/amd64
+    container_name: maps-osrm
+    restart: unless-stopped
+    command: >-
+      osrm-routed --algorithm mld --ip 0.0.0.0 --port 5000
+      --max-viaroute-size 25 --max-table-size 100 /data/region.osrm
+    volumes:
+      - ./maps/osrm:/data:ro
+    expose:
+      - "5000"
+    mem_limit: 2g
+
+  photon:
+    build: ./photon
+    platform: linux/amd64
+    image: getride-photon:1
+    container_name: maps-photon
+    restart: unless-stopped
+    volumes:
+      - ./maps/photon:/data
+    expose:
+      - "2322"
+    mem_limit: 2g
+
+  tiles:
+    image: protomaps/go-pmtiles:v1.30.3
+    platform: linux/amd64
+    container_name: maps-tiles
+    restart: unless-stopped
+    command: serve /tiles --port=8080 --public-url=${TILES_URL:?Set TILES_URL in .env}
+    volumes:
+      - ./maps/tiles:/tiles:ro
+    expose:
+      - "8080"
+    mem_limit: 256m
+
+  gateway:
+    image: nginx:1.30.6-alpine
+    container_name: maps-gateway
+    restart: unless-stopped
+    environment:
+      # Only these two are filled into the template; nginx's own $vars stay.
+      NGINX_ENVSUBST_FILTER: ^(MAPS_SECRET|TILES_ORIGINS)$$
+      MAPS_SECRET: ${MAPS_SECRET:?Set MAPS_SECRET in .env (openssl rand -hex 32)}
+      TILES_ORIGINS: ${TILES_ORIGINS:-^https://([a-z0-9-]+\.)*getride\.my$$}
+    volumes:
+      - ./gateway/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./maps/style:/srv/style:ro
+    expose:
+      - "8080"
+      - "8081"
+    mem_limit: 128m
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.3
+    container_name: maps-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN in .env}
+    depends_on:
+      - gateway
+    mem_limit: 256m
+
+  agent:
+    build: ./agent
+    platform: linux/amd64
+    image: getride-nas-maps-agent:1
+    container_name: maps-agent
+    restart: unless-stopped
+    env_file: .env
+    # The agent's key and device id (kept across restarts and updates), and,
+    # read-only, the map file and the refresh's status.
+    volumes:
+      - ./agent-data:/data
+      - ./maps/tiles:/maps/tiles:ro
+      - ./maps/status:/maps/status:ro
+    depends_on:
+      - gateway
+    mem_limit: 128m

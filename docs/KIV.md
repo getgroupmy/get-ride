@@ -20,7 +20,6 @@ Low:
 ## Synology DS224+ (see docs/NAS.md)
 
 - Face match on the NAS: built (`deploy/face-server`, OpenCV SFace, runs on the J4125); setting it up is under Owner setup. Still parked: the in-browser check (human) as a last fallback.
-- Own maps routing and address search for Malaysia (OSRM or Valhalla, Photon or Nominatim) as a provider before Google.
 - ID card reading on the NAS (PaddleOCR) instead of Google Vision.
 
 ## Not built here (start a new session)

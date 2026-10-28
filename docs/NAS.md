@@ -67,11 +67,19 @@ closer look" and sorted to the top.
    database on the NAS, plus an off-site copy with Hyper Backup (Backblaze B2
    or Synology C2). Guards against a bad migration, a mistaken delete, or a
    provider problem. Admin › Settings › Office NAS › Backups.
-2. **Own maps routing and address search** for Malaysia, Singapore and Brunei
-   (OpenStreetMap): **OSRM** or **Valhalla** for routes and travel times,
-   **Photon** or **Nominatim** for search. A free first choice or fallback
-   before Google: fare estimates, God View "follow roads", ETAs. About 4–6 GB
-   memory; data refreshed weekly. One more provider in Admin → Maps.
+2. **Own maps** for Malaysia, Singapore and Brunei (OpenStreetMap). *Built:*
+   `deploy/nas-maps/` (migration 0319). **OSRM** for routes and travel
+   times, **Photon** for search and address lookup, and **Protomaps** vector
+   tiles for the web map. It is one more provider in Admin → Maps, "Office
+   NAS (OpenStreetMap)", meant to go before Google. Admin → Settings →
+   Office NAS → Maps shows its status and the weekly refresh, and what it
+   answered and saved. It also holds a Default rule and region rules: each
+   part on or off, and how long to wait for the NAS before the next
+   provider (1.5 s by default). Routes and search are reached through a
+   Cloudflare Tunnel with a secret header only the geo function holds. The
+   tiles are public and cached by Cloudflare. About 5 GB memory; data
+   refreshed weekly by `refresh.sh` from Task Scheduler. Setup:
+   `deploy/nas-maps/README.md`.
 3. **Uptime monitor** (built: `deploy/nas-backup` with the backups, and the
    `uptime-check` function on a pg_cron schedule so a dead NAS is still
    reported; our own instead of Uptime Kuma, so the targets, history and

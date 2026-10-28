@@ -19,6 +19,11 @@
 // secrets (GOOGLE_MAP_API_KEY, GOOGLE_PLACES_API_KEY, GOOGLE_GEOCODING_API_KEY,
 // GOOGLE_DIRECTIONS_API_KEY), synced from GitHub by sync-map-keys.yml.
 //
+// The office NAS (migration 0319, _shared/geo_nas.ts) is the provider "nas":
+// asked through its Cloudflare Tunnel with the secret header it gave when it
+// checked in (nas_maps_link), waiting its own timeout (1.5 s by default), so
+// the app moves on to the next provider quickly when the NAS is slow or off.
+//
 // Place search, reverse, routes, distances, details and address checks need a
 // signed-in user (they spend the keys); tiles and links don't.
 //
@@ -39,9 +44,11 @@ import {
   googleSessionBody,
   handleGeo,
   parseGoogleSession,
+  isMissingFunction,
   rateTakers,
   RefusedSessions,
 } from "../_shared/geo_handler.ts";
+import { type NasLink, parseNasLink } from "../_shared/geo_nas.ts";
 import { clientIp } from "../_shared/pin_login.ts";
 import { rpcTestAccountLookup, testAccountCheck } from "../_shared/test_traffic.ts";
 
@@ -146,12 +153,12 @@ async function countCall(provider: string, kind: string, ok: boolean, cached: bo
   }
 }
 
-async function call(req: { url: string; method?: string; headers?: Record<string, string>; body?: string }) {
+async function call(req: { url: string; method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number }) {
   const res = await fetch(req.url, {
     method: req.method ?? "GET",
     headers: { Accept: "application/json", "User-Agent": "GET.ride (getride.my)", ...(req.headers ?? {}) },
     body: req.body,
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(req.timeoutMs ?? 8000),
   });
   // The URL carries the key: only the host and Google's reason codes are ever reported.
   if (!res.ok) {
@@ -161,6 +168,23 @@ async function call(req: { url: string; method?: string; headers?: Record<string
     throw new Error(`${res.status} from ${new URL(req.url).host}${reasons.length ? ` (${reasons.join(", ")})` : ""}`);
   }
   return await res.json();
+}
+
+// The office NAS (0319) where a point is, kept 30 s per ~1 km cell per
+// instance: it checks in every minute, and a NAS gone quiet should stop being
+// offered within a minute or so. Without the migration, there is no NAS.
+const nasLinks = new Map<string, { at: number; link: NasLink | null }>();
+
+async function nasLink(point: [number, number] | null): Promise<NasLink | null> {
+  const cell = point ? `${point[0].toFixed(2)},${point[1].toFixed(2)}` : "-";
+  const known = nasLinks.get(cell);
+  if (known && Date.now() - known.at < 30_000) return known.link;
+  const { data, error } = await db.rpc("nas_maps_link", { p_lat: point?.[0] ?? null, p_lng: point?.[1] ?? null });
+  if (error && !isMissingFunction(error)) throw error;
+  const link = error ? null : parseNasLink(data);
+  if (nasLinks.size > 2000) nasLinks.clear();
+  nasLinks.set(cell, { at: Date.now(), link });
+  return link;
 }
 
 Deno.serve(async (req) => {
@@ -247,6 +271,10 @@ Deno.serve(async (req) => {
           await countCall("google", "tiles", true, false, req.headers.get("Authorization"));
         })());
         return s.session;
+      },
+      nas: nasLink,
+      nasCount: async (kind, ok, ms, timedOut) => {
+        await db.rpc("nas_maps_count", { p_kind: kind, p_ok: ok, p_ms: Math.round(ms), p_timed_out: timedOut });
       },
       iso3: (cc) => iso3By.get(cc.toLowerCase()) ?? null,
       fallbackKey: (slot) => fallbackKey(slot, (name) => Deno.env.get(name)),
