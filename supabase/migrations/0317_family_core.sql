@@ -69,11 +69,15 @@
 --    as long as it names the trip. ride_pay (method 'family'; any other
 --    method means the member pays this trip themselves), ride_fee_take and
 --    c2c_fee_take are redefined, as before, plus the trip tag and the payer's
---    balance check.
+--    balance check. A refund goes back to the host up to what the family
+--    paid on the trip, even after the member left; money that is the
+--    member's own (cash on delivery, a cover claim, a driver's give-up
+--    compensation) stays theirs. Section 9 tags the later modules' rows.
 -- 7. Wired into the modules on main: ride_requests (city ride, scheduled
 --    ride once released, Freight, Courier) and scheduled_rides through a
 --    `family` column ({passenger, withAdult}) and payment_mode 'Family';
---    c2c_bookings through `family` and payment 'family'. Each booking is
+--    c2c_bookings through `family` and payment 'family' (module 'seat_trip'
+--    for a seat on a posted trip, else 'city_to_city'). Each booking is
 --    checked with family_payer_for and registered; a child's trip can't start
 --    without the pickup code; women drivers for children where the admin
 --    says so; the host is told at pickup and drop-off of a child. A trip
@@ -84,6 +88,28 @@
 -- 8. Admin › People › Family (page admin-settings-family): the values and the
 --    module matrix (table writes), families, member caps, requests, and the
 --    logged God View look.
+-- 9. Modules after 0308 (0309 to 0316), each function the latest definition
+--    with only what Family needs:
+--    City to City money (0309): payment 'family' is paid as 'in_app' from
+--    the host's GET.wallet (held or after, by c2c_pay_rule_for; get_wallet
+--    only, never the host's coins; the member's limits checked, their
+--    FAMILY_* code): c2c_take_fare, c2c_accept_offer_pay, c2c_pay,
+--    c2c_driver_progress, c2c_pay_info; every row names the trip
+--    (c2c_hold_refund, c2c_hold_release, c2c_settle_due), so a refund or
+--    release goes back the same way, and a cancel fee owed on a family-paid
+--    trip is the family's (c2c_collect_rider_dues checks the payer's
+--    balance). c2c_switch_to_cash: the member's own trip from then on.
+--    Seat trips (0310): c2c_book_seat takes payment 'family' and p_family
+--    ({passenger, withAdult}, a new last argument with a default; the old
+--    signature is dropped and every call to it works unchanged).
+--    Tips (0314): ride_tip charges a GET.wallet tip naming the trip where
+--    the family pays the trip and the 'tips' module (family_tip_paid_by_
+--    family), from the host's GET.wallet. Waiting and luggage (0314) and the
+--    Freight and Courier add-ons (0312) are on the fare, paid by ride_pay.
+--    GET.Plus (0316) and business trips (0313) credit only the driver; a
+--    booking can't be both business-paid and family-paid (FAMILY_BUSINESS,
+--    trg_ride_requests_b_family_not_business and
+--    trg_scheduled_rides_0_family_not_business).
 -- ============================================================================
 
 -- ---- 1. The module registry ---------------------------------------------------------------------
@@ -973,14 +999,24 @@ begin
     if public.family_trip_state(new.ride_id, new.user_id, -new.amount) <> 'ok' then
       return new;  -- over the limits, or no longer a member: the member's own wallet
     end if;
+    perform public.family_charge(new.ride_id, -new.amount, coalesce(new.method, new.kind), new.id);
   else
-    -- A refund goes back to whoever paid, up to what the family paid on the trip.
+    -- Money that is the member's own, not a refund of what the family paid:
+    -- the cash on delivery for their item (0312), a cover claim on it (0312),
+    -- what a driver pays them for giving their trip up (0309).
+    if new.kind in ('cod_payout', 'cover_claim', 'c2c_giveup_comp') then
+      return new;
+    end if;
+    -- A refund goes back to whoever paid, up to what the family paid on the
+    -- trip, even when the member has left the family since.
     select coalesce(sum(amount), 0) into v_paid from public.family_spend where trip_id = new.ride_id;
     if v_paid + 0.005 < new.amount then
       return new;
     end if;
+    insert into public.family_spend (family_id, member_id, trip_id, module_key, amount, kind, wallet_tx)
+    values (t.family_id, t.member_id, new.ride_id, t.module_key, -round(new.amount, 2),
+            coalesce(new.method, new.kind), new.id);
   end if;
-  perform public.family_charge(new.ride_id, -new.amount, coalesce(new.method, new.kind), new.id);
   new.user_id := t.payer_id;
   new.note := left('Family · ' || coalesce(v_name, 'member') || ' · ' || coalesce(new.note, new.kind), 500);
   return new;
@@ -1389,7 +1425,9 @@ create trigger trg_scheduled_rides_family
   after insert on public.scheduled_rides
   for each row execute function public.scheduled_rides_family();
 
--- City to City: after its own check (trg_c2c_bookings_check).
+-- City to City: after its own check (trg_c2c_bookings_check). A seat on a
+-- trip a driver posted (0310: trip_id set, made by c2c_book_seat) is the
+-- 'seat_trip' module; a whole car, 'city_to_city'.
 create or replace function public.c2c_bookings_family()
 returns trigger
 language plpgsql
@@ -1406,7 +1444,8 @@ begin
   if v_pays and not coalesce((select pay_in_app from public.city_to_city_settings where id = 1), true) then
     raise exception 'C2C_PAYMENT_NOT_ALLOWED' using errcode = '22023', hint = 'Pay in cash for City to City trips.';
   end if;
-  perform public.family_attach_trip('city_to_city', new.id, new.rider_id, v_passenger, new.fare,
+  perform public.family_attach_trip(case when new.trip_id is not null then 'seat_trip' else 'city_to_city' end,
+                                    new.id, new.rider_id, v_passenger, new.fare,
                                     coalesce(new.pickup_place, '{}'::jsonb), new.family, v_pays);
   return new;
 end;
@@ -1491,7 +1530,8 @@ begin
   if not found or v_status is not distinct from (to_jsonb(old)->>'status') then
     return null;
   end if;
-  if v_status in ('completed', 'cancelled', 'expired') then
+  -- 'declined': a seat request the driver turned down (0310).
+  if v_status in ('completed', 'cancelled', 'expired', 'declined') then
     update public.family_trips set ended_at = coalesce(ended_at, now()) where trip_id = new.id;
   end if;
   if not t.child then
@@ -1505,7 +1545,7 @@ begin
       v_body := 'You can follow the trip in the app until drop-off.';
     when 'completed' then v_title := v_name || ' was dropped off';
       v_body := 'The trip has ended.';
-    when 'cancelled', 'expired' then v_title := v_name || '''s trip was cancelled';
+    when 'cancelled', 'expired', 'declined' then v_title := v_name || '''s trip was cancelled';
       v_body := 'Book again if they still need a ride.';
     else return null;
   end case;
@@ -2769,6 +2809,1110 @@ end;
 $$;
 revoke execute on function public.family_admin_view_log(uuid, integer) from public, anon;
 grant execute on function public.family_admin_view_log(uuid, integer) to authenticated;
+
+-- ---- 9. Modules after 0308 ----------------------------------------------------------------------
+-- 0309 to 0316 landed after this layer was first written. Each function below
+-- is the latest definition (named in its comment) with only what Family
+-- needs: every GET.wallet row that is a charge or a refund on a trip names
+-- the trip (ride_id), so the payment layer (section 6) sends it to whoever
+-- paid; balances are checked on family_wallet_owner. Payment 'family' on City
+-- to City (whole car and seats) is an in-app payment from the host's
+-- GET.wallet: method get_wallet only, never the host's coins.
+
+-- As 0309, with each row naming the trip the fee is owed on: a fee owed on a
+-- family-paid trip is the family's, from the host's GET.wallet (within the
+-- member's limits).
+create or replace function public.c2c_settle_due(d public.c2c_bookings, p_via text, p_debit boolean,
+                                                 p_collector uuid default null)
+returns numeric
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_amount numeric := round(coalesce(d.cancel_fee, 0), 2);
+  v_rate numeric := case when d.commission_rate >= 0 and d.commission_rate < 1 then d.commission_rate else 0 end;
+  v_label text := 'City to City cancellation fee ' || d.ref || ' (owed)';
+begin
+  if v_amount <= 0 or d.cancel_fee_status is distinct from 'due' then
+    return 0;
+  end if;
+  if p_debit then
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (d.rider_id, 'get_wallet', 'payment', -v_amount, 'cancellation_fee',
+            v_label || case p_via when 'topup' then ', taken from your top-up'
+                                  when 'pay_now' then ', paid in Wallet' else '' end, d.id);
+  end if;
+  if p_via = 'cash' and p_collector is not null then
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (p_collector, 'get_credit', 'c2c_fee_collected', -v_amount, 'cancellation_fee',
+            v_label || ', collected by you in cash', d.id);
+  end if;
+  if d.driver_id is not null then
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (d.driver_id, 'get_wallet', 'cancellation_fee', round(v_amount * (1 - v_rate), 2), 'cancellation_fee',
+            v_label || case when v_rate > 0 then ' (less ' || round(v_rate * 100, 1) || '% commission)' else '' end,
+            d.id);
+  end if;
+  update public.c2c_bookings
+     set cancel_fee_status = 'charged', cancel_fee_paid_at = now(), cancel_fee_paid_via = p_via
+   where id = d.id;
+  return v_amount;
+end;
+$$;
+revoke execute on function public.c2c_settle_due(public.c2c_bookings, text, boolean, uuid) from public, anon, authenticated;
+
+-- As 0309, with each fee's payer checked (family_wallet_owner).
+create or replace function public.c2c_collect_rider_dues(p_rider uuid, p_via text)
+returns numeric
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  d public.c2c_bookings;
+  v_balance numeric;
+  v_owner uuid;
+  v_paid numeric := 0;
+begin
+  for d in
+    select * from public.c2c_bookings
+     where rider_id = p_rider and cancel_fee_status = 'due' and cancel_fee > 0
+     order by cancelled_at, id
+     for update
+  loop
+    v_owner := public.family_wallet_owner(d.id, p_rider, d.cancel_fee);
+    select w.balance into v_balance from public.wallets w
+     where w.user_id = v_owner and w.wallet_type = 'get_wallet' for update;
+    continue when coalesce(v_balance, 0) < d.cancel_fee;
+    v_paid := v_paid + public.c2c_settle_due(d, p_via, true, null);
+  end loop;
+  return v_paid;
+end;
+$$;
+revoke execute on function public.c2c_collect_rider_dues(uuid, text) from public, anon, authenticated;
+
+-- As 0309, and: rows name the trip; payment 'family' takes the fare from the
+-- family host's GET.wallet (the member's limits checked: their FAMILY_* code)
+-- and each fee owed with it from whoever pays the trip it is owed on.
+create or replace function public.c2c_take_fare(b public.c2c_bookings, p_fare numeric, p_method text,
+                                                p_expected numeric, pr public.c2c_pay_rules, p_hold boolean)
+returns public.c2c_payments
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  s public.city_to_city_settings;
+  v_fare numeric := round(coalesce(p_fare, 0), 2);
+  v_dues numeric := 0;
+  v_due_ids uuid[] := '{}';
+  v_total numeric;
+  v_rate numeric;
+  v_wallet numeric;
+  v_coins numeric;
+  sp record;
+  v_fare_cv numeric;
+  v_fare_wallet numeric;
+  v_due_wallet numeric;
+  d public.c2c_bookings;
+  p public.c2c_payments;
+  v_family boolean := b.payment = 'family';
+  v_method text := p_method;
+  v_owner uuid;
+  v_state text;
+  v_cash boolean;
+begin
+  if v_family then
+    -- Family: the host's GET.wallet, never the host's coins.
+    if coalesce(v_method, 'get_wallet') not in ('get_wallet', 'family') or not coalesce(pr.pay_wallet, true) then
+      raise exception 'C2C_PAY_WAY' using errcode = '22023',
+        hint = 'Family pays from your family host''s GET.wallet. Pick another way to pay.';
+    end if;
+    v_method := 'get_wallet';
+  end if;
+  if v_method is null or v_method not in ('get_wallet', 'get_coin', 'mix')
+     or (v_method = 'get_wallet' and not pr.pay_wallet)
+     or (v_method = 'get_coin' and not pr.pay_coin)
+     or (v_method = 'mix' and not pr.pay_mix) then
+    raise exception 'C2C_PAY_WAY' using errcode = '22023', hint = 'That way to pay isn''t offered here. Pick another.';
+  end if;
+  if v_fare <= 0 then
+    raise exception 'invalid_amount';
+  end if;
+  select * into s from public.city_to_city_settings where id = 1;
+  if coalesce(s.owed_next_in_app, false) then
+    select coalesce(sum(x.cancel_fee), 0), coalesce(array_agg(x.id order by x.cancelled_at, x.id), '{}')
+      into v_dues, v_due_ids
+      from public.c2c_bookings x
+     where x.rider_id = b.rider_id and x.cancel_fee_status = 'due' and x.cancel_fee > 0;
+  end if;
+  v_total := v_fare + v_dues;
+  -- The rider agreed to pay what they were shown.
+  if p_expected is not null and abs(round(p_expected, 2) - v_total) > 0.005 then
+    raise exception 'C2C_AMOUNT_CHANGED' using errcode = '22023',
+      hint = 'The amount is now ' || public.c2c_money(v_total, b.currency) || '. Check it and try again.';
+  end if;
+
+  select g.coins_per_currency into v_rate from public.get_coin_settings g where g.id = 'master';
+
+  if v_family then
+    v_state := public.family_trip_state(b.id, b.rider_id, v_fare);
+    if v_state <> 'ok' then
+      raise exception '%', v_state using errcode = 'P0001',
+        hint = case v_state when 'FAMILY_LIMIT_REACHED' then 'The family limit for this month doesn''t cover this trip.'
+                            when 'FAMILY_RIDE_LIMIT' then 'This trip is over the family limit for one trip.'
+                            when 'FAMILY_NOT_MEMBER' then 'You are no longer in the family.'
+                            else 'The family doesn''t pay for this trip.' end;
+    end if;
+    v_cash := coalesce(pr.offer_cash, false) and coalesce(s.pay_cash, true);
+    v_owner := public.family_wallet_owner(b.id, b.rider_id, v_fare);
+    insert into public.wallets (user_id, wallet_type, balance) values (v_owner, 'get_wallet', 0)
+    on conflict (user_id, wallet_type) do nothing;
+    select w.balance into v_wallet from public.wallets w
+     where w.user_id = v_owner and w.wallet_type = 'get_wallet' for update;
+    if coalesce(v_wallet, 0) < v_fare then
+      raise exception 'C2C_WALLET_SHORT' using errcode = '22023',
+        hint = 'Your family host''s GET wallet is ' || public.c2c_money(v_fare - coalesce(v_wallet, 0), b.currency)
+               || ' short. Ask them to top up' || case when v_cash then ', or switch this trip to cash.' else '.' end;
+    end if;
+    -- Charged to the member, naming the trip: the payment layer moves it to the host.
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (b.rider_id, 'get_wallet', case when p_hold then 'c2c_hold' else 'c2c_payment' end, -v_fare, 'c2c_fare',
+            case when p_hold then 'City to City fare held ' || b.ref || ' (paid to the driver when the trip is complete)'
+                 else 'City to City fare paid ' || b.ref end, b.id);
+    -- Each fee owed, from whoever pays the trip it is owed on.
+    for d in select * from public.c2c_bookings where id = any(v_due_ids) order by cancelled_at, id for update loop
+      v_owner := public.family_wallet_owner(d.id, b.rider_id, d.cancel_fee);
+      insert into public.wallets (user_id, wallet_type, balance) values (v_owner, 'get_wallet', 0)
+      on conflict (user_id, wallet_type) do nothing;
+      select w.balance into v_wallet from public.wallets w
+       where w.user_id = v_owner and w.wallet_type = 'get_wallet' for update;
+      if coalesce(v_wallet, 0) < d.cancel_fee then
+        raise exception 'C2C_WALLET_SHORT' using errcode = '22023',
+          hint = case when v_owner = b.rider_id then 'Your GET wallet' else 'Your family host''s GET wallet' end
+                 || ' is ' || public.c2c_money(d.cancel_fee - coalesce(v_wallet, 0), b.currency)
+                 || ' short for the cancel fees owed. Top up first.';
+      end if;
+      insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+      values (b.rider_id, 'get_wallet', 'payment', -d.cancel_fee, 'cancellation_fee',
+              'City to City cancel fee owed ' || d.ref || ', paid with ' || b.ref, d.id);
+      perform public.c2c_settle_due(d, 'in_app', false, null);
+    end loop;
+    insert into public.c2c_payments (booking_id, rider_id, driver_id, mode, status, method, amount, wallet_amount,
+                                     coin_value, coins, coin_rate, dues_amount, due_ids, settled_at)
+    values (b.id, b.rider_id, b.driver_id, case when p_hold then 'hold' else 'after' end,
+            case when p_hold then 'held' else 'paid' end, 'get_wallet', v_fare, v_fare, 0, 0, v_rate,
+            v_dues, v_due_ids, case when p_hold then null else now() end)
+    returning * into p;
+    return p;
+  end if;
+
+  if v_method = 'get_coin' and coalesce(v_rate, 0) <= 0 then
+    raise exception 'C2C_PAY_WAY' using errcode = '22023', hint = 'Paying with coins isn''t available now.';
+  end if;
+  insert into public.wallets (user_id, wallet_type, balance)
+  values (b.rider_id, 'get_wallet', 0), (b.rider_id, 'get_coin', 0)
+  on conflict (user_id, wallet_type) do nothing;
+  select w.balance into v_wallet from public.wallets w
+   where w.user_id = b.rider_id and w.wallet_type = 'get_wallet' for update;
+  select w.balance into v_coins from public.wallets w
+   where w.user_id = b.rider_id and w.wallet_type = 'get_coin' for update;
+  select * into sp from public.c2c_pay_split(v_total, v_method, v_wallet, v_coins, v_rate);
+  if sp.short > 0 then
+    raise exception 'C2C_WALLET_SHORT' using errcode = '22023',
+      hint = public.c2c_short_hint(sp.short, v_method, b.currency, pr.offer_topup,
+                                   pr.offer_cash and coalesce(s.pay_cash, true));
+  end if;
+
+  -- Coins pay the fare first, then the fees owed.
+  v_fare_cv := least(sp.coin_value, v_fare);
+  v_fare_wallet := v_fare - v_fare_cv;
+  v_due_wallet := v_dues - (sp.coin_value - v_fare_cv);
+  if sp.coins > 0 then
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (b.rider_id, 'get_coin', 'redeem', -sp.coins, 'c2c_fare',
+            'City to City ' || b.ref || ': ' || public.c2c_money(sp.coin_value, b.currency) || ' paid with coins', b.id);
+  end if;
+  if v_fare_wallet > 0 then
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (b.rider_id, 'get_wallet', case when p_hold then 'c2c_hold' else 'c2c_payment' end, -v_fare_wallet,
+            'c2c_fare',
+            case when p_hold then 'City to City fare held ' || b.ref || ' (paid to the driver when the trip is complete)'
+                 else 'City to City fare paid ' || b.ref end, b.id);
+  end if;
+  if v_due_wallet > 0 then
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note)
+    values (b.rider_id, 'get_wallet', 'payment', -v_due_wallet, 'cancellation_fee',
+            'City to City cancel fees owed, paid with ' || b.ref);
+  end if;
+  for d in select * from public.c2c_bookings where id = any(v_due_ids) for update loop
+    perform public.c2c_settle_due(d, 'in_app', false, null);
+  end loop;
+
+  insert into public.c2c_payments (booking_id, rider_id, driver_id, mode, status, method, amount, wallet_amount,
+                                   coin_value, coins, coin_rate, dues_amount, due_ids, settled_at)
+  values (b.id, b.rider_id, b.driver_id, case when p_hold then 'hold' else 'after' end,
+          case when p_hold then 'held' else 'paid' end, v_method, v_fare, v_fare_wallet, v_fare_cv, sp.coins, v_rate,
+          v_dues, v_due_ids, case when p_hold then null else now() end)
+  returning * into p;
+  return p;
+end;
+$$;
+revoke execute on function public.c2c_take_fare(public.c2c_bookings, numeric, text, numeric, public.c2c_pay_rules, boolean)
+  from public, anon, authenticated;
+
+-- As 0309, with the rows naming the trip: a held fare the family paid goes
+-- back to the host.
+create or replace function public.c2c_hold_refund(b public.c2c_bookings, p_fee numeric default 0)
+returns numeric
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  p public.c2c_payments;
+  v_fee numeric;
+  v_fee_wallet numeric;
+  v_fee_cv numeric;
+  v_back_wallet numeric;
+  v_back_coins numeric := 0;
+  v_rate numeric := case when b.commission_rate >= 0 and b.commission_rate < 1 then b.commission_rate else 0 end;
+begin
+  select * into p from public.c2c_payments where booking_id = b.id and status = 'held' for update;
+  if p.id is null then
+    return 0;
+  end if;
+  v_fee := least(round(greatest(coalesce(p_fee, 0), 0), 2), p.amount);
+  v_fee_wallet := least(v_fee, p.wallet_amount);
+  v_fee_cv := least(v_fee - v_fee_wallet, p.coin_value);
+  v_back_wallet := p.wallet_amount - v_fee_wallet;
+  if p.coin_value - v_fee_cv > 0 and coalesce(p.coin_rate, 0) > 0 then
+    v_back_coins := least(floor((p.coin_value - v_fee_cv) * p.coin_rate * 100) / 100, p.coins);
+  end if;
+  if v_back_wallet > 0 then
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (b.rider_id, 'get_wallet', 'c2c_refund', v_back_wallet, 'c2c_fare',
+            'City to City fare ' || b.ref || ' given back'
+            || case when v_fee > 0 then ' (less the ' || public.c2c_money(v_fee, b.currency) || ' cancel fee)' else '' end,
+            b.id);
+  end if;
+  if v_back_coins > 0 then
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (b.rider_id, 'get_coin', 'c2c_refund', v_back_coins, 'c2c_fare',
+            'City to City fare ' || b.ref || ': coins given back', b.id);
+  end if;
+  if v_fee > 0 and b.driver_id is not null then
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (b.driver_id, 'get_wallet', 'cancellation_fee', round(v_fee * (1 - v_rate), 2), 'cancellation_fee',
+            'City to City cancellation fee ' || b.ref
+            || case when v_rate > 0 then ' (less ' || round(v_rate * 100, 1) || '% commission)' else '' end, b.id);
+  end if;
+  update public.c2c_payments
+     set status = 'refunded', fee_kept = v_fee, refund_wallet = v_back_wallet, refund_coins = v_back_coins,
+         driver_id = b.driver_id, settled_at = now()
+   where id = p.id;
+  return v_fee;
+end;
+$$;
+revoke execute on function public.c2c_hold_refund(public.c2c_bookings, numeric) from public, anon, authenticated;
+
+-- As 0309, with the rows naming the trip.
+create or replace function public.c2c_hold_release(p_booking uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  b public.c2c_bookings;
+  p public.c2c_payments;
+  c record;
+  v_rate numeric;
+  v_amount numeric(12,2) := 0;
+begin
+  select * into b from public.c2c_bookings where id = p_booking for update;
+  select * into p from public.c2c_payments where booking_id = p_booking and status = 'held' for update;
+  if b.id is null or p.id is null or b.status <> 'completed' or b.driver_id is null then
+    return;
+  end if;
+  select * into c from public.c2c_commission_of(b);
+  v_rate := case when c.rate >= 0 and c.rate < 1 then c.rate end;
+  if v_rate is not null and b.commission_charged_at is null then
+    v_amount := round(p.amount * v_rate, 2);
+  end if;
+  -- One statement: the fare lands before the commission comes off it, and
+  -- an owed give-up fee (trg_wallet_tx_c2c_collect) is taken after both.
+  insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+  select x.u, x.w, x.k, x.a, x.m, x.n, b.id from (values
+    (b.driver_id, 'get_wallet', 'c2c_earning', p.amount, 'c2c_fare',
+     'City to City fare ' || b.ref || ', paid in the app'),
+    (b.driver_id, 'get_wallet', 'commission', -v_amount, 'c2c_fare',
+     'City to City commission ' || round(coalesce(v_rate, 0) * 100, 1) || '% of '
+     || public.c2c_money(p.amount, b.currency) || ' (' || b.ref || ')')) x(u, w, k, a, m, n)
+   where x.a <> 0;
+  update public.c2c_payments
+     set status = 'released', driver_id = b.driver_id, commission = v_amount, settled_at = now()
+   where id = p.id;
+  update public.c2c_bookings
+     set pay_status = 'paid', paid_at = now(),
+         commission_rate = coalesce(commission_rate, v_rate),
+         commission_rule_id = coalesce(commission_rule_id, c.rule_id),
+         commission_tier_id = coalesce(commission_tier_id, c.tier_id),
+         commission_promotion_id = coalesce(commission_promotion_id, c.promotion_id),
+         commission_amount = case when commission_charged_at is null then v_amount else commission_amount end,
+         commission_charged_at = coalesce(commission_charged_at, now())
+   where id = b.id;
+end;
+$$;
+revoke execute on function public.c2c_hold_release(uuid) from public, anon, authenticated;
+
+-- As 0309, with payment 'family' paid as 'in_app' (held or after, by the
+-- pickup's rule) from the host's GET.wallet.
+create or replace function public.c2c_accept_offer_pay(p_offer uuid, p_method text default null,
+                                                       p_expected numeric default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  o public.c2c_offers;
+  b public.c2c_bookings;
+  pr public.c2c_pay_rules;
+  p public.c2c_payments;
+  v_collect_ids uuid[];
+  v_collect numeric;
+  v_mode text;
+  v_status text;
+begin
+  select * into o from public.c2c_offers where id = p_offer;
+  if o.id is null then
+    raise exception 'C2C_OFFER_GONE' using errcode = '22023', hint = 'This offer is no longer available.';
+  end if;
+  select * into b from public.c2c_bookings where id = o.booking_id for update;
+  if b.rider_id is distinct from auth.uid() then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  if b.status in ('open', 'offered') and b.expires_at <= now() then
+    perform public.c2c_expire_due();
+    raise exception 'C2C_EXPIRED' using errcode = '22023',
+      hint = 'This request has expired. Plan the trip again.';
+  end if;
+  if b.status not in ('open', 'offered') then
+    raise exception 'C2C_NOT_OPEN' using errcode = '22023',
+      hint = 'This trip already has a driver, or it was cancelled.';
+  end if;
+  select * into o from public.c2c_offers where id = p_offer for update;
+  if o.status <> 'open' then
+    raise exception 'C2C_OFFER_GONE' using errcode = '22023', hint = 'This offer is no longer available.';
+  end if;
+  if not coalesce((public.c2c_driver_eligibility(o.driver_id, b.pickup_place, b.drop_place)->>'ok')::boolean, false) then
+    raise exception 'C2C_OFFER_GONE' using errcode = '22023', hint = 'This driver can no longer take the trip.';
+  end if;
+  if exists (select 1 from public.c2c_bookings x
+              where x.driver_id = o.driver_id and x.id <> b.id
+                and x.status in ('booked', 'driver_arriving', 'on_trip')
+                and abs(extract(epoch from coalesce(x.driver_leave_at, x.leave_at) - o.leave_at))
+                    < (greatest(x.duration_min, b.duration_min) + 120) * 60) then
+    raise exception 'C2C_DRIVER_BUSY' using errcode = '22023',
+      hint = 'This driver has just been booked for another trip at that time.';
+  end if;
+
+  if b.payment in ('in_app', 'family') then
+    select * into pr from public.c2c_pay_rule_for(b.pickup_place);
+    v_mode := coalesce(pr.when_mode, 'hold');
+    if v_mode = 'hold' then
+      p := public.c2c_take_fare(b, o.price,
+                                case when b.payment = 'family' then coalesce(p_method, 'get_wallet')
+                                     else coalesce(p_method, case when pr.pay_mix then 'mix'
+                                                                  when pr.pay_wallet then 'get_wallet'
+                                                                  else 'get_coin' end) end,
+                                p_expected, pr, true);
+      v_status := 'held';
+    end if;
+  else
+    select x.ids, x.total into v_collect_ids, v_collect from public.c2c_dues_to_collect(b.rider_id) x;
+  end if;
+
+  update public.c2c_offers set status = 'accepted' where id = o.id;
+  update public.c2c_offers set status = 'declined', declined_reason = 'taken'
+   where booking_id = b.id and id <> o.id and status = 'open';
+  update public.c2c_bookings
+     set status = 'booked', driver_id = o.driver_id, offer_id = o.id, agreed_fare = o.price,
+         driver_leave_at = o.leave_at, booked_at = now(),
+         pay_mode = v_mode, pay_status = v_status,
+         paid_method = p.method, paid_amount = p.amount,
+         collect_fee_ids = v_collect_ids, collect_amount = v_collect, collected_at = null
+   where id = b.id
+  returning * into b;
+  update public.c2c_payments set driver_id = o.driver_id where id = p.id;
+  return jsonb_build_object('id', b.id, 'status', b.status, 'agreedFare', b.agreed_fare,
+                            'payMode', b.pay_mode, 'payStatus', b.pay_status,
+                            'held', p.amount, 'dues', coalesce(p.dues_amount, 0));
+end;
+$$;
+revoke execute on function public.c2c_accept_offer_pay(uuid, text, numeric) from public, anon;
+grant execute on function public.c2c_accept_offer_pay(uuid, text, numeric) to authenticated, service_role;
+
+-- As 0309, with a 'family' trip paid after it, as 'in_app'.
+create or replace function public.c2c_driver_progress(p_booking uuid, p_status text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  b public.c2c_bookings;
+begin
+  select * into b from public.c2c_bookings where id = p_booking for update;
+  if b.id is null or b.driver_id is distinct from auth.uid() then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  if not ((b.status = 'booked' and p_status in ('driver_arriving', 'on_trip'))
+          or (b.status = 'driver_arriving' and p_status = 'on_trip')
+          or (b.status = 'on_trip' and p_status = 'completed')) then
+    raise exception 'C2C_BAD_STEP' using errcode = '22023', hint = 'This trip can''t move to that step now.';
+  end if;
+  update public.c2c_bookings
+     set status = p_status,
+         arriving_at = case when p_status = 'driver_arriving' then now() else arriving_at end,
+         started_at = case when p_status = 'on_trip' then now() else started_at end,
+         completed_at = case when p_status = 'completed' then now() else completed_at end,
+         pay_status = case when p_status = 'completed' and payment in ('in_app', 'family') and pay_mode = 'after'
+                                and pay_status is null then 'unpaid' else pay_status end
+   where id = b.id;
+  if p_status = 'completed' then
+    if b.pay_status = 'held' then
+      perform public.c2c_hold_release(b.id);
+    else
+      perform public.c2c_charge_commission(b.id);
+    end if;
+    if b.payment in ('in_app', 'family') and b.pay_mode = 'after' then
+      begin
+        perform public.enqueue_notification(
+          b.rider_id, 'c2c-pay:' || b.id, 'c2c_pay', 'normal', 'Pay for your trip',
+          'Your trip to ' || coalesce(b.drop_place->>'city', b.drop_place->>'state', b.drop_name) || ' is complete. Pay '
+          || public.c2c_money(coalesce(b.agreed_fare, b.fare), b.currency) || ' in the app'
+          || case when b.payment = 'family' then ' with Family.' else '.' end,
+          jsonb_build_object('type', 'c2c_pay', 'c2c_booking_id', b.id, 'role', 'rider'), null);
+      exception when others then
+        null;
+      end;
+    end if;
+  end if;
+end;
+$$;
+revoke execute on function public.c2c_driver_progress(uuid, text) from public, anon;
+grant execute on function public.c2c_driver_progress(uuid, text) to authenticated, service_role;
+
+-- As 0309, with a 'family' trip paid as 'in_app' and the driver's row naming the trip.
+create or replace function public.c2c_pay(p_booking uuid, p_method text, p_expected numeric default null)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  b public.c2c_bookings;
+  pr public.c2c_pay_rules;
+  p public.c2c_payments;
+begin
+  select * into b from public.c2c_bookings where id = p_booking for update;
+  if b.id is null or auth.uid() is null or b.rider_id is distinct from auth.uid() then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  if b.pay_status = 'paid' then
+    return jsonb_build_object('paid', b.paid_amount, 'method', b.paid_method, 'already', true);
+  end if;
+  if b.status <> 'completed' then
+    raise exception 'C2C_NOT_DONE' using errcode = '22023', hint = 'Pay once the trip is complete.';
+  end if;
+  if b.payment not in ('in_app', 'family') or b.pay_mode is distinct from 'after'
+     or b.pay_status is distinct from 'unpaid' or b.driver_id is null then
+    raise exception 'C2C_NOTHING_TO_PAY' using errcode = '22023', hint = 'There is nothing to pay in the app for this trip.';
+  end if;
+  select * into pr from public.c2c_pay_rule_for(b.pickup_place);
+  p := public.c2c_take_fare(b, coalesce(b.agreed_fare, b.fare), p_method, p_expected, pr, false);
+  insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+  values (b.driver_id, 'get_wallet', 'c2c_earning', p.amount, 'c2c_fare',
+          'City to City fare ' || b.ref || ', paid in the app', b.id);
+  update public.c2c_bookings
+     set pay_status = 'paid', paid_method = p.method, paid_amount = p.amount, paid_at = now()
+   where id = b.id;
+  return jsonb_build_object('paid', p.amount, 'method', p.method, 'coins', p.coins, 'dues', p.dues_amount,
+                            'family', b.payment = 'family');
+end;
+$$;
+revoke execute on function public.c2c_pay(uuid, text, numeric) from public, anon;
+grant execute on function public.c2c_pay(uuid, text, numeric) to authenticated, service_role;
+
+-- As 0309; a 'family' trip switched to cash is the member's own from then on.
+create or replace function public.c2c_switch_to_cash(p_booking uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  b public.c2c_bookings;
+  pr public.c2c_pay_rules;
+begin
+  select * into b from public.c2c_bookings where id = p_booking for update;
+  if b.id is null or auth.uid() is null or b.rider_id is distinct from auth.uid() then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  if b.payment = 'cash' then
+    return jsonb_build_object('payment', 'cash');
+  end if;
+  select * into pr from public.c2c_pay_rule_for(b.pickup_place);
+  if not coalesce(pr.offer_cash, false)
+     or not coalesce((select s.pay_cash from public.city_to_city_settings s where s.id = 1), true) then
+    raise exception 'C2C_PAYMENT_NOT_ALLOWED' using errcode = '22023', hint = 'Cash isn''t offered for this trip.';
+  end if;
+  if b.status in ('open', 'offered') then
+    update public.c2c_bookings set payment = 'cash' where id = b.id;
+  elsif b.status = 'completed' and b.pay_status = 'unpaid' then
+    update public.c2c_bookings set payment = 'cash', pay_status = 'cash' where id = b.id;
+  else
+    raise exception 'C2C_NOT_OPEN' using errcode = '22023', hint = 'This trip''s payment can''t change now.';
+  end if;
+  if b.payment = 'family' then
+    perform public.family_release_trip(b.id);
+  end if;
+  return jsonb_build_object('payment', 'cash');
+end;
+$$;
+revoke execute on function public.c2c_switch_to_cash(uuid) from public, anon;
+grant execute on function public.c2c_switch_to_cash(uuid) to authenticated, service_role;
+
+-- As 0309; on a 'family' trip the pay sheet offers the GET.wallet only and
+-- shows the balance of the wallet that pays (the host's).
+create or replace function public.c2c_pay_info(p_booking uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  b public.c2c_bookings;
+  pr public.c2c_pay_rules;
+  s public.city_to_city_settings;
+  v_items jsonb;
+  v_family boolean;
+  v_payer uuid;
+begin
+  select * into b from public.c2c_bookings where id = p_booking;
+  if b.id is null or auth.uid() is null or b.rider_id is distinct from auth.uid() then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  select * into pr from public.c2c_pay_rule_for(b.pickup_place);
+  select * into s from public.city_to_city_settings where id = 1;
+  v_family := b.payment = 'family';
+  v_payer := case when v_family
+                  then public.family_wallet_owner(b.id, b.rider_id, coalesce(b.agreed_fare, b.fare))
+                  else b.rider_id end;
+  select coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'ref', x.ref, 'fee', x.cancel_fee,
+                                               'cancelledAt', x.cancelled_at) order by x.cancelled_at, x.id), '[]')
+    into v_items
+    from public.c2c_bookings x
+   where coalesce(s.owed_next_in_app, false) and x.rider_id = b.rider_id
+     and x.cancel_fee_status = 'due' and x.cancel_fee > 0;
+  return jsonb_build_object(
+    'when', coalesce(b.pay_mode, pr.when_mode, 'hold'),
+    'wallet', coalesce(pr.pay_wallet, true),
+    'coin', coalesce(pr.pay_coin, true) and not v_family,
+    'mix', coalesce(pr.pay_mix, true) and not v_family,
+    'offerTopup', coalesce(pr.offer_topup, true),
+    'offerCash', coalesce(pr.offer_cash, true) and coalesce(s.pay_cash, true),
+    'walletBalance', coalesce((select w.balance from public.wallets w
+                                where w.user_id = v_payer and w.wallet_type = 'get_wallet'), 0),
+    'coinBalance', case when v_family then 0
+                        else coalesce((select w.balance from public.wallets w
+                                        where w.user_id = b.rider_id and w.wallet_type = 'get_coin'), 0) end,
+    'coinRate', (select g.coins_per_currency from public.get_coin_settings g where g.id = 'master'),
+    'dues', v_items,
+    'family', v_family,
+    'payStatus', b.pay_status);
+end;
+$$;
+revoke execute on function public.c2c_pay_info(uuid) from public, anon;
+grant execute on function public.c2c_pay_info(uuid) to authenticated, service_role;
+
+-- As 0310, plus payment 'family' (the member's own seats on the host's
+-- GET.wallet, as 'in_app') and [p_family] ({passenger, withAdult}: the host
+-- books for a family member or a child), kept in c2c_bookings.family; the
+-- booking is checked and registered as module 'seat_trip' by
+-- c2c_bookings_family. One more defaulted argument: the old 9-argument
+-- signature is replaced, and every call to it works unchanged.
+drop function if exists public.c2c_book_seat(uuid, integer, jsonb, text, jsonb, text, numeric, jsonb, text);
+create or replace function public.c2c_book_seat(
+  p_trip uuid,
+  p_seats integer,
+  p_pickup jsonb,
+  p_payment text,
+  p_passengers jsonb default null,
+  p_method text default null,
+  p_expected numeric default null,
+  p_parcel jsonb default null,
+  p_note text default null,
+  p_family jsonb default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  t public.c2c_trips;
+  s public.city_to_city_settings;
+  v_terms jsonb;
+  k record;
+  v_parcel boolean := p_parcel is not null and jsonb_typeof(p_parcel) = 'object';
+  v_seats integer;
+  v_max integer;
+  v_names jsonb;
+  v_kind text;
+  v_mp jsonb;
+  v_index integer;
+  v_pname text;
+  v_paddr text;
+  v_plat double precision;
+  v_plng double precision;
+  v_pplace jsonb;
+  v_leave timestamptz;
+  v_km numeric;
+  v_extra numeric := 0;
+  v_fare numeric;
+  v_sizes text[] := array['small', 'medium', 'large'];
+  v_where text;
+  pl record;
+  b public.c2c_bookings;
+  pr public.c2c_pay_rules;
+  p public.c2c_payments;
+  v_collect_ids uuid[];
+  v_collect numeric;
+  v_mode text;
+  v_status text;
+  v_family jsonb;
+begin
+  if v_uid is null then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  -- The trip first, locked: every booking on it waits here, so its seats are
+  -- counted one booking at a time.
+  select * into t from public.c2c_trips where id = p_trip for update;
+  if t.id is null or t.status <> 'scheduled' then
+    raise exception 'C2C_NOT_OPEN' using errcode = '22023', hint = 'This trip is no longer taking bookings.';
+  end if;
+  if t.driver_id = v_uid then
+    raise exception 'C2C_OWN_TRIP' using errcode = '22023', hint = 'You can''t book a seat on your own trip.';
+  end if;
+  if public.c2c_seat_blocked(v_uid, t.driver_id) then
+    raise exception 'DRIVER_BLOCKED' using errcode = '22023',
+      hint = 'You blocked this driver. Unblock them in Settings › Blocked drivers to book them.';
+  end if;
+  v_terms := public.c2c_seat_terms_for(t.from_place);
+  v_where := coalesce(t.from_place->>'city', t.from_place->>'state', t.from_place->>'country', 'here');
+  if not coalesce((v_terms->>'seats_on')::boolean, false) or not public.c2c_available_at(t.from_place) then
+    raise exception 'C2C_SEATS_OFF' using errcode = '22023',
+      hint = 'Per-seat trips aren''t offered from ' || v_where || ' now.';
+  end if;
+  if now() > t.leave_at - make_interval(mins => coalesce((v_terms->>'cutoff_min')::integer, 60)) then
+    raise exception 'C2C_BOOKING_CLOSED' using errcode = '22023',
+      hint = 'Booking closed ' || coalesce((v_terms->>'cutoff_min')::integer, 60) || ' minutes before leaving.';
+  end if;
+  if t.women_only and not public.c2c_verified_woman(v_uid) then
+    raise exception 'C2C_WOMEN_ONLY' using errcode = '22023',
+      hint = 'This trip is for women only. Verify your ID in your profile to book it.';
+  end if;
+  if exists (select 1 from public.c2c_bookings x
+              where x.trip_id = t.id and x.rider_id = v_uid
+                and x.status in ('requested', 'booked', 'driver_arriving', 'on_trip')
+                and (x.item = 'parcel') = v_parcel) then
+    raise exception 'C2C_ALREADY_BOOKED' using errcode = '22023',
+      hint = case when v_parcel then 'You already sent a parcel on this trip.'
+                  else 'You already have seats on this trip. Cancel them to book again.' end;
+  end if;
+  select * into k from public.c2c_trip_taken(t.id);
+
+  -- Seats and who rides, or the parcel.
+  if v_parcel then
+    v_seats := 1;
+    if t.parcel_slots - k.parcels < 1 then
+      raise exception 'C2C_NO_PARCELS' using errcode = '22023', hint = 'This trip has no parcel space left.';
+    end if;
+    if coalesce(array_position(v_sizes, p_parcel->>'size'), 99) > coalesce(array_position(v_sizes, t.parcel_max_size), 0)
+    then
+      raise exception 'C2C_NO_PARCELS' using errcode = '22023',
+        hint = 'This trip takes parcels up to ' || coalesce(t.parcel_max_size, 'small') || '.';
+    end if;
+    if char_length(btrim(coalesce(p_parcel->>'recipientName', ''))) not between 1 and 120
+       or coalesce(p_parcel->>'recipientPhone', '') !~ '^\+?[0-9 ]{6,20}$'
+       or char_length(coalesce(p_parcel->>'note', '')) > 200 then
+      raise exception 'C2C_NAMES' using errcode = '22023', hint = 'Give the recipient''s name and phone number.';
+    end if;
+    v_names := null;
+  else
+    v_seats := coalesce(p_seats, 0);
+    v_max := case when coalesce((v_terms->>'coriders_on')::boolean, false)
+                  then coalesce((v_terms->>'max_per_booking')::integer, 1) else 1 end;
+    if v_seats < 1 or v_seats > v_max then
+      raise exception 'C2C_TOO_MANY_SEATS' using errcode = '22023',
+        hint = case when v_max = 1 then 'Book 1 seat at a time here.' else 'Book 1 to ' || v_max || ' seats.' end;
+    end if;
+    if t.seats_total - k.seats < v_seats then
+      raise exception 'C2C_NO_SEATS' using errcode = '22023',
+        hint = case when t.seats_total - k.seats <= 0 then 'This trip is full.'
+                    when t.seats_total - k.seats = 1 then 'Only 1 seat is left.'
+                    else 'Only ' || (t.seats_total - k.seats) || ' seats are left.' end;
+    end if;
+    if v_seats > 1 then
+      if coalesce(jsonb_typeof(p_passengers), '') <> 'array' or jsonb_array_length(p_passengers) <> v_seats
+         or exists (select 1 from jsonb_array_elements(p_passengers) e
+                     where char_length(btrim(coalesce(e->>'name', ''))) not between 1 and 80) then
+        raise exception 'C2C_NAMES' using errcode = '22023', hint = 'Name each passenger, one a seat.';
+      end if;
+    end if;
+    v_names := case when coalesce(jsonb_typeof(p_passengers), '') = 'array' and jsonb_array_length(p_passengers) > 0 then
+      (select jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+                'name', left(btrim(e->>'name'), 80),
+                'familyMemberId', nullif(btrim(coalesce(e->>'familyMemberId', '')), ''))) order by n)
+         from jsonb_array_elements(p_passengers) with ordinality x(e, n) where n <= v_seats) end;
+  end if;
+
+  -- Where.
+  v_kind := coalesce(p_pickup->>'kind', 'meeting');
+  if v_kind = 'door' then
+    if not t.door_pickup or not coalesce((v_terms->>'door_on')::boolean, false) then
+      raise exception 'C2C_DOOR_OFF' using errcode = '22023', hint = 'This trip has no door pickup. Pick a meeting point.';
+    end if;
+    if coalesce(jsonb_typeof(p_pickup->'lat'), '') <> 'number' or coalesce(jsonb_typeof(p_pickup->'lng'), '') <> 'number'
+       or char_length(btrim(coalesce(p_pickup->>'name', ''))) not between 1 and 200 then
+      raise exception 'C2C_BAD_TRIP' using errcode = '22023', hint = 'Pick your pickup address again.';
+    end if;
+    v_plat := (p_pickup->>'lat')::double precision;
+    v_plng := (p_pickup->>'lng')::double precision;
+    -- Off the route: the straight line to the nearest meeting point.
+    select min(public.km_between(v_plat, v_plng, (e->>'lat')::double precision, (e->>'lng')::double precision)),
+           (array_agg((e->>'minutes')::integer
+                      order by public.km_between(v_plat, v_plng, (e->>'lat')::double precision,
+                                                 (e->>'lng')::double precision)))[1]
+      into v_km, v_index
+      from jsonb_array_elements(t.meeting_points) e;
+    v_km := round(v_km::numeric, 1);
+    if v_km > t.door_max_km then
+      raise exception 'C2C_DOOR_TOO_FAR' using errcode = '22023',
+        hint = 'Your address is ' || v_km || ' km off the route; door pickup is up to ' || t.door_max_km
+               || ' km. Pick a meeting point.';
+    end if;
+    v_extra := public.c2c_door_extra(v_km, t.door_per_km);
+    v_pname := btrim(p_pickup->>'name');
+    v_paddr := left(nullif(btrim(coalesce(p_pickup->>'address', '')), ''), 400);
+    v_leave := t.leave_at + make_interval(mins => coalesce(v_index, 0));
+    v_index := null;
+  else
+    v_kind := 'meeting';
+    v_index := coalesce((p_pickup->>'index')::integer, 0);
+    v_mp := t.meeting_points->v_index;
+    if v_mp is null or v_index < 0 then
+      raise exception 'C2C_BAD_TRIP' using errcode = '22023', hint = 'Pick a meeting point.';
+    end if;
+    v_plat := (v_mp->>'lat')::double precision;
+    v_plng := (v_mp->>'lng')::double precision;
+    v_pname := v_mp->>'name';
+    v_paddr := v_mp->>'address';
+    v_leave := t.leave_at + make_interval(mins => (v_mp->>'minutes')::integer);
+  end if;
+  select * into pl from public.commission_places(v_plat, v_plng, t.from_place->>'country', t.from_place->>'state',
+                                                 t.from_place->>'city', t.from_place->>'suburb');
+  v_pplace := jsonb_strip_nulls(jsonb_build_object('country', pl.place_country, 'state', pl.place_state,
+                                                   'city', pl.place_city, 'suburb', pl.place_suburb));
+
+  -- How to pay. Family is an in-app way (the host's GET.wallet).
+  select * into s from public.city_to_city_settings where id = 1;
+  if p_payment not in ('in_app', 'cash', 'family')
+     or (p_payment in ('in_app', 'family') and not coalesce(s.pay_in_app, true))
+     or (p_payment = 'cash' and not coalesce(s.pay_cash, true)) then
+    raise exception 'C2C_PAYMENT_NOT_ALLOWED' using errcode = '22023',
+      hint = case when coalesce(s.pay_cash, true) then 'Pay in cash for City to City trips.'
+                  else 'Pay in the app for City to City trips.' end;
+  end if;
+  -- Who it is for in the family: {passenger, withAdult}; nothing else is kept.
+  if p_family is not null and jsonb_typeof(p_family) = 'object' and public.family_passenger_of(p_family) is not null then
+    v_family := jsonb_build_object('passenger', public.family_passenger_of(p_family))
+                || case when coalesce((p_family->>'withAdult')::boolean, false)
+                        then '{"withAdult": true}'::jsonb else '{}'::jsonb end;
+  end if;
+  v_fare := case when v_parcel then t.parcel_price else round(t.seat_price * v_seats + v_extra, 2) end;
+  if coalesce(v_fare, 0) <= 0 then
+    raise exception 'C2C_FARE_OUT_OF_RANGE' using errcode = '22023', hint = 'This trip has no price set.';
+  end if;
+
+  insert into public.c2c_bookings (rider_id, service, trip_kind, trip_id, item, pickup_name, pickup_address, pickup_lat,
+                                   pickup_lng, pickup_place, drop_name, drop_address, drop_lat, drop_lng, drop_place,
+                                   distance_km, duration_min, leave_at, flexible, timezone, passengers, luggage, note,
+                                   fare, currency, quote, payment, status, expires_at, driver_id, seat_price,
+                                   pickup_kind, meeting_index, door_km, door_extra, passenger_names, parcel, family)
+  values (v_uid, 'City to City', 'per_seat', t.id, case when v_parcel then 'parcel' else 'seat' end, v_pname, v_paddr,
+          v_plat, v_plng, v_pplace, t.to_name, t.to_address, t.to_lat, t.to_lng, t.to_place, t.distance_km,
+          t.duration_min, v_leave, false, t.timezone, v_seats, case when t.luggage = 'suitcase' then 'suitcases' else 'small' end,
+          left(nullif(btrim(coalesce(p_note, '')), ''), 300), v_fare, t.currency,
+          jsonb_build_object('seatPrice', t.seat_price, 'seats', v_seats, 'doorExtra', v_extra, 'tripRef', t.ref),
+          p_payment, 'requested',
+          case when t.join_mode = 'approve'
+               then least(now() + make_interval(hours => coalesce((v_terms->>'approve_hours')::integer, 2)),
+                          t.leave_at - make_interval(mins => coalesce((v_terms->>'approve_before_min')::integer, 60))) end,
+          t.driver_id, case when v_parcel then null else t.seat_price end, v_kind, v_index,
+          case when v_kind = 'door' then v_km end, case when v_kind = 'door' then v_extra end, v_names,
+          case when v_parcel then jsonb_strip_nulls(jsonb_build_object(
+                 'size', p_parcel->>'size', 'note', nullif(btrim(coalesce(p_parcel->>'note', '')), ''),
+                 'recipientName', btrim(p_parcel->>'recipientName'),
+                 'recipientPhone', btrim(p_parcel->>'recipientPhone'))) end,
+          v_family)
+  returning * into b;
+  if b.expires_at is not null and b.expires_at <= now() then
+    raise exception 'C2C_BOOKING_CLOSED' using errcode = '22023',
+      hint = 'It is too close to leaving for the driver to approve a request.';
+  end if;
+
+  -- The money, as 0309's accept: held now, paid after, or the fees owed for
+  -- a cash trip's driver to collect.
+  if p_payment in ('in_app', 'family') then
+    select * into pr from public.c2c_pay_rule_for(t.from_place);
+    v_mode := coalesce(pr.when_mode, 'hold');
+    if v_mode = 'hold' then
+      p := public.c2c_take_fare(b, v_fare,
+                                case when p_payment = 'family' then coalesce(p_method, 'get_wallet')
+                                     else coalesce(p_method, case when pr.pay_mix then 'mix'
+                                                                  when pr.pay_wallet then 'get_wallet'
+                                                                  else 'get_coin' end) end,
+                                p_expected, pr, true);
+      v_status := 'held';
+    end if;
+  else
+    select x.ids, x.total into v_collect_ids, v_collect from public.c2c_dues_to_collect(v_uid) x;
+  end if;
+  update public.c2c_bookings
+     set pay_mode = v_mode, pay_status = v_status, paid_method = p.method, paid_amount = p.amount,
+         collect_fee_ids = v_collect_ids, collect_amount = v_collect
+   where id = b.id
+  returning * into b;
+
+  if t.join_mode = 'instant' then
+    b := public.c2c_seat_confirm(b.id);
+    perform public.c2c_seat_notify(t.driver_id, 'c2c-seat:' || b.id || ':booked',
+      case when v_parcel then 'A parcel on your trip' else 'Seat booked on your trip' end,
+      public.c2c_short_name((select name from public.profiles where id = v_uid))
+      || case when v_parcel then ' sends a ' || (p_parcel->>'size') || ' parcel'
+              else ' booked ' || v_seats || case when v_seats = 1 then ' seat' else ' seats' end end
+      || ', ' || public.c2c_clock(t.leave_at, t.timezone) || ' to ' || coalesce(t.to_place->>'city', t.to_name) || '.',
+      b, 'partner');
+  else
+    perform public.c2c_seat_notify(t.driver_id, 'c2c-seat:' || b.id || ':requested', 'New seat request',
+      public.c2c_short_name((select name from public.profiles where id = v_uid))
+      || case when v_parcel then ' asks to send a parcel' else ' asks for ' || v_seats
+              || case when v_seats = 1 then ' seat' else ' seats' end end
+      || '. Approve or decline before ' || public.c2c_clock(b.expires_at, t.timezone) || '.',
+      b, 'partner');
+  end if;
+  return jsonb_build_object('id', b.id, 'ref', b.ref, 'status', b.status, 'fare', b.fare, 'payStatus', b.pay_status,
+                            'held', p.amount, 'dues', coalesce(p.dues_amount, 0), 'expiresAt', b.expires_at);
+end;
+$$;
+revoke execute on function public.c2c_book_seat(uuid, integer, jsonb, text, jsonb, text, numeric, jsonb, text, jsonb)
+  from public, anon;
+grant execute on function public.c2c_book_seat(uuid, integer, jsonb, text, jsonb, text, numeric, jsonb, text, jsonb)
+  to authenticated, service_role;
+
+-- Whether the family pays a tip on ride [r]: a trip the family pays (not
+-- paid by the member themselves), the 'tips' module's Family payment on at
+-- the ride's place, and tips among the services the host allows the member.
+create or replace function public.family_tip_paid_by_family(r public.ride_requests)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.family_trips t join public.family_members m on m.id = t.member_id
+     where t.trip_id = r.id and t.family_pays and t.released_at is null
+       and (m.services is null or 'tips' = any (m.services))
+       and coalesce((public.family_module_rule_at('tips', jsonb_build_object(
+             'country', r.country, 'state', r.state, 'city', r.city, 'suburb', r.suburb))->>'familyPays')::boolean, false));
+$$;
+revoke execute on function public.family_tip_paid_by_family(public.ride_requests) from public, anon, authenticated;
+
+-- As 0314, with a GET.wallet tip on a trip the family pays (and where the
+-- admin lets the family pay tips: the 'tips' module, the member's services)
+-- charged naming the trip, the payer's balance checked: it comes from the
+-- host's GET.wallet within the member's limits. Coins are always the
+-- rider's own.
+create or replace function public.ride_tip(p_ride uuid, p_amount numeric, p_method text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  r public.ride_requests;
+  x jsonb;
+  t public.ride_tips;
+  v_amount numeric := round(coalesce(p_amount, 0), 2);
+  v_rate numeric;
+  v_driver numeric;
+  v_coin_rate numeric;
+  v_coins numeric;
+  v_balance numeric;
+  v_money text;
+  v_rider text;
+  v_trip uuid;
+  v_owner uuid;
+begin
+  if v_uid is null then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  if p_method not in ('get_wallet', 'get_coin') then
+    raise exception 'invalid_method' using errcode = '22023';
+  end if;
+  select * into r from public.ride_requests where id = p_ride for update;
+  if not found or r.rider_id is distinct from v_uid then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  if r.status <> 'completed' then
+    raise exception 'TIP_NOT_COMPLETED' using errcode = '42501', hint = 'You can tip once the trip is complete.';
+  end if;
+  if r.partner_id is null or r.partner_id = r.rider_id then
+    raise exception 'TIP_OWN_TRIP' using errcode = '42501', hint = 'You can''t tip your own trip.';
+  end if;
+  -- Once per ride: a second call (a retry) answers with the first.
+  select * into t from public.ride_tips where ride_id = r.id and method <> 'cash';
+  if found then
+    return jsonb_build_object('already', true, 'amount', t.amount, 'method', t.method,
+                              'driverAmount', t.driver_amount);
+  end if;
+  x := public.city_ride_extras_for(r)->'tips';
+  if not public.city_ride_extras_on(x) then
+    raise exception 'TIP_OFF' using errcode = '42501', hint = 'Tips aren''t taken here.';
+  end if;
+  if now() > coalesce(r.completed_at, now())
+             + make_interval(days => public.city_ride_extras_num(x, 'days', 3)::integer) then
+    raise exception 'TIP_EXPIRED' using errcode = '42501', hint = 'The time to tip this trip has passed.';
+  end if;
+  if not public.ride_money_ok(v_amount) or v_amount < public.city_ride_extras_num(x, 'min', 1)
+     or v_amount > public.city_ride_extras_num(x, 'max', 100) then
+    raise exception 'TIP_AMOUNT' using errcode = '22023',
+      hint = format('Tip from %s to %s.', trim_scale(public.city_ride_extras_num(x, 'min', 1)),
+                    trim_scale(public.city_ride_extras_num(x, 'max', 100)));
+  end if;
+  v_rate := least(0.5, greatest(0, public.city_ride_extras_num(x, 'commissionPercent', 0) / 100));
+  v_driver := round(v_amount * (1 - v_rate), 2);
+  v_money := coalesce(r.currency, 'RM') || ' ' || to_char(v_amount, 'FM999999990.00');
+  v_rider := coalesce(nullif(split_part(btrim(coalesce(r.rider_name, '')), ' ', 1), ''), 'Your rider');
+
+  if p_method = 'get_wallet' then
+    -- Family: the trip is named only where the family pays the tip too.
+    if public.family_tip_paid_by_family(r) then
+      v_trip := r.id;
+    end if;
+    v_owner := case when v_trip is null then v_uid else public.family_wallet_owner(r.id, v_uid, v_amount) end;
+    insert into public.wallets (user_id, wallet_type, balance) values (v_owner, 'get_wallet', 0)
+    on conflict (user_id, wallet_type) do nothing;
+    select w.balance into v_balance from public.wallets w
+     where w.user_id = v_owner and w.wallet_type = 'get_wallet' for update;
+    if coalesce(v_balance, 0) < v_amount then
+      raise exception 'insufficient_balance' using errcode = '22023',
+        hint = case when v_owner = v_uid then 'Top up GET.wallet, or tip with GET.coin.'
+                    else 'Your family host''s GET.wallet is short. Tip with GET.coin, or ask them to top up.' end;
+    end if;
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (v_uid, 'get_wallet', 'tip', -v_amount, 'tip', 'Tip for ' || coalesce(r.partner_name, 'your driver'), v_trip);
+  else
+    select s.coins_per_currency into v_coin_rate from public.get_coin_settings s where s.id = 'master';
+    if coalesce(v_coin_rate, 0) <= 0 then
+      raise exception 'coins_unavailable' using errcode = '22023';
+    end if;
+    v_coins := ceil(v_amount * v_coin_rate * 100) / 100;
+    insert into public.wallets (user_id, wallet_type, balance) values (v_uid, 'get_coin', 0)
+    on conflict (user_id, wallet_type) do nothing;
+    select w.balance into v_balance from public.wallets w
+     where w.user_id = v_uid and w.wallet_type = 'get_coin' for update;
+    if coalesce(v_balance, 0) < v_coins then
+      raise exception 'insufficient_balance' using errcode = '22023', hint = 'Not enough GET.coin for this tip.';
+    end if;
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note)
+    values (v_uid, 'get_coin', 'redeem', -v_coins, 'tip',
+            'Tip for ' || coalesce(r.partner_name, 'your driver') || ' (' || v_money || ')');
+  end if;
+  if v_driver > 0 then
+    insert into public.wallet_transactions (user_id, wallet_type, kind, amount, method, note, ride_id)
+    values (r.partner_id, 'get_wallet', 'tip', v_driver, 'tip',
+            'Tip from ' || v_rider || case when v_rate > 0
+              then ' (less ' || trim_scale(round(v_rate * 100, 1)) || '% commission)' else '' end, r.id);
+  end if;
+  insert into public.ride_tips (ride_id, rider_id, partner_id, method, amount, commission_rate, driver_amount,
+                                coins_used, currency)
+  values (r.id, v_uid, r.partner_id, p_method, v_amount, v_rate, v_driver, v_coins, r.currency)
+  returning * into t;
+
+  begin
+    perform public.enqueue_notification(r.partner_id, 'ride_tip:' || t.id, 'ride_tip', 'normal',
+      'You got a tip', v_rider || ' tipped you ' || v_money || '.',
+      jsonb_build_object('type', 'ride_tip', 'rideId', r.id), r.id);
+  exception when others then
+    raise warning 'tip push for % not sent: %', t.id, sqlerrm;
+  end;
+
+  return jsonb_build_object('already', false, 'amount', t.amount, 'method', t.method,
+                            'driverAmount', t.driver_amount, 'coins', coalesce(v_coins, 0),
+                            'family', v_trip is not null and v_owner is distinct from v_uid);
+end;
+$$;
+revoke execute on function public.ride_tip(uuid, numeric, text) from public, anon;
+grant execute on function public.ride_tip(uuid, numeric, text) to authenticated;
+
+-- Business accounts (0313): a trip the company pays is not one the family
+-- pays. A booking with both is refused (FAMILY_BUSINESS) before 0313's
+-- trigger (trg_ride_requests_c_business, trg_scheduled_rides_a_business)
+-- turns its payment into the company's. Booking for a family member on a
+-- business account stays as 0313 allows it (the company pays).
+create or replace function public.family_not_business()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_business boolean;
+  v_family boolean;
+begin
+  if tg_table_name = 'scheduled_rides' then
+    v_business := coalesce(new.request->>'business_account_id', '') <> '' and new.stand_id is null;
+    v_family := lower(btrim(coalesce(new.request->>'payment_mode', ''))) = 'family';
+  else
+    v_business := new.business_account_id is not null;
+    v_family := lower(btrim(coalesce(new.payment_mode, ''))) = 'family';
+  end if;
+  if v_business and v_family then
+    raise exception 'FAMILY_BUSINESS' using errcode = 'P0001',
+      hint = 'A business trip is paid by the company. Pay with Family or the business account, not both.';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.family_not_business() from public, anon, authenticated;
+drop trigger if exists trg_ride_requests_b_family_not_business on public.ride_requests;
+create trigger trg_ride_requests_b_family_not_business
+  before insert on public.ride_requests
+  for each row execute function public.family_not_business();
+drop trigger if exists trg_scheduled_rides_0_family_not_business on public.scheduled_rides;
+create trigger trg_scheduled_rides_0_family_not_business
+  before insert on public.scheduled_rides
+  for each row execute function public.family_not_business();
 
 -- ---- Live in the apps and the admin page --------------------------------------------------------
 do $$

@@ -7,10 +7,11 @@
 //                 (Instant or Driver approves, Women only, Door pickup, a
 //                 repeat, parcels).
 //   Book a seat   the trip, the seats (each passenger named when more than
-//                 1; the Family module fills the choices later), where to
-//                 meet (a meeting point, or the rider's door with its extra),
-//                 or a parcel instead, In app or Cash (the way to pay when it
-//                 is held now), the total and Book (or Request).
+//                 1; a family host picks who rides from their family, 0317),
+//                 where to meet (a meeting point, or the rider's door with
+//                 its extra), or a parcel instead, Family (the member's own
+//                 seats on the host's GET.wallet), In app or Cash (the way to
+//                 pay when it is held now), the total and Book (or Request).
 //   The booking   the rider's trip page (city_to_city_trip.dart) shows it;
 //                 this file adds the driver and co-riders card and the page
 //                 for a request waiting for the driver.
@@ -22,10 +23,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/booking_modules.dart' show familyModuleSeatTrip;
 import '../../core/city_to_city.dart';
 import '../../core/city_to_city_seats.dart';
 import '../../core/commission.dart' show Geo;
+import '../../core/family.dart' show FamilyPick, possessive;
 import '../../data/city_to_city_repository.dart';
+import '../../data/family_repository.dart' show familyPayOptionProvider;
 import '../../data/geo_service.dart' show Place;
 import '../../providers.dart' show profileProvider;
 import '../../widgets/busy.dart';
@@ -317,6 +321,7 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
   final _phone = TextEditingController();
   final _parcelNote = TextEditingController();
   C2cPayment? _payment;
+  bool _payPicked = false;
   C2cPayWay? _way;
   C2cPayInfo? _info;
 
@@ -391,7 +396,20 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
     for (var i = 0; i < _seats && i < _names.length; i++) (name: _names[i].text, familyMemberId: _familyIds[i]),
   ];
 
-  bool get _held => _payment == C2cPayment.inApp && (_info?.when ?? C2cPayWhen.hold) == C2cPayWhen.hold;
+  bool get _inApp => _payment == C2cPayment.inApp || _payment == C2cPayment.family;
+
+  bool get _held => _inApp && (_info?.when ?? C2cPayWhen.hold) == C2cPayWhen.hold;
+
+  /// Family (0317): the family member the host picked to ride, the first one
+  /// named; with an adult when the host (the first seat) rides too.
+  FamilyPick? get _familyPick {
+    if (_parcel) return null;
+    for (var i = 0; i < _seats && i < _familyIds.length; i++) {
+      final id = _familyIds[i];
+      if (id != null) return (id: id, withAdult: i > 0 && _familyIds[0] == null);
+    }
+    return null;
+  }
 
   String? get _problem {
     final x = widget.trip;
@@ -429,7 +447,7 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
             ? {'kind': 'door', 'name': door.name, 'address': ?door.address, 'lat': door.lat, 'lng': door.lng}
             : {'kind': 'meeting', 'index': _pick},
         payment: pay,
-        passengers: _parcel || _seats == 1 ? const [] : _passengers,
+        passengers: _parcel || (_seats == 1 && _familyIds.first == null) ? const [] : _passengers,
         way: _held ? _way : null,
         expected: _held ? c2cRound2(_total + dues) : null,
         parcel: _parcel
@@ -440,6 +458,7 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
                 if (_parcelNote.text.trim().isNotEmpty) 'note': _parcelNote.text.trim(),
               }
             : null,
+        family: _familyPick,
       );
       ref.invalidate(c2cMyTripsProvider);
       if (!mounted) return;
@@ -461,11 +480,17 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
     final look = C2cLook.of(context);
     final x = widget.trip;
     final settings = ref.watch(c2cSettingsProvider).value ?? const C2cSettings();
-    final payments = c2cPayments(settings);
-    _payment ??= payments.firstOrNull;
+    // Family (0317): the member's own seats on the host's GET.wallet.
+    final familyPay = ref.watch(familyPayOptionProvider(familyModuleSeatTrip)).value;
+    final payments = c2cPaymentsWithFamily(settings, family: familyPay?.available ?? false);
+    // The first way (Family, once it is known) until the rider picks one.
+    if (!_payPicked || !payments.contains(_payment)) _payment = payments.firstOrNull;
     final info = _info;
-    final ways = info?.ways ?? const <C2cPayWay>[];
+    final ways = _payment == C2cPayment.family ? const [C2cPayWay.wallet] : info?.ways ?? const <C2cPayWay>[];
     if (_held && (_way == null || !ways.contains(_way))) _way = ways.firstOrNull;
+    final payFrom = _payment == C2cPayment.family
+        ? '${possessive(familyPay?.hostName ?? 'Family host')} GET wallet'
+        : 'your ${_way == C2cPayWay.coin ? 'coins' : 'GET wallet'}';
     final family = ref.watch(c2cPassengerChoicesProvider).value ?? const <C2cPassenger>[];
     final door = _doorQuote;
     final total = _total;
@@ -604,6 +629,31 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
                           : null,
                     ),
                   ]),
+                  if (_seats == 1 && family.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text('Who rides', style: t.textTheme.titleSmall),
+                    Wrap(spacing: 6, children: [
+                      ChoiceChip(
+                        key: const ValueKey('c2c-seat-who-me'),
+                        label: const Text('Me'),
+                        selected: _familyIds.first == null,
+                        onSelected: (_) => setState(() {
+                          _familyIds[0] = null;
+                          _names[0].text = ref.read(profileProvider).value?.name ?? '';
+                        }),
+                      ),
+                      for (final f in family)
+                        ChoiceChip(
+                          key: ValueKey('c2c-seat-who-${f.familyMemberId}'),
+                          label: Text(f.name),
+                          selected: _familyIds.first == f.familyMemberId,
+                          onSelected: (_) => setState(() {
+                            _familyIds[0] = f.familyMemberId;
+                            _names[0].text = f.name;
+                          }),
+                        ),
+                    ]),
+                  ],
                   if (_seats > 1) ...[
                     const SizedBox(height: 6),
                     Text('Who rides', style: t.textTheme.titleSmall),
@@ -658,9 +708,12 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
                   for (final p in payments)
                     ChoiceChip(
                       key: ValueKey('c2c-seat-pay-${p.key}'),
-                      label: Text(p.label),
+                      label: Text(p == C2cPayment.family && familyPay != null ? familyPay.label : p.label),
                       selected: _payment == p,
-                      onSelected: (_) => setState(() => _payment = p),
+                      onSelected: (_) => setState(() {
+                        _payment = p;
+                        _payPicked = true;
+                      }),
                     ),
                 ]),
                 if (_held && ways.length > 1) ...[
@@ -675,10 +728,10 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
                       ),
                   ]),
                 ],
-                if (_payment == C2cPayment.inApp && info != null)
+                if (_inApp && info != null)
                   Text(
                     _held
-                        ? 'Paid now from your ${_way == C2cPayWay.coin ? 'coins' : 'GET wallet'}'
+                        ? 'Paid now from $payFrom'
                               '${info.duesTotal > 0 ? ', with ${c2cMoney(info.duesTotal, x.currency)} owed' : ''}'
                               '${x.instant ? '' : '; back in full if the driver declines'}.'
                         : 'Paid in the app after the trip.',

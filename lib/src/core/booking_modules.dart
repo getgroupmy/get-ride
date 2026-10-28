@@ -44,6 +44,7 @@ const familyModuleCityToCity = 'city_to_city';
 const familyModuleFreight = 'freight';
 const familyModuleCourier = 'courier';
 const familyModuleTips = 'tips';
+const familyModuleSeatTrip = 'seat_trip';
 
 const bookingModules = <BookingModule>[
   BookingModule(familyModuleRide, 'Ride',
@@ -67,16 +68,31 @@ const bookingModules = <BookingModule>[
       tables: ['ride_requests'],
       repositories: ['lib/src/data/ride_repository.dart'],
       screens: ['lib/src/features/ride/courier_screen.dart']),
-  // A charge on a trip, not a booking: it goes to whoever paid the trip
-  // (the payment layer), so it has no table of its own.
-  BookingModule(familyModuleTips, 'Tips', built: false),
-  // Registered ahead of the modules being built in parallel; each adds its
-  // tables and repositories here when it lands.
-  BookingModule('seat_trip', 'Seat trip', built: false),
+  // A seat on a trip a driver posted (0310): a c2c_bookings row with a trip,
+  // booked with c2c_book_seat (payment 'family', the family passenger).
+  BookingModule(familyModuleSeatTrip, 'Seat trip',
+      tables: ['c2c_bookings'],
+      repositories: ['lib/src/data/city_to_city_repository.dart'],
+      screens: ['lib/src/features/ride/city_to_city_seats.dart']),
+  // Charges on a trip, not bookings, so no tables of their own: the payment
+  // layer sends each to whoever paid the trip (0317, section 9). A GET.wallet
+  // tip on a family-paid trip is the host's where the admin allows it; the
+  // tip card says so.
+  BookingModule(familyModuleTips, 'Tips',
+      repositories: ['lib/src/data/city_ride_extras_repository.dart'],
+      screens: ['lib/src/features/ride/city_extras_parts.dart']),
+  // Floors, cold truck, parcel cover, a return leg: lines on the fare, paid
+  // with the trip (ride_pay, method 'family'), booked on these screens.
+  BookingModule('freight_addons', 'Freight add-ons',
+      repositories: ['lib/src/data/ride_repository.dart'],
+      screens: ['lib/src/features/ride/freight_screen.dart']),
+  BookingModule('courier_addons', 'Courier add-ons',
+      repositories: ['lib/src/data/ride_repository.dart'],
+      screens: ['lib/src/features/ride/courier_screen.dart']),
+  // Not Family: a membership, not a trip; and a business trip is paid by the
+  // company, never by a family (FAMILY_BUSINESS, 0317).
   BookingModule('get_plus', 'GET.Plus', built: false),
   BookingModule('business_account', 'Business account', built: false),
-  BookingModule('freight_addons', 'Freight add-ons', built: false),
-  BookingModule('courier_addons', 'Courier add-ons', built: false),
 ];
 
 /// The module a ride request books, as the server reads it

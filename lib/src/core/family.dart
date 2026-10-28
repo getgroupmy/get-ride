@@ -888,6 +888,7 @@ const _familyWords = {
     'FAMILY_REQUEST_GONE': 'This request was already decided.',
     'FAMILY_UNKNOWN_SERVICE': 'Pick services from the list.',
     'FAMILY_FIXED': 'Who the trip is for can\'t be changed.',
+    'FAMILY_BUSINESS': 'A business trip is paid by the company, not the family.',
 };
 
 /// The host's line under a member's name.

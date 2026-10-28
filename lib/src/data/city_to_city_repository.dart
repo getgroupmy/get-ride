@@ -9,12 +9,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/booking_modules.dart' show familyModuleSeatTrip;
 import '../core/city_to_city.dart';
 import '../core/city_to_city_seats.dart';
 import '../core/commission.dart' show Geo;
+import '../core/family.dart' show FamilyPassenger, FamilyPick, familyBookingColumns;
 import '../core/fare.dart' show ServiceRates;
 import '../core/fare_tariff.dart';
 import '../providers.dart';
+import 'family_repository.dart' show familyPassengersProvider;
 import 'live_tables.dart';
 
 /// A permit type an admin can ask for (permit_types, 0254).
@@ -464,6 +467,7 @@ class CityToCityRepository {
     double? expected,
     Map<String, dynamic>? parcel,
     String? note,
+    FamilyPick? family,
   }) async {
     final r = await _db.rpc('c2c_book_seat', params: {
       'p_trip': tripId,
@@ -475,6 +479,8 @@ class CityToCityRepository {
       'p_expected': expected == null ? null : c2cRound2(expected),
       'p_parcel': parcel,
       'p_note': note,
+      // Family (0317): who in the family the seats are for (the host books).
+      'p_family': family == null ? null : familyBookingColumns(passengerId: family.id, withAdult: family.withAdult)['family'],
     });
     final m = r is Map ? r : const {};
     return (id: '${m['id']}', status: '${m['status'] ?? ''}');
@@ -689,6 +695,18 @@ final c2cCoridersProvider =
   }
 });
 
-/// Who rides on a seat booking, filled by the Family module later: the
-/// rider's family members as passengers to pick from (none until then).
-final c2cPassengerChoicesProvider = FutureProvider.autoDispose<List<C2cPassenger>>((ref) async => const []);
+/// Who rides on a seat booking: the family members and children the host may
+/// book a seat for (Family, 0317: family_passengers for 'seat_trip'); none
+/// for anyone else, or where the admin hasn't allowed it.
+final c2cPassengerChoicesProvider = FutureProvider.autoDispose<List<C2cPassenger>>((ref) async {
+  final List<FamilyPassenger> list;
+  try {
+    list = await ref.watch(familyPassengersProvider(familyModuleSeatTrip).future);
+  } catch (_) {
+    return const [];
+  }
+  return [
+    for (final p in list)
+      if (p.allowed) (name: p.name, familyMemberId: p.id),
+  ];
+});
