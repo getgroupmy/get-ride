@@ -12,6 +12,7 @@ import 'dart:convert';
 import '../../../core/doc_kinds.dart' show guessDocKind;
 import '../../../core/my_ride.dart';
 import '../../../core/partner_type_rules.dart' show PartnerServiceSettings, PartnerTypeRules;
+import '../../../core/premium_plus.dart' show premiumServiceKey;
 import '../../../core/service_tree.dart';
 import '../../admin_settings_models.dart';
 import '../people/people_logic.dart' show defaultDocHasPhoto;
@@ -232,6 +233,7 @@ ValuesResult buildVehicleServiceValues({
   Map<String, String> freight = const {},
   bool? closedBody,
   bool? refrigerated,
+  bool? premium,
   String? goodsPermit,
   Map<String, dynamic>? existing,
 }) {
@@ -298,6 +300,14 @@ ValuesResult buildVehicleServiceValues({
       values[refrigeratedKey] = true;
     } else {
       values.remove(refrigeratedKey);
+    }
+  }
+  // Premium (0316): its drivers meet the Premium rules.
+  if (premium != null) {
+    if (premium) {
+      values[premiumServiceKey] = true;
+    } else {
+      values.remove(premiumServiceKey);
     }
   }
   for (final f in vehicleServiceDispatchFields) {
@@ -483,6 +493,7 @@ String vehicleServiceMeta(Map<String, dynamic> v) {
     if (has('maxLoadKg')) 'Load ${v['maxLoadKg']} kg',
     if (v[closedBodyKey] == true) 'Closed body',
     if (v[refrigeratedKey] == true) 'Refrigerated',
+    if (v[premiumServiceKey] == true) 'Premium',
   ].join(' • ');
 }
 

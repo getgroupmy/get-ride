@@ -203,6 +203,16 @@ class WalletScreen extends ConsumerWidget {
                       onTap: () => context.push('/wallet/trade'),
                     ),
                   ),
+                  Card(
+                    child: ListTile(
+                      key: const ValueKey('wallet-plus-open'),
+                      leading: const Icon(Icons.workspace_premium_outlined),
+                      title: const Text('GET.Plus membership'),
+                      subtitle: const Text('Ride discounts, priority matching and free cancels, paid monthly'),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => context.push('/wallet/plus'),
+                    ),
+                  ),
                   if (ref.watch(partnerProvider).value != null)
                     Card(
                       child: BusyListTile(

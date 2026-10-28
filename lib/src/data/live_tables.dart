@@ -96,6 +96,8 @@ const liveSettingTables = <String>[
   'trip_report_categories',
   'passenger_cover_rules',
   'rider_blocks',
+  // Premium service rules and GET.Plus by place (0316).
+  'premium_plus_places',
   // Not settings, but the balances on screen: a commission or a transfer
   // lands without a pull to refresh (row-level security limits it to the
   // signed-in account's own wallets).

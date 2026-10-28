@@ -78,6 +78,7 @@ class RideService {
     this.serviceTypes = const [],
     this.parentIds = const [],
     this.rates,
+    this.premium = false,
   });
   final String name;
   final String description;
@@ -101,6 +102,10 @@ class RideService {
   /// The sub-services it sits under, by settings entry id (`parentServices`,
   /// see core/service_tree.dart).
   final List<String> parentIds;
+
+  /// A Premium service (Vehicle Services › Premium, migration 0316): its
+  /// card says which drivers take it.
+  final bool premium;
 }
 
 /// Used only when the admin Vehicle Services catalogue cannot be read. The

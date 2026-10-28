@@ -15,6 +15,7 @@ import 'service_order_screen.dart' show serviceOrderPath;
 import 'catalogue_widgets.dart';
 import '../../../core/freight.dart' show isCourierTypes, isFreightTypes;
 import '../../../data/permits_repository.dart' show permitsRepositoryProvider;
+import '../../../core/premium_plus.dart' show premiumServiceKey;
 import '../../../core/service_tree.dart' show serviceParentIds;
 import '../../../widgets/search_select.dart';
 import 'safe_rename.dart';
@@ -455,6 +456,7 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
   };
   late bool _closedBody = v[closedBodyKey] == true;
   late bool _refrigerated = v[refrigeratedKey] == true;
+  late bool _premium = v[premiumServiceKey] == true;
   late String _permit = str(v[goodsPermitKey]);
   late final _images = {for (final k in ['iconUri', 'heroImageUri', 'mapIconUri']) k: str(v[k])};
   late String _color = str(v['mapIconColor']);
@@ -496,6 +498,7 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
       freight: {for (final e in _freight.entries) e.key: e.value.text},
       closedBody: _closedBody,
       refrigerated: _refrigerated,
+      premium: _premium,
       goodsPermit: _permit,
       existing: widget.entry?.values,
     );
@@ -764,6 +767,15 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
           for (final f in vehicleServiceDispatchFields)
             if (f.section == section) _dispatchField(f, dispatchError?.key == f.key ? dispatchError!.message : null),
         ],
+        SwitchListTile(
+          key: const ValueKey('vs-premium'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Premium'),
+          subtitle: const Text('Only drivers who meet the Premium rules (Premium and GET.Plus) see and take its '
+              'requests. Riders see the rules on its card.'),
+          value: _premium,
+          onChanged: widget.canEdit ? (x) => setState(() => _premium = x) : null,
+        ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('Status'),

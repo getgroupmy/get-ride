@@ -139,6 +139,7 @@ import 'features/support/call/call_screen.dart';
 import 'features/support/call/incoming_call_listener.dart';
 import 'features/wallet/wallet_history_screen.dart';
 import 'features/wallet/wallet_qr_screens.dart';
+import 'features/wallet/plus_screen.dart';
 import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
 import 'platform/web_favicon.dart';
@@ -399,6 +400,8 @@ final routerProvider = Provider<GoRouter>((ref) {
                       ),
                       GoRoute(path: 'scan', builder: (_, _) => const ScanPayScreen()),
                       GoRoute(path: 'history', builder: (_, _) => const WalletHistoryScreen()),
+                      // GET.Plus, the rider membership (0316).
+                      GoRoute(path: 'plus', builder: (_, _) => const PlusScreen()),
                       GoRoute(
                         path: 'receive',
                         builder: (_, s) => ReceiveQrScreen(coin: s.uri.queryParameters['coin'] == '1'),

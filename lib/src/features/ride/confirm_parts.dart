@@ -678,7 +678,43 @@ class ConfirmServiceCard extends StatelessWidget {
     this.fixed = false,
     this.onInfo,
     this.uplift,
+    this.was,
+    this.note,
   });
+
+  /// The price before a GET.Plus member's discount, struck through under
+  /// [price] (migration 0316); null when there is none.
+  final String? was;
+
+  /// A line under the description: a Premium service's rules ("Cars 5
+  /// years or newer, listed models, drivers rated 4.8+").
+  final String? note;
+
+  /// [price] with the struck-through price before the member's discount.
+  Widget _withWas(BuildContext context, Widget price) {
+    final w = was;
+    if (w == null) return price;
+    final t = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        price,
+        Semantics(
+          label: 'Was $w',
+          excludeSemantics: true,
+          child: Text(
+            w,
+            key: ValueKey('service-was-${service.name}'),
+            style: t.textTheme.bodySmall?.copyWith(
+              color: mutedTextColor(t, background: ConfirmCardColors.of(context).card),
+              decoration: TextDecoration.lineThrough,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   /// What high demand adds to this fare ("+RM1", [demandUpliftLabel]),
   /// shown under the price; null when it adds nothing.
@@ -854,6 +890,14 @@ class ConfirmServiceCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+              if (note != null)
+                Text(
+                  note!,
+                  key: ValueKey('service-rules-${service.name}'),
+                  style: t.textTheme.bodySmall?.copyWith(color: muted),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
             ],
           ),
         ),
@@ -879,9 +923,12 @@ class ConfirmServiceCard extends StatelessWidget {
               padding: const EdgeInsets.only(top: 2),
               child: _withUplift(
                 context,
-                fixed
-                    ? Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600))
-                    : _price(price, t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600)),
+                _withWas(
+                  context,
+                  fixed
+                      ? Text(price, style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600))
+                      : _price(price, t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w600)),
+                ),
               ),
             ),
           ),
@@ -919,7 +966,7 @@ class ConfirmServiceCard extends StatelessWidget {
                 chosen: pic,
                 trailing: Padding(
                   padding: const EdgeInsets.only(top: 2),
-                  child: _withUplift(context, Text(price, style: priceStyle)),
+                  child: _withUplift(context, _withWas(context, Text(price, style: priceStyle))),
                 ),
               ),
             ),
@@ -963,7 +1010,7 @@ class ConfirmServiceCard extends StatelessWidget {
                       trailing: onEdit == null
                           ? Padding(
                               padding: const EdgeInsets.only(top: 4, right: 6),
-                              child: _withUplift(context, _price(price, priceStyle)),
+                              child: _withUplift(context, _withWas(context, _price(price, priceStyle))),
                             )
                           : Material(
                               color: c.chip,

@@ -175,6 +175,13 @@ class TripReceipt {
                 : 'Promo ${r.promo?.code ?? ''}'.trim(),
             amount: -r.promoDiscount,
           ),
+        // A GET.Plus member's discount (0316): off the rider's bill, paid to
+        // the driver's GET.wallet by the platform.
+        if (charged && r.plusDiscount > 0)
+          (
+            label: asDriver ? 'GET.Plus member discount (to your GET.wallet)' : 'GET.Plus member discount',
+            amount: -r.plusDiscount,
+          ),
       ],
       charged: charged,
       date: r.completedAt ?? r.cancelledAt ?? r.createdAt,
