@@ -1,0 +1,3 @@
+# The runner only talks HTTP (get.ride, GitHub); Postgres work is done with
+# the psql / pg_dump / pg_restore of the image (postgresql-client-17).
+requests==2.34.2

@@ -37,8 +37,9 @@ jobs:
           deno-version: v2.x
       - run: deno check scripts/play_upload.ts scripts/ci/app_links.ts scripts/ci/vercel_domains.ts scripts/ci/cloudflare_wildcard.ts cloudflare/subdomain-proxy/route_test.ts cloudflare/session-proxy/relay_test.ts
       - run: deno test scripts/play_upload_test.ts scripts/ci/app_links_test.ts scripts/ci/vercel_domains_test.ts scripts/ci/cloudflare_wildcard_test.ts cloudflare/subdomain-proxy/route_test.ts cloudflare/session-proxy/relay_test.ts
-      # The web app's security headers (deploy/vercel_output_config.json).
-      - run: deno test --allow-read=deploy,web scripts/ci/vercel_config_test.ts
+      # The web app's security headers (deploy/vercel_output_config.json) and
+      # the visitor stats script (web/stats.js, deploy/nas-stats).
+      - run: deno test --allow-read=deploy,web scripts/ci/vercel_config_test.ts scripts/ci/web_stats_test.ts
 
   # Every push to the default branch that passes analyze + tests is deployed
   # to Vercel production. Other branches get the checks only: Vercel's free

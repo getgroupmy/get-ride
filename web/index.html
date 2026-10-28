@@ -55,6 +55,16 @@
   <script defer src="/_vercel/speed-insights/script.js"></script>
 
   <!--
+    Visitor stats (deploy/nas-stats): Umami on the office NAS, counting the
+    public pages only, without cookies. Off while the content is empty; the
+    web build fills it in from the STATS_SCRIPT_URL and STATS_WEBSITE_ID
+    repository variables (scripts/ci/stats_meta.sh). Async: when the NAS is
+    off nothing waits for it.
+  -->
+  <meta name="getride-stats" content="">
+  <script src="stats.js" async></script>
+
+  <!--
     First-load skeleton: what shows while the browser downloads the app,
     instead of a blank page. A grey outline of the home map and its sheet
     (or of a list page anywhere else), in the theme the app was last left

@@ -96,9 +96,15 @@ the face match order, each with a switch: NAS, then AWS, then in-browser
    WhatsApp/SMS or email. Admin › Settings › Office NAS › Uptime.
 4. **Face match** (above) and **ID reading** (built: `deploy/doc-reader`, 0320).
 5. **A test copy of the database** to try migrations on before the owner runs
-   them live. About 4 GB memory.
+   them live. About 4 GB memory. (built: `deploy/nas-testdb`: refreshed
+   nightly from the backups or a read-only pg_dump, personal data scrambled;
+   Admin › Settings › Office NAS › Test database › "Try migration from PR #".
+   Migration 0321.)
 6. **Website visitor stats** (**Umami** or **Plausible**): privacy-friendly, no
-   cookie banner.
+   cookie banner. (built: `deploy/nas-stats`: Umami at stats.getride.my
+   through a Cloudflare Tunnel, switched on by the STATS_SCRIPT_URL and
+   STATS_WEBSITE_ID build variables; Admin › Settings › Office NAS › Visitor
+   stats.)
 7. **Automations** (**n8n**): for example a daily summary on WhatsApp, an alert
    when SOS fires.
 

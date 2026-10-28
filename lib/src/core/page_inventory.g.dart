@@ -21,6 +21,8 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:admin-office-nas.prices', SurfaceKind.modal, 'Admin office nas · Prices', 'lib/src/admin/screens/office_nas/office_nas_maps.dart'),
   SurfaceEntry('modal:admin-office-nas.region', SurfaceKind.modal, 'Admin office nas · Region', 'lib/src/admin/screens/office_nas/office_nas_maps.dart'),
   SurfaceEntry('modal:admin-office-nas.target', SurfaceKind.modal, 'Admin office nas · Target', 'lib/src/admin/screens/office_nas/office_nas_uptime.dart'),
+  SurfaceEntry('modal:admin-office-nas.testdb-code', SurfaceKind.modal, 'Admin office nas · Testdb code', 'lib/src/admin/screens/office_nas/office_nas_test_db.dart'),
+  SurfaceEntry('modal:admin-office-nas.testdb-connect', SurfaceKind.modal, 'Admin office nas · Testdb connect', 'lib/src/admin/screens/office_nas/office_nas_test_db.dart'),
   SurfaceEntry('modal:admin-page-settings.colour', SurfaceKind.modal, 'Admin page settings · Colour', 'lib/src/admin/screens/meterapp/page_settings_screen.dart'),
   SurfaceEntry('modal:admin-partner-review.edit', SurfaceKind.modal, 'Admin partner review · Edit', 'lib/src/admin/screens/people/partner_review_screen.dart'),
   SurfaceEntry('modal:admin-partner-review.override', SurfaceKind.modal, 'Admin partner review · Override', 'lib/src/admin/screens/people/partner_review_rules.dart'),

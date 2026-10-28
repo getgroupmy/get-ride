@@ -95,6 +95,10 @@ jobs:
           MAP_TILE_URL_TRAFFIC_FALLBACK: ${{ secrets.MAP_TILE_URL_TRAFFIC_FALLBACK || vars.MAP_TILE_URL_TRAFFIC_FALLBACK }}
           TOM_TOM_API_KEY: ${{ secrets.TOM_TOM_API_KEY }}
           HERE_API_KEY: ${{ secrets.HERE_API_KEY }}
+          # Visitor stats (deploy/nas-stats): both set switches web/stats.js
+          # on; either unset leaves it off.
+          STATS_SCRIPT_URL: ${{ vars.STATS_SCRIPT_URL }}
+          STATS_WEBSITE_ID: ${{ vars.STATS_WEBSITE_ID }}
         run: |
           flutter pub get
           scripts/ci/map_defines.sh "$RUNNER_TEMP/map-defines.json"
@@ -105,6 +109,7 @@ jobs:
             --dart-define-from-file="$RUNNER_TEMP/map-defines.json" \
             --dart-define=WEB_BUILD_ID="$GITHUB_SHA"
           printf '{"build":"%s"}\n' "$GITHUB_SHA" > build/web/build.json
+          scripts/ci/stats_meta.sh build/web/index.html
 
       - name: Link the Vercel project
         if: steps.secrets.outputs.present == 'true'

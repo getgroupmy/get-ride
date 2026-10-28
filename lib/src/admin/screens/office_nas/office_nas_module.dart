@@ -15,7 +15,7 @@ const officeNasEntries = <AdminScreenEntry>[
   AdminScreenEntry(
     section: 'Security & integrations',
     title: 'Office NAS',
-    subtitle: 'Backups, uptime, maps, ID and face, and the other services on the office NAS',
+    subtitle: 'Backups, uptime, maps, ID and face, test database and visitor stats on the office NAS',
     path: officeNasPath,
     pages: [officeNasPage],
     icon: Icons.dns_outlined,
