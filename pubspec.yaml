@@ -52,6 +52,11 @@ dependencies:
   firebase_messaging: ^16.7.0
   universal_ble: ^2.3.0
   crypto: ^3.0.7
+  # Trip-audio keys (lib/src/data/trip_audio_vault.dart): the Android
+  # Keystore and the iOS Keychain.
+  flutter_secure_storage: ^11.2.0
+  # AES-GCM for the recordings; already in the app through supabase.
+  pointycastle: ^4.0.0
   record: ^7.1.1
   path_provider: ^2.1.6
   mobile_scanner: ^7.4.2

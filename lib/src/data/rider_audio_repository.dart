@@ -7,7 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/rider_audio.dart';
+import '../core/trip_audio_cipher.dart';
 import '../providers.dart';
+import 'trip_audio_vault.dart';
 import 'voice_protection_repository.dart';
 
 /// True where the rider's trip is recorded: the phone apps, as the driver's.
@@ -54,16 +56,14 @@ class RiderAudioRepository {
       await _db.rpc('ride_set_rider_audio', params: {'p_ride': rideId, 'p_on': on}) == true;
 }
 
-// Off the UI thread: an hour of speech is about 15 MB.
-void _sealFile(({String raw, String out, Uint8List key, Uint8List nonce}) a) =>
-    File(a.out).writeAsBytesSync(riderAudioCipher(a.key, a.nonce, File(a.raw).readAsBytesSync()), flush: true);
-
-Uint8List _openFile(({String path, Uint8List key, Uint8List nonce}) a) =>
-    riderAudioCipher(a.key, a.nonce, File(a.path).readAsBytesSync());
-
 /// The phone-local half: the rider's switch, the folder the encrypted
-/// recordings live in and the manifest of which is which (with its key).
+/// recordings live in and the manifest of which is which. The files are
+/// sealed, and their keys kept, by the [TripAudioVault] the driver's
+/// recordings share.
 class RiderAudioDeviceStore {
+  RiderAudioDeviceStore(this.vault);
+  final TripAudioVault vault;
+
   Future<bool> enabled(String profileId) async =>
       (await SharedPreferences.getInstance()).getBool(riderAudioEnabledKey(profileId)) ?? false;
 
@@ -76,6 +76,28 @@ class RiderAudioDeviceStore {
   Future<void> saveManifest(Map<String, RiderAudioLocal> m) async =>
       (await SharedPreferences.getInstance()).setString(riderAudioManifestKey, encodeRiderManifest(m));
 
+  /// Moves the keys a manifest from before the vault kept in
+  /// SharedPreferences into secure storage, and takes them out of the
+  /// manifest. A key that can't be moved stays until the next start.
+  Future<void> migrateKeys() async {
+    final m = await manifest();
+    if (!m.values.any((l) => l.hasLegacyKey)) return;
+    final out = <String, RiderAudioLocal>{};
+    for (final e in m.entries) {
+      final l = e.value;
+      if (l.hasLegacyKey) {
+        try {
+          await vault.adopt(e.key, TripAudioSecret(l.legacyKey!, legacyNonce: l.legacyNonce));
+        } catch (_) {
+          out[e.key] = l;
+          continue;
+        }
+      }
+      out[e.key] = RiderAudioLocal(path: l.path, expiresAt: l.expiresAt);
+    }
+    await saveManifest(out);
+  }
+
   Future<Directory> _dir() async {
     final dir = Directory('${(await getApplicationSupportDirectory()).path}/rider-audio');
     await dir.create(recursive: true);
@@ -86,24 +108,27 @@ class RiderAudioDeviceStore {
   /// private folder, never the user's documents).
   Future<String> newRecordingPath(String id) async => '${(await _dir()).path}/$id.m4a';
 
-  /// Encrypts the finished recording at [rawPath] with a fresh key, keeps the
-  /// encrypted file and deletes the plain one.
+  /// Seals the finished recording at [rawPath] under a fresh key, keeps the
+  /// sealed file and deletes the plain one.
   Future<RiderAudioLocal> seal(String id, String rawPath, DateTime expiresAt) async {
-    final key = riderAudioRandomBytes(32);
-    final nonce = riderAudioRandomBytes(16);
     final out = '${(await _dir()).path}/$id.enc';
-    await compute(_sealFile, (raw: rawPath, out: out, key: key, nonce: nonce));
-    await delete(rawPath);
-    return RiderAudioLocal(path: out, key: key, nonce: nonce, expiresAt: expiresAt);
+    await vault.seal(id, rawPath, out);
+    return RiderAudioLocal(path: out, expiresAt: expiresAt);
   }
 
-  /// The recording, decrypted, for an upload an agent asked for.
-  Future<Uint8List> open(RiderAudioLocal local) =>
-      compute(_openFile, (path: local.path, key: local.key, nonce: local.nonce));
+  /// The recording, decrypted in memory, for an upload an agent asked for.
+  Future<Uint8List> open(String id, RiderAudioLocal local) async {
+    if (local.hasLegacyKey) {
+      await vault.adopt(id, TripAudioSecret(local.legacyKey!, legacyNonce: local.legacyNonce));
+    }
+    return vault.open(id, local.path);
+  }
 
   bool exists(String path) => File(path).existsSync();
 
-  Future<void> delete(String path) async {
+  /// Deletes [path], and with [id] the recording's key as well.
+  Future<void> delete(String path, {String? id}) async {
+    if (id != null) return vault.delete(id, path: path);
     try {
       await File(path).delete();
     } catch (_) {}
@@ -111,7 +136,7 @@ class RiderAudioDeviceStore {
 }
 
 final riderAudioRepositoryProvider = Provider((ref) => RiderAudioRepository(ref.watch(supabaseProvider)));
-final riderAudioDeviceStoreProvider = Provider((_) => RiderAudioDeviceStore());
+final riderAudioDeviceStoreProvider = Provider((ref) => RiderAudioDeviceStore(ref.watch(tripAudioVaultProvider)));
 final riderAudioRecorderProvider = Provider<TripAudioRecorder>((_) => newMicRecorder());
 
 /// What holds at a pickup; null until the server answers, or when it can't

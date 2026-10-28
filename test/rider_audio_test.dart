@@ -17,9 +17,11 @@ import 'package:get_ride/src/admin/widgets/trip_audio_panel.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/partner_type_rules.dart' show RegionScope;
 import 'package:get_ride/src/core/rider_audio.dart';
+import 'package:get_ride/src/core/trip_audio_cipher.dart';
 import 'package:get_ride/src/core/voice_protection.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/rider_audio_repository.dart';
+import 'package:get_ride/src/data/trip_audio_vault.dart';
 import 'package:get_ride/src/data/voice_protection_repository.dart';
 import 'package:get_ride/src/features/safety/rider_audio_controller.dart';
 import 'package:get_ride/src/features/safety/rider_audio_widgets.dart';
@@ -91,6 +93,15 @@ class _Device implements RiderAudioDeviceStore {
   Map<String, RiderAudioLocal> stored = {};
   final files = <String>{};
   final deleted = <String>[];
+  final keys = <String>{};
+  final droppedKeys = <String>[];
+  var migrated = 0;
+
+  @override
+  TripAudioVault get vault => throw UnimplementedError();
+
+  @override
+  Future<void> migrateKeys() async => migrated++;
 
   @override
   Future<bool> enabled(String profileId) async => prefs[profileId] ?? false;
@@ -112,19 +123,24 @@ class _Device implements RiderAudioDeviceStore {
     files.remove(rawPath);
     final out = '/private/rider-audio/$id.enc';
     files.add(out);
-    return RiderAudioLocal(path: out, key: Uint8List(32), nonce: Uint8List(16), expiresAt: expiresAt);
+    keys.add(id);
+    return RiderAudioLocal(path: out, expiresAt: expiresAt);
   }
 
   @override
-  Future<Uint8List> open(RiderAudioLocal local) async => Uint8List.fromList([1, 2, 3]);
+  Future<Uint8List> open(String id, RiderAudioLocal local) async {
+    if (!keys.contains(id)) throw const TripAudioCipherException('no key for this recording');
+    return Uint8List.fromList([1, 2, 3]);
+  }
 
   @override
   bool exists(String path) => files.contains(path);
 
   @override
-  Future<void> delete(String path) async {
+  Future<void> delete(String path, {String? id}) async {
     files.remove(path);
     deleted.add(path);
+    if (id != null && keys.remove(id)) droppedKeys.add(id);
   }
 }
 
@@ -307,7 +323,7 @@ void main() {
   });
 
   group('on the phone', () {
-    test('the file is encrypted, and only its key opens it', () {
+    test('a 0315 file (before the vault) opens only with its key', () {
       final key = riderAudioRandomBytes(32);
       final nonce = riderAudioRandomBytes(16);
       final plain = Uint8List.fromList(List<int>.generate(1000, (i) => i % 251));
@@ -320,24 +336,29 @@ void main() {
       expect(riderAudioCipher(key, nonce, Uint8List(0)), isEmpty);
     });
 
-    test('the manifest keeps each file, key and time', () {
-      final l = RiderAudioLocal(
-        path: '/p/a.enc',
-        key: Uint8List.fromList([1, 2]),
-        nonce: Uint8List.fromList([3]),
-        expiresAt: DateTime.utc(2026, 10, 2),
-      );
-      final back = decodeRiderManifest(encodeRiderManifest({'a': l}));
+    test('the manifest keeps each file and time, never its key', () {
+      final l = RiderAudioLocal(path: '/p/a.enc', expiresAt: DateTime.utc(2026, 10, 2));
+      final raw = encodeRiderManifest({'a': l});
+      expect(raw, isNot(contains('key')));
+      final back = decodeRiderManifest(raw);
       expect(back['a']!.path, '/p/a.enc');
-      expect(back['a']!.key, [1, 2]);
+      expect(back['a']!.hasLegacyKey, isFalse);
       expect(back['a']!.expiresAt, DateTime.utc(2026, 10, 2));
+
+      // A 0315 manifest kept the key and nonce: read, then written back without.
+      final old = decodeRiderManifest(
+        '{"a": {"path": "/p/a.enc", "key": "AQI=", "nonce": "Aw==", "expires": "2026-10-02T00:00:00.000Z"}}',
+      );
+      expect(old['a']!.legacyKey, [1, 2]);
+      expect(old['a']!.legacyNonce, [3]);
+      expect(old['a']!.hasLegacyKey, isTrue);
       expect(decodeRiderManifest('not json'), isEmpty);
       expect(decodeRiderManifest('{"a": {"path": 1}}'), isEmpty);
     });
 
     test('which recordings the purge deletes', () {
       final now = DateTime.utc(2026, 10, 2, 12);
-      RiderAudioLocal at(String p, DateTime e) => RiderAudioLocal(path: p, key: Uint8List(1), nonce: Uint8List(1), expiresAt: e);
+      RiderAudioLocal at(String p, DateTime e) => RiderAudioLocal(path: p, expiresAt: e);
       final drop = expiredRiderRecordings(
         manifest: {
           'a': at('/a', DateTime.utc(2026, 10, 3)), // row expired on the server
@@ -405,6 +426,7 @@ void main() {
       expect(row['ride_label'], 'KLCC to KLIA');
       expect(row['unavailable'], isFalse);
       expect(device.stored[row['id']]!.path, endsWith('.enc'));
+      expect(device.keys, contains(row['id']), reason: 'its key is in secure storage');
       expect(device.files.where((f) => f.endsWith('.m4a')), isEmpty, reason: 'the plain file is gone');
       final recordedAt = DateTime.parse(row['recorded_at'] as String);
       expect(DateTime.parse(row['expires_at'] as String).difference(recordedAt), const Duration(hours: 6));
@@ -452,34 +474,41 @@ void main() {
     test('answers requests for the rider recordings this phone holds', () async {
       final c = make();
       await settle();
-      RiderAudioLocal l(String p) => RiderAudioLocal(path: p, key: Uint8List(1), nonce: Uint8List(1), expiresAt: DateTime(2100));
-      device.stored = {'held': l('/p/held.enc'), 'lost': l('/p/lost.enc')};
-      device.files.add('/p/held.enc');
+      RiderAudioLocal l(String p) => RiderAudioLocal(path: p, expiresAt: DateTime(2100));
+      device.stored = {'held': l('/p/held.enc'), 'lost': l('/p/lost.enc'), 'nokey': l('/p/nokey.enc')};
+      device.files.addAll(['/p/held.enc', '/p/nokey.enc']);
+      device.keys.addAll(['held', 'lost']);
       voice.pending = [
         _rec('held', requested: true),
         _rec('lost', requested: true),
+        _rec('nokey', requested: true),
         _rec('other', requested: true),
         _rec('drv', by: 'driver', requested: true),
       ];
       await c.read(riderAudioProvider.notifier).runPendingUploads();
       expect(voice.uploaded, [('held', '$_me/held.m4a')]);
-      expect(voice.unavailable, ['lost']);
+      expect(voice.unavailable, ['lost', 'nokey'], reason: 'file gone, or its key gone');
+      expect(device.droppedKeys, ['lost'], reason: 'the key goes with the file');
+      expect(device.deleted, contains('/p/nokey.enc'));
       expect(device.stored.keys, ['held']);
     });
 
     test('the purge deletes what is past its hours', () async {
       final c = make();
       await settle();
-      RiderAudioLocal l(String p, DateTime e) => RiderAudioLocal(path: p, key: Uint8List(1), nonce: Uint8List(1), expiresAt: e);
+      RiderAudioLocal l(String p, DateTime e) => RiderAudioLocal(path: p, expiresAt: e);
       device.stored = {
         'old': l('/p/old.enc', DateTime.now().subtract(const Duration(minutes: 1))),
         'new': l('/p/new.enc', DateTime.now().add(const Duration(hours: 1))),
         'srv': l('/p/srv.enc', DateTime.now().add(const Duration(hours: 1))),
       };
       device.files.addAll(['/p/old.enc', '/p/new.enc', '/p/srv.enc']);
+      device.keys.addAll(['old', 'new', 'srv']);
       voice.expired = {'srv'};
       await c.read(riderAudioProvider.notifier).purgeExpired();
+      expect(device.migrated, 1, reason: 'keys from before the vault move first');
       expect(device.deleted, unorderedEquals(['/p/old.enc', '/p/srv.enc']));
+      expect(device.keys, {'new'}, reason: 'each key goes with its file');
       expect(device.stored.keys, ['new']);
       expect(voice.unavailable, ['srv']);
     });

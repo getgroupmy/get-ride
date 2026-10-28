@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../core/trip_audio_cipher.dart' show TripAudioCipherException;
 import '../../core/voice_protection.dart';
 import '../../data/voice_protection_repository.dart';
 import '../../providers.dart';
@@ -87,7 +89,8 @@ class VoiceProtectionController extends Notifier<VoiceProtectionState> {
     }
   }
 
-  /// Stops the recording (if any), files it and writes its metadata row.
+  /// Stops the recording (if any), seals and files it and writes its
+  /// metadata row.
   Future<void> stopTrip() async {
     // The trip screen files on its way out; by then the whole scope may be gone.
     if (!ref.mounted) return;
@@ -111,11 +114,17 @@ class VoiceProtectionController extends Notifier<VoiceProtectionState> {
       file = _path;
     }
     _path = null;
-    final saved = file != null && device.exists(file);
-    if (saved) {
-      final m = await device.manifest();
-      m[id] = file;
-      await device.saveManifest(m);
+    var saved = false;
+    if (file != null && device.exists(file)) {
+      try {
+        final sealed = await device.seal(id, file);
+        final m = await device.manifest();
+        m[id] = sealed;
+        await device.saveManifest(m);
+        saved = true;
+      } catch (_) {
+        await device.delete(file);
+      }
     }
     try {
       await ref
@@ -155,7 +164,7 @@ class VoiceProtectionController extends Notifier<VoiceProtectionState> {
       modified: device.modified,
     );
     for (final id in drop) {
-      await device.delete(manifest[id]!);
+      await device.delete(manifest[id]!, id: id);
       manifest.remove(id);
     }
     if (drop.isNotEmpty) await device.saveManifest(manifest);
@@ -175,11 +184,21 @@ class VoiceProtectionController extends Notifier<VoiceProtectionState> {
       final manifest = await device.manifest();
       for (final rec in await repo.pendingUploads(uid)) {
         final local = manifest[rec.id];
-        switch (uploadActionFor(localPath: local, fileExists: local != null && device.exists(local))) {
+        var action = uploadActionFor(localPath: local, fileExists: local != null && device.exists(local));
+        Uint8List? bytes;
+        if (action == UploadAction.upload) {
+          try {
+            bytes = await device.read(rec.id, local!);
+          } on TripAudioCipherException {
+            action = UploadAction.markUnavailable; // its key is gone or the file was changed
+          }
+        }
+        switch (action) {
           case UploadAction.upload:
-            await repo.upload(rec, await device.read(local!), local);
+            await repo.upload(rec, bytes!, voiceUploadName(local!));
           case UploadAction.markUnavailable:
             await repo.markUnavailable([rec.id]);
+            await device.delete(local!, id: rec.id);
             manifest.remove(rec.id);
             await device.saveManifest(manifest);
           case UploadAction.ignore:

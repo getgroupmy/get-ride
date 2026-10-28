@@ -4,7 +4,8 @@
 /// With the rider's switch on (off until they turn it on; the phone
 /// remembers it), the phone app records the trip with its microphone while
 /// the ride is under way (Start trip to the end), keeps the file encrypted in
-/// the app's private folder for the hours the admin set at the pickup, and
+/// the app's private folder (its key in the phone's Keychain or Keystore,
+/// trip_audio_vault.dart) for the hours the admin set at the pickup, and
 /// never plays it back. A metadata row in `voice_protection_recordings`
 /// (recorded_by 'rider') lets support ask for it; the phone then uploads it
 /// to the private `voice-protection` bucket, as the driver's does. The
@@ -35,7 +36,7 @@ const riderAudioMaxHours = 168;
 /// The rider's own switch, per account on this phone.
 String riderAudioEnabledKey(String profileId) => 'rider_audio_enabled_$profileId';
 
-/// Which recording is which encrypted file, and its key.
+/// Which recording is which encrypted file (the keys are in secure storage).
 const riderAudioManifestKey = 'rider_audio_manifest_v1';
 
 /// What the driver sees on a ride the rider records.
@@ -247,31 +248,39 @@ Map<String, dynamic> newRiderRecordingRow({
 
 // ---- On the phone: the encrypted file -----------------------------------------------------------
 
-/// A recording on the phone: the encrypted file, its key and nonce, and
-/// when it is to be gone.
+/// A recording on the phone: the sealed file and when it is to be gone. Its
+/// key is in the phone's secure storage (TripAudioVault), under its id.
+/// [legacyKey] and [legacyNonce] are only read from a manifest written
+/// before the vault, which kept them here; the app moves them to secure
+/// storage at start-up (RiderAudioDeviceStore.migrateKeys).
 class RiderAudioLocal {
-  const RiderAudioLocal({required this.path, required this.key, required this.nonce, required this.expiresAt});
+  const RiderAudioLocal({required this.path, required this.expiresAt, this.legacyKey, this.legacyNonce});
 
   final String path;
-  final Uint8List key;
-  final Uint8List nonce;
   final DateTime expiresAt;
+  final Uint8List? legacyKey;
+  final Uint8List? legacyNonce;
 
+  bool get hasLegacyKey => legacyKey != null && legacyNonce != null;
+
+  /// As kept in the manifest: never a key, but one from before the vault
+  /// that could not be moved yet (so it isn't lost).
   Map<String, Object> toJson() => {
     'path': path,
-    'key': base64Encode(key),
-    'nonce': base64Encode(nonce),
+    if (hasLegacyKey) 'key': base64Encode(legacyKey!),
+    if (hasLegacyKey) 'nonce': base64Encode(legacyNonce!),
     'expires': expiresAt.toUtc().toIso8601String(),
   };
 
   static RiderAudioLocal? fromJson(Object? raw) {
     if (raw is! Map) return null;
     try {
+      final key = raw['key'], nonce = raw['nonce'];
       return RiderAudioLocal(
         path: raw['path'] as String,
-        key: base64Decode(raw['key'] as String),
-        nonce: base64Decode(raw['nonce'] as String),
         expiresAt: DateTime.parse(raw['expires'] as String),
+        legacyKey: key is String ? base64Decode(key) : null,
+        legacyNonce: nonce is String ? base64Decode(nonce) : null,
       );
     } catch (_) {
       return null;
@@ -302,7 +311,9 @@ Uint8List riderAudioRandomBytes(int n, [math.Random? random]) {
 }
 
 /// Encrypts or decrypts (the same thing): [data] XOR an HMAC-SHA256 counter
-/// keystream under [key] and [nonce]. A fresh key and nonce per recording.
+/// keystream under [key] and [nonce]. How 0315 sealed a rider recording;
+/// still read for one sealed before the vault (trip_audio_cipher.dart seals
+/// every new one).
 Uint8List riderAudioCipher(Uint8List key, Uint8List nonce, Uint8List data) {
   final mac = Hmac(sha256, key);
   final out = Uint8List(data.length);
