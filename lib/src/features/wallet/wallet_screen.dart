@@ -14,6 +14,7 @@ import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/offline_strip.dart';
+import 'c2c_owed_card.dart';
 import 'wallet_topup.dart';
 
 final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>((ref) {
@@ -140,6 +141,8 @@ class WalletScreen extends ConsumerWidget {
                       );
                     },
                   ),
+                  // City to City fees owed, with Pay now (0309); nothing when none.
+                  const C2cOwedCard(),
                   const SizedBox(height: 12),
                   // The three tiles stay one height when a label wraps.
                   IntrinsicHeight(

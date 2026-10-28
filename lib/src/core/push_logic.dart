@@ -141,6 +141,11 @@ String? pushRouteFor(Map<String, dynamic> data) {
       if (id is! String || id.isEmpty) return null;
       final ride = Uri.encodeComponent(id);
       return data['role'] == 'partner' ? '/drive/trip/$ride/chat' : '/ride/$ride/chat';
+    case 'c2c_reminder':
+    case 'c2c_pay':
+      // A City to City trip reminder or "Pay for your trip" (0309): the
+      // trips, on the recipient's side.
+      return data['role'] == 'partner' ? '/drive/city-to-city?tab=trips' : '/city-to-city';
     case 'ride_call':
       // The full-screen incoming call (migration 0131); it goes back to the
       // trip once the call is over.

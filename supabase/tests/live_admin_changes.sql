@@ -73,7 +73,9 @@ begin
     -- City to City: settings, permits by country, route rules; commission per service (migration 0306).
     'city_to_city_settings', 'c2c_country_permits', 'c2c_route_rules', 'commission_service_rates',
     -- City to City bookings and offers (migration 0307).
-    'c2c_bookings', 'c2c_offers'
+    'c2c_bookings', 'c2c_offers',
+    -- City to City give-up and in-app payment rules, give-up fees owed (migration 0309).
+    'c2c_giveup_rules', 'c2c_pay_rules', 'c2c_driver_fees'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

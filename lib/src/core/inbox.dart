@@ -122,7 +122,9 @@ InboxIcon inboxIconFor(String? kind) => switch (kind) {
   'ride_payment' ||
   'ride_expired' ||
   'ride_call_end' ||
-  'lost_item' => InboxIcon.ride,
+  'lost_item' ||
+  'c2c_reminder' ||
+  'c2c_pay' => InboxIcon.ride,
   'wallet_transfer_request' || 'wallet_transfer_response' => InboxIcon.wallet,
   'partner_status' || 'vehicle_status' || 'document_status' || 'partner_review' => InboxIcon.approval,
   'trip_start_check' || 'trip_separation' => InboxIcon.safety,

@@ -2,6 +2,8 @@
 // rules the admin keeps, and commission per service. The apps read the
 // same rows (everyone signed in reads them); admins with EDIT write.
 // Bookings (0307): the rider's quote, request, offers and booking.
+// Money and reminders (0309): the give-up and in-app payment rules by
+// region, paying in the app, fees owed.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -264,6 +266,76 @@ class CityToCityRepository {
   Future<void> driverCancel(String bookingId, {String? reason}) =>
       _db.rpc('c2c_driver_cancel', params: {'p_booking': bookingId, 'p_reason': reason});
 
+  // ---- Money (0309) ---------------------------------------------------------------------------------
+
+  Future<List<C2cGiveUpRule>> giveUpRules() async {
+    final rows = await _db.from('c2c_giveup_rules').select().order('created_at', ascending: true);
+    return [for (final r in rows) C2cGiveUpRule.fromRow(r)];
+  }
+
+  /// Adds [r] (no id) or changes it.
+  Future<void> saveGiveUpRule(C2cGiveUpRule r) async {
+    if (r.id == null) {
+      await _db.from('c2c_giveup_rules').insert(r.toRow());
+    } else {
+      await _db.from('c2c_giveup_rules').update(r.toRow()).eq('id', r.id!);
+    }
+  }
+
+  Future<void> deleteGiveUpRule(String id) => _db.from('c2c_giveup_rules').delete().eq('id', id);
+
+  Future<List<C2cPayRule>> payRules() async {
+    final rows = await _db.from('c2c_pay_rules').select().order('created_at', ascending: true);
+    return [for (final r in rows) C2cPayRule.fromRow(r)];
+  }
+
+  Future<void> savePayRule(C2cPayRule r) async {
+    if (r.id == null) {
+      await _db.from('c2c_pay_rules').insert(r.toRow());
+    } else {
+      await _db.from('c2c_pay_rules').update(r.toRow()).eq('id', r.id!);
+    }
+  }
+
+  Future<void> deletePayRule(String id) => _db.from('c2c_pay_rules').delete().eq('id', id);
+
+  /// What the pay sheet for [bookingId] needs.
+  Future<C2cPayInfo> payInfo(String bookingId) async =>
+      C2cPayInfo.fromJson(await _db.rpc('c2c_pay_info', params: {'p_booking': bookingId}));
+
+  /// Accepts [offerId], paying the way [way] (In app, held) the [expected]
+  /// total the rider saw.
+  Future<void> acceptOfferPay(String offerId, {C2cPayWay? way, double? expected}) => _db.rpc(
+    'c2c_accept_offer_pay',
+    params: {'p_offer': offerId, 'p_method': way?.key, 'p_expected': expected == null ? null : c2cRound2(expected)},
+  );
+
+  /// Pays completed trip [bookingId] (In app, after the trip).
+  Future<void> pay(String bookingId, C2cPayWay way, double expected) => _db.rpc(
+    'c2c_pay',
+    params: {'p_booking': bookingId, 'p_method': way.key, 'p_expected': c2cRound2(expected)},
+  );
+
+  /// The rider pays [bookingId] in cash instead.
+  Future<void> switchToCash(String bookingId) => _db.rpc('c2c_switch_to_cash', params: {'p_booking': bookingId});
+
+  /// What the signed-in account owes City to City.
+  Future<C2cOwed> myOwed() async => C2cOwed.fromJson(await _db.rpc('c2c_my_owed'));
+
+  /// Pay now: from the GET wallet as far as it goes; how much was paid.
+  Future<double> payOwed() async {
+    final r = await _db.rpc('c2c_pay_owed');
+    final paid = r is Map ? r['paid'] : null;
+    return paid is num ? paid.toDouble() : 0;
+  }
+
+  /// The cash trip's driver collected the fees the rider owed; how much.
+  Future<double> markCollected(String bookingId) async {
+    final r = await _db.rpc('c2c_mark_collected', params: {'p_booking': bookingId});
+    final v = r is Map ? r['collected'] : null;
+    return v is num ? v.toDouble() : 0;
+  }
+
   /// When the driver's licence was first issued, once.
   Future<void> setDrivingSince(DateTime since) => _db.rpc('c2c_set_driving_since', params: {
     'p_since': '${since.year.toString().padLeft(4, '0')}-${since.month.toString().padLeft(2, '0')}-'
@@ -365,4 +437,29 @@ final c2cDriverFeedProvider = FutureProvider.autoDispose<C2cDriverFeed>((ref) {
 final c2cDriverTripsProvider = FutureProvider.autoDispose<List<C2cBooking>>((ref) {
   ref.watchLive('c2c_bookings');
   return ref.watch(cityToCityRepositoryProvider).driverTrips();
+});
+
+/// The give-up rules by region, live (0309).
+final c2cGiveUpRulesProvider = FutureProvider.autoDispose<List<C2cGiveUpRule>>((ref) {
+  ref.watchLive('c2c_giveup_rules');
+  return ref.watch(cityToCityRepositoryProvider).giveUpRules();
+});
+
+/// The in-app payment rules by region, live (0309).
+final c2cPayRulesProvider = FutureProvider.autoDispose<List<C2cPayRule>>((ref) {
+  ref.watchLive('c2c_pay_rules');
+  return ref.watch(cityToCityRepositoryProvider).payRules();
+});
+
+/// What the signed-in account owes City to City, live; none when it can't
+/// be read.
+final c2cMyOwedProvider = FutureProvider.autoDispose<C2cOwed>((ref) async {
+  ref.watchLive('c2c_bookings');
+  ref.watchLive('c2c_driver_fees');
+  ref.watchLive('wallets');
+  try {
+    return await ref.watch(cityToCityRepositoryProvider).myOwed();
+  } catch (_) {
+    return C2cOwed.none;
+  }
 });

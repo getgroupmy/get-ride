@@ -413,7 +413,8 @@ export function inMode<T extends { mode?: string | null }>(rows: T[], mode: AppM
 
 /**
  * Not kept on the page: a ringing call, a ride offer and a chat message
- * each have a screen of their own and are stale within minutes.
+ * each have a screen of their own and are stale within minutes. A push
+ * whose data says `inbox: false` is not kept either.
  */
 const NOT_KEPT = new Set(["ride_call", "ride_request", "ride_request_fare_raised", "ride_message"]);
 
@@ -441,7 +442,9 @@ export function inboxRows(
 ): InboxRow[] {
   const kind = typeof data?.type === "string" ? data.type : null;
   if (kind !== null && NOT_KEPT.has(kind)) return [];
-  const { attempt: _attempt, ...kept } = data ?? {};
+  // The sender turned the page off for this one (City to City reminders, 0309).
+  if (data?.inbox === false) return [];
+  const { attempt: _attempt, inbox: _inbox, ...kept } = data ?? {};
   const event = typeof kept.event_id === "string" && kept.event_id.trim() !== "" ? kept.event_id.trim() : null;
   return Array.from(new Set(profileIds))
     .filter((id) => typeof id === "string" && id !== "")

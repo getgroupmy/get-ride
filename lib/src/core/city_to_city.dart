@@ -20,6 +20,13 @@
 // booking and the cancel fee; [C2cBooking], [C2cOffer], [c2cCancelFee],
 // [c2cFareProblem] and the words the rider app shows. The server checks
 // the same on insert and cancel (supabase/tests/city_to_city_bookings_0307.sql).
+//
+// Money and reminders (migration 0309): the give-up and in-app payment
+// rules by region ([c2cRegionRuleFor]), the give-up fee and its split
+// ([c2cGiveUpFee]), how a fare is paid from the wallet and coins
+// ([c2cPaySplit]), the pay sheet's lines, and the reminder schedule
+// ([c2cReminderSchedule]); twins of c2c_giveup_rule_for, c2c_giveup_fee,
+// c2c_pay_split and c2c_send_reminders (supabase/tests/city_to_city_money_0309.sql).
 import 'dart:math' as math;
 
 import 'package:intl/intl.dart' show DateFormat;
@@ -328,6 +335,15 @@ class C2cSettings {
     this.defaultRangeHigh,
     this.defaultBookAheadDays = 14,
     this.currency = 'MYR',
+    this.owedFromTopup = true,
+    this.owedNextInApp = true,
+    this.owedCashCollect = false,
+    this.owedBlock = false,
+    this.remindersOn = true,
+    this.reminderPush = true,
+    this.reminderInbox = true,
+    this.reminderSms = false,
+    this.reminders = c2cDefaultReminders,
   });
 
   factory C2cSettings.fromRow(Map<String, dynamic>? r) {
@@ -348,6 +364,15 @@ class C2cSettings {
       defaultRangeHigh: _numOrNull(r['default_range_high']),
       defaultBookAheadDays: _num(r['default_book_ahead_days'], 14).round(),
       currency: (_nz(r['currency']) ?? 'MYR').toUpperCase(),
+      owedFromTopup: r['owed_from_topup'] != false,
+      owedNextInApp: r['owed_next_in_app'] != false,
+      owedCashCollect: r['owed_cash_collect'] == true,
+      owedBlock: r['owed_block'] == true,
+      remindersOn: r['reminders_on'] != false,
+      reminderPush: r['reminder_push'] != false,
+      reminderInbox: r['reminder_inbox'] != false,
+      reminderSms: r['reminder_sms'] == true,
+      reminders: r.containsKey('reminders') ? c2cRemindersFrom(r['reminders']) : c2cDefaultReminders,
     );
   }
 
@@ -363,6 +388,15 @@ class C2cSettings {
   final double? defaultRangeLow, defaultRangeHigh;
   final int defaultBookAheadDays;
   final String currency;
+
+  /// Cancel fees a rider owes (0309): taken from the next top-up, added to
+  /// the next in-app payment, collected by the next cash trip's driver, and
+  /// no new booking until paid. Any combination.
+  final bool owedFromTopup, owedNextInApp, owedCashCollect, owedBlock;
+
+  /// Trip reminders (0309): on/off, the channels and the list.
+  final bool remindersOn, reminderPush, reminderInbox, reminderSms;
+  final List<C2cReminder> reminders;
 
   /// The default rule, for the quote and the editor: the fare card plus the
   /// default add-on, with its own range.
@@ -385,6 +419,15 @@ class C2cSettings {
     bool? minYearsOn,
     int? minYears,
     C2cRule? defaultRule,
+    bool? owedFromTopup,
+    bool? owedNextInApp,
+    bool? owedCashCollect,
+    bool? owedBlock,
+    bool? remindersOn,
+    bool? reminderPush,
+    bool? reminderInbox,
+    bool? reminderSms,
+    List<C2cReminder>? reminders,
   }) => C2cSettings(
     cancelFeeOn: cancelFeeOn ?? this.cancelFeeOn,
     cancelFeeAmount: cancelFeeAmount ?? this.cancelFeeAmount,
@@ -401,6 +444,15 @@ class C2cSettings {
     defaultRangeHigh: defaultRule == null ? defaultRangeHigh : defaultRule.rangeHigh,
     defaultBookAheadDays: defaultRule?.bookAheadDays ?? defaultBookAheadDays,
     currency: currency,
+    owedFromTopup: owedFromTopup ?? this.owedFromTopup,
+    owedNextInApp: owedNextInApp ?? this.owedNextInApp,
+    owedCashCollect: owedCashCollect ?? this.owedCashCollect,
+    owedBlock: owedBlock ?? this.owedBlock,
+    remindersOn: remindersOn ?? this.remindersOn,
+    reminderPush: reminderPush ?? this.reminderPush,
+    reminderInbox: reminderInbox ?? this.reminderInbox,
+    reminderSms: reminderSms ?? this.reminderSms,
+    reminders: reminders ?? this.reminders,
   );
 
   Map<String, dynamic> toRow() => {
@@ -418,6 +470,15 @@ class C2cSettings {
     'default_range_low': defaultRangeMode == C2cRangeMode.set ? defaultRangeLow : null,
     'default_range_high': defaultRangeMode == C2cRangeMode.set ? defaultRangeHigh : null,
     'default_book_ahead_days': defaultBookAheadDays,
+    'owed_from_topup': owedFromTopup,
+    'owed_next_in_app': owedNextInApp,
+    'owed_cash_collect': owedCashCollect,
+    'owed_block': owedBlock,
+    'reminders_on': remindersOn,
+    'reminder_push': reminderPush,
+    'reminder_inbox': reminderInbox,
+    'reminder_sms': reminderSms,
+    'reminders': [for (final r in reminders) r.toJson()],
   };
 
   /// What riders see about cancelling.
@@ -430,6 +491,8 @@ class C2cSettings {
   String? get problem {
     if (!payInApp && !payCash) return 'Keep at least one payment method on.';
     if (cancelFeeOn && cancelFeeAmount <= 0) return 'Set the cancel fee, or turn it off.';
+    final rem = c2cRemindersProblem(reminders);
+    if (rem != null) return rem;
     return c2cRuleProblem(defaultRule, isDefault: true);
   }
 }
@@ -828,6 +891,13 @@ class C2cBooking {
     this.commissionAmount,
     this.driverDroppedAt,
     this.completedAt,
+    this.payMode,
+    this.payStatus,
+    this.paidMethod,
+    this.paidAmount,
+    this.collectAmount,
+    this.collectedAt,
+    this.cancelFeePaidVia,
   });
 
   factory C2cBooking.fromRow(Map<String, dynamic> r) {
@@ -878,6 +948,13 @@ class C2cBooking {
       commissionAmount: _numOrNull(r['commission_amount']),
       driverDroppedAt: at(r['driver_dropped_at']),
       completedAt: at(r['completed_at']),
+      payMode: _nz(r['pay_mode']),
+      payStatus: _nz(r['pay_status']),
+      paidMethod: _nz(r['paid_method']),
+      paidAmount: _numOrNull(r['paid_amount']),
+      collectAmount: _numOrNull(r['collect_amount']),
+      collectedAt: at(r['collected_at']),
+      cancelFeePaidVia: _nz(r['cancel_fee_paid_via']),
     );
   }
 
@@ -930,6 +1007,25 @@ class C2cBooking {
   /// When the booked driver last gave the trip up (0308): it went back to open.
   final DateTime? driverDroppedAt;
   final DateTime? completedAt;
+
+  /// In-app payment (0309): 'hold' or 'after', kept at accept; held, paid,
+  /// refunded, unpaid (pay after the trip) or cash (switched).
+  final String? payMode, payStatus;
+
+  /// get_wallet | get_coin | mix, and the fare paid or held.
+  final String? paidMethod;
+  final double? paidAmount;
+
+  /// Cancel fees the rider owes that this cash trip's driver collects
+  /// (0309), and when the driver marked them collected.
+  final double? collectAmount;
+  final DateTime? collectedAt;
+
+  /// How an owed cancel fee was paid: topup, in_app, cash, pay_now.
+  final String? cancelFeePaidVia;
+
+  /// The rider still pays this completed trip in the app.
+  bool get unpaid => payStatus == 'unpaid';
 
   /// What the trip costs now: the agreed fare once booked, else the rider's.
   double get price => agreedFare ?? fare;
@@ -1206,6 +1302,13 @@ const c2cErrorWords = <String, String>{
   'C2C_TOO_LATE': 'It is past the time to leave. Contact support to cancel this trip.',
   'C2C_DRIVING_SINCE_SET': 'Your driving start date is already on file. Ask support to change it.',
   'C2C_BAD_DATE': 'Enter the date your driving licence was first issued.',
+  'C2C_WALLET_SHORT': "Your GET wallet doesn't hold enough. Top up, or switch this trip to cash.",
+  'C2C_AMOUNT_CHANGED': 'The amount changed. Check it and try again.',
+  'C2C_PAY_WAY': "That way to pay isn't offered here. Pick another.",
+  'C2C_FEES_OWED': 'Pay the cancel fee you owe first. Open Wallet to pay it.',
+  'C2C_NOTHING_TO_PAY': 'There is nothing to pay in the app for this trip.',
+  'C2C_NOT_DONE': 'Pay once the trip is complete.',
+  'C2C_DEFAULT_RULE': "The default rule can't be removed.",
 };
 
 /// One end of a trip as the rider picked it.
@@ -1539,3 +1642,814 @@ String c2cTripsTabLabel(int n) => n == 0 ? 'My trips' : 'My trips ($n)';
 
 /// What the rider's page says once their driver gave the trip up (0308).
 const c2cDriverDroppedLine = 'Your request is open to drivers again, and no fee applies.';
+
+// ---- Money and reminders (migration 0309) ---------------------------------------------------------
+
+/// A rule kept per region: the default (no place) or one place.
+abstract class C2cRegionRule {
+  String? get id;
+
+  /// Null: the default, for every pickup without a region rule.
+  C2cPlace? get place;
+  bool get active;
+  DateTime? get createdAt;
+
+  bool get isDefault => place == null;
+
+  /// "Default", "Sabah".
+  String get name => place?.name ?? 'Default';
+
+  /// "Everywhere without its own rule", "State, Malaysia".
+  String get scope {
+    final p = place;
+    if (p == null) return 'Everywhere without its own rule';
+    final level = '${p.level[0].toUpperCase()}${p.level.substring(1)}';
+    return p.within.isEmpty ? level : '$level, ${p.within}';
+  }
+}
+
+C2cPlace? _placeOf(Object? v) => v is Map ? C2cPlace.fromJson(Map<String, dynamic>.from(v)) : null;
+
+/// The rule for a pickup at [pickup] among [rules]: the most specific active
+/// region rule that holds it (suburb, city, state, country), else the
+/// default; null when there is none at all. As c2c_giveup_rule_for and
+/// c2c_pay_rule_for: ties go to the older rule, then the lower id.
+T? c2cRegionRuleFor<T extends C2cRegionRule>(List<T> rules, Geo pickup) {
+  T? best;
+  var bestRank = -1;
+  for (final r in rules) {
+    final p = r.place;
+    final rank = p == null ? 0 : (r.active ? p.holds(pickup) : 0);
+    if (p != null && rank == 0) continue;
+    final better = best == null ||
+        rank > bestRank ||
+        (rank == bestRank &&
+            ((r.createdAt ?? DateTime(0)).compareTo(best.createdAt ?? DateTime(0)) < 0 ||
+                ((r.createdAt ?? DateTime(0)) == (best.createdAt ?? DateTime(0)) &&
+                    (r.id ?? '').compareTo(best.id ?? '') < 0)));
+    if (better) {
+      best = r;
+      bestRank = rank;
+    }
+  }
+  return best;
+}
+
+/// When a driver pays for giving a trip up.
+enum C2cGiveUpWhen {
+  within('within', 'Only inside X hours'),
+  always('always', 'Always');
+
+  const C2cGiveUpWhen(this.key, this.label);
+  final String key;
+  final String label;
+  static C2cGiveUpWhen of(Object? v) => v == 'always' ? always : within;
+}
+
+/// Where a give-up fee goes.
+enum C2cFeeDest {
+  rider('rider', 'Rider'),
+  platform('platform', 'get.ride'),
+  split('split', 'Split');
+
+  const C2cFeeDest(this.key, this.label);
+  final String key;
+  final String label;
+  static C2cFeeDest of(Object? v) => values.firstWhere((d) => d.key == v, orElse: () => rider);
+}
+
+/// If the driver's GET wallet is short.
+enum C2cShortMode {
+  negative('negative', 'Allow negative'),
+  owed('owed', 'Record as owed');
+
+  const C2cShortMode(this.key, this.label);
+  final String key;
+  final String label;
+  static C2cShortMode of(Object? v) => v == 'owed' ? owed : negative;
+
+  /// What the admin page says under the choice.
+  String get note => this == negative
+      ? 'The fee is taken in full: what the GET wallet lacks comes off GET.credit, which may go below zero '
+            'as commission does. The rider is paid their share now.'
+      : 'What is in the wallet is taken; the rest shows as owed on the driver and comes from their next earnings. '
+            'The rider is paid as it comes in.';
+}
+
+/// What a driver pays to give a booked trip up (c2c_giveup_rules).
+class C2cGiveUpRule extends C2cRegionRule {
+  C2cGiveUpRule({
+    this.id,
+    this.place,
+    this.charge = false,
+    this.amount = 30,
+    this.when = C2cGiveUpWhen.within,
+    this.freeHours = 24,
+    this.dest = C2cFeeDest.rider,
+    this.splitFixed = false,
+    this.splitPercent = 70,
+    this.splitAmount = 20,
+    this.shortMode = C2cShortMode.negative,
+    this.active = true,
+    this.createdAt,
+  });
+
+  factory C2cGiveUpRule.fromRow(Map<String, dynamic> r) => C2cGiveUpRule(
+    id: _nz(r['id']),
+    place: _placeOf(r['place']),
+    charge: r['charge'] == true,
+    amount: _num(r['amount'], 30),
+    when: C2cGiveUpWhen.of(r['when_mode']),
+    freeHours: _num(r['free_hours'], 24).round(),
+    dest: C2cFeeDest.of(r['dest']),
+    splitFixed: r['split_mode'] == 'fixed',
+    splitPercent: _num(r['split_percent'], 70),
+    splitAmount: _num(r['split_fixed'], 20),
+    shortMode: C2cShortMode.of(r['short_mode']),
+    active: r['active'] != false,
+    createdAt: DateTime.tryParse('${r['created_at'] ?? ''}'),
+  );
+
+  @override
+  final String? id;
+  @override
+  final C2cPlace? place;
+  final bool charge;
+  final double amount;
+  final C2cGiveUpWhen when;
+  final int freeHours;
+  final C2cFeeDest dest;
+
+  /// The rider's share of a split: a fixed RM ([splitAmount]) or a percent.
+  final bool splitFixed;
+  final double splitPercent, splitAmount;
+  final C2cShortMode shortMode;
+  @override
+  final bool active;
+  @override
+  final DateTime? createdAt;
+
+  C2cGiveUpRule copyWith({
+    C2cPlace? place,
+    bool? charge,
+    double? amount,
+    C2cGiveUpWhen? when,
+    int? freeHours,
+    C2cFeeDest? dest,
+    bool? splitFixed,
+    double? splitPercent,
+    double? splitAmount,
+    C2cShortMode? shortMode,
+    bool? active,
+  }) => C2cGiveUpRule(
+    id: id,
+    place: place ?? this.place,
+    charge: charge ?? this.charge,
+    amount: amount ?? this.amount,
+    when: when ?? this.when,
+    freeHours: freeHours ?? this.freeHours,
+    dest: dest ?? this.dest,
+    splitFixed: splitFixed ?? this.splitFixed,
+    splitPercent: splitPercent ?? this.splitPercent,
+    splitAmount: splitAmount ?? this.splitAmount,
+    shortMode: shortMode ?? this.shortMode,
+    active: active ?? this.active,
+    createdAt: createdAt,
+  );
+
+  /// The row as stored (without the server's stamps).
+  Map<String, dynamic> toRow() => {
+    if (id != null) 'id': id,
+    'place': place?.toJson(),
+    'charge': charge,
+    'amount': amount,
+    'when_mode': when.key,
+    'free_hours': freeHours,
+    'dest': dest.key,
+    'split_mode': splitFixed ? 'fixed' : 'percent',
+    'split_percent': splitPercent,
+    'split_fixed': splitAmount,
+    'short_mode': shortMode.key,
+    'active': active,
+  };
+
+  /// Why it can't be saved, or null.
+  String? get problem {
+    final why = place?.problem;
+    if (why != null) return why;
+    if (charge && amount <= 0) return 'Set the fee, or turn the charge off.';
+    if (splitPercent < 0 || splitPercent > 100) return "The rider's share is 0 to 100%.";
+    if (splitAmount < 0) return "The rider's share can't be below 0.";
+    return null;
+  }
+}
+
+/// The fee under [r] to give up at [at] a trip leaving at [leaveAt], and
+/// how it splits (c2c_giveup_fee's twin).
+({double fee, double toRider, double toPlatform}) c2cGiveUpFee(C2cGiveUpRule? r, DateTime leaveAt, DateTime at) {
+  if (r == null || !r.charge || r.amount <= 0) return (fee: 0, toRider: 0, toPlatform: 0);
+  if (r.when == C2cGiveUpWhen.within && at.isBefore(leaveAt.subtract(Duration(hours: r.freeHours)))) {
+    return (fee: 0, toRider: 0, toPlatform: 0);
+  }
+  final fee = c2cRound2(r.amount);
+  final rider = switch (r.dest) {
+    C2cFeeDest.rider => fee,
+    C2cFeeDest.platform => 0.0,
+    C2cFeeDest.split => r.splitFixed ? math.min(c2cRound2(r.splitAmount), fee) : c2cRound2(fee * r.splitPercent / 100),
+  };
+  return (fee: fee, toRider: rider, toPlatform: c2cRound2(fee - rider));
+}
+
+/// What the driver sees before Give up trip: "Giving up this trip is
+/// free.", "Giving up this trip costs RM 30.", "Free until 24 hours before
+/// leaving, then RM 30."
+String c2cGiveUpLine(C2cGiveUpRule? r, [String currency = 'MYR']) {
+  if (r == null || !r.charge || r.amount <= 0) return 'Giving up this trip is free.';
+  final fee = c2cMoney(r.amount, currency);
+  if (r.when == C2cGiveUpWhen.always) return 'Giving up this trip costs $fee.';
+  return 'Free until ${r.freeHours} ${r.freeHours == 1 ? 'hour' : 'hours'} before leaving, then $fee.';
+}
+
+/// The rules list's line: "RM 30, inside 24 h, to rider, may go negative".
+String c2cGiveUpSummary(C2cGiveUpRule r, [String currency = 'MYR']) {
+  if (!r.charge) return 'No charge';
+  final to = switch (r.dest) {
+    C2cFeeDest.rider => 'rider',
+    C2cFeeDest.platform => 'get.ride',
+    C2cFeeDest.split => 'split',
+  };
+  return '${c2cMoney(r.amount, currency)}'
+      '${r.when == C2cGiveUpWhen.always ? ', always' : ', inside ${r.freeHours} h'}, to $to'
+      '${r.shortMode == C2cShortMode.negative ? ', may go negative' : ', rest owed'}';
+}
+
+/// The admin page's example: a driver giving up [hoursBefore] hours before
+/// leaving with [wallet] in their GET wallet. Two lines.
+(String, String) c2cGiveUpExample(C2cGiveUpRule r, {double hoursBefore = 3, double wallet = 12, String currency = 'MYR'}) {
+  final leave = DateTime(2026, 1, 1, 12);
+  final f = c2cGiveUpFee(r, leave, leave.subtract(Duration(minutes: (hoursBefore * 60).round())));
+  const back = 'The trip goes back to open for other drivers.';
+  if (!r.charge) return ('No charge.', back);
+  if (f.fee == 0) return ('No charge: more than ${r.freeHours} h before leaving.', back);
+  String m(double v) => c2cMoney(c2cRound2(v), currency);
+  final first = 'Driver charged ${m(f.fee)}: ${m(f.toRider)} to the rider, ${m(f.toPlatform)} to get.ride.';
+  if (wallet >= f.fee) return (first, '${m(f.fee)} taken from the GET wallet.');
+  final rest = f.fee - wallet;
+  return (
+    first,
+    r.shortMode == C2cShortMode.negative
+        ? '${m(wallet)} from the GET wallet, ${m(rest)} from GET.credit (below zero until paid back).'
+        : '${m(wallet)} taken now, ${m(rest)} recorded as owed by the driver.',
+  );
+}
+
+/// When the rider pays an In app trip.
+enum C2cPayWhen {
+  hold('hold', 'Hold at booking'),
+  after('after', 'Pay after the trip');
+
+  const C2cPayWhen(this.key, this.label);
+  final String key;
+  final String label;
+  static C2cPayWhen of(Object? v) => v == 'after' ? after : hold;
+
+  /// What the admin page says about it.
+  String get note => this == hold
+      ? 'The fare is taken from the rider when they accept an offer and held. It goes to the driver at Complete '
+            'trip, less commission. If the trip is cancelled it goes back to the rider, less any cancel fee. The '
+            'driver sees "Paid in app, held".'
+      : 'As city rides: the rider pays after Complete trip. The driver sees "In app, paid after the trip".';
+}
+
+/// How a trip paid In app is charged (c2c_pay_rules).
+class C2cPayRule extends C2cRegionRule {
+  C2cPayRule({
+    this.id,
+    this.place,
+    this.when = C2cPayWhen.hold,
+    this.wallet = true,
+    this.coin = true,
+    this.mix = true,
+    this.offerTopup = true,
+    this.offerCash = true,
+    this.active = true,
+    this.createdAt,
+  });
+
+  factory C2cPayRule.fromRow(Map<String, dynamic> r) => C2cPayRule(
+    id: _nz(r['id']),
+    place: _placeOf(r['place']),
+    when: C2cPayWhen.of(r['when_mode']),
+    wallet: r['pay_wallet'] != false,
+    coin: r['pay_coin'] != false,
+    mix: r['pay_mix'] != false,
+    offerTopup: r['offer_topup'] != false,
+    offerCash: r['offer_cash'] != false,
+    active: r['active'] != false,
+    createdAt: DateTime.tryParse('${r['created_at'] ?? ''}'),
+  );
+
+  @override
+  final String? id;
+  @override
+  final C2cPlace? place;
+  final C2cPayWhen when;
+
+  /// Ways to pay: GET.wallet, GET.coin, and coins first then the wallet.
+  final bool wallet, coin, mix;
+
+  /// When the wallet is short: offer Top up, offer Switch to cash.
+  final bool offerTopup, offerCash;
+  @override
+  final bool active;
+  @override
+  final DateTime? createdAt;
+
+  C2cPayRule copyWith({
+    C2cPlace? place,
+    C2cPayWhen? when,
+    bool? wallet,
+    bool? coin,
+    bool? mix,
+    bool? offerTopup,
+    bool? offerCash,
+    bool? active,
+  }) {
+    final w = wallet ?? this.wallet, c = coin ?? this.coin;
+    return C2cPayRule(
+      id: id,
+      place: place ?? this.place,
+      when: when ?? this.when,
+      wallet: w,
+      coin: c,
+      // Mix needs both ways on.
+      mix: (mix ?? this.mix) && w && c,
+      offerTopup: offerTopup ?? this.offerTopup,
+      offerCash: offerCash ?? this.offerCash,
+      active: active ?? this.active,
+      createdAt: createdAt,
+    );
+  }
+
+  Map<String, dynamic> toRow() => {
+    if (id != null) 'id': id,
+    'place': place?.toJson(),
+    'when_mode': when.key,
+    'pay_wallet': wallet,
+    'pay_coin': coin,
+    'pay_mix': mix && wallet && coin,
+    'offer_topup': offerTopup,
+    'offer_cash': offerCash,
+    'active': active,
+  };
+
+  String? get problem {
+    final why = place?.problem;
+    if (why != null) return why;
+    if (!wallet && !coin) return 'Keep at least one way on, or turn In app off in Payment methods.';
+    return null;
+  }
+}
+
+/// The rules list's line: "Held at booking; wallet, coin, mix".
+String c2cPayRuleSummary(C2cPayRule r) {
+  final ways = [if (r.wallet) 'wallet', if (r.coin) 'coin', if (r.mix) 'mix'];
+  return '${r.when == C2cPayWhen.hold ? 'Held at booking' : 'Paid after the trip'}; '
+      '${ways.isEmpty ? 'no way set' : ways.join(', ')}';
+}
+
+/// A way to pay in the app.
+enum C2cPayWay {
+  mix('mix', 'Coins first, then GET.wallet'),
+  wallet('get_wallet', 'GET.wallet'),
+  coin('get_coin', 'GET.coin');
+
+  const C2cPayWay(this.key, this.label);
+  final String key;
+  final String label;
+  static C2cPayWay? of(Object? v) => values.where((w) => w.key == v).firstOrNull;
+}
+
+/// How [total] is paid by [way] from a wallet of [wallet] and [coins] coins
+/// at [rate] coins per unit: the wallet part, the coins' value, the coins
+/// (rounded up) and how much is short (c2c_pay_split's twin).
+({double walletPart, double coinValue, double coins, double short}) c2cPaySplit(
+  double total,
+  C2cPayWay way,
+  double wallet,
+  double coins,
+  double? rate,
+) {
+  final t = c2cRound2(math.max(total, 0));
+  final r = rate ?? 0;
+  final w = math.max(wallet, 0);
+  final max = r > 0 ? (math.max(coins, 0) / r * 100 + 1e-9).floor() / 100 : 0.0;
+  double coinsFor(double v) => r > 0 ? (v * r * 100 - 1e-9).ceil() / 100 : 0;
+  switch (way) {
+    case C2cPayWay.coin:
+      return (walletPart: 0, coinValue: t, coins: coinsFor(t), short: c2cRound2(math.max(t - max, 0)));
+    case C2cPayWay.mix:
+      final cv = math.min(max, t);
+      return (
+        walletPart: c2cRound2(t - cv),
+        coinValue: cv,
+        coins: coinsFor(cv),
+        short: c2cRound2(math.max(t - cv - w, 0)),
+      );
+    case C2cPayWay.wallet:
+      return (walletPart: t, coinValue: 0, coins: 0, short: c2cRound2(math.max(t - w, 0)));
+  }
+}
+
+/// A cancel fee the rider owes (0307's 'due').
+class C2cDue {
+  const C2cDue({required this.id, required this.ref, required this.fee, this.cancelledAt, this.route, this.currency = 'MYR'});
+
+  factory C2cDue.fromJson(Map<String, dynamic> j) => C2cDue(
+    id: '${j['id']}',
+    ref: _nz(j['ref']) ?? '',
+    fee: _num(j['fee']),
+    cancelledAt: DateTime.tryParse('${j['cancelledAt'] ?? ''}')?.toLocal(),
+    route: _nz(j['route']),
+    currency: (_nz(j['currency']) ?? 'MYR').toUpperCase(),
+  );
+
+  final String id, ref;
+  final double fee;
+  final DateTime? cancelledAt;
+  final String? route;
+  final String currency;
+}
+
+/// What the rider's pay sheet needs (c2c_pay_info).
+class C2cPayInfo {
+  const C2cPayInfo({
+    this.when = C2cPayWhen.hold,
+    this.wallet = true,
+    this.coin = true,
+    this.mix = true,
+    this.offerTopup = true,
+    this.offerCash = true,
+    this.walletBalance = 0,
+    this.coinBalance = 0,
+    this.coinRate,
+    this.dues = const [],
+    this.payStatus,
+  });
+
+  factory C2cPayInfo.fromJson(Object? v) {
+    final m = v is Map ? Map<String, dynamic>.from(v) : const <String, dynamic>{};
+    return C2cPayInfo(
+      when: C2cPayWhen.of(m['when']),
+      wallet: m['wallet'] != false,
+      coin: m['coin'] != false,
+      mix: m['mix'] != false,
+      offerTopup: m['offerTopup'] != false,
+      offerCash: m['offerCash'] != false,
+      walletBalance: _num(m['walletBalance']),
+      coinBalance: _num(m['coinBalance']),
+      coinRate: _numOrNull(m['coinRate']),
+      dues: [
+        for (final d in m['dues'] is List ? m['dues'] as List : const [])
+          if (d is Map) C2cDue.fromJson(Map<String, dynamic>.from(d)),
+      ],
+      payStatus: _nz(m['payStatus']),
+    );
+  }
+
+  final C2cPayWhen when;
+  final bool wallet, coin, mix, offerTopup, offerCash;
+  final double walletBalance, coinBalance;
+
+  /// Coins per unit of money; null or 0: coins can't pay.
+  final double? coinRate;
+
+  /// The cancel fees owed added to this payment.
+  final List<C2cDue> dues;
+  final String? payStatus;
+
+  double get duesTotal => c2cRound2(dues.fold(0.0, (s, d) => s + d.fee));
+
+  /// The ways offered, mix first.
+  List<C2cPayWay> get ways => [
+    if (mix && wallet && coin && (coinRate ?? 0) > 0) C2cPayWay.mix,
+    if (wallet) C2cPayWay.wallet,
+    if (coin && (coinRate ?? 0) > 0) C2cPayWay.coin,
+  ];
+}
+
+/// A coin count as people read it: "500", "1,250.5".
+String c2cCoins(double v) {
+  final whole = v == v.roundToDouble();
+  final s = whole ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+  final parts = s.split('.');
+  final digits = parts[0].replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+$)'), (m) => '${m[1]},');
+  return parts.length > 1 ? '$digits.${parts[1]}' : digits;
+}
+
+/// The line under a way: "500 coins (RM 5) + RM 135 from the wallet",
+/// "Balance RM 100", "500 coins = RM 5: not enough".
+String c2cPayWayNote(C2cPayWay way, C2cPayInfo info, double total, [String currency = 'MYR']) {
+  final sp = c2cPaySplit(total, way, info.walletBalance, info.coinBalance, info.coinRate);
+  final r = info.coinRate ?? 0;
+  final have = r > 0 ? (info.coinBalance / r * 100).floor() / 100 : 0.0;
+  return switch (way) {
+    C2cPayWay.mix => sp.coins > 0
+        ? '${c2cCoins(sp.coins)} coins (${c2cMoney(sp.coinValue, currency)}) + ${c2cMoney(sp.walletPart, currency)} from the wallet'
+        : 'No coins: ${c2cMoney(sp.walletPart, currency)} from the wallet',
+    C2cPayWay.wallet => 'Balance ${c2cMoney(info.walletBalance, currency)}',
+    C2cPayWay.coin => sp.short > 0
+        ? '${c2cCoins(info.coinBalance)} coins = ${c2cMoney(have, currency)}: not enough'
+        : '${c2cCoins(sp.coins)} coins',
+  };
+}
+
+/// The pay sheet's lines for [fare] (and the fees owed added) by [way]:
+/// "Trip fare", "Cancel fee owed", "From coins", then "Short by", "You pay
+/// now" or "Held from GET.wallet" (in coins: "Held in coins").
+List<(String, String)> c2cPayLines(
+  double fare,
+  C2cPayWay way,
+  C2cPayInfo info, {
+  bool after = false,
+  String currency = 'MYR',
+}) {
+  final total = c2cRound2(fare + info.duesTotal);
+  final sp = c2cPaySplit(total, way, info.walletBalance, info.coinBalance, info.coinRate);
+  final r = info.coinRate ?? 0;
+  // What the coins cover: all they are worth when they fall short.
+  final fromCoins = way == C2cPayWay.wallet
+      ? 0.0
+      : math.min(total, r > 0 ? (math.max(info.coinBalance, 0) / r * 100 + 1e-9).floor() / 100 : 0.0);
+  return [
+    ('Trip fare', c2cMoney(fare, currency)),
+    if (info.duesTotal > 0) ('Cancel fee owed', c2cMoney(info.duesTotal, currency)),
+    if (fromCoins > 0) ('From coins', '- ${c2cMoney(fromCoins, currency)}'),
+    if (sp.short > 0)
+      ('Short by', c2cMoney(sp.short, currency))
+    else if (way == C2cPayWay.coin)
+      (after ? 'Paid in coins' : 'Held in coins', c2cMoney(sp.coinValue, currency))
+    else if (after)
+      ('You pay now', c2cMoney(sp.walletPart, currency))
+    else
+      ('Held from GET.wallet', c2cMoney(sp.walletPart, currency)),
+  ];
+}
+
+/// The pay sheet's main button: "Top up RM 35", "Pay RM 140", "Accept and
+/// hold RM 140".
+String c2cPayButton(double total, C2cPayWay way, C2cPayInfo info, {bool after = false, String currency = 'MYR'}) {
+  final sp = c2cPaySplit(total, way, info.walletBalance, info.coinBalance, info.coinRate);
+  if (sp.short > 0) return 'Top up ${c2cMoney(sp.short, currency)}';
+  final pay = way == C2cPayWay.coin ? sp.coinValue : sp.walletPart;
+  return after ? 'Pay ${c2cMoney(total, currency)}' : 'Accept and hold ${c2cMoney(pay, currency)}';
+}
+
+/// "Includes RM 20 cancel fee you owe from CC-20014 (Sat 18 Oct)."
+String? c2cDuesLine(C2cPayInfo info, [String currency = 'MYR']) {
+  if (info.dues.isEmpty) return null;
+  final refs = info.dues.map((d) => d.cancelledAt == null ? d.ref : '${d.ref} (${DateFormat('EEE d MMM').format(d.cancelledAt!)})');
+  return 'Includes ${c2cMoney(info.duesTotal, currency)} cancel ${info.dues.length == 1 ? 'fee' : 'fees'} you owe from '
+      '${refs.join(', ')}.';
+}
+
+/// The admin page's example for [r]: a RM 140 trip, the rider with RM 100
+/// and 500 coins (100 coins = RM 1). Two lines.
+(String, String) c2cPayExample(C2cPayRule r) {
+  final String first;
+  if (r.mix && r.wallet && r.coin) {
+    first = 'RM 5 in coins + RM 100 from the wallet: RM 35 short.';
+  } else if (r.wallet) {
+    first = 'RM 100 in the wallet: RM 40 short.';
+  } else if (r.coin) {
+    first = '500 coins = RM 5: RM 135 short.';
+  } else {
+    first = 'No in-app way on.';
+  }
+  final opts = [if (r.offerTopup) 'Top up', if (r.offerCash) 'Switch to cash'];
+  return (
+    first,
+    opts.isEmpty
+        ? "Rider can't accept until the wallet has enough."
+        : 'Rider sees: ${opts.join(' or ')}'
+              '${r.when == C2cPayWhen.hold ? ', before the booking is made.' : ', when they pay after the trip.'}',
+  );
+}
+
+/// How the driver's trip says it is paid: "collect RM 140 in cash",
+/// "Paid in app, held", "In app, paid after the trip", "Paid in app".
+String c2cDriverPayLine(C2cBooking b) {
+  if (b.payment == C2cPayment.cash) return 'collect ${c2cMoney(b.price, b.currency)} in cash';
+  return switch (b.payStatus) {
+    'held' => 'Paid in app, held',
+    'paid' => 'Paid in app',
+    'refunded' => 'Paid in app, given back',
+    _ => b.payMode == 'after' ? 'In app, paid after the trip' : 'the rider pays in the app',
+  };
+}
+
+/// The rider's Payment tile: "Cash", "In app, held", "In app, after the
+/// trip", "In app, paid".
+String c2cRiderPayLabel(C2cBooking b) {
+  if (b.payment == C2cPayment.cash) return 'Cash';
+  return switch (b.payStatus) {
+    'held' => 'In app, held',
+    'paid' => 'In app, paid',
+    _ => b.payMode == 'after' ? 'In app, after the trip' : 'In app',
+  };
+}
+
+/// What the cash trip's driver collects for the rider's owed cancel fees,
+/// or null: "Also collect RM 20 the rider owes for a cancelled trip."
+String? c2cCollectLine(C2cBooking b) {
+  final v = b.collectAmount ?? 0;
+  if (b.payment != C2cPayment.cash || v <= 0 || b.collectedAt != null) return null;
+  return 'Also collect ${c2cMoney(v, b.currency)} the rider owes for a cancelled trip.';
+}
+
+// ---- Reminders ------------------------------------------------------------------------------------
+
+/// A trip reminder: [minutes] before the time to leave, to the rider, the
+/// driver or both.
+class C2cReminder {
+  const C2cReminder(this.minutes, [this.to = 'both']);
+
+  factory C2cReminder.fromJson(Map<String, dynamic> j) =>
+      C2cReminder(_num(j['minutes'], 60).round(), const {'rider', 'driver'}.contains(j['to']) ? j['to'] as String : 'both');
+
+  final int minutes;
+
+  /// rider | driver | both.
+  final String to;
+
+  bool get toRider => to != 'driver';
+  bool get toDriver => to != 'rider';
+
+  C2cReminder copyWith({int? minutes, String? to}) => C2cReminder(minutes ?? this.minutes, to ?? this.to);
+
+  Map<String, dynamic> toJson() => {'minutes': minutes, 'to': to};
+
+  @override
+  bool operator ==(Object other) => other is C2cReminder && other.minutes == minutes && other.to == to;
+
+  @override
+  int get hashCode => Object.hash(minutes, to);
+}
+
+/// The reminders a new install starts with: 1 day and 2 h to both, 30 min
+/// to the driver.
+const c2cDefaultReminders = [C2cReminder(1440), C2cReminder(120), C2cReminder(30, 'driver')];
+
+/// The times the admin page steps through.
+const c2cReminderSteps = [10, 15, 30, 45, 60, 120, 180, 360, 720, 1440, 2880];
+
+List<C2cReminder> c2cRemindersFrom(Object? raw) => [
+  if (raw is List)
+    for (final e in raw)
+      if (e is Map) C2cReminder.fromJson(Map<String, dynamic>.from(e)),
+];
+
+/// Why [list] can't be saved, or null (the server's c2c_reminders_valid).
+String? c2cRemindersProblem(List<C2cReminder> list) {
+  if (list.length > 10) return 'Up to 10 reminders.';
+  if (list.any((r) => r.minutes < 5 || r.minutes > 10080)) return 'A reminder is 5 minutes to 7 days before.';
+  if (list.map((r) => r.minutes).toSet().length != list.length) return 'Each reminder needs its own time.';
+  return null;
+}
+
+/// [minutes] moved one step along [c2cReminderSteps].
+int c2cReminderStep(int minutes, int by) {
+  final steps = c2cReminderSteps;
+  if (by > 0) return steps.firstWhere((s) => s > minutes, orElse: () => minutes);
+  return steps.lastWhere((s) => s < minutes, orElse: () => minutes);
+}
+
+/// "1 day", "2 days", "2 h", "1 h 30 min", "30 min" (c2c_reminder_when's twin).
+String c2cReminderWhen(int minutes) {
+  if (minutes >= 1440 && minutes % 1440 == 0) return '${minutes ~/ 1440} ${minutes == 1440 ? 'day' : 'days'}';
+  if (minutes >= 60 && minutes % 60 == 0) return '${minutes ~/ 60} h';
+  if (minutes > 60) return '${minutes ~/ 60} h ${minutes % 60} min';
+  return '$minutes min';
+}
+
+/// When each reminder of [list] goes for a trip leaving at [leaves], booked
+/// at [bookedAt]: a reminder whose time had passed at booking is skipped
+/// (c2c_send_reminders). Soonest first.
+List<({int minutes, DateTime at, String to, bool skipped})> c2cReminderSchedule(
+  List<C2cReminder> list,
+  DateTime leaves,
+  DateTime bookedAt,
+) {
+  final out = [
+    for (final r in list)
+      (
+        minutes: r.minutes,
+        at: leaves.subtract(Duration(minutes: r.minutes)),
+        to: r.to,
+        skipped: leaves.subtract(Duration(minutes: r.minutes)).isBefore(bookedAt),
+      ),
+  ]..sort((a, b) => a.at.compareTo(b.at));
+  return out;
+}
+
+/// The words of a reminder [minutes] before, as the server sends them:
+/// the rider's and the driver's title and text.
+({String riderTitle, String riderBody, String driverTitle, String driverBody}) c2cReminderTexts({
+  required int minutes,
+  required String dropCity,
+  required String driverName,
+  required String riderName,
+  required DateTime leaves,
+  required String pickup,
+  String? car,
+  required double fare,
+  required String payLine,
+  String currency = 'MYR',
+}) {
+  final when = c2cReminderWhen(minutes);
+  final clock = c2cClock(leaves);
+  return (
+    riderTitle: 'Your trip to $dropCity is in $when',
+    riderBody: '${c2cShortName(driverName)} picks you up at $clock from $pickup.${car == null ? '' : ' $car.'} '
+        'Tap to see the trip or chat.',
+    driverTitle: 'City to City trip in $when',
+    driverBody: 'Pick up ${c2cShortName(riderName)} at $clock, $pickup, to $dropCity. '
+        '${c2cMoney(fare, currency)}, $payLine. Tap to start On my way.',
+  );
+}
+
+/// "Farah T." for "Farah Tan Contoh" (0308's c2c_short_name).
+String c2cShortName(String name) {
+  final words = name.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return 'Rider';
+  return words.length == 1 ? words.first : '${words.first} ${words[1][0].toUpperCase()}.';
+}
+
+// ---- Fees owed --------------------------------------------------------------------------------------
+
+/// A give-up fee a driver still owes (c2c_driver_fees).
+class C2cDriverOwed {
+  const C2cDriverOwed({required this.id, required this.ref, required this.fee, required this.owed});
+  final String id, ref;
+  final double fee, owed;
+}
+
+/// What the signed-in account owes City to City (c2c_my_owed).
+class C2cOwed {
+  const C2cOwed({
+    this.rider = const [],
+    this.driver = const [],
+    this.fromTopup = false,
+    this.nextInApp = false,
+    this.cash = false,
+    this.block = false,
+  });
+
+  factory C2cOwed.fromJson(Object? v) {
+    final m = v is Map ? Map<String, dynamic>.from(v) : const <String, dynamic>{};
+    final o = m['options'] is Map ? Map<String, dynamic>.from(m['options'] as Map) : const <String, dynamic>{};
+    return C2cOwed(
+      rider: [
+        for (final d in m['rider'] is List ? m['rider'] as List : const [])
+          if (d is Map) C2cDue.fromJson(Map<String, dynamic>.from(d)),
+      ],
+      driver: [
+        for (final d in m['driver'] is List ? m['driver'] as List : const [])
+          if (d is Map)
+            C2cDriverOwed(id: '${d['id']}', ref: _nz(d['ref']) ?? '', fee: _num(d['fee']), owed: _num(d['owed'])),
+      ],
+      fromTopup: o['topup'] == true,
+      nextInApp: o['nextInApp'] == true,
+      cash: o['cash'] == true,
+      block: o['block'] == true,
+    );
+  }
+
+  static const none = C2cOwed();
+
+  final List<C2cDue> rider;
+  final List<C2cDriverOwed> driver;
+  final bool fromTopup, nextInApp, cash, block;
+
+  double get riderTotal => c2cRound2(rider.fold(0.0, (s, d) => s + d.fee));
+  double get driverTotal => c2cRound2(driver.fold(0.0, (s, d) => s + d.owed));
+  double get total => c2cRound2(riderTotal + driverTotal);
+  bool get any => total > 0;
+
+  /// How the rider's fees are collected, as the settings say.
+  String? get howLine {
+    if (rider.isEmpty) return null;
+    final ways = [
+      if (fromTopup) 'taken from your next top-up',
+      if (nextInApp) 'added to your next in-app payment',
+      if (cash) 'collected by the driver of your next cash trip',
+    ];
+    final how = ways.isEmpty ? '' : 'Otherwise it is ${ways.join(', or ')}. ';
+    return '$how${block ? 'New City to City trips can be booked once it is paid.' : ''}'.trim();
+  }
+}
+
+/// What the admin page says about the owed-fee options.
+String c2cOwedNote(C2cSettings s) =>
+    'The rider always sees what they owe, why, and a Pay now button in Wallet'
+    '${s.owedBlock ? '; booking shows "Pay ${c2cMoney(s.cancelFeeAmount, s.currency)} owed first".' : '.'}';

@@ -11,7 +11,10 @@
 //                     charged then); Navigate, Call (c2c_contact) and Chat
 //                     (the in-app ride chat, 0308);
 //                     Give up trip before the time to leave (it goes back to
-//                     open for other drivers, c2c_driver_cancel).
+//                     open for other drivers, c2c_driver_cancel), with the
+//                     region's give-up fee said first (0309); how the trip is
+//                     paid ("Paid in app, held"), and a cancel fee the rider
+//                     owes to collect in cash, marked Collected (0309).
 //   Done, or gone     what the driver kept; or that the request is no
 //                     longer open.
 import 'package:flutter/material.dart';
@@ -516,11 +519,31 @@ class _BookedView extends ConsumerWidget {
     }
   }
 
-  Future<void> _giveUp(BuildContext context, WidgetRef ref) async {
+  Future<void> _collected(BuildContext context, WidgetRef ref) async {
+    try {
+      final v = await ref.read(cityToCityRepositoryProvider).markCollected(booking.id);
+      _refresh(ref, booking.id);
+      if (context.mounted) {
+        showInfo(context, v > 0
+            ? 'Marked collected: ${c2cMoney(v, booking.currency)} is charged to your GET.credit, as you hold it in cash.'
+            : 'Nothing left to collect: the rider has already paid it.');
+      }
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+  }
+
+  Future<void> _giveUp(BuildContext context, WidgetRef ref, C2cGiveUpRule? rule) async {
+    final now = ref.read(c2cClockProvider)();
+    final fee = c2cGiveUpFee(rule, booking.leaveAt, now).fee;
     final why = await showAppDialog<String>(
       id: 'driver.city-to-city-cancel',
       context: context,
-      builder: (_) => const _GiveUpDialog(),
+      builder: (_) => _GiveUpDialog(
+        feeLine: fee > 0
+            ? 'You pay ${c2cMoney(fee, booking.currency)} from your GET wallet for giving it up now.'
+            : 'There is no fee.',
+      ),
     );
     if (why == null || !context.mounted) return;
     try {
@@ -542,6 +565,9 @@ class _BookedView extends ConsumerWidget {
     final b = booking;
     final now = ref.watch(c2cClockProvider)();
     final next = c2cNextStep(b.status);
+    final rules = ref.watch(c2cGiveUpRulesProvider).value ?? const <C2cGiveUpRule>[];
+    final giveUp = c2cRegionRuleFor(rules, b.pickupPlace);
+    final collect = c2cCollectLine(b);
     final (title, icon) = switch (b.status) {
       C2cStatus.driverArriving => ('On your way to the pickup', Icons.directions_car),
       C2cStatus.onTrip => ('Rider on board', Icons.route),
@@ -582,14 +608,31 @@ class _BookedView extends ConsumerWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              '${c2cTripLine(b.passengers, b.luggage)} · '
-              '${b.payment == C2cPayment.cash ? 'collect ${c2cMoney(b.price, b.currency)} in cash' : 'the rider pays in the app'}',
+              '${c2cTripLine(b.passengers, b.luggage)} · ${c2cDriverPayLine(b)}',
               key: const ValueKey('c2c-driver-payment'),
               style: t.textTheme.bodySmall?.copyWith(color: look.muted),
             ),
             if (b.note != null) ...[
               const SizedBox(height: 4),
               Text('Note: ${b.note}', style: t.textTheme.bodySmall),
+            ],
+            if (collect != null) ...[
+              const SizedBox(height: 10),
+              C2cBox(
+                key: const ValueKey('c2c-driver-collect'),
+                color: look.warn,
+                child: Row(children: [
+                  Icon(Icons.receipt_long, color: look.onWarn),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(collect, style: t.textTheme.bodyMedium?.copyWith(color: look.onWarn))),
+                  TextButton(
+                    key: const ValueKey('c2c-driver-collected'),
+                    style: TextButton.styleFrom(foregroundColor: look.onWarn),
+                    onPressed: () => _collected(context, ref),
+                    child: const Text('Collected'),
+                  ),
+                ]),
+              ),
             ],
             const SizedBox(height: 12),
             Wrap(spacing: 8, runSpacing: 8, children: [
@@ -618,12 +661,15 @@ class _BookedView extends ConsumerWidget {
               Text("Can't make it?", style: t.textTheme.titleSmall),
               Text('Give the trip up before the time to leave. It goes back to drivers in the area.',
                   style: t.textTheme.bodySmall?.copyWith(color: look.muted)),
+              const SizedBox(height: 2),
+              Text(c2cGiveUpLine(giveUp, b.currency),
+                  key: const ValueKey('c2c-driver-give-up-rule'), style: t.textTheme.bodyMedium),
               Align(
                 alignment: Alignment.centerLeft,
                 child: TextButton(
                   key: const ValueKey('c2c-driver-give-up'),
                   style: TextButton.styleFrom(foregroundColor: look.drop),
-                  onPressed: () => _giveUp(context, ref),
+                  onPressed: () => _giveUp(context, ref, giveUp),
                   child: const Text('Give up trip'),
                 ),
               ),
@@ -652,7 +698,10 @@ class _BookedView extends ConsumerWidget {
 /// Give up this trip? With an optional reason; the reason ('' for none)
 /// when confirmed.
 class _GiveUpDialog extends StatefulWidget {
-  const _GiveUpDialog();
+  const _GiveUpDialog({required this.feeLine});
+
+  /// "There is no fee.", or what giving up costs now.
+  final String feeLine;
 
   @override
   State<_GiveUpDialog> createState() => _GiveUpDialogState();
@@ -674,9 +723,10 @@ class _GiveUpDialogState extends State<_GiveUpDialog> {
       title: const Text('Give up this trip?'),
       content: SingleChildScrollView(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text(
+          Text(
             'The request goes back to drivers in the area so the rider can pick another, and the rider is told. '
-            'There is no fee.',
+            '${widget.feeLine}',
+            key: const ValueKey('c2c-driver-cancel-fee'),
           ),
           const SizedBox(height: 10),
           TextField(
