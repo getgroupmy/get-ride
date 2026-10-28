@@ -37,8 +37,8 @@ The score only helps the admin decide: never an automatic approve or reject.
 | **human** in the admin's browser ([vladmandic/human](https://github.com/vladmandic/human), MIT) (built: `web/face_check/`, migration 0320) | free | only while an admin has the queue open (scores everything waiting, saves it) | About 9 MB of model files (pinned 3.3.6 from cdn.jsdelivr.net) downloaded once per browser. Photos never leave the admin page. Cannot run in the native phone apps. Never over a server's score. |
 
 Admin › Dispatch › Accounts (and Settings › Office NAS › ID and face) keeps
-the face match order, each with a switch: AWS, then NAS, then in-browser
-(default). Below a set match (60% by default, 30 to 95) the check is marked
+the face match order, each with a switch: NAS, then AWS, then in-browser
+(default: the free NAS first; AWS is only paid for when the NAS can't answer). Below a set match (60% by default, 30 to 95) the check is marked
 "Needs a closer look" and sorted to the top.
 
 ### Licences: what not to use

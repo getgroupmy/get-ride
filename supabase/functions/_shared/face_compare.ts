@@ -55,7 +55,7 @@ export function faceSetting(dispatchVerify: unknown): FaceSetting {
 //   browser  the in-browser check (vladmandic/human) in the admin web app,
 //            while an admin has the Sign-in checks queue open: never here.
 // Without a saved list, 0283's faceProvider gives it (as the database's
-// identity_face_order does); unset, AWS, then NAS, then in-browser.
+// identity_face_order does); unset, NAS, then AWS, then in-browser.
 
 export type FaceOrderId = "aws" | "nas" | "browser";
 export interface FaceOrderItem {
@@ -76,7 +76,7 @@ function legacyOrder(setting: unknown): FaceOrderItem[] {
     case "self_hosted_aws":
       return [o("nas", true), o("aws", true), o("browser", true)];
     default:
-      return [o("aws", true), o("nas", true), o("browser", true)];
+      return [o("nas", true), o("aws", true), o("browser", true)];
   }
 }
 

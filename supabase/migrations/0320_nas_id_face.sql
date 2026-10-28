@@ -16,7 +16,7 @@
 --                 "On the phone only" default kept it);
 --      faceOrder  who compares the selfie with the ID photo: aws, nas (the
 --                 self-hosted face server, deploy/face-server), browser
---                 (default AWS, then NAS, then in-browser);
+--                 (default NAS, then AWS, then in-browser: the free check first);
 --      faceLowScore  below it a sign-in check's face match "Needs a closer
 --                 look" and is listed first (30..95, default 60).
 --    Without a saved list, 0283's faceProvider / idRead give it, so nothing
@@ -134,7 +134,7 @@ as $$
              when 'aws' then '[{"id":"aws","on":true},{"id":"nas","on":false},{"id":"browser","on":true}]'
              when 'self_hosted' then '[{"id":"nas","on":true},{"id":"aws","on":false},{"id":"browser","on":true}]'
              when 'self_hosted_aws' then '[{"id":"nas","on":true},{"id":"aws","on":true},{"id":"browser","on":true}]'
-             else '[{"id":"aws","on":true},{"id":"nas","on":true},{"id":"browser","on":true}]'
+             else '[{"id":"nas","on":true},{"id":"aws","on":true},{"id":"browser","on":true}]'
            end::jsonb)
     from v;
 $$;

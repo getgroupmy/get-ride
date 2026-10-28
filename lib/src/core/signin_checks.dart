@@ -468,7 +468,7 @@ List<OrderSlot> legacyFaceOrder(String faceProvider) => switch (faceProvider) {
   'aws' => const [OrderSlot('aws', true), OrderSlot('nas', false), OrderSlot('browser', true)],
   'self_hosted' => const [OrderSlot('nas', true), OrderSlot('aws', false), OrderSlot('browser', true)],
   'self_hosted_aws' => const [OrderSlot('nas', true), OrderSlot('aws', true), OrderSlot('browser', true)],
-  _ => const [OrderSlot('aws', true), OrderSlot('nas', true), OrderSlot('browser', true)],
+  _ => const [OrderSlot('nas', true), OrderSlot('aws', true), OrderSlot('browser', true)],
 };
 
 /// 0283's reading choice as an order (as the server's identity_id_readers).
@@ -512,7 +512,7 @@ List<OrderSlot> toggledSlot(List<OrderSlot> order, String id, bool on) =>
 
 bool orderHas(List<OrderSlot> order, String id) => order.any((x) => x.id == id && x.on);
 
-/// "AWS, then NAS, then in-browser"; "Off" when nothing is on.
+/// "NAS, then AWS, then in-browser"; "Off" when nothing is on.
 String orderText(List<OrderSlot> order, Map<String, String> words) {
   final on = [for (final x in order) if (x.on) words[x.id] ?? x.id];
   return on.isEmpty ? 'Off' : on.join(', then ');

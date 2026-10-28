@@ -416,9 +416,9 @@ Deno.test("online: the better of two comparisons", () => {
 
 // ---- 0320: the face match order ------------------------------------------------------------------
 
-Deno.test("order: saved, else 0283's choice, else AWS, then NAS, then in-browser", () => {
+Deno.test("order: saved, else 0283's choice, else NAS, then AWS, then in-browser", () => {
   const ids = (v: unknown) => faceOrder(v).map((x) => `${x.id}:${x.on}`).join(",");
-  assertEquals(ids(null), "aws:true,nas:true,browser:true");
+  assertEquals(ids(null), "nas:true,aws:true,browser:true");
   assertEquals(ids({ faceProvider: "self_hosted_aws" }), "nas:true,aws:true,browser:true");
   assertEquals(ids({ faceProvider: "off" }), "aws:false,nas:false,browser:false");
   assertEquals(

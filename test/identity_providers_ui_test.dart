@@ -165,11 +165,11 @@ void main() {
     group('${b.name}:', () {
       testWidgets('the two orders, what a missing key means, the free reads', (tester) async {
         final identity = _Identity(
-          // As 0320's server gives it unsaved: AWS, then NAS, then in-browser.
+          // As 0320's server gives it unsaved: NAS, then AWS, then in-browser.
           IdentityConfig.fromJson({
             'faceOrder': [
-              {'id': 'aws', 'on': true},
               {'id': 'nas', 'on': true},
+              {'id': 'aws', 'on': true},
               {'id': 'browser', 'on': true},
             ],
             'awsKey': false,
@@ -179,7 +179,7 @@ void main() {
           }),
         );
         await _pump(tester, const IdentityProviderFields(), identity, b);
-        expect(find.textContaining('AWS, then NAS, then in-browser'), findsOneWidget, reason: 'the default');
+        expect(find.textContaining('NAS, then AWS, then in-browser'), findsOneWidget, reason: 'the default');
         expect(find.textContaining('Phone, then NAS'), findsOneWidget, reason: 'Google Vision off by default');
         expect(find.byKey(const ValueKey('face-provider-note')), findsOneWidget, reason: 'no AWS key or server yet');
         expect(find.textContaining('First 1,000 reads a month free'), findsOneWidget);

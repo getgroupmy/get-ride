@@ -49,8 +49,8 @@ delete from public.app_settings where key in ('dispatch_verify', 'document_readi
 delete from public.doc_readers;
 
 -- 1. The orders: defaults and 0283's choices -----------------------------------------------------
-select pg_temp.check(pg_temp.order_text(public.identity_face_order()) = 'aws:true,nas:true,browser:true',
-  'face match: AWS, then NAS, then in-browser by default');
+select pg_temp.check(pg_temp.order_text(public.identity_face_order()) = 'nas:true,aws:true,browser:true',
+  'face match: NAS, then AWS, then in-browser by default');
 select pg_temp.check(pg_temp.order_text(public.identity_id_readers()) = 'phone:true,nas:true,vision:false',
   'ID reading: phone, then NAS; Google Vision off by default');
 select pg_temp.check(public.identity_face_low_score() = 60, 'needs a closer look below 60% by default');
