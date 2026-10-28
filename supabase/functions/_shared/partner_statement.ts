@@ -92,6 +92,7 @@ const WORDS = {
     feesCollected: "Fees collected for GET.ride",
     incentives: "Incentives",
     handoverIn: "Trip handover share received",
+    tips: "Tips",
     totalEarnings: "Total earnings",
     deductions: "Deductions",
     commission: "Commission",
@@ -163,6 +164,7 @@ const WORDS = {
     feesCollected: "Fi dikutip untuk GET.ride",
     incentives: "Insentif",
     handoverIn: "Syer serahan perjalanan diterima",
+    tips: "Tip",
     totalEarnings: "Jumlah pendapatan",
     deductions: "Potongan",
     commission: "Komisen",
@@ -289,6 +291,7 @@ export function summaryRows(t: Totals, w: Words): Row[] {
     { id: "feesCollected", section: "earnings", label: w.feesCollected, amount: n("platformCollected") },
     { id: "incentives", section: "earnings", label: w.incentives, amount: n("incentives") },
     { id: "handoverIn", section: "earnings", label: w.handoverIn, amount: n("handoverIn") },
+    { id: "tips", section: "earnings", label: w.tips, amount: n("tips") },
     { id: "totalEarnings", section: "earnings", label: w.totalEarnings, amount: n("totalEarnings"), bold: true },
     { id: "deductions", section: "deductions", label: w.deductions, head: true },
     { id: "commission", section: "deductions", label: w.commission, amount: -n("commission") },
@@ -313,7 +316,7 @@ export function summaryRows(t: Totals, w: Words): Row[] {
     { id: "distance", section: "activity", label: w.distance, text: n("distanceKm").toFixed(1) },
   ];
   // Lines that are nothing in every statement (no handover, no adjustments) are left out.
-  const optional = new Set(["handoverIn", "handoverOut", "adjustments", "otherCharges", "otherSurcharges"]);
+  const optional = new Set(["handoverIn", "tips", "handoverOut", "adjustments", "otherCharges", "otherSurcharges"]);
   return rows.filter((r) =>
     r.id === "meterTrips" ? n("meterTrips") !== 0 : !optional.has(r.id) || (r.amount ?? 0) !== 0
   );

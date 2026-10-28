@@ -28,6 +28,7 @@ import '../../core/fare_tariff.dart';
 import '../../core/fare_coins.dart';
 import '../../core/fare_offer.dart';
 import '../../core/city_cancel.dart' show owedFeesNote;
+import '../../core/city_ride_extras.dart' show CityRideExtras;
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/airport_areas.dart' show AirportArea, AreaPrecedenceRule;
@@ -84,6 +85,7 @@ import '../../core/ride_assistance.dart' show AssistanceCatalogue;
 import '../../core/ride_option_places.dart';
 import '../../core/ride_option_settings.dart' show RideOptionsConfig;
 import '../../core/ride_pets.dart' show PetConfig;
+import '../../data/city_ride_extras_repository.dart';
 import '../../data/ride_option_places_repository.dart';
 import '../../providers.dart';
 import 'welcome_back_sheet.dart';
@@ -98,6 +100,7 @@ import 'scheduled_rides_screen.dart';
 import 'auto_accept.dart';
 import 'book_for_sheet.dart';
 import 'confirm_parts.dart';
+import 'city_extras_parts.dart';
 import 'offer_fare_screen.dart';
 import 'demo_ride.dart' show demoRiderProvider, demoRidesProvider;
 import 'home_parts.dart';
@@ -497,6 +500,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// The pickup's place for Ride Options (0253), as the server reads it.
   RegionScope? _optionPlace;
+
+  /// The bags the rider brings (0314).
+  int _bags = 0;
 
   /// Admin → Display → On-map vehicle icons: simulated cars around the
   /// pickup, as Expo drew them (not real drivers).
@@ -1371,15 +1377,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// (charges by place; nothing until set).
   List<OptionChargeLine> _optionChargesOn(double fare, [RideService? s]) {
     final here = _optionsHere;
-    return rideOptionCharges(
-      _bookableFor(s ?? _service),
-      fare,
-      pets: here.pets(ref.read(petConfigProvider)),
-      assistance: here.assistance(ref.read(assistanceCatalogueProvider)),
-      childSeat: here.childSeat,
-      morePassengers: here.morePassengers,
-    );
+    return [
+      ...rideOptionCharges(
+        _bookableFor(s ?? _service),
+        fare,
+        pets: here.pets(ref.read(petConfigProvider)),
+        assistance: here.assistance(ref.read(assistanceCatalogueProvider)),
+        childSeat: here.childSeat,
+        morePassengers: here.morePassengers,
+      ),
+      // The bags past the free ones (0314), checked again by the server.
+      ?_extrasHere.luggage.line(_bagsBooked),
+    ];
   }
+
+  /// City ride extras at the pickup (0314): the luggage and waiting rules,
+  /// from the same place the options are read at.
+  CityRideExtras get _extrasHere =>
+      CityRideExtras.resolve(ref.read(cityRideExtraPlacesProvider).value ?? const [], _optionPlace ?? RegionScope.all);
+
+  /// The bags as they can be booked here: none while luggage is off.
+  int get _bagsBooked => _extrasHere.luggage.clamp(_bags);
 
   /// [s]'s recommended fare: the route's, plus what the options add, so the
   /// vehicle cards, the offer and the booked fare all include them.
@@ -1906,6 +1924,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           'ride_fare': _fareFor(_service, biddingOn: offerMe),
           'currency': _currency,
           'passengers': options.passengers,
+          'luggage': _bagsBooked,
           if (options.pets.isNotEmpty) 'pets': [for (final p in options.pets) p.toJson()],
           if (options.assistance != null) 'assistance': options.assistance!.toJson(),
           if (optionCharges.isNotEmpty) 'option_charges': [for (final c in optionCharges) c.toJson()],
@@ -1976,6 +1995,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             businessAccountId: businessId,
             businessNote: businessNote,
             passengers: options.passengers,
+            luggage: _bagsBooked,
             note: driverNote(options: options, entrance: _entrance, note: _note.text, names: optionsConfig.renamed),
             pets: options.pets,
             assistance: options.assistance,
@@ -2970,6 +2990,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.watch(coinTradeQuoteProvider); // and when the GET.coin balance does
     ref.watch(fareTariffsProvider); // re-quote when the tariff cards arrive
     ref.watch(rideOptionPlacesProvider); // and when the option charges by place do
+    ref.watch(cityRideExtraPlacesProvider); // and the luggage and waiting rules (0314)
     final earnRate = ref.watch(coinTradeQuoteProvider).value?.settings.earnCoinsPerCurrency ?? 0;
     final coins = _coins;
     final coinOffer = coins == null ? null : fareCoinOffer(_fareFor(_service), coins.balance, coins.rate);
@@ -3081,6 +3102,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
 
     final panel = _BookingPanel(
+      // City ride extras (0314): the luggage picker and the waiting rule,
+      // under the vehicles in the sheet (not the pinned footer, so the
+      // sheet's rest height and a short phone's bars stay as they were).
+      extras: confirming
+          ? CityExtrasBookingRows(
+              luggage: _extrasHere.luggage,
+              waiting: _extrasHere.waiting,
+              bags: _bagsBooked,
+              onBags: (n) => setState(() => _bags = n),
+              money: (v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : 2),
+            )
+          : null,
       disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),
       fareAdjusted: _biddingFor(_service) && _adjust != 0,
       bidding: _biddingFor(_service),
@@ -3290,6 +3323,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
 class _BookingPanel extends StatelessWidget {
   const _BookingPanel({
+    this.extras,
     this.disclaimerOffset = Offset.zero,
     this.fareAdjusted = false,
     this.bidding = false,
@@ -3373,6 +3407,9 @@ class _BookingPanel extends StatelessWidget {
 
   /// The fare inside the chosen vehicle's card ([ConfirmFareSection]).
   final Widget? fare;
+
+  /// City ride extras under the vehicles (0314): luggage and the waiting rule.
+  final Widget? extras;
 
   /// The chosen card's pencil: the rider's own fare, where bidding is on.
   final VoidCallback? onEditFare;
@@ -3490,6 +3527,7 @@ class _BookingPanel extends StatelessWidget {
                 ),
             ]),
           ),
+          if (extras != null) Padding(padding: const EdgeInsets.fromLTRB(4, 8, 4, 0), child: extras!),
           // Who's riding is a toggle in the footer, under GET.coin; the note
           // to the driver is Options → Comments.
           const SizedBox(height: 28),

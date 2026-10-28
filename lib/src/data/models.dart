@@ -128,6 +128,15 @@ class RideRequest {
   }
   int get passengers => _i(raw['passengers']) ?? 1;
   int? get luggage => _i(raw['luggage']);
+
+  /// The waiting clock (0314): when it started (the driver's Arrived,
+  /// checked by the server; a scheduled ride's booked time), its terms, and
+  /// what it came to at pickup. Null when no clock ran.
+  DateTime? get waitingFrom => _t(raw['waiting_from']);
+  Map<String, dynamic>? get waitingTermsRaw =>
+      raw['waiting_terms'] is Map ? Map<String, dynamic>.from(raw['waiting_terms'] as Map) : null;
+  int? get cityWaitingMinutes => _i(raw['waiting_minutes']);
+  double? get waitingCharge => _d(raw['waiting_charge']);
   double? get riderRating => _d(raw['rider_rating']);
 
   /// How many ratings [riderRating] is the average of, and the rider's

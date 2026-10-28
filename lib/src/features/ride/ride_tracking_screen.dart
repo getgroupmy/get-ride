@@ -47,6 +47,7 @@ import '../../widgets/common.dart';
 import '../../widgets/map_recenter.dart' show RecenterButton;
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/trip_safety.dart';
+import 'city_extras_parts.dart' show WaitingClockCard;
 import 'demo_ride.dart';
 import 'ride_permit_button.dart';
 import 'driver_card.dart';
@@ -1239,6 +1240,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             PickupGuideCard(ride: r),
             // Freight (0267): the proof of delivery, and the signature.
             if (r.isFreight) FreightSenderPanel(request: r),
+            // The driver is waiting: the same clock the driver sees (0314).
+            if (WaitingClockCard.shows(r)) WaitingClockCard(ride: r),
           ],
           if (r.hasDriver)
             Card(

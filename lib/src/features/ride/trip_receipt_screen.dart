@@ -24,6 +24,7 @@ import '../../widgets/pdf_actions.dart';
 import '../../widgets/ride_map.dart';
 import '../../widgets/ride_rating_card.dart';
 import '../../widgets/trip_safety.dart';
+import 'city_extras_parts.dart' show DriverTipCard, TipCard;
 import 'trip_safety_parts.dart';
 
 final tripProvider = FutureProvider.autoDispose.family<RideRequest?, String>((ref, id) async {
@@ -63,12 +64,15 @@ class TripReceiptScreen extends ConsumerWidget {
             receipt: TripReceipt.fromRide(r, asDriver: asDriver),
             route: receiptRoute(r),
             // The passenger's rating (0159) and "Left something behind?" (Phase D4).
+            // The driver's tips (0314).
             extra: asDriver
-                ? null
+                ? DriverTipCard(ride: r)
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
+                    // A tip from the receipt within the days (0314).
                     children: [
                       RideRatingCard(ride: r),
+                      TipCard(ride: r),
                       LostItemCard(ride: r),
                       // Cover, permit, report and block (0311).
                       TripSafetySection(requestId: r.id),

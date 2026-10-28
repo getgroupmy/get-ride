@@ -6,6 +6,7 @@ library;
 import 'package:latlong2/latlong.dart';
 
 import '../data/models.dart';
+import 'city_ride_extras.dart';
 import 'format.dart';
 import 'region_time.dart';
 import 'ride_cancel.dart';
@@ -153,7 +154,9 @@ class TripReceipt {
       pickup: r.pickupLabel,
       drop: r.dropLabel,
       lines: [
-        (label: 'Trip fare', amount: fare),
+        // The waiting charge and the luggage (0314) are in the fare: shown
+        // on their own lines, the trip fare without them.
+        ...fareLinesOf(r, fare),
         // The region's surcharges and taxes in force at booking.
         for (final l in r.chargeLines) (label: l.label, amount: l.amount),
         if (tolls > 0) (label: 'Tolls', amount: tolls),
@@ -235,6 +238,32 @@ class TripReceipt {
     }
     return b.toString().trimRight();
   }
+}
+
+/// The fare as receipt lines: the trip fare, then the waiting charge and
+/// the luggage it includes (0314), when there are any and they fit in it.
+List<ReceiptLine> fareLinesOf(RideRequest r, double fare) {
+  final waiting = r.waitingCharge ?? 0;
+  final bags = [for (final l in r.optionCharges) if (l.kind == luggageChargeKind) l];
+  final luggage = bags.fold(0.0, (s, l) => s + l.amount);
+  final base = ((fare - waiting - luggage) * 100).roundToDouble() / 100;
+  if ((waiting <= 0 && luggage <= 0) || base < 0) return [(label: 'Trip fare', amount: fare)];
+  return [
+    (label: 'Trip fare', amount: base),
+    if (waiting > 0) (label: waitingLineLabel(r), amount: waiting),
+    for (final l in bags) (label: l.name, amount: l.amount),
+  ];
+}
+
+/// "Waiting 9 min (3 free), RM0.30 a min".
+String waitingLineLabel(RideRequest r) {
+  final terms = WaitingTerms.fromJson(r.waitingTermsRaw);
+  final mins = r.cityWaitingMinutes;
+  if (terms == null || mins == null) return 'Waiting charge';
+  final free = terms.freeMinutes == terms.freeMinutes.roundToDouble()
+      ? terms.freeMinutes.round().toString()
+      : terms.freeMinutes.toStringAsFixed(1);
+  return 'Waiting $mins min ($free free), ${formatMoney(terms.perMinute, r.currency)} a min';
 }
 
 /// The trip drawn on the receipt map (Expo `ride-detail`): pickup, any stops,
