@@ -34,7 +34,9 @@ insert into public.admin_access (profile_id, page, access_level) values
 on conflict do nothing;
 
 -- Audioland 315 holds the pickups; Hushstate 315 inside it turns audio off,
--- and its city Loudtown 315 turns it back on.
+-- and its city Loudtown 315 turns it back on. Quiettown 315, Hushstate's other
+-- city, has no rule of its own: a state with cities serves only inside them
+-- (the coverage guard, 0125/0212), so Hushstate's bookings are made there.
 insert into public.countries (name, values, geofence) values
   ('Audioland 315', '{}', jsonb_build_object('boundary', '{"bbox":{"north":-20,"south":-30,"east":-20,"west":-30}}'));
 insert into public.states (country, name, values, geofence) values
@@ -44,7 +46,9 @@ insert into public.states (country, name, values, geofence) values
     '{"bbox":{"north":-21,"south":-23,"east":-21,"west":-23}}'));
 insert into public.cities (country, state, name, values, geofence) values
   ('Audioland 315', 'Hushstate 315', 'Loudtown 315', '{}', jsonb_build_object('boundary',
-    '{"bbox":{"north":-24.9,"south":-25.1,"east":-24.9,"west":-25.1}}'));
+    '{"bbox":{"north":-24.9,"south":-25.1,"east":-24.9,"west":-25.1}}')),
+  ('Audioland 315', 'Hushstate 315', 'Quiettown 315', '{}', jsonb_build_object('boundary',
+    '{"bbox":{"north":-25.3,"south":-25.8,"east":-25.3,"west":-25.8}}'));
 insert into public.settings_entries (id, category, values, position) values
   ('00000000-0000-0000-0000-000000031551', 'vehicle-services', '{"name":"Ride 315"}', 1);
 
