@@ -373,9 +373,11 @@ class _RideChatScreenState extends ConsumerState<RideChatScreen> with VoiceNoteC
                 child: Column(
                   children: [
                     Expanded(child: _thread(role)),
-                    if (b.status.withDriver) _composer(role) else _closedLine(t, switch (b.status) {
+                    // A seat request may be chatted on before the driver answers (0310).
+                    if (b.status.withDriver || b.status == C2cStatus.requested) _composer(role) else _closedLine(t, switch (b.status) {
                       C2cStatus.completed => 'This trip has ended. The chat is read-only.',
-                      C2cStatus.cancelled || C2cStatus.expired => 'This trip was cancelled. The chat is read-only.',
+                      C2cStatus.cancelled || C2cStatus.expired || C2cStatus.declined =>
+                        'This trip was cancelled. The chat is read-only.',
                       _ => 'The chat opens once a driver is booked.',
                     }),
                   ],

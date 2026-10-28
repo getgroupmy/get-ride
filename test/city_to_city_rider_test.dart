@@ -281,9 +281,9 @@ void main() {
       expect(find.text('Flexible, 8:30 to 9:30'), findsOneWidget);
       await _tap(tester, find.byKey(const ValueKey('c2c-next')));
 
-      // Step 3: whole car; sharing comes later; passengers and luggage.
+      // Step 3: whole car, or a seat on a posted trip (0310); passengers and luggage.
       expect(find.text('Which car?'), findsOneWidget);
-      expect(find.text('Coming later'), findsOneWidget);
+      expect(find.text('Book a seat on a trip a driver posted'), findsOneWidget);
       await _tap(tester, find.byKey(const ValueKey('c2c-pax-up')));
       await _tap(tester, find.byKey(const ValueKey('c2c-luggage-suitcases')));
       await _tap(tester, find.byKey(const ValueKey('c2c-next')));

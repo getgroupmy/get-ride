@@ -6,10 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/city_to_city.dart';
+import '../../core/city_to_city_seats.dart' show c2cBookingKind;
 import '../../data/city_to_city_repository.dart';
 import '../../widgets/common.dart' show AsyncView;
 import '../../widgets/page_style_host.dart';
 import 'city_to_city_parts.dart';
+import 'city_to_city_seats.dart' show openC2cSeatSearch;
 import 'city_to_city_steps.dart' show openC2cSteps;
 import 'city_to_city_trip.dart' show openC2cTrip;
 
@@ -52,6 +54,14 @@ class CityToCityScreen extends ConsumerWidget {
                     onPressed: () => openC2cSteps(context),
                     icon: const Icon(Icons.arrow_forward),
                     label: const Text('Plan a trip'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const ValueKey('c2c-seats'),
+                    style: OutlinedButton.styleFrom(foregroundColor: look.onHero, side: BorderSide(color: look.onHero)),
+                    onPressed: () => openC2cSeatSearch(context),
+                    icon: const Icon(Icons.event_seat_outlined),
+                    label: const Text('Book a seat on a posted trip'),
                   ),
                 ]),
               ),
@@ -114,7 +124,7 @@ class _TripRow extends StatelessWidget {
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(c2cMoney(b.price, b.currency),
                   style: t.textTheme.titleSmall?.copyWith(color: look.onBox, fontWeight: FontWeight.w600)),
-              Text('whole car', style: t.textTheme.bodySmall?.copyWith(color: look.mutedOnBox)),
+              Text(c2cBookingKind(b), style: t.textTheme.bodySmall?.copyWith(color: look.mutedOnBox)),
             ]),
           ]),
         ),

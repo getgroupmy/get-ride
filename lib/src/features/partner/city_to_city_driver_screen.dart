@@ -8,7 +8,9 @@
 //              permit or Add date. The cards come and go with the locked
 //              offer motion (lib/src/widgets/offer_motion.dart).
 //   My trips   today's, later and done trips, and the offers waiting.
-//   Post a trip  coming later (per seat); not built.
+//   Post a trip  Post a trip (per seat, 0310) and the driver's posted trips
+//                with their requests and passengers
+//                (city_to_city_post_trip.dart).
 //
 // The trip itself (request detail, the steps on the day, Call and SMS, give
 // a trip up) is city_to_city_driver_trip.dart.
@@ -17,6 +19,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/city_to_city.dart';
+import '../../core/city_to_city_seats.dart' show C2cTrip, C2cTripStatus;
 import '../../data/city_to_city_repository.dart';
 import '../../providers.dart' show partnerProvider;
 import '../../widgets/back_or_go_button.dart';
@@ -26,6 +29,7 @@ import '../../widgets/offer_motion.dart';
 import '../ride/city_to_city_parts.dart';
 import '../ride/city_to_city_steps.dart' show c2cClockProvider;
 import 'city_to_city_driver_trip.dart';
+import 'city_to_city_post_trip.dart';
 
 /// Which tab the page opens on.
 enum C2cDriverTab { requests, trips, post }
@@ -75,6 +79,10 @@ class _CityToCityDriverScreenState extends ConsumerState<CityToCityDriverScreen>
             child: _Tabs(
               tab: _tab,
               tripsLabel: c2cTripsTabLabel(groups.today.length + groups.later.length + offered.length),
+              seatRequests: [
+                for (final x in ref.watch(c2cDriverSeatTripsProvider).value ?? const <C2cTrip>[])
+                  if (x.status == C2cTripStatus.scheduled) ...x.requests,
+              ].length,
               onTab: (v) => setState(() => _tab = v),
             ),
           ),
@@ -82,7 +90,7 @@ class _CityToCityDriverScreenState extends ConsumerState<CityToCityDriverScreen>
             child: switch (_tab) {
               C2cDriverTab.requests => _RequestsTab(feed: feed),
               C2cDriverTab.trips => _TripsTab(groups: groups, offered: offered),
-              C2cDriverTab.post => const _PostTab(),
+              C2cDriverTab.post => const C2cPostedTripsTab(),
             },
           ),
         ]),
@@ -98,9 +106,12 @@ void _refresh(WidgetRef ref) {
 
 /// Requests, My trips, Post a trip: three pills, the chosen one dark.
 class _Tabs extends StatelessWidget {
-  const _Tabs({required this.tab, required this.tripsLabel, required this.onTab});
+  const _Tabs({required this.tab, required this.tripsLabel, required this.onTab, this.seatRequests = 0});
   final C2cDriverTab tab;
   final String tripsLabel;
+
+  /// Seat requests waiting on the driver's posted trips.
+  final int seatRequests;
   final ValueChanged<C2cDriverTab> onTab;
 
   @override
@@ -109,7 +120,7 @@ class _Tabs extends StatelessWidget {
     final look = C2cLook.of(context);
     Widget pill(C2cDriverTab v, String label, {String? sub}) {
       final on = v == tab;
-      final ink = on ? look.onHero : (sub != null ? look.mutedOnBox : look.onBox);
+      final ink = on ? look.onHero : look.onBox;
       return Expanded(
         child: Semantics(
           selected: on,
@@ -150,7 +161,8 @@ class _Tabs extends StatelessWidget {
         const SizedBox(width: 4),
         pill(C2cDriverTab.trips, tripsLabel),
         const SizedBox(width: 4),
-        pill(C2cDriverTab.post, 'Post a trip', sub: 'Coming later'),
+        pill(C2cDriverTab.post, 'Post a trip',
+            sub: seatRequests == 0 ? null : '$seatRequests ${seatRequests == 1 ? 'request' : 'requests'}'),
       ]),
     );
   }
@@ -566,43 +578,6 @@ class _TripRow extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-// ---- Post a trip --------------------------------------------------------------------------------------
-
-class _PostTab extends StatelessWidget {
-  const _PostTab();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final look = C2cLook.of(context);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-      children: [
-        C2cBox(
-          key: const ValueKey('c2c-post-later'),
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(color: look.line, borderRadius: BorderRadius.circular(10)),
-              child: Text('Coming later',
-                  style: t.textTheme.labelSmall?.copyWith(color: look.mutedOnBox, fontWeight: FontWeight.w600)),
-            ),
-            const SizedBox(height: 8),
-            Text('Post a trip and sell seats', style: t.textTheme.titleMedium?.copyWith(color: look.onBox)),
-            const SizedBox(height: 4),
-            Text(
-              'At launch City to City is whole car only. Later you can post a trip you are making anyway, '
-              'and riders pay per seat.',
-              style: t.textTheme.bodyMedium?.copyWith(color: look.mutedOnBox, height: 1.4),
-            ),
-          ]),
-        ),
-      ],
     );
   }
 }

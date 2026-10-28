@@ -2,8 +2,8 @@
 // approved mockup's TripSteps board): Where (exact pickup and drop-off,
 // search or the map, swap, and "not available from here" when City to City
 // is off at the pickup), When (date boxes, a time, flexible ± 30 minutes,
-// within the route's book-ahead days), Car (whole car; sharing comes later;
-// passengers and luggage), Price (the quote's breakdown and range, the
+// within the route's book-ahead days), Car (whole car, or a seat on a trip
+// a driver posted, 0310; passengers and luggage), Price (the quote's breakdown and range, the
 // rider's fare within it, or the route's fixed fare) and Check (the summary,
 // In app or Cash as the settings allow, the cancel rule), then Find a driver.
 // The server checks it all again on insert (C2C_* codes, shown as modals).
@@ -23,6 +23,7 @@ import '../../widgets/common.dart' show showError;
 import '../../widgets/date_boxes.dart';
 import '../../widgets/page_style_host.dart';
 import 'city_to_city_parts.dart';
+import 'city_to_city_seats.dart' show openC2cSeatSearch;
 import 'city_to_city_trip.dart' show openC2cTrip;
 import 'freight_screen.dart' show freightPlaceSearchProvider, freightRouteProvider;
 
@@ -472,19 +473,28 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
         ]),
       ),
       const SizedBox(height: 10),
-      C2cBox(
-        border: look.line,
-        child: Row(children: [
-          Icon(Icons.radio_button_unchecked, color: look.mutedOnBox),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('Share and pay per seat', style: t.textTheme.titleMedium?.copyWith(color: look.mutedOnBox)),
-              Text('Ride with other riders', style: t.textTheme.bodySmall?.copyWith(color: look.mutedOnBox)),
+      Material(
+        color: look.box,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: look.line)),
+        child: InkWell(
+          key: const ValueKey('c2c-car-seats'),
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => openC2cSeatSearch(context),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(children: [
+              Icon(Icons.event_seat_outlined, color: look.onBox),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Share and pay per seat', style: t.textTheme.titleMedium?.copyWith(color: look.onBox)),
+                  Text('Book a seat on a trip a driver posted', style: t.textTheme.bodySmall?.copyWith(color: look.mutedOnBox)),
+                ]),
+              ),
+              Icon(Icons.chevron_right, color: look.mutedOnBox),
             ]),
           ),
-          Chip(label: const Text('Coming later'), visualDensity: VisualDensity.compact),
-        ]),
+        ),
       ),
       const SizedBox(height: 14),
       Row(children: [

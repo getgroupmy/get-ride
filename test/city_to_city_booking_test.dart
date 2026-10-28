@@ -159,7 +159,7 @@ void main() {
     expect(C2cStatus.of('nonsense'), C2cStatus.open);
     expect([for (final s in C2cStatus.values) if (s.waiting) s.key], ['open', 'offered']);
     expect([for (final s in C2cStatus.values) if (s.withDriver) s.key], ['booked', 'driver_arriving', 'on_trip']);
-    expect([for (final s in C2cStatus.values) if (s.ended) s.key], ['completed', 'cancelled', 'expired']);
+    expect([for (final s in C2cStatus.values) if (s.ended) s.key], ['completed', 'cancelled', 'expired', 'declined']);
   });
 
   test('a booking and an offer read from their rows', () {

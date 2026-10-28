@@ -2,8 +2,8 @@
 // the Requests tab (Accept at the rider's fare, Offer with the sheet, a
 // locked request with Upload permit, an offer sent and withdrawn, the
 // cards moving with the locked offer motion), the driving start date in
-// date boxes, My trips (today, booked, offered, done), Post a trip (coming
-// later), the trip on the day (On my way, Rider picked up, Complete trip),
+// date boxes, My trips (today, booked, offered, done), Post a trip (its
+// tab; city_to_city_seats_test.dart tests posting), the trip on the day (On my way, Rider picked up, Complete trip),
 // Call, giving a trip up, and Chat in the app for both sides (the ride
 // chat on the booking's thread), the rider's notice when the driver gave
 // the trip up, the Drive card and the driver menu row.
@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/display_logic.dart' show cityToCityMenuItemId, defaultPartnerMenuItems;
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/city_to_city.dart';
+import 'package:get_ride/src/core/city_to_city_seats.dart' show C2cTrip;
 import 'package:get_ride/src/core/reliability_settings.dart';
 import 'package:get_ride/src/core/ride_chat.dart';
 import 'package:get_ride/src/core/ride_chat_outbox.dart';
@@ -134,6 +135,9 @@ class _Repo extends CityToCityRepository {
 
   @override
   Future<List<C2cOffer>> offers(String bookingId) async => const [];
+
+  @override
+  Future<List<C2cTrip>> driverSeatTrips() async => const [];
 
   @override
   Future<void> makeOffer(String bookingId, double price, {DateTime? leaveAt}) async {
@@ -276,7 +280,7 @@ void main() {
       expect(find.text('City to City'), findsOneWidget);
       expect(find.text('Commission 12%'), findsOneWidget);
       expect(find.text('Skip any request: no penalty'), findsOneWidget);
-      expect(find.text('Coming later'), findsOneWidget);
+      expect(find.text('Coming later'), findsNothing, reason: 'Post a trip is built (0310)');
       // The cards move with the locked offer motion.
       expect(find.byType(OfferMotionList), findsOneWidget);
       expect(find.ancestor(of: find.byKey(const ValueKey('c2c-request-q1')), matching: find.byType(OfferMotion)),

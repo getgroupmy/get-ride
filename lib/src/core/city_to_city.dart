@@ -253,7 +253,8 @@ class C2cRule {
   final C2cYearsMode yearsMode;
   final int? minYears;
 
-  /// 'whole_car' (launch); 'per_seat' is kept for later and never matched.
+  /// 'whole_car', or 'per_seat': a route's own seat price for trips drivers
+  /// post (0310; a fixed fare is the seat price, a set range the seat range).
   final String tripKind;
   final bool active;
   final int position;
@@ -275,6 +276,7 @@ class C2cRule {
     int? minYears,
     bool? active,
     int? position,
+    String? tripKind,
   }) => C2cRule(
     id: id,
     from: from ?? this.from,
@@ -290,7 +292,7 @@ class C2cRule {
     bookAheadDays: bookAheadDays ?? this.bookAheadDays,
     yearsMode: yearsMode ?? this.yearsMode,
     minYears: minYears ?? this.minYears,
-    tripKind: tripKind,
+    tripKind: tripKind ?? this.tripKind,
     active: active ?? this.active,
     position: position ?? this.position,
     createdAt: createdAt,
@@ -312,6 +314,7 @@ class C2cRule {
     'book_ahead_days': bookAheadDays,
     'min_years_mode': yearsMode.key,
     'min_years': yearsMode == C2cYearsMode.set ? minYears : null,
+    'trip_kind': tripKind,
     'active': active,
     'position': position,
   };
@@ -506,7 +509,11 @@ String c2cMoney(double v, [String currency = 'MYR']) {
 
 /// The winning rule for a whole-car trip from [pickup] to [drop], with how
 /// specifically each end matched; null for the default.
-({C2cRule rule, int from, int to})? c2cRuleFor(List<C2cRule> rules, Geo pickup, Geo drop) {
+///
+/// [tripKind] 'per_seat' picks among the per-seat route rules instead (0310:
+/// a route's own seat price).
+({C2cRule rule, int from, int to})? c2cRuleFor(List<C2cRule> rules, Geo pickup, Geo drop,
+    {String tripKind = 'whole_car'}) {
   ({C2cRule rule, int from, int to})? best;
   int cmp(({C2cRule rule, int from, int to}) a, ({C2cRule rule, int from, int to}) b) {
     final c = [
@@ -520,7 +527,7 @@ String c2cMoney(double v, [String currency = 'MYR']) {
   }
 
   for (final r in rules) {
-    if (!r.active || r.tripKind != 'whole_car') continue;
+    if (!r.active || r.tripKind != tripKind) continue;
     final f = c2cSideRank(r.from, pickup), t = c2cSideRank(r.to, drop);
     if (f == 0 || t == 0) continue;
     final hit = (rule: r, from: f, to: t);
@@ -785,12 +792,16 @@ const c2cMaxPassengers = 6;
 enum C2cStatus {
   open('open', 'Waiting for offers'),
   offered('offered', 'Offers in'),
+  // A seat request waiting for the driver (0310).
+  requested('requested', 'Waiting for the driver'),
   booked('booked', 'Booked'),
   driverArriving('driver_arriving', 'Driver on the way'),
   onTrip('on_trip', 'On the trip'),
   completed('completed', 'Completed'),
   cancelled('cancelled', 'Cancelled'),
-  expired('expired', 'Expired');
+  expired('expired', 'Expired'),
+  // A seat request the driver declined (0310).
+  declined('declined', 'Declined');
 
   const C2cStatus(this.key, this.label);
   final String key;
@@ -803,8 +814,8 @@ enum C2cStatus {
   /// A driver is booked and the trip has not ended.
   bool get withDriver => this == booked || this == driverArriving || this == onTrip;
 
-  /// Over: completed, cancelled or expired.
-  bool get ended => this == completed || this == cancelled || this == expired;
+  /// Over: completed, cancelled, expired or declined.
+  bool get ended => this == completed || this == cancelled || this == expired || this == declined;
 }
 
 /// What the rider brings.
@@ -898,6 +909,14 @@ class C2cBooking {
     this.collectAmount,
     this.collectedAt,
     this.cancelFeePaidVia,
+    this.tripId,
+    this.item,
+    this.seatPrice,
+    this.pickupKind,
+    this.doorKm,
+    this.doorExtra,
+    this.passengerNames = const [],
+    this.cancelReason,
   });
 
   factory C2cBooking.fromRow(Map<String, dynamic> r) {
@@ -908,7 +927,8 @@ class C2cBooking {
 
     DateTime? at(Object? v) => DateTime.tryParse('${v ?? ''}')?.toLocal();
     final currency = (_nz(r['currency']) ?? 'MYR').toUpperCase();
-    final q = r['quote'] is Map ? Map<String, dynamic>.from(r['quote'] as Map) : null;
+    final perSeat = r['trip_kind'] == 'per_seat';
+    final q = !perSeat && r['quote'] is Map ? Map<String, dynamic>.from(r['quote'] as Map) : null;
     return C2cBooking(
       id: '${r['id']}',
       ref: _nz(r['ref']) ?? '',
@@ -955,6 +975,18 @@ class C2cBooking {
       collectAmount: _numOrNull(r['collect_amount']),
       collectedAt: at(r['collected_at']),
       cancelFeePaidVia: _nz(r['cancel_fee_paid_via']),
+      tripId: perSeat ? _nz(r['trip_id']) : null,
+      item: _nz(r['item']),
+      seatPrice: _numOrNull(r['seat_price']),
+      pickupKind: _nz(r['pickup_kind']),
+      doorKm: _numOrNull(r['door_km']),
+      doorExtra: _numOrNull(r['door_extra']),
+      passengerNames: [
+        if (r['passenger_names'] is List)
+          for (final e in r['passenger_names'] as List)
+            if (e is Map && _nz(e['name']) != null) _nz(e['name'])!,
+      ],
+      cancelReason: _nz(r['cancel_reason']),
     );
   }
 
@@ -1023,6 +1055,18 @@ class C2cBooking {
 
   /// How an owed cancel fee was paid: topup, in_app, cash, pay_now.
   final String? cancelFeePaidVia;
+
+  /// A seat or parcel on a trip a driver posted (0310): its trip, 'seat' or
+  /// 'parcel', the seat price, 'meeting' or 'door', door pickup's km and
+  /// extra, and who rides.
+  final String? tripId, item;
+  final double? seatPrice;
+  final String? pickupKind;
+  final double? doorKm, doorExtra;
+  final List<String> passengerNames;
+  final String? cancelReason;
+
+  bool get perSeat => tripId != null;
 
   /// The rider still pays this completed trip in the app.
   bool get unpaid => payStatus == 'unpaid';
@@ -1309,6 +1353,20 @@ const c2cErrorWords = <String, String>{
   'C2C_NOTHING_TO_PAY': 'There is nothing to pay in the app for this trip.',
   'C2C_NOT_DONE': 'Pay once the trip is complete.',
   'C2C_DEFAULT_RULE': "The default rule can't be removed.",
+  'C2C_SEATS_OFF': "Per-seat trips aren't offered here yet.",
+  'C2C_NOT_A_DRIVER': 'Only approved drivers can post a trip.',
+  'C2C_BOOKING_CLOSED': 'Booking for this trip has closed.',
+  'C2C_NO_SEATS': 'Not enough seats are left on this trip.',
+  'C2C_TOO_MANY_SEATS': 'That is more seats than one booking can take.',
+  'C2C_WOMEN_ONLY': 'This trip is for women only.',
+  'C2C_DOOR_OFF': 'This trip has no door pickup. Pick a meeting point.',
+  'C2C_DOOR_TOO_FAR': 'Your address is too far off the route. Pick a meeting point.',
+  'C2C_NO_PARCELS': "This trip can't take that parcel.",
+  'C2C_NO_REPEAT': "That repeat isn't offered here.",
+  'C2C_NAMES': 'Name each passenger, one a seat.',
+  'C2C_ALREADY_BOOKED': 'You already have seats on this trip.',
+  'C2C_SEAT_TRIP': 'Cancel the posted trip, or decline the request.',
+  'DRIVER_BLOCKED': 'You blocked this driver. Unblock them in Settings › Blocked drivers to book them.',
 };
 
 /// One end of a trip as the rider picked it.
@@ -1603,12 +1661,14 @@ bool c2cDriverCanCancel(C2cBooking b, DateTime now) =>
 /// A trip's tag in My trips.
 String c2cDriverTag(C2cStatus s) => switch (s) {
   C2cStatus.open || C2cStatus.offered => 'Offered',
+  C2cStatus.requested => 'Request',
   C2cStatus.booked => 'Booked',
   C2cStatus.driverArriving => 'On the way',
   C2cStatus.onTrip => 'On the trip',
   C2cStatus.completed => 'Done',
   C2cStatus.cancelled => 'Cancelled',
   C2cStatus.expired => 'Expired',
+  C2cStatus.declined => 'Declined',
 };
 
 /// The driver's booked trips at [now]: today (under way, or leaving today
@@ -1620,6 +1680,8 @@ String c2cDriverTag(C2cStatus s) => switch (s) {
   final endOfDay = DateTime(now.year, now.month, now.day + 1);
   final today = <C2cBooking>[], later = <C2cBooking>[], done = <C2cBooking>[];
   for (final b in mine) {
+    // Seats on trips the driver posted are listed with those trips (0310).
+    if (b.perSeat) continue;
     if (b.status.ended) {
       done.add(b);
     } else if (!b.status.withDriver) {
