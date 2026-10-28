@@ -14,14 +14,13 @@ Low:
 - AI Reports email: add the Resend key in Admin › Settings › API Keys (Email › Resend) and verify the getride.my domain in Resend. Until then scheduled report emails don't send; downloads work.
 - Sign-in checks face match, AWS Rekognition (later): add the key in Admin › Settings › API Keys (Amazon Web Services › Rekognition) as `ACCESS_KEY_ID:SECRET_ACCESS_KEY` (or add `:region`), an IAM user allowed `rekognition:CompareFaces` and `rekognition:ListCollections` only. Until then Admin › Documents › Sign-in checks shows "Not checked · No AWS key yet". AWS is the default in Admin › Dispatch › Accounts › Face match.
 - Sign-in checks face match, self-hosted server (later): run `deploy/face-server` on the Synology NAS behind a Cloudflare Tunnel (face.getride.my), then add it in API Keys (Face match server) and pick Self-hosted server or Self-hosted, then AWS. Steps in [deploy/face-server/README.md](../deploy/face-server/README.md).
+- Office NAS backups and uptime: deploy the `nas-ops` and `uptime-check` functions (`--no-verify-jwt`) and apply migration 0318, then run `deploy/nas-backup` on the NAS (connection code from Admin › Settings › Office NAS, the database connection string and the storage service key in its `.env`, the encryption key printed once at setup: keep it), set up Hyper Backup to Backblaze B2 or Synology C2, and turn on the alert channels (a Telegram bot token in API Keys › Telegram › Bot, the Resend key for email). Steps in [deploy/nas-backup/README.md](../deploy/nas-backup/README.md).
 - Sign-in checks ID reading, Google Cloud Vision (optional): enable Cloud Vision API in a Google Cloud project with billing, make an API key kept to that API, add it in API Keys (Google › Cloud Vision (ID reading)) and test it, then pick Phone, then Google Vision (or Google Vision always) in Admin › Dispatch › Accounts › ID card reading. First 1,000 reads a month are free. Deploy the `id-read` function and apply migration 0283 first.
 
 ## Synology DS224+ (see docs/NAS.md)
 
 - Face match on the NAS: built (`deploy/face-server`, OpenCV SFace, runs on the J4125); setting it up is under Owner setup. Still parked: the in-browser check (human) as a last fallback.
-- Nightly backups of the database and storage buckets to the NAS.
 - Own maps routing and address search for Malaysia (OSRM or Valhalla, Photon or Nominatim) as a provider before Google.
-- Uptime monitor (Uptime Kuma) with alerts.
 - ID card reading on the NAS (PaddleOCR) instead of Google Vision.
 
 ## Not built here (start a new session)

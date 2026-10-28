@@ -10,6 +10,7 @@ import 'screens/family/family_module.dart';
 import 'screens/geo/geo_module.dart';
 import 'screens/help/help_module.dart';
 import 'screens/meterapp/meterapp_module.dart';
+import 'screens/office_nas/office_nas_module.dart';
 import 'screens/people/people_module.dart';
 import 'screens/ride_safety/ride_safety_screen.dart';
 import 'screens/rider_audio/rider_audio_screen.dart';
@@ -69,6 +70,7 @@ final allAdminEntries = <AdminScreenEntry>[
   ...geoEntries,
   ...meterappEntries,
   ...securityEntries,
+  ...officeNasEntries,
 ];
 
 /// Routes of every ported screen (paths under `/admin/m/`).
@@ -87,6 +89,7 @@ final allPortedAdminRoutes = <RouteBase>[
   ...geoRoutes,
   ...meterappRoutes,
   ...securityRoutes,
+  ...officeNasRoutes,
 ];
 
 /// `settings_entries` categories that have a dedicated ported editor.

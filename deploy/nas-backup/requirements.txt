@@ -1,0 +1,3 @@
+# The app itself needs only requests; pg_dump, pg_restore, psql and age come
+# from the Dockerfile.
+requests==2.32.3

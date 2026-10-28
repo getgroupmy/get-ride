@@ -1,7 +1,7 @@
 # Synology DS224+: what it can host for get.ride
 
-Notes from 24 Oct 2026. Nothing here is built yet; each item is a separate PR
-when the owner says go. The KIV list (`docs/KIV.md`) points here.
+Notes from 24 Oct 2026. Each item is a separate PR when the owner says go;
+the ones built say where. The KIV list (`docs/KIV.md`) points here.
 
 ## The box (checked 24 Oct 2026)
 
@@ -60,18 +60,25 @@ closer look" and sorted to the top.
 
 ## Other things worth hosting, best first
 
-1. **Nightly backups**: the database (pg_dump) and the storage buckets (permits,
-   IDs, media) copied every night, 30 days kept, plus an off-site copy with
-   Hyper Backup. Guards against a bad migration, a mistaken delete, or a
-   provider problem. *Top pick.*
+1. **Nightly backups** (built: `deploy/nas-backup`, migration 0318): the
+   database (pg_dump) and the storage buckets (permits, IDs, media) copied
+   every night and encrypted with a key only the owner holds, 30 nightly and
+   12 monthly kept (both set in Admin), a monthly restore test into a test
+   database on the NAS, plus an off-site copy with Hyper Backup (Backblaze B2
+   or Synology C2). Guards against a bad migration, a mistaken delete, or a
+   provider problem. Admin › Settings › Office NAS › Backups.
 2. **Own maps routing and address search** for Malaysia, Singapore and Brunei
    (OpenStreetMap): **OSRM** or **Valhalla** for routes and travel times,
    **Photon** or **Nominatim** for search. A free first choice or fallback
    before Google: fare estimates, God View "follow roads", ETAs. About 4–6 GB
    memory; data refreshed weekly. One more provider in Admin → Maps.
-3. **Uptime monitor** (**Uptime Kuma**): checks getride.my, the admin, the
-   server functions and the SMS gateway phones every minute; alerts on
-   Telegram, WhatsApp or email. About 200 MB memory.
+3. **Uptime monitor** (built: `deploy/nas-backup` with the backups, and the
+   `uptime-check` function on a pg_cron schedule so a dead NAS is still
+   reported; our own instead of Uptime Kuma, so the targets, history and
+   alerts live in Admin): checks getride.my, the admin, the server functions,
+   the database, the SMS gateway phones and the payment gateway; alerts after
+   N failed checks with a "resolved" message, on admin app push, Telegram,
+   WhatsApp/SMS or email. Admin › Settings › Office NAS › Uptime.
 4. **Face match** (above) and **ID reading** (PaddleOCR).
 5. **A test copy of the database** to try migrations on before the owner runs
    them live. About 4 GB memory.

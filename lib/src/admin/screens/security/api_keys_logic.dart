@@ -255,6 +255,11 @@ final defaultApiProviders = <ApiProviderDef>[
   ApiProviderDef(id: 'email', name: 'Email', description: 'Sending email', category: 'Email', services: [
     _svc('resend', 'Resend', 'API key for the Reports emails (sender set on Admin > Reports)'),
   ]),
+  // The uptime monitor's alerts (0318, the uptime-check function): a bot made
+  // with @BotFather (deploy/nas-backup/README.md, step 6).
+  ApiProviderDef(id: 'telegram', name: 'Telegram', description: 'Telegram bot for alerts', category: 'Messaging', services: [
+    _svc('bot', 'Bot', 'Bot token from @BotFather (123456:ABC…), for the Office NAS uptime alerts'),
+  ]),
   // The face-compare function (0281): a selfie against the ID photo, as a
   // score for the admin reviewing a dispatch ID.
   ApiProviderDef(id: 'aws', name: 'Amazon Web Services', description: 'AWS services used by the server', category: 'Identity', services: [
