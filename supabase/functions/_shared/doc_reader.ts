@@ -4,13 +4,18 @@
  * only ever calls out, with the key it got for its pairing code:
  *
  *   pair       { code, device_id, label?, model?, version? }  -> { key, reader, kind, label }
- *   heartbeat  { model?, version? }                           -> { on, jobs, passOnBelow, pollAfter }
+ *   heartbeat  { model?, version? }                           -> { on, jobs, idCards, passOnBelow, pollAfter }
  *   claim      { limit? }                                     -> { jobs: [{ id, side, doc_name, wants, url }] }
  *   report     { id, ok, result?, confidence?, ms?, error? }  -> { status }
  *
  * Every call but pair sends the key in the x-reader-key header. A job's photo
  * comes as a signed link good for 5 minutes, from the document buckets only.
  * Nothing here touches the network; see doc_reader_test.ts.
+ *
+ * 0320: the NAS also reads the MyKad or passport sent for a sign-in check
+ * (doc_table identity_checks, wants ["id_card"]): its photo comes from the
+ * ID bucket, and the reader sends back { id: { name, ic, passport, birth,
+ * nationality, expiry } } and nothing else.
  */
 import { storageObject } from "./face_compare.ts";
 
@@ -52,10 +57,18 @@ const str = (v: unknown, max = 200): string | null =>
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-/** The photo's bucket and path, when it is in a document bucket. */
-export function readerPhoto(url: string | null | undefined): { bucket: string; path: string } | null {
+/** The bucket of the IDs sent for the sign-in checks: an ID job's only (0320). */
+export const ID_BUCKET = "ID_Image";
+
+/**
+ * The photo's bucket and path, when it is in a document bucket; for an ID
+ * job (doc_table identity_checks, 0320) in the ID bucket only.
+ */
+export function readerPhoto(url: string | null | undefined, docTable?: string): { bucket: string; path: string } | null {
   const o = storageObject(url);
-  return o && (READER_BUCKETS as readonly string[]).includes(o.bucket) ? o : null;
+  if (!o) return null;
+  if (docTable === "identity_checks") return o.bucket === ID_BUCKET ? o : null;
+  return (READER_BUCKETS as readonly string[]).includes(o.bucket) ? o : null;
 }
 
 /** A database error's code word (READER_KEY_INVALID …), when it is one of ours. */
@@ -107,7 +120,7 @@ export async function handleDocReader(input: unknown, key: string | null, deps: 
       const rows = ((await deps.rpc("doc_reader_claim", { p_key: key, p_limit: limit })) ?? []) as JobRow[];
       const jobs = [];
       for (const j of rows) {
-        const photo = readerPhoto(j.file_url);
+        const photo = readerPhoto(j.file_url, j.doc_table);
         const url = photo ? await deps.sign(photo.bucket, photo.path, PHOTO_LINK_SECONDS) : null;
         jobs.push({ id: j.id, doc_table: j.doc_table, side: j.side, doc_name: j.doc_name, wants: j.wants, url });
       }

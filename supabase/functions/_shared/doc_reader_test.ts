@@ -36,6 +36,15 @@ Deno.test("photos come from the document buckets only", () => {
   assertEquals(readerPhoto("https://elsewhere.example/a.jpg"), null);
 });
 
+Deno.test("an ID job's photo comes from the ID bucket only", () => {
+  assertEquals(readerPhoto(`${STORE}/ID_Image/u1/signin/id_front_1.jpg`, "identity_checks"), {
+    bucket: "ID_Image",
+    path: "u1/signin/id_front_1.jpg",
+  });
+  assertEquals(readerPhoto(`${STORE}/provider-documents/p1/a.jpg`, "identity_checks"), null);
+  assertEquals(readerPhoto(`${STORE}/ID_Image/u1/a.jpg`, "provider_documents"), null);
+});
+
 Deno.test("pairing trades the code for a key, and says why not", async () => {
   const ok = fake({ doc_reader_pair: { key: KEY, reader: "r1", kind: "nas", label: "DS224+" } });
   const r = await handleDocReader(
@@ -99,6 +108,15 @@ Deno.test("claim gives each job a short-lived link to its photo", async () => {
 
   const idle = fake({ doc_reader_claim: [] });
   assertEquals((await handleDocReader({ action: "claim" }, KEY, idle.deps)).body.pollAfter, 15);
+
+  const id = fake({
+    doc_reader_claim: [{ id: "j3", doc_table: "identity_checks", side: "front", doc_name: "MyKad", wants: ["id_card"],
+      file_url: `${STORE}/ID_Image/u1/signin/id_front_1.jpg` }],
+  });
+  const idJobs = (await handleDocReader({ action: "claim" }, KEY, id.deps)).body.jobs as Array<Record<string, unknown>>;
+  assertEquals(idJobs[0].url, "https://signed/ID_Image/u1/signin/id_front_1.jpg");
+  assertEquals(idJobs[0].wants, ["id_card"]);
+  assertEquals(id.signed, [`ID_Image/u1/signin/id_front_1.jpg@${PHOTO_LINK_SECONDS}`], "five minutes, as any photo");
 });
 
 Deno.test("report passes what was read, cleaned", async () => {

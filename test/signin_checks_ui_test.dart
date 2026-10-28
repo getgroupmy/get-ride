@@ -332,7 +332,7 @@ void main() {
         );
         await _tap(tester, find.text('open'));
         expect(find.byKey(const ValueKey('signin-check-mismatch')), findsOneWidget);
-        expect(find.text('Not checked'), findsOneWidget, reason: 'no face match yet');
+        expect(find.text('Not checked · in-browser check next'), findsOneWidget, reason: 'no face match yet; the browser scores it (0320)');
         // The status chip is the shared admin one; the sheet's own words are checked.
         expect(unreadableTexts(tester, find.byKey(const ValueKey('signin-check-mismatch'))), isEmpty);
         expect(unreadableTexts(tester, find.byType(DetailTable)), isEmpty);

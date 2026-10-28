@@ -6,7 +6,10 @@ It only calls out, to the doc-reader edge function:
   2. checks in every minute (the admin page shows it online);
   3. asks for photos to read, reads plates, document numbers and QR codes
      with PP-OCR (RapidOCR, OpenVINO on the processor: no AVX needed) and
-     reports what it found and how sure it is.
+     reports what it found and how sure it is;
+  4. reads the MyKad or passport sent for a sign-in check (an "id_card"
+     job, first in line): only the name, IC and passport numbers, birth
+     date, nationality and expiry go back.
 
 Each photo comes as a 5-minute link, is read in memory and dropped: nothing
 is written to disk or logged but counts and timings.
@@ -29,7 +32,7 @@ import requests
 
 from core import Line, poll_after, read
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 URL = os.environ.get("GETRIDE_URL", "").strip()
 DATA = Path(os.environ.get("READER_DATA", "/data"))
 LABEL = os.environ.get("READER_LABEL", "").strip() or None
@@ -154,13 +157,20 @@ def work(key: str, ocr: Ocr) -> float:
                 call("report", key, id=job["id"], ok=False, error="photo not available or not an image")
                 continue
             wants = job.get("wants") or []
-            reading = read(ocr.lines(image), wants, ocr.qr(image) if "qr" in wants else None)
+            id_card = "id_card" in wants
+            reading = read(ocr.lines(image), wants, ocr.qr(image) if "qr" in wants and not id_card else None)
             del image
             ms = int((time.monotonic() - started) * 1000)
             _, done = call("report", key, id=job["id"], ok=True, result=reading.result(),
                            confidence=reading.confidence, ms=ms)
-            log.info("Read a photo in %d ms: %d plates, %d numbers, %d QR, %.0f%% sure (%s)", ms,
-                     len(reading.plates), len(reading.numbers), len(reading.qr), reading.confidence, done.get("status"))
+            if id_card:
+                # Counts only: never what the card says.
+                log.info("Read an ID card in %d ms: %d fields, %.0f%% sure (%s)", ms,
+                         sum(1 for v in (reading.id or {}).values() if v), reading.confidence, done.get("status"))
+            else:
+                log.info("Read a photo in %d ms: %d plates, %d numbers, %d QR, %.0f%% sure (%s)", ms,
+                         len(reading.plates), len(reading.numbers), len(reading.qr), reading.confidence,
+                         done.get("status"))
         except Exception as e:  # noqa: BLE001
             log.warning("Couldn't read a photo: %s", type(e).__name__)
             try:

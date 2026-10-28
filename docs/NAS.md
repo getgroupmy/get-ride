@@ -1,7 +1,7 @@
 # Synology DS224+: what it can host for get.ride
 
 Notes from 24 Oct 2026. Each item is a separate PR when the owner says go;
-the ones built say where. The KIV list (`docs/KIV.md`) points here.
+the ones built say where. Admin › Settings › Office NAS shows them, a tab each. The KIV list (`docs/KIV.md`) points here.
 
 ## The box (checked 24 Oct 2026)
 
@@ -34,11 +34,12 @@ The score only helps the admin decide: never an automatic approve or reject.
 |---|---|---|---|
 | **Self-hosted on the NAS** (built: `deploy/face-server/`) | free | 24/7, on upload | OpenCV only: YuNet finds the face, **SFace** (Apache 2.0) compares. No TensorFlow, so it runs on the J4125 (no AVX). About 200 MB memory. Photos are compared and forgotten, never stored. Setup: `deploy/face-server/README.md`. |
 | **AWS Rekognition** CompareFaces | about USD 1 / 1,000; first-year free tier | 24/7, on upload | Key in API Keys → Amazon Web Services → Rekognition, saved as `ACCESS_KEY_ID:SECRET_ACCESS_KEY[:region]` (default ap-southeast-1). IAM user with only `rekognition:CompareFaces` and `rekognition:ListCollections`. Already built. |
-| **human** in the admin's browser ([vladmandic/human](https://github.com/vladmandic/human), MIT) | free | only while an admin has the queue open (scores everything waiting, saves it) | About 10 MB of model files downloaded once per browser. Photos never leave the admin page. Cannot run in the native phone apps. |
+| **human** in the admin's browser ([vladmandic/human](https://github.com/vladmandic/human), MIT) (built: `web/face_check/`, migration 0320) | free | only while an admin has the queue open (scores everything waiting, saves it) | About 9 MB of model files (pinned 3.3.6 from cdn.jsdelivr.net) downloaded once per browser. Photos never leave the admin page. Cannot run in the native phone apps. Never over a server's score. |
 
-Admin › Dispatch › Accounts › Face match picks the source: AWS (default),
-self-hosted, or self-hosted then AWS. The in-browser check is still parked. Below a set match (for example 60%) the check is marked "Needs a
-closer look" and sorted to the top.
+Admin › Dispatch › Accounts (and Settings › Office NAS › ID and face) keeps
+the face match order, each with a switch: AWS, then NAS, then in-browser
+(default). Below a set match (60% by default, 30 to 95) the check is marked
+"Needs a closer look" and sorted to the top.
 
 ### Licences: what not to use
 
@@ -56,7 +57,13 @@ closer look" and sorted to the top.
   passports when the phone's ML Kit can't (and on web/desktop). First 1,000
   reads a month free, then about USD 1.50 / 1,000. Uses the Google Cloud project
   that already has Maps; enable the Vision API there.
-- Open-source alternative for reading ID cards on the NAS: **PaddleOCR** (Apache 2.0).
+- Open-source alternative for reading ID cards on the NAS: **PaddleOCR** (Apache 2.0). Built:
+  `deploy/doc-reader` (PP-OCR through RapidOCR/OpenVINO) reads MyKad and
+  passports for the sign-in checks (migration 0320): name, IC, passport
+  number, birth date, nationality and expiry only. The ID card reading order
+  is Phone, then NAS, then Google Vision (each switchable); what the NAS
+  can't read, or doesn't take within 5 minutes, goes on to Google Vision when
+  it is on.
 
 ## Other things worth hosting, best first
 
@@ -87,7 +94,7 @@ closer look" and sorted to the top.
    the database, the SMS gateway phones and the payment gateway; alerts after
    N failed checks with a "resolved" message, on admin app push, Telegram,
    WhatsApp/SMS or email. Admin › Settings › Office NAS › Uptime.
-4. **Face match** (above) and **ID reading** (PaddleOCR).
+4. **Face match** (above) and **ID reading** (built: `deploy/doc-reader`, 0320).
 5. **A test copy of the database** to try migrations on before the owner runs
    them live. About 4 GB memory.
 6. **Website visitor stats** (**Umami** or **Plausible**): privacy-friendly, no

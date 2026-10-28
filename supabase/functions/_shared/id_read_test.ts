@@ -6,12 +6,14 @@ import {
   handleRegistrationRead,
   type IdCheckRow,
   type IdReadDeps,
+  idReaders,
   idReadMode,
   isRegistrationRead,
   readCardText,
   readVision,
   type RegistrationReadDeps,
   visionKey,
+  visionOn,
   visionRequest,
 } from "./id_read.ts";
 
@@ -176,6 +178,46 @@ Deno.test("without a key, a photo or any text", async () => {
 Deno.test("a failure on the way is unavailable", async () => {
   const { d } = deps({ store: () => Promise.reject(new Error("db down")) });
   assertEquals((await handleIdRead({ check_id: ID }, "Bearer u1", d)).status, 503);
+});
+
+// ---- 0320: the reading order and the office NAS --------------------------------------------------
+
+Deno.test("the reading order: saved, else 0283's choice", () => {
+  const ids = (v: unknown) => idReaders(v).map((x) => `${x.id}:${x.on}`).join(",");
+  assertEquals(ids(null), "phone:true,nas:true,vision:false", "Google Vision off unless chosen");
+  assertEquals(ids({ idRead: "vision" }), "vision:true,phone:true,nas:true");
+  assertEquals(ids({ idRead: "vision", idReaders: [{ id: "nas" }, { id: "vision", on: false }, { id: "nas", on: false }] }),
+    "nas:true,vision:false,phone:true");
+  assert(!visionOn({ idRead: "phone" }));
+  assert(visionOn({ idReaders: [{ id: "phone", on: true }, { id: "nas", on: true }, { id: "vision", on: true }] }));
+});
+
+Deno.test("the NAS reads it first: the person's own read waits for it", async () => {
+  const { d, calls } = deps({ nasReading: () => Promise.resolve(true) });
+  assertEquals((await handleIdRead({ check_id: ID }, "Bearer u1", d)).body, { state: "not_read", reason: "nas" });
+  assertEquals(calls, []);
+  // The admin's "Read card again" reads it now.
+  const admin = deps({ nasReading: () => Promise.resolve(true), check: () => Promise.resolve({ ...card, user_id: "u9" }) });
+  assertEquals((await handleIdRead({ check_id: ID }, "Bearer admin", admin.d)).body.state, "read");
+});
+
+Deno.test("the database hands on what the NAS couldn't read, with its secret only", async () => {
+  const ok = deps({ webhookSecretOk: (s) => Promise.resolve(s === "db-secret") });
+  const r = await handleIdRead({ check_id: ID, by: "database" }, null, ok.d, "db-secret");
+  assertEquals(r.body.state, "read");
+  assertEquals(ok.calls, ["annotate vision-key-123", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
+  assertEquals((await handleIdRead({ check_id: ID, by: "database" }, null, ok.d, "wrong")).status, 403);
+  assertEquals((await handleIdRead({ check_id: ID, by: "database" }, "Bearer admin", ok.d, null)).status, 403);
+  const off = deps({
+    webhookSecretOk: () => Promise.resolve(true),
+    verifySettings: () => Promise.resolve({ idReaders: [{ id: "vision", on: false }] }),
+  });
+  assertEquals((await handleIdRead({ check_id: ID, by: "database" }, null, off.d, "s")).body, { error: "vision_off" });
+  const decided = deps({
+    webhookSecretOk: () => Promise.resolve(true),
+    check: () => Promise.resolve({ ...card, status: "Approved" }),
+  });
+  assertEquals((await handleIdRead({ check_id: ID, by: "database" }, null, decided.d, "s")).status, 409);
 });
 
 // ---- 0288: partner registration documents -----------------------------------------------------------

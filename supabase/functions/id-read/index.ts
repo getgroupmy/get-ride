@@ -23,6 +23,11 @@
 // SSM document, Kad Pemandu, vehicle grant) for the app to read, at most 30
 // a day, unless ID card reading is "On the phone only".
 //
+// The office NAS (0320): with the NAS before Google Vision in Admin's ID card
+// reading order, the person's own read answers { state: "not_read",
+// reason: "nas" } while the NAS has the ID; what the NAS can't read the
+// database hands on: POST { check_id, by: "database" } with x-push-secret.
+//
 // Deploy: supabase functions deploy id-read
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -124,6 +129,16 @@ Deno.serve(async (req) => {
       if (error) throw error;
       return (data ?? {}) as Record<string, unknown>;
     },
-  });
+    async nasReading(id) {
+      const { data, error } = await db.rpc("identity_nas_reading", { p_check: id });
+      if (error) console.log("[id-read] nas:", error.message);
+      return data === true;
+    },
+    async webhookSecretOk(secret) {
+      const { data, error } = await db.rpc("push_webhook_secret_ok", { p_secret: secret });
+      if (error) console.log("[id-read] secret check:", error.message);
+      return data === true;
+    },
+  }, req.headers.get("x-push-secret"));
   return reply(result.body, result.status);
 });

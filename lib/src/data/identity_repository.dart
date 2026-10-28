@@ -92,8 +92,9 @@ class IdentityRepository {
   }
 
   /// Sends MyKad or passport, front and back, with what the phone read.
-  /// Then, as the admin's ID card reading setting says (0283), Google Vision
-  /// reads the front: always, or when the phone read nothing (web, desktop).
+  /// Then, as the admin's ID card reading order says (0283, 0320), Google
+  /// Vision reads the front when it is next (the office NAS, when it is
+  /// before Vision and online, has it first: the id-read function says so).
   Future<List<String>> sendId({
     required String docType,
     required Uint8List front,
@@ -120,7 +121,7 @@ class IdentityRepository {
     );
     var mismatch = [for (final m in (res['mismatch'] as List?) ?? const []) '$m'];
     final id = res['id'] as String?;
-    if (id != null && visionReadNeeded((await config()).idRead, read)) {
+    if (id != null && visionReadNeededFor(await config(), read)) {
       final v = await readCardWithVision(id);
       if (v['mismatch'] is List) mismatch = [for (final m in v['mismatch'] as List) '$m'];
     }
@@ -284,6 +285,45 @@ class IdentityRepository {
   /// Null leaves a setting as it is.
   Future<IdentityConfig> setProviders({String? face, String? idRead}) async =>
       IdentityConfig.fromJson(await _db.rpc('identity_set_providers', params: {'p_face': face, 'p_id_read': idRead}));
+
+  /// Saves the orders and the low score (0320); null leaves a part as it is.
+  Future<IdentityConfig> setOrder({List<OrderSlot>? faceOrder, List<OrderSlot>? idReaders, int? faceLowScore}) async =>
+      IdentityConfig.fromJson(
+        await _db.rpc('identity_set_order', params: {
+          'p': {
+            if (faceOrder != null) 'faceOrder': [for (final x in faceOrder) x.toJson()],
+            if (idReaders != null) 'idReaders': [for (final x in idReaders) x.toJson()],
+            'faceLowScore': ?faceLowScore,
+          },
+        }),
+      );
+
+  /// The waiting selfie/ID pairs no server has scored, for the in-browser
+  /// check (0320): {id, other_id, selfie_url, card_url}. Empty when it is
+  /// off, or on a database before 0320.
+  Future<List<Map<String, dynamic>>> browserQueue() async {
+    try {
+      return _list(await _db.rpc('identity_face_browser_queue'));
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Keeps the in-browser check's score on the check and its pair (never
+  /// over a server's score). Returns how many were kept.
+  Future<int> saveBrowserScore(String id, String? otherId, String state, double? score) async =>
+      ((await _db.rpc('identity_face_browser_save', params: {
+                'p_id': id,
+                'p_other': otherId,
+                'p_state': state,
+                'p_score': score,
+              }))
+              as num?)
+          ?.toInt() ??
+      0;
+
+  /// Admin › Settings › Office NAS › ID and face (0320).
+  Future<Map<String, dynamic>> nasIdFace() async => _map(await _db.rpc('admin_nas_id_face'));
 
   Future<int> renewDays() async {
     try {

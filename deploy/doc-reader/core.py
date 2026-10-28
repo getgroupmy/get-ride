@@ -5,12 +5,19 @@ OCR: tested in test_core.py.
 The reader only keeps what GET.ride asked for (`wants`): plates, document
 numbers and QR codes. The rest of the text on the document (names,
 addresses) is never sent back.
+
+For a sign-in check's MyKad or passport (`wants` ["id_card"], migration
+0320) it sends back the name, the IC number, the passport number, the birth
+date, the nationality and the expiry, read with the same rules as the phone
+and Google Vision (supabase/functions/_shared/id_card_cases.json), and
+nothing else: not the address, not the rest of the card.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date
 
 # Malaysian plates: 1-3 letters, 1-4 digits, up to 2 letters (WXY 1234,
 # VBN 8821 A, JQK 5). Sabah/Sarawak and newer series fit the same shape.
@@ -45,8 +52,12 @@ class Reading:
     numbers: list[str] = field(default_factory=list)
     qr: list[str] = field(default_factory=list)
     confidence: float = 0.0  # 0..100
+    # A sign-in check's ID card: only these fields, only when asked.
+    id: dict | None = None
 
     def result(self) -> dict:
+        if self.id is not None:
+            return {"id": self.id}
         return {"plates": self.plates, "numbers": self.numbers, "qr": self.qr}
 
 
@@ -94,10 +105,105 @@ def find_numbers(text: str) -> list[str]:
     return out
 
 
+# ---- ID cards (MyKad, passport) for the sign-in checks ----------------------------------------
+
+_IC = re.compile(r"\b(\d{6})\s*-?\s*(\d{2})\s*-?\s*(\d{4})\b")
+_NAME = re.compile(r"^[A-Z][A-Z '@./-]+$")
+_NOT_NAMES = {
+    "KAD", "PENGENALAN", "MALAYSIA", "MYKAD", "IDENTITY", "CARD", "WARGANEGARA", "LELAKI", "PEREMPUAN", "ISLAM",
+    "PASPORT", "PASSPORT", "JALAN", "TAMAN", "LORONG", "KAMPUNG", "NO", "KUALA", "LUMPUR", "SELANGOR", "JOHOR",
+    "PULAU", "PINANG", "PERAK", "KEDAH", "KELANTAN", "TERENGGANU", "PAHANG", "MELAKA", "SABAH", "SARAWAK",
+    "NEGERI", "SEMBILAN", "PERLIS", "LABUAN", "PUTRAJAYA", "BANDAR", "MYS", "TYPE", "JENIS",
+}
+ID_FIELDS = ("name", "ic", "passport", "birth", "nationality", "expiry")
+
+
+def _ymd(yymmdd: str, future: bool, today: date | None = None) -> str | None:
+    """yyyy-mm-dd from YYMMDD: an expiry is this century; a birth date is the
+    last hundred years."""
+    if not re.fullmatch(r"\d{6}", yymmdd):
+        return None
+    yy, mm, dd = int(yymmdd[:2]), int(yymmdd[2:4]), int(yymmdd[4:6])
+    now = (today or date.today()).year % 100
+    year = 2000 + yy if future or yy <= now else 1900 + yy
+    try:
+        return date(year, mm, dd).isoformat()
+    except ValueError:
+        return None
+
+
+def _mrz(lines: list[str], today: date | None) -> tuple[dict, list[int]] | None:
+    """The two machine lines of a passport (ICAO 9303, 44 characters each)."""
+    clean = [l.replace(" ", "").upper() for l in lines]
+    for i in range(len(clean) - 1):
+        a, b = clean[i], clean[i + 1]
+        if not a.startswith("P") or len(a) < 40 or len(b) < 40 or not re.fullmatch(r"[A-Z0-9<]+", b):
+            continue
+        names = a[5:].split("<<")
+        surname = names[0].replace("<", " ").strip()
+        given = names[1].replace("<", " ").strip() if len(names) > 1 else ""
+        name = " ".join(x for x in (given, surname) if x)
+        personal = b[28:42].replace("<", "") if len(b) >= 42 else ""
+        ic = f"{personal[:6]}-{personal[6:8]}-{personal[8:]}" if re.fullmatch(r"\d{12}", personal) else None
+        number = b[:9].replace("<", "")
+        nationality = b[10:13]
+        return {
+            "name": name or None,
+            "ic": ic,
+            "passport": number if re.fullmatch(r"[A-Z0-9]{5,9}", number) else None,
+            "birth": _ymd(b[13:19], future=False, today=today),
+            "nationality": nationality if re.fullmatch(r"[A-Z]{3}", nationality) else None,
+            "expiry": _ymd(b[21:27], future=True, today=today),
+        }, [i, i + 1]
+    return None
+
+
+def read_id_card(lines: list[str], today: date | None = None) -> tuple[dict, list[int]]:
+    """A MyKad's IC number as printed (YYMMDD-PB-####), the birth date in it
+    and the name under it; a passport's name, number, nationality, birth
+    date, expiry and (a Malaysian one's) IC from its machine lines. None for
+    what can't be read; with the indexes of the lines it came from."""
+    lines = [l.strip() for l in lines if l and l.strip()]
+    mrz = _mrz(lines, today)
+    if mrz:
+        return mrz
+    out = dict.fromkeys(ID_FIELDS)
+    used: list[int] = []
+    ic_line = -1
+    for i, l in enumerate(lines):
+        m = _IC.search(l)
+        if m:
+            out["ic"] = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+            out["birth"] = _ymd(m.group(1), future=False, today=today)
+            ic_line = i
+            used.append(i)
+            break
+    for i in range(ic_line + 1, len(lines)):
+        l = lines[i]
+        if not _NAME.match(l):
+            continue
+        words = l.split()
+        if len(words) < 2 or any(re.sub(r"[^A-Z]", "", w) in _NOT_NAMES for w in words):
+            continue
+        out["name"] = re.sub(r"\s+", " ", l)
+        used.append(i)
+        break
+    if out["ic"] and any(re.search(r"\bWARGANEGARA\b", l.upper()) for l in lines):
+        out["nationality"] = "MYS"  # "citizen" on a MyKad
+    return out, used
+
+
 def read(lines: list[Line], wants: list[str], qr: list[str] | None = None) -> Reading:
     """What GET.ride asked for, from the OCR's lines, and how sure: the
     lowest score of the lines it came from (0 when nothing was found)."""
     r = Reading()
+    if "id_card" in wants:
+        fields, used_lines = read_id_card([line.text for line in lines])
+        r.id = fields
+        kept = [l for l in lines if l.text and l.text.strip()]
+        scores = [kept[i].score for i in used_lines if i < len(kept)]
+        r.confidence = round(min(scores) * 100, 1) if scores and any(fields.values()) else 0.0
+        return r
     used: list[float] = []
     for line in lines:
         hit = False
