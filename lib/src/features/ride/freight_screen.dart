@@ -53,6 +53,9 @@ import '../../widgets/common.dart' show showError, showInfo, showNotice;
 import '../../widgets/page_style_host.dart';
 import '../../widgets/media_image.dart' show MediaIcon;
 import '../../widgets/search_select.dart' show ListSearchFilter, searchSelectMatches;
+import '../../core/business_accounts.dart';
+import '../../data/business_repository.dart';
+import '../business/business_booking.dart';
 import 'confirm_parts.dart' show paymentLook;
 import 'courier_parts.dart' show CourierCodeCard;
 import 'delivery_addons_parts.dart';
@@ -194,6 +197,13 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
   String? _vehicleId;
   Set<RideOptionKind> _options = const {};
   String _payment = 'Cash';
+
+  /// The admin's methods, then the member's business accounts that may book Freight (0313).
+  List<PaymentChoice> get _paymentChoices => withBusinessPayments(
+    ref.read(paymentChoicesProvider).value ?? builtInPayments,
+    ref.read(myBusinessAccountsProvider).value ?? const [],
+    BusinessService.freight,
+  );
   Uint8List? _photo;
   String? _photoPath;
   bool _uploading = false;
@@ -640,6 +650,28 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
       final addons = _addonPicks;
       final names = _config.freightNamesFor(picked);
       final route = _route;
+      // On a business account (0313): its checks first.
+      final payments = _paymentChoices;
+      final payment = resolvePayment(_payment, payments);
+      final businessId = businessAccountIdOf(payment);
+      String? businessNote;
+      if (businessId != null) {
+        if (!mounted) return;
+        final ready = await prepareBusinessBooking(
+          context,
+          ref,
+          accountId: businessId,
+          company: businessAccountFor(payment, ref.read(myBusinessAccountsProvider).value ?? const [])?.name ??
+              'your company',
+          service: v!.name,
+          fare: freightFare(_offer!, charges),
+          pickupAt: scheduleAt,
+          pickup: freightAddressLabel(a!),
+          dropoff: freightAddressLabel(b!),
+        );
+        if (ready == null || !mounted) return;
+        businessNote = ready.note;
+      }
       final booked = await ref.read(rideRepositoryProvider).createRequest(
         scheduleAt: scheduleAt,
         service: v!.name,
@@ -654,7 +686,9 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
         distanceKm: route?.km ?? const Distance().as(LengthUnit.Meter, a.place.point, b.place.point) / 1000,
         durationMin: (route?.min ?? 0).round(),
         fare: freightFare(_offer!, charges),
-        paymentMode: resolvePayment(_payment, ref.read(paymentChoicesProvider).value ?? builtInPayments),
+        paymentMode: bookedPaymentMode(payment, payments),
+        businessAccountId: businessId,
+        businessNote: businessNote,
         note: freightNote(description: _description, options: [for (final k in picked) _config.labelOf(k)], time: _time),
         optionCharges: charges,
         optionNames: names,
@@ -754,7 +788,8 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     final addonRule = _addonRule;
     final addonPicks = _addonPicks;
     final addonCharges = _addonCharges;
-    final payments = ref.read(paymentChoicesProvider).value ?? builtInPayments;
+    ref.watch(myBusinessAccountsProvider);
+    final payments = _paymentChoices;
     final payment = resolvePayment(_payment, payments);
     final added = optionChargesTotal(charges);
     final look = DeliveryLook.of(context);

@@ -13,6 +13,9 @@ import '../../config.dart';
 import '../../core/app_display.dart';
 import '../../core/overlay_back.dart';
 import '../../core/payment_types.dart';
+import '../../core/business_accounts.dart';
+import '../../data/business_repository.dart';
+import '../business/business_booking.dart';
 import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
 import '../../core/driver_eta.dart';
@@ -304,7 +307,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The rider's pick; [_payment] is what is booked, the pick only while
   /// Admin → Payment Type still offers it.
   String _paymentPick = 'Cash';
-  List<PaymentChoice> get _payments => ref.read(paymentChoicesProvider).value ?? builtInPayments;
+  // With the member's business accounts (0313) that may book this trip.
+  List<PaymentChoice> get _payments => withBusinessPayments(
+    ref.read(paymentChoicesProvider).value ?? builtInPayments,
+    ref.read(myBusinessAccountsProvider).value ?? const [],
+    _scheduleAt == null ? BusinessService.ride : BusinessService.scheduled,
+  );
   String get _payment => resolvePayment(_paymentPick, _payments);
   bool _useCoins = false;
 
@@ -1883,7 +1891,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           'rider_id': ref.read(currentUserIdProvider),
           'rider_name': profile?.name,
           'service': _service.name,
-          'payment_mode': _payment,
+          'payment_mode': bookedPaymentMode(_payment, _payments),
           'pickup_name': a.name,
           'pickup_address': a.address,
           'pickup_lat': a.point.latitude,
@@ -1926,6 +1934,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (_pickupDoor case final d?) 'pickup_door_id': d.id,
         if (_dropDoor case final d?) 'drop_door_id': d.id,
       };
+      // On a business account (0313): its checks first (a note, an Admin's
+      // approval), and the server's again as it is written.
+      final businessId = businessAccountIdOf(_payment);
+      String? businessNote;
+      if (businessId != null) {
+        if (!mounted) return;
+        final ready = await prepareBusinessBooking(
+          context,
+          ref,
+          accountId: businessId,
+          company: businessAccountFor(_payment, ref.read(myBusinessAccountsProvider).value ?? const [])?.name ??
+              'your company',
+          service: _service.name,
+          fare: _fareFor(_service, biddingOn: offerMe),
+          pickupAt: scheduleAt,
+          forOther: forWhom != null,
+          pickup: a.name,
+          dropoff: b.name,
+        );
+        if (ready == null || !mounted) return;
+        businessNote = ready.note;
+      }
       final booked = await rides.createRequest(
             scheduleAt: scheduleAt,
             service: _service.name,
@@ -1942,7 +1972,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // The booking-time check decides: an offer made where bidding has
             // since turned out to be off goes out at the recommended fare.
             fare: _fareFor(_service, biddingOn: offerMe),
-            paymentMode: _payment,
+            paymentMode: bookedPaymentMode(_payment, _payments),
+            businessAccountId: businessId,
+            businessNote: businessNote,
             passengers: options.passengers,
             note: driverNote(options: options, entrance: _entrance, note: _note.text, names: optionsConfig.renamed),
             pets: options.pets,
@@ -2934,6 +2966,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.watch(cachedRideServicesProvider); // or the device's copy, first
     ref.watch(serviceBoxNamesProvider); // and the Service types its rules name
     ref.watch(paymentChoicesProvider); // and when Admin → Payment Type changes
+    ref.watch(myBusinessAccountsProvider); // and the member's business accounts (0313)
     ref.watch(coinTradeQuoteProvider); // and when the GET.coin balance does
     ref.watch(fareTariffsProvider); // re-quote when the tariff cards arrive
     ref.watch(rideOptionPlacesProvider); // and when the option charges by place do

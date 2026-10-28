@@ -44,6 +44,9 @@ import '../../widgets/common.dart' show showError, showInfo;
 import '../../widgets/page_style_host.dart';
 import '../../widgets/media_image.dart' show MediaIcon;
 import '../../widgets/search_select.dart' show ListSearchFilter, searchSelectMatches;
+import '../../core/business_accounts.dart';
+import '../../data/business_repository.dart';
+import '../business/business_booking.dart';
 import 'confirm_parts.dart' show paymentLook;
 import 'delivery_addons_parts.dart';
 import 'delivery_look.dart';
@@ -89,6 +92,13 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
   String? _vehicleId;
   CourierPayer _payer = CourierPayer.sender;
   String _payment = 'Cash';
+
+  /// The admin's methods, then the member's business accounts that may book Courier (0313).
+  List<PaymentChoice> get _paymentChoices => withBusinessPayments(
+    ref.read(paymentChoicesProvider).value ?? builtInPayments,
+    ref.read(myBusinessAccountsProvider).value ?? const [],
+    BusinessService.courier,
+  );
   double? _offer;
   double? _declared;
   bool _ack = false;
@@ -381,7 +391,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
       final addons = _addonPicks;
       final charges = _addonCharges;
       final items = courierItemText(_items, _note.text);
-      final payments = ref.read(paymentChoicesProvider).value ?? builtInPayments;
+      final payments = _paymentChoices;
       // The recipient pays in cash; the sender any way offered.
       final payment = _payer == CourierPayer.recipient
           ? (payments.where((p) => p.kind == PaymentKind.cash).firstOrNull?.value ?? 'Cash')
@@ -392,6 +402,26 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
         details(_pickupDetails, 'Pickup'),
         details(_dropDetails, 'Drop-off'),
       ].where((x) => x.isNotEmpty).join(' · ');
+      // On a business account (0313): its checks first.
+      final businessId = businessAccountIdOf(payment);
+      String? businessNote;
+      if (businessId != null) {
+        if (!mounted) return;
+        final ready = await prepareBusinessBooking(
+          context,
+          ref,
+          accountId: businessId,
+          company: businessAccountFor(payment, ref.read(myBusinessAccountsProvider).value ?? const [])?.name ??
+              'your company',
+          service: v!.name,
+          fare: freightFare(_offer!, charges),
+          payer: _payer.id,
+          pickup: a!.name,
+          dropoff: b!.name,
+        );
+        if (ready == null || !mounted) return;
+        businessNote = ready.note;
+      }
       await ref.read(rideRepositoryProvider).createRequest(
         service: v!.name,
         pickupName: a!.name,
@@ -406,7 +436,9 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
         durationMin: (route?.min ?? 0).round(),
         fare: freightFare(_offer!, charges),
         optionCharges: charges,
-        paymentMode: payment,
+        paymentMode: bookedPaymentMode(payment, payments),
+        businessAccountId: businessId,
+        businessNote: businessNote,
         note: note,
         riderName: profile?.name,
         riderPhone: profile?.phone,
@@ -487,7 +519,8 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     final addonPicks = _addonPicks;
     final vehicles = _vehicles;
     final v = _vehicle;
-    final payments = ref.read(paymentChoicesProvider).value ?? builtInPayments;
+    ref.watch(myBusinessAccountsProvider);
+    final payments = _paymentChoices;
     final payment = resolvePayment(_payment, payments);
     final look = DeliveryLook.of(context);
     Widget label(String text, {Widget? trailing}) => DeliverySectionLabel(text, trailing: trailing);

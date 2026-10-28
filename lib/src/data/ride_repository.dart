@@ -116,6 +116,8 @@ class RideRepository {
     ParcelSize? parcelSize,
     CourierPayer payer = CourierPayer.sender,
     AddonPicks addons = const AddonPicks(),
+    String? businessAccountId,
+    String? businessNote,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
@@ -195,6 +197,11 @@ class RideRepository {
       // Freight and Courier add-ons (0312), checked by the server; their
       // charges are among the option charges.
       if (cargoDescription != null) ...addons.toColumns(),
+      // A business account (0313): checked by the server, which refuses the
+      // booking (BUSINESS_…) rather than book it another way. Never dropped.
+      'business_account_id': ?businessAccountId,
+      if (businessAccountId != null && businessNote != null && businessNote.trim().isNotEmpty)
+        'business_note': businessNote.trim(),
     };
     // Stops, the metadata, the region's pricing and its time zone are
     // extras: a database without one of their columns (stops needs 0098,

@@ -1221,6 +1221,7 @@ class ConfirmDisclaimer extends StatelessWidget {
   PaymentKind.wallet => (Icons.account_balance_wallet_outlined, confirmAccent),
   PaymentKind.card => (Icons.credit_card, confirmAccent),
   PaymentKind.other => (Icons.account_balance_outlined, confirmAccent),
+  PaymentKind.business => (Icons.business_center_outlined, confirmAccent),
 };
 
 /// Expo's payment sheet, opened from the card icon beside "Find a driver".

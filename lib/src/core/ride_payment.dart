@@ -31,7 +31,10 @@ enum RidePaymentStatus {
 enum RidePayMethod {
   getWallet('get_wallet', 'GET.wallet'),
   getCoin('get_coin', 'GET.coin'),
-  cash('cash', 'cash');
+  cash('cash', 'cash'),
+
+  /// Charged to the rider's business account (0313), when the trip ends.
+  business('business', 'business account');
 
   const RidePayMethod(this.db, this.label);
   final String db;
@@ -146,7 +149,7 @@ List<RidePayOption> ridePayOptions({
   }
   final seen = <String>{};
   for (final c in others) {
-    if (c.kind == PaymentKind.cash || c.kind == PaymentKind.wallet) continue;
+    if (c.kind == PaymentKind.cash || c.kind == PaymentKind.wallet || c.kind == PaymentKind.business) continue;
     if (!seen.add(c.label.toLowerCase())) continue;
     out.add(RidePayOption(id: 'other:${c.value}', label: c.label, note: 'Not available yet'));
   }
@@ -177,5 +180,6 @@ String ridePaidSummary(RidePayMethod? method, String amount) => switch (method) 
   RidePayMethod.cash => '$amount paid in cash',
   RidePayMethod.getWallet => '$amount paid with GET.wallet',
   RidePayMethod.getCoin => '$amount paid with GET.coin',
+  RidePayMethod.business => '$amount charged to the business account',
   null => '$amount paid',
 };

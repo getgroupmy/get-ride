@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'screens/business/business_module.dart';
 import 'screens/catalogue/catalogue_module.dart';
 import 'screens/city_to_city/city_to_city_module.dart';
 import 'screens/commerce/commerce_module.dart';
@@ -53,6 +54,7 @@ final allAdminEntries = <AdminScreenEntry>[
   ...helpEntries,
   ...rideSafetyEntries,
   ...peopleEntries,
+  ...businessEntries,
   ...catalogueEntries,
   ...cityToCityEntries,
   ...commerceEntries,
@@ -66,6 +68,7 @@ final allPortedAdminRoutes = <RouteBase>[
   ...helpRoutes,
   ...rideSafetyRoutes,
   ...peopleRoutes,
+  ...businessRoutes,
   ...catalogueRoutes,
   ...cityToCityRoutes,
   ...commerceRoutes,

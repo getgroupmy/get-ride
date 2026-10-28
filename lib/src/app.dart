@@ -33,6 +33,8 @@ import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/trip_card.dart' show tripCardLinkLocation;
 import 'core/partner_remote_action.dart' show RemoteActionRequest, remoteActionIdFromPush, remoteActionLinkLocation, remoteActionRoute;
+import 'features/business/business_apply_screen.dart';
+import 'features/business/business_screen.dart';
 import 'features/partner/remote_action.dart' show remoteActionAskProvider, remoteActionHandlerProvider;
 import 'data/trip_card_controller.dart' show tripCardControllerProvider;
 import 'core/push_logic.dart';
@@ -477,6 +479,15 @@ final routerProvider = Provider<GoRouter>((ref) {
                         ],
                       ),
                       GoRoute(path: 'referral', builder: (_, _) => const ReferralScreen()),
+                      // Business accounts (0313): the member's accounts, applying, one account.
+                      GoRoute(
+                        path: 'business',
+                        builder: (_, _) => const BusinessHomeScreen(),
+                        routes: [
+                          GoRoute(path: 'apply', builder: (_, _) => const BusinessApplyScreen()),
+                          GoRoute(path: ':id', builder: (_, s) => BusinessAccountScreen(id: s.pathParameters['id']!)),
+                        ],
+                      ),
                       GoRoute(
                         path: 'my-ride',
                         builder: (_, _) => const MyRideScreen(),

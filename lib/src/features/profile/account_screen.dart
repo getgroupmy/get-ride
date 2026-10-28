@@ -181,6 +181,14 @@ class RiderMenu extends ConsumerWidget {
               trailing: const Icon(Icons.chevron_right),
               onTap: () => mode.comingSoon ? showComingSoon(context) : openPartnerMode(context, ref, beforeOpen: beforeOpen),
             ),
+          // Business accounts (0313): the company's trips, members and invoices.
+          ListTile(
+            key: const ValueKey('account-business'),
+            leading: const Icon(Icons.business_center_outlined),
+            title: const Text('Business'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => go('/account/business'),
+          ),
           if (dispatch)
             ListTile(
               key: const ValueKey('account-dispatch'),
