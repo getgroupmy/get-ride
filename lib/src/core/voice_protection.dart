@@ -35,6 +35,7 @@ class VoiceRecording {
     this.uploaded = false,
     this.mediaUrl,
     this.unavailable = false,
+    this.recordedBy = 'driver',
   });
 
   factory VoiceRecording.fromRow(Map<String, dynamic> r) {
@@ -53,6 +54,7 @@ class VoiceRecording {
       uploaded: r['uploaded'] == true,
       mediaUrl: r['media_url'] as String?,
       unavailable: r['unavailable'] == true,
+      recordedBy: r['recorded_by'] == 'rider' ? 'rider' : 'driver',
     );
   }
 
@@ -68,6 +70,11 @@ class VoiceRecording {
   final bool uploaded;
   final String? mediaUrl;
   final bool unavailable;
+
+  /// Whose phone recorded it: the driver's VoiceProtection, or the rider's
+  /// audio protection (migration 0315).
+  final String recordedBy;
+  bool get byRider => recordedBy == 'rider';
 
   /// An upload the phone still owes: requested, not done, not given up on.
   bool get uploadPending => uploadRequested && !uploaded && !unavailable;

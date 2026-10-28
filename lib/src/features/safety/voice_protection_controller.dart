@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/voice_protection.dart';
 import '../../data/voice_protection_repository.dart';
 import '../../providers.dart';
+import 'rider_audio_controller.dart';
 
 class VoiceProtectionState {
   const VoiceProtectionState({this.enabled = false, this.loaded = false, this.recording = false, this.error});
@@ -220,8 +221,15 @@ class _VoiceProtectionHostState extends ConsumerState<VoiceProtectionHost> {
     if (stop != null) unawaited(stop());
     if (uid == null || !voiceRecordingSupported) return;
     final voice = ref.read(voiceProtectionProvider.notifier);
+    // The rider's audio protection (0315) keeps its recordings in the same
+    // table: one watch answers both.
+    final rider = ref.read(riderAudioProvider.notifier);
     unawaited(voice.purgeExpired().then((_) => voice.runPendingUploads()));
-    _unwatch = ref.read(voiceProtectionRepositoryProvider).watch(uid, () => unawaited(voice.runPendingUploads()));
+    unawaited(rider.purgeExpired().then((_) => rider.runPendingUploads()));
+    _unwatch = ref.read(voiceProtectionRepositoryProvider).watch(uid, () {
+      unawaited(voice.runPendingUploads());
+      unawaited(rider.runPendingUploads());
+    });
   }
 
   @override
@@ -233,8 +241,9 @@ class _VoiceProtectionHostState extends ConsumerState<VoiceProtectionHost> {
 
   @override
   Widget build(BuildContext context) {
-    ref.watch(voiceProtectionProvider); // keeps the controller alive
+    ref.watch(voiceProtectionProvider); // keeps the controllers alive
+    ref.watch(riderAudioProvider);
     _attach(ref.watch(currentUserIdProvider));
-    return widget.child;
+    return RiderAudioHost(child: widget.child);
   }
 }

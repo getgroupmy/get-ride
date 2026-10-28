@@ -4,7 +4,6 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 
 ## City ride, after launch
 
-- Rider-side audio recording (the driver side already records trip audio).
 - Premium tier.
 
 ## Services, partner types and vehicle services (study of 26 Oct 2026)

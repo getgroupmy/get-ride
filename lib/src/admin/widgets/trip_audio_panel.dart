@@ -11,15 +11,23 @@ import '../../widgets/busy.dart';
 import 'admin_widgets.dart';
 import '../../widgets/in_app_page.dart';
 
-/// The user's VoiceProtection trip recordings, inside a support ticket
-/// (Expo `AdminTripAudioPanel`). The audio lives on the user's phone: an
-/// agent *requests* a recording, the phone uploads it, and it can then be
-/// played from a one-hour link.
+/// Trip recordings, inside a support ticket (the user's: Expo
+/// `AdminTripAudioPanel`) or on a ride's page (the driver's VoiceProtection
+/// and the rider's audio protection, migration 0315). The audio lives on the
+/// phone that recorded it: an agent *requests* a recording, the phone
+/// uploads it, and it can then be played from a one-hour link.
 class TripAudioPanel extends ConsumerStatefulWidget {
-  const TripAudioPanel({super.key, required this.profileId, required this.ticketId, required this.canEdit});
+  const TripAudioPanel({super.key, required String this.profileId, required String this.ticketId, required this.canEdit})
+    : rideId = null;
 
-  final String profileId;
-  final String ticketId;
+  /// A ride's recordings, whoever's phone made them.
+  const TripAudioPanel.forRide({super.key, required String this.rideId, required this.canEdit})
+    : profileId = null,
+      ticketId = null;
+
+  final String? profileId;
+  final String? rideId;
+  final String? ticketId;
   final bool canEdit;
 
   @override
@@ -39,7 +47,8 @@ class _TripAudioPanelState extends ConsumerState<TripAudioPanel> {
     _repo = ref.read(voiceProtectionRepositoryProvider);
     _load();
     // Follows the phone answering a request.
-    _unwatch = _repo.watch(widget.profileId, _load);
+    final ride = widget.rideId;
+    _unwatch = ride != null ? _repo.watchRide(ride, _load) : _repo.watch(widget.profileId!, _load);
   }
 
   @override
@@ -51,7 +60,8 @@ class _TripAudioPanelState extends ConsumerState<TripAudioPanel> {
 
   Future<void> _load() async {
     try {
-      final list = await _repo.forProfile(widget.profileId);
+      final ride = widget.rideId;
+      final list = ride != null ? await _repo.forRide(ride) : await _repo.forProfile(widget.profileId!);
       if (mounted) {
         setState(() {
           _recordings = list;
@@ -102,7 +112,7 @@ class _TripAudioPanelState extends ConsumerState<TripAudioPanel> {
     return ExpansionTile(
       key: const ValueKey('trip-audio-panel'),
       leading: const Icon(Icons.graphic_eq),
-      title: const Text('Trip audio (VoiceProtection)'),
+      title: Text(widget.rideId != null ? 'Trip audio' : 'Trip audio (VoiceProtection)'),
       subtitle: Text(
         count == null
             ? (_error == null ? 'Loading…' : 'Could not load recordings')
@@ -112,9 +122,13 @@ class _TripAudioPanelState extends ConsumerState<TripAudioPanel> {
       ),
       children: [
         if (list != null && list.isEmpty)
-          const ListTile(
+          ListTile(
             dense: true,
-            title: Text('This user has no trip recordings. VoiceProtection may be off on their phone.'),
+            title: Text(
+              widget.rideId != null
+                  ? 'No recordings of this ride. Neither the driver nor the rider had audio protection on.'
+                  : 'This user has no trip recordings. VoiceProtection may be off on their phone.',
+            ),
           ),
         for (final r in list ?? const <VoiceRecording>[]) _row(r, recordingState(r, now)),
       ],
@@ -140,6 +154,7 @@ class _TripAudioPanelState extends ConsumerState<TripAudioPanel> {
       dense: true,
       title: Text(r.rideLabel ?? r.rideId ?? 'Trip'),
       subtitle: Text(
+        '${r.byRider ? "Rider's phone" : "Driver's phone"} · '
         '${dateText(r.recordedAt.toIso8601String())} · ${formatRecordingDuration(r.durationSec)}'
         ' · ${recordingStateLabel(s)}',
       ),

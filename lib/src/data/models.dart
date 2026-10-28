@@ -412,6 +412,10 @@ class RideRequest {
   String? get cargoPhotoPath => _nonEmpty(raw['cargo_photo_path']);
   bool get isFreight => cargoDescription != null;
 
+  /// Rider audio protection (migration 0315): the rider's phone records this
+  /// trip; the driver is told ("Audio protection on (rider)").
+  bool get riderAudio => raw['rider_audio'] == true;
+
   /// Courier (migration 0268): a parcel delivery, built on Freight's parts
   /// (so [isFreight] holds too): its size ('S', 'M', 'L'), whether the
   /// recipient pays in cash on delivery, and when the courier entered the

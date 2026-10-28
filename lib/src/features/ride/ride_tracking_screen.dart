@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../data/ride_cancel_config.dart';
+import '../safety/rider_audio_controller.dart' show riderAudioProvider;
+import '../safety/rider_audio_widgets.dart' show RiderAudioTripLine;
 import '../../data/city_ride_repository.dart';
 import '../../core/ride_offers.dart';
 import '../../core/permits.dart' show plateColoursFromJson;
@@ -307,6 +309,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _syncLocationShare();
     _syncSearch();
     _primeMic();
+    _syncAudio();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _askAboutCancel();
       unawaited(_pollViewers());
@@ -347,6 +350,16 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     unawaited(primeMicForCalls(ref).catchError((_) {}));
   }
 
+  /// Rider audio protection (0315): the ride as it is now, for the switch
+  /// to mark it and to record from Start trip to the end.
+  void _syncAudio() {
+    if (_isDemo) return;
+    final r = widget.ride;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(ref.read(riderAudioProvider.notifier).onRide(r));
+    });
+  }
+
   /// The driver's request to cancel, as a popup the passenger answers.
   void _askAboutCancel() {
     if (!mounted || _isDemo) return;
@@ -369,6 +382,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _syncLocationShare();
     _syncSearch();
     _primeMic();
+    _syncAudio();
     WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel());
     // Expired elsewhere (the home screen's timer, or the server's job, 0139)
     // before this screen's own clock got there: say so all the same.
@@ -1352,6 +1366,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (r.status == RideStatus.onTrip && !_isDemo) SafetyCheckBanner(ride: r, onHelp: () => _sos(r)),
           // The route check (0269): asks when the car leaves the planned route.
           if (r.status == RideStatus.onTrip && !_isDemo) RouteCheckWatcher(ride: r, onSos: () => _sos(r)),
+          // Rider audio protection (0315): recording this trip, or why not.
+          if (r.status == RideStatus.onTrip && !_isDemo) RiderAudioTripLine(ride: r),
           if (r.status == RideStatus.completed && !_isDemo) LostItemCard(ride: r),
           // On the trip itself the X only asks: the driver approves it.
           // Before it, on a phone, Cancel ride is pinned under the sheet.
