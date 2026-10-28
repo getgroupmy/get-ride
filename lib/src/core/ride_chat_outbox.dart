@@ -31,7 +31,7 @@ class PendingRideMessage {
 
   /// The row to insert (the server stamps the rest).
   Map<String, dynamic> toRow() => {
-    'request_id': requestId,
+    rideChatThreadKey(requestId).column: rideChatThreadKey(requestId).id,
     'sender_role': role.name,
     'type': type.name,
     'client_msg_id': clientMsgId,

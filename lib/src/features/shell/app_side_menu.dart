@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../admin/admin_providers.dart';
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
+import '../../data/city_to_city_repository.dart' show c2cServiceActiveProvider;
 import '../../data/dispatch_repository.dart' show dispatchRolesProvider;
 import '../../data/identity_repository.dart' show dispatchChecksProvider;
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
@@ -147,6 +148,7 @@ class PartnerSideMenu extends ConsumerWidget {
             scheduledRides: scheduled,
             approved: approved,
             servicesPage: ref.watch(servicesPageAvailableProvider),
+            cityToCity: ref.watch(c2cServiceActiveProvider).value ?? false,
           )) ...[
             SideMenuTile(
               entry: e,

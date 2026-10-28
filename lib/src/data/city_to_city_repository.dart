@@ -227,6 +227,48 @@ class CityToCityRepository {
     'c2c_rate_driver',
     params: {'p_booking': bookingId, 'p_stars': stars, 'p_comment': comment},
   );
+
+  // ---- The driver (0308) --------------------------------------------------------------------------
+
+  /// The open requests in reach, with what the page's header needs.
+  Future<C2cDriverFeed> driverFeed() async => C2cDriverFeed.fromJson(await _db.rpc('c2c_driver_requests'));
+
+  /// The trips the signed-in driver is booked on, latest leave first.
+  Future<List<C2cBooking>> driverTrips() async {
+    final uid = _db.auth.currentUser?.id;
+    if (uid == null) return const [];
+    final rows = await _db
+        .from('c2c_bookings')
+        .select()
+        .eq('driver_id', uid)
+        .order('leave_at', ascending: false)
+        .limit(60);
+    return [for (final r in rows) C2cBooking.fromRow(r)];
+  }
+
+  /// Offers [price] on request [bookingId], leaving at [leaveAt] (the
+  /// rider's time when null); offering again changes the open offer.
+  Future<void> makeOffer(String bookingId, double price, {DateTime? leaveAt}) => _db.rpc('c2c_make_offer', params: {
+    'p_booking': bookingId,
+    'p_price': c2cRound2(price),
+    'p_leave_at': leaveAt?.toUtc().toIso8601String(),
+  });
+
+  Future<void> withdrawOffer(String offerId) => _db.rpc('c2c_withdraw_offer', params: {'p_offer': offerId});
+
+  /// Moves the booked trip on: driver_arriving, on_trip, completed.
+  Future<void> driverProgress(String bookingId, C2cStatus to) =>
+      _db.rpc('c2c_driver_progress', params: {'p_booking': bookingId, 'p_status': to.key});
+
+  /// Gives a booked trip up; it goes back to open for other drivers.
+  Future<void> driverCancel(String bookingId, {String? reason}) =>
+      _db.rpc('c2c_driver_cancel', params: {'p_booking': bookingId, 'p_reason': reason});
+
+  /// When the driver's licence was first issued, once.
+  Future<void> setDrivingSince(DateTime since) => _db.rpc('c2c_set_driving_since', params: {
+    'p_since': '${since.year.toString().padLeft(4, '0')}-${since.month.toString().padLeft(2, '0')}-'
+        '${since.day.toString().padLeft(2, '0')}',
+  });
 }
 
 final cityToCityRepositoryProvider = Provider((ref) => CityToCityRepository(ref.watch(supabaseProvider)));
@@ -299,4 +341,28 @@ final c2cBookingProvider = FutureProvider.autoDispose.family<C2cBooking?, String
 final c2cOffersProvider = FutureProvider.autoDispose.family<List<C2cOffer>, String>((ref, id) {
   ref.watchLive('c2c_offers');
   return ref.watch(cityToCityRepositoryProvider).offers(id);
+});
+
+/// The other side of a booked trip (name and phone, c2c_contact); null
+/// before booking, after the trip, or when it can't be read.
+final c2cContactProvider = FutureProvider.autoDispose.family<({String name, String? phone})?, String>((ref, id) async {
+  ref.watchLive('c2c_bookings');
+  try {
+    return await ref.watch(cityToCityRepositoryProvider).contact(id);
+  } catch (_) {
+    return null;
+  }
+});
+
+/// The driver's City to City requests, live.
+final c2cDriverFeedProvider = FutureProvider.autoDispose<C2cDriverFeed>((ref) {
+  ref.watchLive('c2c_bookings');
+  ref.watchLive('c2c_offers');
+  return ref.watch(cityToCityRepositoryProvider).driverFeed();
+});
+
+/// The trips the driver is booked on, live.
+final c2cDriverTripsProvider = FutureProvider.autoDispose<List<C2cBooking>>((ref) {
+  ref.watchLive('c2c_bookings');
+  return ref.watch(cityToCityRepositoryProvider).driverTrips();
 });
