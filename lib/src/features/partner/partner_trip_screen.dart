@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../family/family_trip_parts.dart' show DriverChildCheck;
+import '../../data/family_repository.dart' show familyDriverChildProvider;
 import '../../data/dispatch_repository.dart' show dispatchRepositoryProvider;
 import '../../widgets/app_notice.dart';
 import '../dispatch/dispatch_console.dart' show MeterFareDialog;
@@ -449,6 +451,12 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     if (r.isFreight && r.pickupProofPath == null) {
       return showInfo(context, 'Take the photo of the ${r.isCourier ? 'parcel' : 'cargo'} at pickup first.');
     }
+    // Family (0317): a child's trip starts only once their pickup code is right.
+    final child = await ref.read(familyDriverChildProvider(r.id).future).catchError((_) => null);
+    if (!mounted) return;
+    if (child != null && !child.verified) {
+      return showInfo(context, 'Check ${child.first}\'s photo and enter the pickup code first.');
+    }
     final repo = ref.read(rideRepositoryProvider);
     // The server checks the code (start_trip, 0152); the app never sees it.
     // A wrong code is said in the dialog, which stays open to try again.
@@ -841,6 +849,9 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         // The trip done: rating the rider comes first, in view with the
         // sheet all the way down (it saves as a star is tapped).
         if (r.status == RideStatus.completed) MapSheetRestLine(child: RateRiderCard(ride: r, now: _now)),
+        // Family (0317): a child passenger: the photo and the pickup code
+        // before the trip can start.
+        if (r.status == RideStatus.accepted || r.status == RideStatus.arrived) DriverChildCheck(tripId: r.id),
         Card(
           child: Column(children: [
             // The sheet never rests lower than the passenger and their

@@ -34,6 +34,9 @@ const helpAssistantMenuItemId = 'help-assistant';
 const myRideMenuItemId = 'my-ride';
 const myQrMenuItemId = 'my-qr';
 
+/// The rider's Family page (0317): members, children, limits, what is shared.
+const familyMenuItemId = 'family';
+
 /// The scheduled rides (0189): the rider's bookings, the driver's taken
 /// ones; shown only while scheduled rides are on.
 const scheduledRidesMenuItemId = 'scheduled-rides';
@@ -75,6 +78,7 @@ const defaultUserMenuItems = <(String, String)>[
   (scheduledRidesMenuItemId, 'Ride Later'), // this app's own; the Expo menu skips it
   (myRideMenuItemId, 'My Ride'), // favourite drivers (0160); this app's own, the Expo menu skips it
   (myQrMenuItemId, 'My QR'), // personal QR codes (0161); this app's own, the Expo menu skips it
+  (familyMenuItemId, 'Family'), // this app's own (0317); the Expo menu skips it
   ('freight', 'Freight'),
   // The services listed in the menu (owner, 2026-10-22). Built in, so they
   // can be hidden or relinked but not deleted; Courier opens its page, the
@@ -185,6 +189,7 @@ const defaultMenuIconNames = <String, Map<String, String>>{
     'scheduled-rides': 'Clock',
     'my-ride': 'Heart',
     'my-qr': 'Tag',
+    'family': 'Heart',
     'freight': 'Truck',
     'courier': 'Package',
     'buy-sell': 'Tag',

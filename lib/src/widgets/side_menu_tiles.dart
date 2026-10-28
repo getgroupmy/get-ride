@@ -17,6 +17,7 @@ const _builtInIcons = <String, IconData>{
   'scheduled-rides': Icons.event_outlined,
   'my-ride': Icons.favorite_border,
   'my-qr': Icons.qr_code_2,
+  'family': Icons.family_restroom,
   'freight': Icons.local_shipping_outlined,
   'courier': Icons.inventory_2_outlined,
   'buy-sell': Icons.sell_outlined,

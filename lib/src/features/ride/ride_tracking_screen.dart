@@ -7,6 +7,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../family/family_trip_parts.dart' show FamilyTripStrip;
 import '../../data/ride_cancel_config.dart';
 import '../safety/rider_audio_controller.dart' show riderAudioProvider;
 import '../safety/rider_audio_widgets.dart' show RiderAudioTripLine;
@@ -1237,6 +1238,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 ),
               ]),
             ),
+          // Family (0317): "Shared with family" and who can see, "Paid with
+          // Family", and a child's pickup code for the parent who booked.
+          if (!_isDemo) FamilyTripStrip(tripId: r.id, host: true),
           if (r.status == RideStatus.open) ...[
             const SizedBox(height: 12),
             ..._searchSheet(r),

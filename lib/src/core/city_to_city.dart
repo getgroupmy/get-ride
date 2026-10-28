@@ -834,16 +834,23 @@ enum C2cLuggage {
 /// How the rider pays.
 enum C2cPayment {
   inApp('in_app', 'In app'),
-  cash('cash', 'Cash');
+  cash('cash', 'Cash'),
+  // Family (0317): the member's own trip on the family host's GET.wallet;
+  // an in-app way to pay, offered where In app is.
+  family('family', 'Family');
 
   const C2cPayment(this.key, this.label);
   final String key;
   final String label;
-  static C2cPayment of(Object? v) => v == 'in_app' ? inApp : cash;
+  static C2cPayment of(Object? v) => switch (v) { 'in_app' => inApp, 'family' => family, _ => cash };
 }
 
 /// The payment methods the settings allow, In app first.
 List<C2cPayment> c2cPayments(C2cSettings s) => [if (s.payInApp) C2cPayment.inApp, if (s.payCash) C2cPayment.cash];
+
+/// As [c2cPayments], with Family first when the family pays for the rider here.
+List<C2cPayment> c2cPaymentsWithFamily(C2cSettings s, {required bool family}) =>
+    [if (family && s.payInApp) C2cPayment.family, ...c2cPayments(s)];
 
 /// A quote as c2c_quote returns it (0306), or as a booking keeps it.
 C2cQuote c2cQuoteFromJson(Map<String, dynamic> j, {String currency = 'MYR'}) => C2cQuote(

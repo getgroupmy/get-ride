@@ -68,6 +68,42 @@ Do not change the direction, tilt or timing unless the owner asks for it.
 `test/offer_motion_test.dart` fails when the constants change or an offer card
 animates on its own.
 
+## Every booking module works with Family
+
+Family (migration 0317) must work with every booking module, today's and any
+added later. It is one shared layer, not code per module:
+
+- Register the module's key in its migration:
+  `select public.family_register_module('<key>', '<Name>');` (harmless to
+  repeat), and add it to `bookingModules` in `lib/src/core/booking_modules.dart`
+  with its booking tables, repositories and booking screens. Admin › People ›
+  Family's Modules and Family matrix lists every registered module, switched
+  off until the admin turns its boxes on.
+- On the server, call the shared family functions, never your own copy:
+  `family_attach_trip(module, trip id, booker, family passenger, amount, place,
+  options, family pays)` from the booking's insert trigger (it runs
+  `family_payer_for` and raises its FAMILY_* code), `family_trip_guard` and
+  `family_trip_events` triggers for a trip with a driver (a child's pickup
+  code, women drivers, the host told), and `family_can_view_location` for
+  anything that shows where a member is.
+- Money: charge the rider's GET.wallet with `ride_id` set to the trip's id
+  (`wallet_transactions`), checking the balance of
+  `family_wallet_owner(trip, rider, amount)`. The payment layer then sends the
+  charge to whoever paid the trip, within the member's limits, for every
+  charge type (fare, tips, waiting, luggage, add-ons, cancel and owed fees).
+- In the app, show the `familyPayOptionProvider(<key>)` row
+  ("Family · <host>'s GET.wallet", `withFamilyPayment`) on the booking screen and
+  pass `familyBookingColumns(...)` (who it is for) with the booking; put
+  `FamilyTripStrip` on the trip screen and `DriverChildCheck` on the driver's.
+- Privacy is the owner's and not negotiable: only the Family viewer the member
+  can see ("Shared with family", who can see), the logged God View look with a
+  reason, and the admin's location rule. Nothing hidden or covert.
+
+`test/family_modules_test.dart` fails when a booking table (a table with a
+`rider_id`, a `status` and a fare or price) has no module or no Family trigger,
+a file that books is not a module's repository, a key is not registered, or a
+booking screen has no Family row.
+
 ## Parked work is listed in docs/KIV.md
 
 `docs/KIV.md` is the owner's keep-in-view list: features they have parked.

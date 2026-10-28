@@ -14,6 +14,9 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
+import '../../core/booking_modules.dart' show familyModuleFreight;
+import '../../core/family.dart' show withFamilyPayment;
+import '../../data/family_repository.dart' show familyPayOptionProvider;
 import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
 import '../../core/early_end.dart' show serviceTypeIds;
@@ -199,10 +202,14 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
   String _payment = 'Cash';
 
   /// The admin's methods, then the member's business accounts that may book Freight (0313).
-  List<PaymentChoice> get _paymentChoices => withBusinessPayments(
-    ref.read(paymentChoicesProvider).value ?? builtInPayments,
-    ref.read(myBusinessAccountsProvider).value ?? const [],
-    BusinessService.freight,
+  List<PaymentChoice> get _paymentChoices => withFamilyPayment(
+    withBusinessPayments(
+      ref.read(paymentChoicesProvider).value ?? builtInPayments,
+      ref.read(myBusinessAccountsProvider).value ?? const [],
+      BusinessService.freight,
+    ),
+    // Family (0317): the member's "Family · <host>'s GET.wallet" row where the admin allows it.
+    ref.read(familyPayOptionProvider(familyModuleFreight)).value,
   );
   Uint8List? _photo;
   String? _photoPath;
@@ -759,6 +766,8 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     ref.watch(rideOptionPlacesProvider);
     ref.watch(fareTariffsProvider);
     ref.watch(paymentChoicesProvider);
+    // Family (0317): the member's "Family · <host>'s GET.wallet" row where the admin allows it.
+    ref.watch(familyPayOptionProvider(familyModuleFreight));
     ref.watch(freightConfigProvider);
     ref.watch(deliveryAddonRulesProvider);
     final mine = _tabs.index == 1;

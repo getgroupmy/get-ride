@@ -20,6 +20,7 @@ import '../../core/business_accounts.dart' show businessAccountsPage;
 import '../../core/city_ride_extras.dart' show cityRideExtrasPage;
 import '../../core/rider_audio.dart' show riderAudioPage;
 import '../../core/premium_plus.dart' show premiumPlusPage;
+import '../../core/family.dart' show familyAdminPage;
 import 'geo/place_types_screen.dart' show placeTypesPage;
 import '../god_view_people.dart';
 import '../widgets/admin_widgets.dart';
@@ -56,6 +57,7 @@ final grantablePages = <String, String>{
   cityRideExtrasPage: 'Settings · City ride extras',
   riderAudioPage: 'Settings · Rider audio protection',
   premiumPlusPage: 'Settings · Premium and GET.Plus',
+  familyAdminPage: 'People · Family',
 };
 
 String _personLabel(Map<String, dynamic>? p, String id) => '${p?['name'] ?? p?['phone'] ?? p?['email'] ?? id}'.trim();

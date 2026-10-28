@@ -97,6 +97,7 @@ import 'features/profile/profile_screen.dart';
 import 'features/profile/emergency_contacts_screen.dart';
 import 'features/profile/referral_screen.dart';
 import 'features/my_ride/my_ride_screen.dart';
+import 'features/family/family_screen.dart';
 import 'features/my_qr/my_qr_screen.dart';
 import 'features/my_qr/qr_link_screen.dart';
 import 'features/my_qr/qr_result_sheet.dart' show PendingQrLink;
@@ -501,6 +502,8 @@ final routerProvider = Provider<GoRouter>((ref) {
                         routes: [GoRoute(path: 'settings', builder: (_, _) => const MyRideSettingsScreen())],
                       ),
                       GoRoute(path: 'my-qr', builder: (_, _) => const MyQrScreen()),
+                      // Family (0317): members, children, what is shared.
+                      GoRoute(path: 'family', builder: (_, _) => const FamilyScreen()),
                       // The permissions page became a card in Settings: old
                       // links land there.
                       GoRoute(path: 'permissions', redirect: (_, _) => '/account/settings'),

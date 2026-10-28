@@ -72,6 +72,8 @@ begin
     'media_assets',
     -- City to City: settings, permits by country, route rules; commission per service (migration 0306).
     'city_to_city_settings', 'c2c_country_permits', 'c2c_route_rules', 'commission_service_rates',
+    -- Family: the module registry, the values by place, the module matrix (migration 0317).
+    'booking_modules', 'family_places', 'family_module_rules',
     -- City to City bookings and offers (migration 0307).
     'c2c_bookings', 'c2c_offers',
     -- City to City give-up and in-app payment rules, give-up fees owed (migration 0309).

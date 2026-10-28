@@ -10,6 +10,9 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
+import '../../core/booking_modules.dart' show familyModuleRide;
+import '../../core/family.dart' show FamilyPick, withFamilyPayment;
+import '../../data/family_repository.dart' show familyPayOptionProvider, familyPassengersProvider;
 import '../../core/app_display.dart';
 import '../../core/overlay_back.dart';
 import '../../core/payment_types.dart';
@@ -317,11 +320,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// Admin → Payment Type still offers it.
   String _paymentPick = 'Cash';
   // With the member's business accounts (0313) that may book this trip.
-  List<PaymentChoice> get _payments => withBusinessPayments(
-    ref.read(paymentChoicesProvider).value ?? builtInPayments,
-    ref.read(myBusinessAccountsProvider).value ?? const [],
-    _scheduleAt == null ? BusinessService.ride : BusinessService.scheduled,
+  List<PaymentChoice> get _payments => withFamilyPayment(
+    withBusinessPayments(
+      ref.read(paymentChoicesProvider).value ?? builtInPayments,
+      ref.read(myBusinessAccountsProvider).value ?? const [],
+      _scheduleAt == null ? BusinessService.ride : BusinessService.scheduled,
+    ),
+    // Family (0317): the member's "Family · <host>'s GET.wallet" row where the admin allows it.
+    ref.read(familyPayOptionProvider(familyModuleRide)).value,
   );
+
+  /// Family (0317): the member or child the host books this ride for.
+  FamilyPick? _familyPick;
+
   String get _payment => resolvePayment(_paymentPick, _payments);
   bool _useCoins = false;
 
@@ -2015,6 +2026,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             stops: List.of(_stops),
             metadata: metadata,
             bookedFor: forWhom,
+            family: forWhom == null ? null : _familyPick,
             currency: _currency,
             pricing: pricing,
             timezone: rules.timezone,
@@ -2546,6 +2558,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.listenLive(liveRegionTables, _regionsChanged);
     // The pickup place's type icon on the map follows the admin's types (0264).
     ref.watch(placeTypesProvider);
+    // Family (0317): the "Family · <host>'s GET.wallet" payment row for a
+    // member, and the members and children a host can book for, kept loaded.
+    ref.watch(familyPayOptionProvider(familyModuleRide));
+    ref.watch(familyPassengersProvider(familyModuleRide));
     // The ride card follows its ride: a ride that is cancelled, expires or
     // ends (on this device or anywhere else) leaves the home screen, and one
     // that moves on shows its new status, however the rider came back here
@@ -3072,8 +3088,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               forOther: _forOther,
               name: _otherName,
               phone: _otherPhone,
+              family: _familyPick,
+              onFamily: (f) => _familyPick = f,
               onChanged: (who) => setState(() {
                 _forOther = who != null;
+                if (who == null) _familyPick = null;
                 if (who != null) {
                   _otherName.text = who.name;
                   _otherPhone.text = who.phone;
@@ -3675,16 +3694,34 @@ class RouteBasisLine extends StatelessWidget {
 /// driver meets and calls the right person. They are typed in a modal
 /// ([showBookForSheet]); the row shows them, and its pen changes them.
 class _WhoRiding extends StatelessWidget {
-  const _WhoRiding({required this.forOther, required this.name, required this.phone, required this.onChanged});
+  const _WhoRiding({
+    required this.forOther,
+    required this.name,
+    required this.phone,
+    required this.onChanged,
+    this.family,
+    this.onFamily,
+  });
 
   final bool forOther;
   final TextEditingController name, phone;
+
+  /// Family (0317): the member or child picked, and who hears a new pick.
+  final FamilyPick? family;
+  final ValueChanged<FamilyPick?>? onFamily;
 
   /// Someone else with the details from the modal, or the rider (null).
   final ValueChanged<BookedFor?> onChanged;
 
   Future<void> _ask(BuildContext context) async {
-    final who = await showBookForSheet(context, name: name.text, phone: phone.text);
+    final who = await showBookForSheet(
+      context,
+      name: name.text,
+      phone: phone.text,
+      familyModule: familyModuleRide,
+      family: family,
+      onFamily: onFamily,
+    );
     // Closed without Done: as it was (back off when nobody was set).
     if (who != null) {
       onChanged(who);

@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/booking_modules.dart' show familyModuleCityToCity;
+import '../../data/family_repository.dart' show familyPayOptionProvider;
 import '../../core/city_to_city.dart';
 import '../../core/commission.dart' show Geo;
 import '../../data/city_to_city_repository.dart';
@@ -208,7 +210,8 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
       }
     }
     if (_step == 3) {
-      final allowed = c2cPayments(ref.read(c2cSettingsProvider).value ?? const C2cSettings());
+      final allowed = c2cPaymentsWithFamily(ref.read(c2cSettingsProvider).value ?? const C2cSettings(),
+          family: ref.read(familyPayOptionProvider(familyModuleCityToCity)).value?.available ?? false);
       if (_payment == null || !allowed.contains(_payment)) _payment = allowed.firstOrNull;
     }
     if (mounted) setState(() => _step++);
@@ -250,6 +253,8 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Family (0317): the member's Family row, ready by the Pay step.
+    ref.watch(familyPayOptionProvider(familyModuleCityToCity));
     final t = Theme.of(context);
     final look = C2cLook.of(context);
     final settings = ref.watch(c2cSettingsProvider).value ?? const C2cSettings();
@@ -668,7 +673,8 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
     final t = Theme.of(context);
     final look = C2cLook.of(context);
     final q = _quote!, leave = _leaveAt!, fare = _fare!;
-    final pays = c2cPayments(settings);
+    final familyPay = ref.watch(familyPayOptionProvider(familyModuleCityToCity)).value;
+    final pays = c2cPaymentsWithFamily(settings, family: familyPay?.available ?? false);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       C2cBox(
         color: Colors.transparent,
@@ -703,8 +709,18 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
           Expanded(
             child: ChoiceChip(
               key: ValueKey('c2c-pay-${p.key}'),
-              avatar: Icon(p == C2cPayment.inApp ? Icons.credit_card : Icons.payments, size: 20),
-              label: SizedBox(width: double.infinity, child: Text(p.label, textAlign: TextAlign.center)),
+              avatar: Icon(
+                  switch (p) {
+                    C2cPayment.inApp => Icons.credit_card,
+                    C2cPayment.family => Icons.family_restroom,
+                    C2cPayment.cash => Icons.payments,
+                  },
+                  size: 20),
+              label: SizedBox(
+                width: double.infinity,
+                child: Text(p == C2cPayment.family && familyPay != null ? familyPay.label : p.label,
+                    textAlign: TextAlign.center, maxLines: 2, overflow: TextOverflow.ellipsis),
+              ),
               selected: _payment == p,
               showCheckmark: false,
               onSelected: (_) => setState(() => _payment = p),
