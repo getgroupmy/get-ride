@@ -103,6 +103,7 @@ import 'features/safety/safety_screen.dart';
 import 'features/ride/demo_ride.dart';
 import 'features/ride/home_screen.dart';
 import 'features/ride/ride_call_screen.dart';
+import 'features/ride/city_to_city_screen.dart' show CityToCityScreen;
 import 'features/ride/ride_chat_screen.dart';
 import 'features/ride/ride_tracking_screen.dart';
 import 'features/ride/trip_receipt_screen.dart';
@@ -538,6 +539,8 @@ final routerProvider = Provider<GoRouter>((ref) {
               ),
             ],
           ),
+          // The rider's City to City page: a reminder or Pay for your trip opens it (0309).
+          GoRoute(path: '/city-to-city', builder: (_, _) => const CityToCityScreen()),
           // A City to City booking's chat, the rider's side (0308).
           GoRoute(
             path: '/city-to-city/:id/chat',

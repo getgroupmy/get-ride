@@ -18,6 +18,7 @@ import '../../widgets/common.dart' show AsyncView, EmptyState, showError, showIn
 import '../../widgets/offer_motion.dart';
 import '../../widgets/page_style_host.dart';
 import 'city_to_city_parts.dart';
+import 'city_to_city_pay.dart';
 import 'city_to_city_steps.dart' show c2cClockProvider, openC2cSteps;
 import 'ride_chat_screen.dart' show RideChatScreen;
 
@@ -320,12 +321,15 @@ class _OfferCard extends ConsumerWidget {
               child: BusyButton.filled(
                 key: ValueKey('c2c-accept-${o.id}'),
                 onPressed: () async {
-                  try {
-                    await repo.acceptOffer(o.id);
-                    _refresh(ref, booking.id);
-                  } catch (e) {
-                    if (context.mounted) showError(context, e);
-                  }
+                  // Cash, or In app paid after the trip, at once; held at
+                  // booking through the pay sheet (0309).
+                  final container = ProviderScope.containerOf(context);
+                  await acceptC2cOffer(context, ref, booking, o, onBooked: () {
+                    // The card may be gone by then (the trip was booked).
+                    container.invalidate(c2cBookingProvider(booking.id));
+                    container.invalidate(c2cOffersProvider(booking.id));
+                    container.invalidate(c2cMyTripsProvider);
+                  });
                 },
                 child: const Text('Accept'),
               ),
@@ -424,7 +428,10 @@ class _BookedView extends ConsumerWidget {
         title: const Text('Cancel this booking?'),
         content: Text(fee > 0
             ? 'It is less than ${s.cancelFreeHours} hours before you leave, so the cancel fee of '
-                  '${c2cMoney(fee, s.currency)} applies. It comes from your GET wallet and goes to the driver.'
+                  '${c2cMoney(fee, s.currency)} applies. '
+                  '${booking.payStatus == 'held' ? 'It is kept from the fare held; the rest comes back to you.' : 'It comes from your GET wallet and goes to the driver.'}'
+            : booking.payStatus == 'held'
+            ? 'It is free to cancel now. The fare held comes back to you, and the driver is told.'
             : 'It is free to cancel now. The driver is told.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep booking')),
@@ -448,7 +455,10 @@ class _BookedView extends ConsumerWidget {
       showInfo(
         context,
         switch (r.feeStatus) {
+          'charged' when booking.payStatus == 'held' =>
+            'Booking cancelled. The fare held came back to you, less the ${c2cMoney(r.fee, s.currency)} cancel fee.',
           'charged' => 'Booking cancelled. ${c2cMoney(r.fee, s.currency)} was taken from your GET wallet.',
+          _ when booking.payStatus == 'held' => 'Booking cancelled. The fare held came back to your wallet.',
           'due' => 'Booking cancelled. Your GET wallet was short, so the fee of ${c2cMoney(r.fee, s.currency)} is owed.',
           _ => 'Booking cancelled.',
         },
@@ -511,7 +521,7 @@ class _BookedView extends ConsumerWidget {
               Expanded(
                 child: _Tile(
                   label: 'Payment',
-                  value: b.payment.label,
+                  value: c2cRiderPayLabel(b),
                   icon: b.payment == C2cPayment.inApp ? Icons.credit_card : Icons.payments,
                 ),
               ),
@@ -656,11 +666,34 @@ class _DoneViewState extends ConsumerState<_DoneView> {
           icon: Icons.check_circle,
           title: 'You have arrived',
           line: 'Booking ${b.ref} · ${c2cMoney(b.price, b.currency)} '
-              '${b.payment == C2cPayment.cash ? 'in cash' : 'in the app'}',
+              '${b.payment == C2cPayment.cash ? 'in cash' : b.unpaid ? 'to pay in the app' : 'in the app'}',
           fill: look.good,
           ink: look.onGood,
         ),
         const SizedBox(height: 12),
+        if (b.unpaid) ...[
+          C2cBox(
+            key: const ValueKey('c2c-pay-after'),
+            color: Colors.transparent,
+            border: look.line,
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('Pay for your trip', style: t.textTheme.titleMedium),
+              const SizedBox(height: 4),
+              Text('In this region the fare is paid in the app after the trip: ${c2cMoney(b.price, b.currency)}.',
+                  style: t.textTheme.bodySmall?.copyWith(color: look.muted)),
+              const SizedBox(height: 8),
+              FilledButton(
+                key: const ValueKey('c2c-pay-after-open'),
+                onPressed: () async {
+                  final out = await showC2cPaySheet(context, booking: b);
+                  if (out != null) _refresh(ref, b.id);
+                },
+                child: Text('Pay ${c2cMoney(b.price, b.currency)}'),
+              ),
+            ]),
+          ),
+          const SizedBox(height: 12),
+        ],
         C2cIconLine(icon: Icons.trip_origin, color: look.accent, text: b.pickupLine),
         C2cIconLine(icon: Icons.location_on, color: look.drop, text: b.dropLine),
         const SizedBox(height: 14),
@@ -733,9 +766,13 @@ class _EndedView extends ConsumerWidget {
     final fee = b.cancelFee ?? 0;
     final line = expired
         ? 'No driver took this trip before the time to leave.'
+        : b.payStatus == 'refunded' && fee == 0
+        ? 'Cancelled. The fare held in the app was given back.'
+        : fee > 0 && b.payStatus == 'refunded'
+        ? 'Cancelled. The fare held was given back, less the ${c2cMoney(fee, b.currency)} cancel fee.'
         : fee > 0
         ? (b.cancelFeeStatus == 'due'
-              ? 'A cancel fee of ${c2cMoney(fee, b.currency)} is owed.'
+              ? 'A cancel fee of ${c2cMoney(fee, b.currency)} is owed. Pay it in Wallet.'
               : 'A cancel fee of ${c2cMoney(fee, b.currency)} was paid from your GET wallet.')
         : b.cancelledBy == 'admin'
         ? 'Cancelled by GET.ride. No fee.'

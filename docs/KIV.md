@@ -27,7 +27,7 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 ## Services, partner types and vehicle services (study of 26 Oct 2026)
 
 Low:
-- L8 City to City: C1 server + admin, C2 bookings + rider app and C3 driver app done. Left: in-app payment for City to City trips (the money is cash today; In app is only recorded), collecting a cancel fee left owed ('due') when the rider's GET wallet was short, reminders before a trip (push the day before and 1 hour before), and per-seat trips a driver posts (Post a trip, coming later).
+- L8 City to City: C1 server + admin, C2 bookings + rider app, C3 driver app and C4 money and reminders (in-app payment, cancel fees owed, the driver give-up fee, trip reminders) done. Left: per-seat trips a driver posts (Post a trip, coming later).
 
 (M3, the list's quick Approve, and L3, the step count, are in the partner review fixes.)
 

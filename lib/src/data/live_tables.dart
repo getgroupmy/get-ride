@@ -77,6 +77,11 @@ const liveSettingTables = <String>[
   // offers on them, a driver's own (row-level security keeps them to those).
   'c2c_bookings',
   'c2c_offers',
+  // City to City give-up and in-app payment rules by region, and a
+  // driver's own give-up fees owed (0309).
+  'c2c_giveup_rules',
+  'c2c_pay_rules',
+  'c2c_driver_fees',
   // Not settings, but the balances on screen: a commission or a transfer
   // lands without a pull to refresh (row-level security limits it to the
   // signed-in account's own wallets).

@@ -19,6 +19,7 @@ import 'c2c_widgets.dart';
 
 const cityToCityPath = '/admin/m/city-to-city';
 const cityToCityRoutesPath = '/admin/m/city-to-city-routes';
+const _moneyPath = '/admin/m/city-to-city-money';
 const _regionsPath = '/admin/m/country-states-cities';
 
 class CityToCitySettingsScreen extends ConsumerStatefulWidget {
@@ -243,6 +244,16 @@ class _PaymentCard extends StatelessWidget {
               'Keep at least one method on.',
               style: TextStyle(color: Theme.of(context).colorScheme.error, fontWeight: FontWeight.w500),
             ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              key: const ValueKey('c2c-open-money'),
+              onPressed: () => context.push(_moneyPath),
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              label: const Text('In-app payment, fees and reminders'),
+            ),
+          ),
         ]),
       ),
     );

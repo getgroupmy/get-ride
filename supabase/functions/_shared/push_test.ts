@@ -294,6 +294,10 @@ Deno.test("page rows: one per account, not for calls, offers or chat", () => {
     assertEquals(inboxRows(["a"], "t", "b", { type }, null), []);
   }
 
+  // A City to City reminder sent with the Notifications page off (0309).
+  assertEquals(inboxRows(["a"], "t", "b", { type: "c2c_reminder", inbox: false }, null), []);
+  assertEquals(inboxRows(["a"], "t", "b", { type: "c2c_reminder", inbox: true }, null)[0].data, { type: "c2c_reminder" });
+
   const broadcast = inboxRows(["a"], "Promo", "Hello", { audience: "users" }, "rider");
   assertEquals(broadcast[0].mode, "rider");
   assertEquals(broadcast[0].kind, null);
