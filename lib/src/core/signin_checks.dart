@@ -363,8 +363,10 @@ String? mismatchWarning(Object? mismatch) {
 /// Who gave a face match score (identity_checks.face_provider), as the
 /// admin reads it after the score.
 String? faceProviderText(Object? provider) => switch (provider) {
-  'self_hosted' => 'self-hosted',
+  // The self-hosted face server runs on the office NAS (0320).
+  'self_hosted' => 'NAS',
   'aws' => 'AWS',
+  'browser' => 'in-browser',
   _ => null,
 };
 
@@ -387,18 +389,21 @@ String? faceReasonText(Object? reason) => switch (reason) {
 /// The admin's word for a face match: "82% match · self-hosted", "Faces
 /// differ: 12% match · AWS", "Not checked · No AWS key yet". [reason] says
 /// why it isn't checked when the check itself doesn't.
-String faceMatchText(Object? state, Object? score, {Object? provider, Object? reason}) {
+/// [browserNext]: the in-browser check (0320) scores it when no server
+/// could, while an admin has the queue open.
+String faceMatchText(Object? state, Object? score, {Object? provider, Object? reason, bool browserNext = false}) {
   final s = (score as num?)?.toDouble();
   final by = faceProviderText(provider);
   String pct(String fallback) => '${s?.toStringAsFixed(0) ?? fallback}% match${by == null ? '' : ' · $by'}';
+  final next = browserNext ? ' · in-browser check next' : '';
   return switch (state) {
     'match' => pct('?'),
     'no_match' => 'Faces differ: ${pct('0')}',
     'no_face' => 'No face found in one of the photos',
-    'error' => "Couldn't check${by == null ? '' : ' · $by'}",
+    'error' => "Couldn't check${by == null ? '' : ' · $by'}$next",
     _ => switch (faceReasonText(reason)) {
-      final String why => 'Not checked · $why',
-      null => 'Not checked',
+      final String why => 'Not checked · $why$next',
+      null => 'Not checked$next',
     },
   };
 }
@@ -420,8 +425,105 @@ const idReadModes = <String, String>{
   'vision': 'Google Vision always',
 };
 
-/// dispatch_verify_config's answer: the renewal window, the two settings
-/// and, for an admin, whether each service has a key (never the key).
+// ---- The orders (0320): who compares, who reads, each with a switch -----------------------------
+
+/// One entry of an order: who, and whether it is switched on.
+class OrderSlot {
+  const OrderSlot(this.id, this.on);
+  final String id;
+  final bool on;
+
+  Map<String, dynamic> toJson() => {'id': id, 'on': on};
+
+  @override
+  bool operator ==(Object other) => other is OrderSlot && other.id == id && other.on == on;
+
+  @override
+  int get hashCode => Object.hash(id, on);
+
+  @override
+  String toString() => '$id:$on';
+}
+
+/// The face match order's entries: name and what it does.
+const faceOrderNames = <String, (String, String)>{
+  'aws': ('AWS Rekognition', 'In the cloud, about USD 1 for 1,000 checks. Needs the key in API Keys.'),
+  'nas': ('Office NAS', 'The face server on the office NAS. Free; needs the NAS on.'),
+  'browser': (
+    'In-browser check',
+    'Runs in the admin web app while someone has Sign-in checks open. Free; not in the phone apps.',
+  ),
+};
+
+/// The ID card reading order's entries: name and what it does.
+const idReaderNames = <String, (String, String)>{
+  'phone': ('Phone', 'The phone reads the card as it is photographed. Free, not on the web.'),
+  'nas': ('Office NAS', 'The document reader on the office NAS. Free; needs the NAS on.'),
+  'vision': ('Google Vision', 'In the cloud. First 1,000 reads a month free. Needs the key in API Keys.'),
+};
+
+/// 0283's face choice as an order (as the server's identity_face_order).
+List<OrderSlot> legacyFaceOrder(String faceProvider) => switch (faceProvider) {
+  'off' => const [OrderSlot('aws', false), OrderSlot('nas', false), OrderSlot('browser', false)],
+  'aws' => const [OrderSlot('aws', true), OrderSlot('nas', false), OrderSlot('browser', true)],
+  'self_hosted' => const [OrderSlot('nas', true), OrderSlot('aws', false), OrderSlot('browser', true)],
+  'self_hosted_aws' => const [OrderSlot('nas', true), OrderSlot('aws', true), OrderSlot('browser', true)],
+  _ => const [OrderSlot('nas', true), OrderSlot('aws', true), OrderSlot('browser', true)],
+};
+
+/// 0283's reading choice as an order (as the server's identity_id_readers).
+List<OrderSlot> legacyIdReaders(String idRead) => switch (idRead) {
+  'phone_vision' => const [OrderSlot('phone', true), OrderSlot('nas', true), OrderSlot('vision', true)],
+  'vision' => const [OrderSlot('vision', true), OrderSlot('phone', true), OrderSlot('nas', true)],
+  _ => const [OrderSlot('phone', true), OrderSlot('nas', true), OrderSlot('vision', false)],
+};
+
+/// [v] read leniently, like the server: unknown and repeated entries
+/// dropped, a missing one joins as [fallback] has it.
+List<OrderSlot> parseOrder(Object? v, List<OrderSlot> fallback) {
+  final known = {for (final f in fallback) f.id};
+  final out = <OrderSlot>[];
+  if (v is List) {
+    for (final r in v) {
+      if (r is! Map) continue;
+      final id = '${r['id']}';
+      if (!known.contains(id) || out.any((x) => x.id == id)) continue;
+      out.add(OrderSlot(id, r['on'] is bool ? r['on'] as bool : true));
+    }
+  }
+  for (final f in fallback) {
+    if (!out.any((x) => x.id == f.id)) out.add(f);
+  }
+  return out;
+}
+
+/// [id] moved up ([by] -1) or down (+1).
+List<OrderSlot> movedSlot(List<OrderSlot> order, String id, int by) {
+  final list = [...order];
+  final from = list.indexWhere((x) => x.id == id);
+  final to = from + by.sign;
+  if (from < 0 || to < 0 || to >= list.length) return order;
+  list.insert(to, list.removeAt(from));
+  return list;
+}
+
+List<OrderSlot> toggledSlot(List<OrderSlot> order, String id, bool on) =>
+    [for (final x in order) x.id == id ? OrderSlot(id, on) : x];
+
+bool orderHas(List<OrderSlot> order, String id) => order.any((x) => x.id == id && x.on);
+
+/// "NAS, then AWS, then in-browser"; "Off" when nothing is on.
+String orderText(List<OrderSlot> order, Map<String, String> words) {
+  final on = [for (final x in order) if (x.on) words[x.id] ?? x.id];
+  return on.isEmpty ? 'Off' : on.join(', then ');
+}
+
+const faceOrderWords = {'aws': 'AWS', 'nas': 'NAS', 'browser': 'in-browser'};
+const idReaderWords = {'phone': 'Phone', 'nas': 'NAS', 'vision': 'Google Vision'};
+
+/// dispatch_verify_config's answer: the renewal window, the settings and,
+/// for an admin, whether each service has a key (never the key) and whether
+/// the office NAS's reader is connected and online (0320).
 class IdentityConfig {
   const IdentityConfig({
     this.renewDays = 30,
@@ -430,6 +532,11 @@ class IdentityConfig {
     this.awsKey,
     this.faceServer,
     this.visionKey,
+    this.savedFaceOrder,
+    this.savedIdReaders,
+    this.faceLowScore = defaultFaceLowScore,
+    this.nasReader,
+    this.nasOnline,
   });
 
   factory IdentityConfig.fromJson(Object? v) {
@@ -437,13 +544,20 @@ class IdentityConfig {
     final face = '${m['faceProvider'] ?? ''}';
     final read = '${m['idRead'] ?? ''}';
     bool? flag(Object? x) => x is bool ? x : null;
+    final faceProvider = faceProviders.containsKey(face) ? face : 'aws';
+    final idRead = idReadModes.containsKey(read) ? read : 'phone';
     return IdentityConfig(
       renewDays: (m['renewDays'] as num?)?.toInt() ?? 30,
-      faceProvider: faceProviders.containsKey(face) ? face : 'aws',
-      idRead: idReadModes.containsKey(read) ? read : 'phone',
+      faceProvider: faceProvider,
+      idRead: idRead,
       awsKey: flag(m['awsKey']),
       faceServer: flag(m['faceServer']),
       visionKey: flag(m['visionKey']),
+      savedFaceOrder: m['faceOrder'] is List ? parseOrder(m['faceOrder'], legacyFaceOrder(faceProvider)) : null,
+      savedIdReaders: m['idReaders'] is List ? parseOrder(m['idReaders'], legacyIdReaders(idRead)) : null,
+      faceLowScore: ((m['faceLowScore'] as num?)?.toInt() ?? defaultFaceLowScore).clamp(30, 95),
+      nasReader: flag(m['nasReader']),
+      nasOnline: flag(m['nasOnline']),
     );
   }
 
@@ -456,17 +570,51 @@ class IdentityConfig {
   final bool? faceServer;
   final bool? visionKey;
 
-  /// Why no face can be checked as things are set up, as face-compare would
-  /// say it; null when one can (or the keys aren't known here).
+  /// The orders as saved (0320); null before one is.
+  final List<OrderSlot>? savedFaceOrder;
+  final List<OrderSlot>? savedIdReaders;
+
+  /// Who compares the faces, in order (0320); 0283's choice before it.
+  List<OrderSlot> get faceOrder => savedFaceOrder ?? legacyFaceOrder(faceProvider);
+
+  /// Who reads the card, in order (0320); 0283's choice before it.
+  List<OrderSlot> get idReaders => savedIdReaders ?? legacyIdReaders(idRead);
+
+  /// Below this a sign-in check's face match needs a closer look.
+  final int faceLowScore;
+
+  /// Null when not told (not an admin, or a database before 0320).
+  final bool? nasReader;
+  final bool? nasOnline;
+
+  bool get browserOn => orderHas(faceOrder, 'browser');
+  bool get visionOn => orderHas(idReaders, 'vision');
+
+  IdentityConfig copyWith({List<OrderSlot>? faceOrder, List<OrderSlot>? idReaders, int? faceLowScore}) =>
+      IdentityConfig(
+        renewDays: renewDays,
+        faceProvider: faceProvider,
+        idRead: idRead,
+        awsKey: awsKey,
+        faceServer: faceServer,
+        visionKey: visionKey,
+        savedFaceOrder: faceOrder ?? this.faceOrder,
+        savedIdReaders: idReaders ?? this.idReaders,
+        faceLowScore: faceLowScore ?? this.faceLowScore,
+        nasReader: nasReader,
+        nasOnline: nasOnline,
+      );
+
+  /// Why no server can check a face as things are set up, as face-compare
+  /// would say it; null when one can (or the keys aren't known here).
   String? get faceUnusable {
     final aws = awsKey, server = faceServer;
-    if (faceProvider == 'off') return 'off';
+    final on = [for (final x in faceOrder) if (x.on && x.id != 'browser') x.id];
+    if (on.isEmpty) return 'off';
     if (aws == null || server == null) return null;
-    return switch (faceProvider) {
-      'self_hosted' => server ? null : 'no_server',
-      'self_hosted_aws' => server || aws ? null : 'no_provider',
-      _ => aws ? null : 'no_aws_key',
-    };
+    final usable = on.any((id) => id == 'aws' ? aws : server);
+    if (usable) return null;
+    return on.length == 2 ? 'no_provider' : (on.first == 'aws' ? 'no_aws_key' : 'no_server');
   }
 
   /// A line under the face match setting about its keys, or null.
@@ -478,9 +626,23 @@ class IdentityConfig {
   };
 
   /// A line under the ID reading setting about its key, or null.
-  String? get visionNote => idRead != 'phone' && visionKey == false
+  String? get visionNote => visionOn && visionKey == false
       ? 'Add the key in Admin, API Keys: Google, Cloud Vision (ID reading). Until then only the phone reads.'
       : null;
+}
+
+/// Whether Google Vision may read the ID after it is sent, walking the
+/// reading order (0320): the phone (on) read something, no; Google Vision
+/// next, yes. The office NAS in between is the server's to decide: the
+/// id-read function answers "nas" while the NAS has it.
+bool visionReadNeededFor(IdentityConfig c, CardRead? phoneRead) {
+  final read = phoneRead != null && (phoneRead.name != null || phoneRead.ic != null || phoneRead.expiry != null);
+  for (final x in c.idReaders) {
+    if (!x.on) continue;
+    if (x.id == 'phone' && read) return false;
+    if (x.id == 'vision') return true;
+  }
+  return false;
 }
 
 /// Whether Google Vision reads the ID after it is sent: always, or when the
@@ -495,6 +657,7 @@ bool visionReadNeeded(String mode, CardRead? phoneRead) => switch (mode) {
 String? readSourceText(Object? source) => switch (source) {
   'phone' => 'the phone',
   'vision' => 'Google Vision',
+  'nas' => 'the office NAS',
   _ => null,
 };
 
@@ -511,6 +674,18 @@ String livenessText(Object? liveness, [Object? detail]) => switch (liveness) {
 /// Below this a document's face match needs a closer look (0288; the
 /// server's partner_face_low_score).
 const faceLowScore = 60;
+
+/// The sign-in checks' "needs a closer look" below this, until the admin
+/// sets another (0320's faceLowScore).
+const defaultFaceLowScore = 60;
+
+/// Whether a sign-in check's face match needs a closer look (0320): the
+/// faces differ, no face was found, or the score is under [lowScore]. Not
+/// checked is not a flag: the admin compares by eye.
+bool signInFaceCloser(Object? state, Object? score, {int lowScore = defaultFaceLowScore}) {
+  final s = (score as num?)?.toDouble();
+  return state == 'no_match' || state == 'no_face' || (s != null && s < lowScore);
+}
 
 /// Whether a document's face match needs a closer look (0288): the faces
 /// differ, no face was found, the score is low, or there was no live selfie

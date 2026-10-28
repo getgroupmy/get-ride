@@ -30,7 +30,7 @@ final documentTextReaderProvider = Provider<DocumentTextRead>((ref) {
     Future<String?> cloud() async {
       if (fileUrl == null || fileUrl.isEmpty) return null;
       final identity = ref.read(identityRepositoryProvider);
-      if ((await identity.config()).idRead == 'phone') return null;
+      if (!(await identity.config()).visionOn) return null;
       return identity.readRegistrationText(fileUrl);
     }
 

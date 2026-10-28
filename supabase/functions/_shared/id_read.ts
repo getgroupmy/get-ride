@@ -42,6 +42,44 @@ export function idReadMode(dispatchVerify: unknown): IdReadMode {
   return MODES.includes(v as IdReadMode) ? v as IdReadMode : "phone";
 }
 
+// ---- The ID card reading order (migration 0320) ---------------------------------------------------
+//
+// 'dispatch_verify'.idReaders: phone, nas (the office NAS's doc-reader),
+// vision, in order, each with a switch. Without a saved list, 0283's idRead
+// gives it (as the database's identity_id_readers does): Google Vision is
+// off unless the admin chose it.
+
+export type IdReaderId = "phone" | "nas" | "vision";
+export interface IdReaderItem {
+  id: IdReaderId;
+  on: boolean;
+}
+const READER_IDS: IdReaderId[] = ["phone", "nas", "vision"];
+
+export function idReaders(dispatchVerify: unknown): IdReaderItem[] {
+  const v = (dispatchVerify ?? {}) as { idReaders?: unknown };
+  const o = (id: IdReaderId, on: boolean) => ({ id, on });
+  const fallback = {
+    phone_vision: [o("phone", true), o("nas", true), o("vision", true)],
+    vision: [o("vision", true), o("phone", true), o("nas", true)],
+    phone: [o("phone", true), o("nas", true), o("vision", false)],
+  }[idReadMode(dispatchVerify)];
+  const out: IdReaderItem[] = [];
+  for (const r of Array.isArray(v.idReaders) ? v.idReaders : []) {
+    const id = (r as { id?: unknown })?.id as IdReaderId;
+    if (!READER_IDS.includes(id) || out.some((x) => x.id === id)) continue;
+    const on = (r as { on?: unknown }).on;
+    out.push({ id, on: typeof on === "boolean" ? on : true });
+  }
+  for (const f of fallback) if (!out.some((x) => x.id === f.id)) out.push(f);
+  return out;
+}
+
+/** Whether Google Vision is one of the ID readers. */
+export function visionOn(dispatchVerify: unknown): boolean {
+  return idReaders(dispatchVerify).some((x) => x.id === "vision" && x.on);
+}
+
 // ---- Reading the text (the phone's rules) -------------------------------------------------------
 
 export interface CardRead {
@@ -201,6 +239,10 @@ export interface IdReadDeps {
   annotate(key: string, image: Uint8Array): Promise<{ status: number; body: unknown }>;
   /** identity_check_store_read: { mismatch, ... }. */
   store(id: string, read: CardRead): Promise<Record<string, unknown>>;
+  /** Whether the office NAS has the ID queued or in hand (0320). */
+  nasReading?(id: string): Promise<boolean>;
+  /** Whether the x-push-secret header is the database's webhook secret (0320). */
+  webhookSecretOk?(secret: string): Promise<boolean>;
 }
 
 export interface Result {
@@ -208,10 +250,31 @@ export interface Result {
   body: Record<string, unknown>;
 }
 
-export async function handleIdRead(input: unknown, authorization: string | null, deps: IdReadDeps): Promise<Result> {
+export async function handleIdRead(
+  input: unknown,
+  authorization: string | null,
+  deps: IdReadDeps,
+  secret: string | null = null,
+): Promise<Result> {
   const id = (input as { check_id?: unknown } | null)?.check_id;
   if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) return { status: 400, body: { error: "bad_request" } };
   try {
+    // 0320: the database hands an ID the office NAS couldn't read to Google
+    // Vision, when Vision is after the NAS in the order.
+    if ((input as { by?: unknown }).by === "database") {
+      const s = (secret ?? "").trim();
+      if (!s || !deps.webhookSecretOk || !(await deps.webhookSecretOk(s))) {
+        return { status: 403, body: { error: "not_authorized" } };
+      }
+      const row = await deps.check(id);
+      if (!row) return { status: 404, body: { error: "not_found" } };
+      if (row.kind !== "id") return { status: 400, body: { error: "not_an_id" } };
+      const [apiProviders, verify] = await Promise.all([deps.apiProviders(), deps.verifySettings()]);
+      if (!visionOn(verify)) return { status: 403, body: { error: "vision_off" } };
+      if (row.status !== "Pending Review") return { status: 409, body: { error: "not_waiting" } };
+      if (row.read_source === "vision") return { status: 409, body: { error: "already_read" } };
+      return await readWithVision(row, apiProviders, deps);
+    }
     const uid = await deps.caller(authorization);
     if (!uid) return { status: 401, body: { error: "not_signed_in" } };
     const row = await deps.check(id);
@@ -224,38 +287,46 @@ export async function handleIdRead(input: unknown, authorization: string | null,
     if (row!.kind !== "id") return { status: 400, body: { error: "not_an_id" } };
     const [apiProviders, verify] = await Promise.all([deps.apiProviders(), deps.verifySettings()]);
     if (own) {
-      if (idReadMode(verify) === "phone") return { status: 403, body: { error: "vision_off" } };
+      if (!visionOn(verify)) return { status: 403, body: { error: "vision_off" } };
       if (row!.status !== "Pending Review") return { status: 409, body: { error: "not_waiting" } };
       if (row!.read_source === "vision") return { status: 409, body: { error: "already_read" } };
+      // The NAS reads it first; Vision is asked by the database if it can't.
+      if (deps.nasReading && (await deps.nasReading(row!.id))) {
+        return { status: 200, body: { state: "not_read", reason: "nas" } };
+      }
     }
-    const key = visionKey(apiProviders);
-    if (!key) return { status: 200, body: { state: "not_read", reason: "no_key" } };
-    const where = storageObject(row!.file_url);
-    const image = where ? await deps.download(where.bucket, where.path) : null;
-    if (!image) return { status: 200, body: { state: "not_read", reason: "no_photo" } };
-    if (image.length > MAX_IMAGE_BYTES) return { status: 200, body: { state: "not_read", reason: "too_big" } };
-    const answer = await deps.annotate(key, image);
-    const v = readVision(answer.status, answer.body);
-    if ("error" in v) return { status: 200, body: { state: "error", detail: v.error } };
-    const read = readCardText(v.text);
-    // Kept even when nothing was found, so the person's one read is spent.
-    const stored = await deps.store(row!.id, read);
-    const found = read.name !== null || read.ic !== null || read.passport !== null || read.expiry !== null;
-    return {
-      status: 200,
-      body: {
-        state: found ? "read" : "not_read",
-        ...(found ? {} : { reason: "nothing_found" }),
-        name: read.name,
-        ic: read.ic,
-        passport: read.passport,
-        expiry: read.expiry,
-        mismatch: Array.isArray(stored?.mismatch) ? stored.mismatch : [],
-      },
-    };
+    return await readWithVision(row!, apiProviders, deps);
   } catch {
     return { status: 503, body: { error: "unavailable" } };
   }
+}
+
+async function readWithVision(row: IdCheckRow, apiProviders: unknown, deps: IdReadDeps): Promise<Result> {
+  const key = visionKey(apiProviders);
+  if (!key) return { status: 200, body: { state: "not_read", reason: "no_key" } };
+  const where = storageObject(row.file_url);
+  const image = where ? await deps.download(where.bucket, where.path) : null;
+  if (!image) return { status: 200, body: { state: "not_read", reason: "no_photo" } };
+  if (image.length > MAX_IMAGE_BYTES) return { status: 200, body: { state: "not_read", reason: "too_big" } };
+  const answer = await deps.annotate(key, image);
+  const v = readVision(answer.status, answer.body);
+  if ("error" in v) return { status: 200, body: { state: "error", detail: v.error } };
+  const read = readCardText(v.text);
+  // Kept even when nothing was found, so the person's one read is spent.
+  const stored = await deps.store(row.id, read);
+  const found = read.name !== null || read.ic !== null || read.passport !== null || read.expiry !== null;
+  return {
+    status: 200,
+    body: {
+      state: found ? "read" : "not_read",
+      ...(found ? {} : { reason: "nothing_found" }),
+      name: read.name,
+      ic: read.ic,
+      passport: read.passport,
+      expiry: read.expiry,
+      mismatch: Array.isArray(stored?.mismatch) ? stored.mismatch : [],
+    },
+  };
 }
 
 // ---- Partner registration documents (migration 0288) -------------------------------------------
@@ -305,7 +376,7 @@ export async function handleRegistrationRead(
     if (!uid) return { status: 401, body: { error: "not_signed_in" } };
     if (!(await deps.owns(uid, where.bucket, where.path))) return { status: 403, body: { error: "not_authorized" } };
     const [apiProviders, verify] = await Promise.all([deps.apiProviders(), deps.verifySettings()]);
-    if (idReadMode(verify) === "phone") return { status: 403, body: { error: "vision_off" } };
+    if (!visionOn(verify)) return { status: 403, body: { error: "vision_off" } };
     const key = visionKey(apiProviders);
     if (!key) return { status: 200, body: { state: "not_read", reason: "no_key" } };
     if (!(await deps.spend(uid, REGISTRATION_READS_PER_DAY))) return { status: 429, body: { error: "too_many" } };

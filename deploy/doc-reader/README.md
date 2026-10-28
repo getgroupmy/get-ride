@@ -19,6 +19,20 @@ order (the cloud reader).
   other text on the document (names, addresses). The log has counts and
   timings only.
 
+## ID cards for the sign-in checks (version 1.1)
+
+When a stand admin, stand staff or fleet owner sends their MyKad or
+passport and the phone read nothing (the web, a desktop, a hard photo), the
+reader reads the front first, before any document: the name, the IC number,
+the passport number, the birth date, the nationality and the expiry, with
+the same rules as the phone and Google Vision. Nothing else on the card (the
+address) is sent back, and the log has counts only. Less sure than the "pass
+on" percentage, or not taken within 5 minutes (the NAS off), the card goes on
+to Google Vision when that is on in Admin › Dispatch › Accounts › ID card
+reading (Phone, then NAS, then Google Vision). It reads ID cards while the
+NAS is on there, even with it off in Document reading. Admin › Settings ›
+Office NAS › ID and face shows today's reads.
+
 ## What the NAS needs
 
 - Synology DSM 7.2 or later with **Container Manager**, on an x86-64 model.
@@ -106,4 +120,6 @@ Admin shows it **Offline** when it hasn't checked in for 3 minutes.
 
 `pytest deploy/doc-reader/test_core.py` checks what is pulled out of the
 OCR's text (plates, MyKad and chassis numbers, cover note and permit numbers,
-QR codes) and that nothing else is sent, without the OCR.
+QR codes; an ID card's fields, held to the cases in
+`supabase/functions/_shared/id_card_cases.json`) and that nothing else is
+sent, without the OCR.

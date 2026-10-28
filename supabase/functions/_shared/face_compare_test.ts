@@ -7,6 +7,7 @@ import {
   type DocumentFaceDeps,
   documentRequest,
   type FaceCompareDeps,
+  faceOrder,
   faceSetting,
   handleDocumentFaceCompare,
   handleFaceCompare,
@@ -14,6 +15,7 @@ import {
   onlineCheckRequest,
   type OnlineFaceDeps,
   type OnlineResult,
+  planFor,
   providerPlan,
   readCompare,
   rekognitionKey,
@@ -45,7 +47,8 @@ function deps(over: Partial<FaceCompareDeps> = {}) {
     check: (id) => Promise.resolve(id === ID ? selfie : null),
     counterpart: () => Promise.resolve(card),
     apiProviders: () => Promise.resolve(providers),
-    verifySettings: () => Promise.resolve(null),
+    // AWS chosen, as the admin can; unset (the NAS first) is tested on its own.
+    verifySettings: () => Promise.resolve({ faceProvider: "aws" }),
     download: () => Promise.resolve(new Uint8Array([1, 2, 3])),
     compare: () => Promise.resolve({ status: 200, body: { FaceMatches: [{ Similarity: 97.123 }] } }),
     compareSelfHosted: () => Promise.resolve({ status: 200, body: { similarity: 0.82, model: "SFace" } }),
@@ -88,6 +91,13 @@ Deno.test("only an admin with a Documents page", async () => {
   assertEquals((await handleFaceCompare({ check_id: "00000000-0000-0000-0000-000000000000" }, "Bearer admin", d)).status, 404);
 });
 
+Deno.test("unset: the free NAS check first", async () => {
+  const { d, saved } = deps({ verifySettings: () => Promise.resolve(null) });
+  const r = await handleFaceCompare({ check_id: ID }, "Bearer admin", d);
+  assertEquals(r, { status: 200, body: { state: "match", score: 82, provider: "self_hosted" } });
+  assertEquals(saved[0], `${ID} match 82 self_hosted null`);
+});
+
 Deno.test("compares the selfie with the ID and keeps the score on both", async () => {
   const sent: number[][] = [];
   const { d, saved } = deps({
@@ -103,10 +113,14 @@ Deno.test("compares the selfie with the ID and keeps the score on both", async (
 });
 
 Deno.test("without a key, or a pair, it is not checked", async () => {
-  const none = deps({ apiProviders: () => Promise.resolve([]) });
+  const none = deps({
+    apiProviders: () => Promise.resolve([]),
+    verifySettings: () => Promise.resolve({ faceProvider: "aws" }),
+  });
   assertEquals((await handleFaceCompare({ check_id: ID }, "Bearer admin", none.d)).body, {
     state: "not_checked",
     reason: "no_aws_key",
+    browser: true,
   });
   assertEquals(none.saved, [`${ID} not_checked null null no_aws_key`]);
   const alone = deps({ counterpart: () => Promise.resolve(null) });
@@ -245,7 +259,8 @@ function docDeps(over: Partial<DocumentFaceDeps> = {}) {
         ? { user_id: "u1", file_url: `${URL}/u1/id_1.jpg`, selfie_url: `${URL}/u1/signin/selfie_1.jpg` }
         : null),
     apiProviders: () => Promise.resolve(providers),
-    verifySettings: () => Promise.resolve(null),
+    // AWS chosen, as the admin can; unset (the NAS first) is tested on its own.
+    verifySettings: () => Promise.resolve({ faceProvider: "aws" }),
     download: () => Promise.resolve(new Uint8Array([1, 2, 3])),
     compare: () => Promise.resolve({ status: 200, body: { FaceMatches: [{ Similarity: 41.5 }] } }),
     compareSelfHosted: () => Promise.resolve({ status: 200, body: { similarity: 0.9 } }),
@@ -314,7 +329,8 @@ function onlineDeps(over: Partial<OnlineFaceDeps> = {}, scores: Record<string, n
         }
         : null),
     apiProviders: () => Promise.resolve(providers),
-    verifySettings: () => Promise.resolve(null),
+    // AWS chosen, as the admin can; unset (the NAS first) is tested on its own.
+    verifySettings: () => Promise.resolve({ faceProvider: "aws" }),
     // The bytes say which photo it is: 1 the selfie, 2 the profile photo, 3 the ID.
     download: (_b, path) =>
       Promise.resolve(new Uint8Array([path.includes("selfie") ? 1 : path.includes("me.jpg") ? 2 : 3])),
@@ -384,9 +400,9 @@ Deno.test("online: no provider, or nothing to compare with, is kept as not check
   });
   const n = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, none.d);
   assertEquals(n.body, { state: "not_checked", score: null, reason: "no_pair" });
-  const noKey = onlineDeps({ apiProviders: () => Promise.resolve([]) });
+  const noKey = onlineDeps({ apiProviders: () => Promise.resolve([]), verifySettings: () => Promise.resolve(null) });
   const k = await handleOnlineFaceCompare(onlineBody(), { authorization: null, secret: "db-secret" }, noKey.d);
-  assertEquals(k.body.reason, "no_aws_key");
+  assertEquals(k.body.reason, "no_provider", "unset: the NAS, then AWS; neither set up");
 });
 
 Deno.test("online: self-hosted, then AWS when the server fails", async () => {
@@ -406,4 +422,66 @@ Deno.test("online: the better of two comparisons", () => {
   assertEquals(betterComparison({ state: "error", score: null }, { state: "no_face", score: null }),
     { state: "no_face", score: null });
   assert(betterComparison(undefined, undefined) === undefined);
+});
+
+// ---- 0320: the face match order ------------------------------------------------------------------
+
+Deno.test("order: saved, else 0283's choice, else NAS, then AWS, then in-browser", () => {
+  const ids = (v: unknown) => faceOrder(v).map((x) => `${x.id}:${x.on}`).join(",");
+  assertEquals(ids(null), "nas:true,aws:true,browser:true");
+  assertEquals(ids({ faceProvider: "self_hosted_aws" }), "nas:true,aws:true,browser:true");
+  assertEquals(ids({ faceProvider: "off" }), "aws:false,nas:false,browser:false");
+  assertEquals(
+    ids({ faceProvider: "aws", faceOrder: [{ id: "browser", on: false }, { id: "x" }, { id: "nas" }, { id: "browser" }] }),
+    "browser:false,nas:true,aws:true",
+    "saved order kept, unknown and repeated dropped, a missing one joins",
+  );
+});
+
+Deno.test("order: who is asked, and why nobody", () => {
+  const v = (order: Array<[string, boolean]>) => ({ faceOrder: order.map(([id, on]) => ({ id, on })) });
+  assertEquals(planFor(v([["aws", true], ["nas", true], ["browser", true]]), true, true), {
+    order: ["aws", "self_hosted"],
+    browser: true,
+  });
+  assertEquals(planFor(v([["nas", true], ["aws", false]]), true, true).order, ["self_hosted"]);
+  assertEquals(planFor(v([["aws", true], ["nas", true]]), false, false).reason, "no_provider");
+  assertEquals(planFor(v([["aws", false], ["nas", true]]), true, false).reason, "no_server");
+  assertEquals(planFor(v([["aws", false], ["nas", false], ["browser", true]]), true, true), {
+    order: [],
+    reason: "off",
+    browser: true,
+  });
+});
+
+Deno.test("order: AWS, then the NAS when AWS fails", async () => {
+  const x = counting("aws", {
+    verifySettings: () => Promise.resolve({ faceOrder: [{ id: "aws", on: true }, { id: "nas", on: true }] }),
+    compare: () => {
+      x.calls.push("aws");
+      return Promise.resolve({ status: 500, body: { __type: "InternalServerError" } });
+    },
+  });
+  const r = await handleFaceCompare({ check_id: ID }, "Bearer admin", x.d);
+  assertEquals(r.body, { state: "match", score: 82, provider: "self_hosted", fell_back: true });
+  assertEquals(x.calls, ["aws", "self_hosted"]);
+
+  const down = counting("aws", {
+    verifySettings: () => Promise.resolve({ faceOrder: [{ id: "aws", on: true }, { id: "nas", on: true }] }),
+    compare: () => Promise.reject(new TypeError("network")),
+  });
+  assertEquals((await handleFaceCompare({ check_id: ID }, "Bearer admin", down.d)).body.provider, "self_hosted");
+});
+
+Deno.test("order: only the in-browser check on: not checked here, for the browser", async () => {
+  const x = counting("aws", {
+    verifySettings: () =>
+      Promise.resolve({ faceOrder: [{ id: "aws", on: false }, { id: "nas", on: false }, { id: "browser", on: true }] }),
+  });
+  assertEquals((await handleFaceCompare({ check_id: ID }, "Bearer admin", x.d)).body, {
+    state: "not_checked",
+    reason: "off",
+    browser: true,
+  });
+  assertEquals(x.calls, []);
 });

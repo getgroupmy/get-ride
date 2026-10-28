@@ -1,5 +1,5 @@
 {
-  "about": "What is read off a MyKad's or passport's text, held to both readers: the phone's (readCard in lib/src/core/signin_checks.dart, test/id_card_cases_test.dart) and Google Vision's in the id-read function (readCardText in supabase/functions/_shared/id_read.ts, id_read_test.ts). expect is the name, the IC as printed, the passport number (the server's reader only) and the expiry (yyyy-mm-dd), null for what can't be read. Change the rules in both readers and here together.",
+  "about": "What is read off a MyKad's or passport's text, held to both readers: the phone's (readCard in lib/src/core/signin_checks.dart, test/id_card_cases_test.dart) Google Vision's in the id-read function (readCardText in supabase/functions/_shared/id_read.ts, id_read_test.ts) and the office NAS's (read_id_card in deploy/doc-reader/core.py, test_core.py). expect is the name, the IC as printed, the passport number (the server's reader only) and the expiry (yyyy-mm-dd), null for what can't be read. Change the rules in both readers and here together.",
   "cases": [
     {
       "name": "a MyKad front: the IC, then the name under it",

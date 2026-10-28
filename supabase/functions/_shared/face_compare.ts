@@ -4,7 +4,8 @@
  * reviews them. Never a decision: the admin approves or rejects.
  *
  * Who scores it is the admin's choice (Admin → Dispatch → Accounts, kept in
- * app_settings 'dispatch_verify'.faceProvider):
+ * app_settings 'dispatch_verify': 0320's faceOrder below, else 0283's
+ * faceProvider):
  *   off              nobody;
  *   aws (default)    AWS Rekognition CompareFaces, with the key from Admin →
  *                    API Keys (provider "aws", service "rekognition", the
@@ -45,7 +46,85 @@ export function faceSetting(dispatchVerify: unknown): FaceSetting {
   return SETTINGS.includes(v as FaceSetting) ? v as FaceSetting : "aws";
 }
 
-/** Who to ask, in order, with what is set up; or why nobody. */
+// ---- The face match order (migration 0320) ---------------------------------------------------------
+//
+// Admin › Dispatch › Accounts (and Settings › Office NAS › ID and face) keeps
+// an ordered list with a switch each in 'dispatch_verify'.faceOrder:
+//   aws      AWS Rekognition;
+//   nas      the self-hosted face server on the office NAS (deploy/face-server);
+//   browser  the in-browser check (vladmandic/human) in the admin web app,
+//            while an admin has the Sign-in checks queue open: never here.
+// Without a saved list, 0283's faceProvider gives it (as the database's
+// identity_face_order does); unset, NAS, then AWS, then in-browser.
+
+export type FaceOrderId = "aws" | "nas" | "browser";
+export interface FaceOrderItem {
+  id: FaceOrderId;
+  on: boolean;
+}
+const ORDER_IDS: FaceOrderId[] = ["aws", "nas", "browser"];
+
+function legacyOrder(setting: unknown): FaceOrderItem[] {
+  const o = (id: FaceOrderId, on: boolean) => ({ id, on });
+  switch (setting) {
+    case "off":
+      return [o("aws", false), o("nas", false), o("browser", false)];
+    case "aws":
+      return [o("aws", true), o("nas", false), o("browser", true)];
+    case "self_hosted":
+      return [o("nas", true), o("aws", false), o("browser", true)];
+    case "self_hosted_aws":
+      return [o("nas", true), o("aws", true), o("browser", true)];
+    default:
+      return [o("nas", true), o("aws", true), o("browser", true)];
+  }
+}
+
+/** The face match order from app_settings 'dispatch_verify': each known id once. */
+export function faceOrder(dispatchVerify: unknown): FaceOrderItem[] {
+  const v = (dispatchVerify ?? {}) as { faceOrder?: unknown; faceProvider?: unknown };
+  const fallback = legacyOrder(v.faceProvider);
+  const out: FaceOrderItem[] = [];
+  for (const r of Array.isArray(v.faceOrder) ? v.faceOrder : []) {
+    const id = (r as { id?: unknown })?.id as FaceOrderId;
+    if (!ORDER_IDS.includes(id) || out.some((x) => x.id === id)) continue;
+    const on = (r as { on?: unknown }).on;
+    out.push({ id, on: typeof on === "boolean" ? on : true });
+  }
+  for (const f of fallback) if (!out.some((x) => x.id === f.id)) out.push(f);
+  return out;
+}
+
+/**
+ * Who to ask, in order, with what is set up; or why nobody. [browser] is
+ * whether the in-browser check is on after them (it scores what they
+ * couldn't, in the admin's browser).
+ */
+export function planFor(dispatchVerify: unknown, hasAws: boolean, hasServer: boolean): {
+  order: FaceProvider[];
+  reason?: "off" | "no_aws_key" | "no_server" | "no_provider";
+  browser: boolean;
+} {
+  const items = faceOrder(dispatchVerify);
+  const browser = items.some((x) => x.id === "browser" && x.on);
+  const on = items.filter((x) => x.on && x.id !== "browser").map((x) => x.id);
+  const order: FaceProvider[] = [];
+  for (const id of on) {
+    if (id === "aws" && hasAws) order.push("aws");
+    if (id === "nas" && hasServer) order.push("self_hosted");
+  }
+  if (order.length) return { order, browser };
+  const reason = on.length === 0
+    ? "off"
+    : on.length === 2
+    ? "no_provider"
+    : on[0] === "aws"
+    ? "no_aws_key"
+    : "no_server";
+  return { order, reason, browser };
+}
+
+/** Who to ask, in order, with what is set up; or why nobody (0283's choice). */
 export function providerPlan(setting: FaceSetting, hasAws: boolean, hasServer: boolean): {
   order: FaceProvider[];
   reason?: "off" | "no_aws_key" | "no_server" | "no_provider";
@@ -158,10 +237,15 @@ export async function handleFaceCompare(input: unknown, authorization: string | 
     const [apiProviders, verify] = await Promise.all([deps.apiProviders(), deps.verifySettings()]);
     const key = rekognitionKey(apiProviders);
     const server = faceServerKey(apiProviders);
-    const plan = providerPlan(faceSetting(verify), key !== null, server !== null);
+    const plan = planFor(verify, key !== null, server !== null);
     if (plan.reason) {
+      // No server to ask: the in-browser check scores it, when it is on,
+      // while an admin has the queue open.
       await deps.save(row.id, "not_checked", null, null, plan.reason);
-      return { status: 200, body: { state: "not_checked", reason: plan.reason } };
+      return {
+        status: 200,
+        body: { state: "not_checked", reason: plan.reason, ...(plan.browser ? { browser: true } : {}) },
+      };
     }
     const selfie = row.kind === "selfie" ? row : other;
     const card = row.kind === "id" ? row : other;
@@ -195,8 +279,12 @@ export async function handleFaceCompare(input: unknown, authorization: string | 
         if (answer.failed) continue;
         break;
       }
-      const answer = await deps.compare(key!, src, dst);
-      r = readCompare(answer.status, answer.body);
+      const answer = await deps.compare(key!, src, dst)
+        .then((x) => readCompare(x.status, x.body))
+        .catch(() => ({ state: "error" as const, score: null, detail: "AWS: couldn't reach it" }));
+      r = answer;
+      // AWS failing goes on to the NAS when it is next.
+      if (answer.state === "error") continue;
       break;
     }
     await deps.save(row.id, r.state, r.score, used, null);
@@ -301,7 +389,7 @@ export async function handleDocumentFaceCompare(
     const [apiProviders, verify] = await Promise.all([deps.apiProviders(), deps.verifySettings()]);
     const key = rekognitionKey(apiProviders);
     const server = faceServerKey(apiProviders);
-    const plan = providerPlan(faceSetting(verify), key !== null, server !== null);
+    const plan = planFor(verify, key !== null, server !== null);
     if (plan.reason) return await done("not_checked", null, null, plan.reason);
     const a = storageObject(src.selfie_url), b = storageObject(src.file_url);
     const [selfie, card] = await Promise.all([
@@ -324,8 +412,11 @@ export async function handleDocumentFaceCompare(
         if (answer.failed) continue;
         break;
       }
-      const answer = await deps.compare(key!, selfie, card);
-      r = readCompare(answer.status, answer.body);
+      const answer = await deps.compare(key!, selfie, card)
+        .then((x) => readCompare(x.status, x.body))
+        .catch(() => ({ state: "error" as const, score: null, detail: "AWS: no answer" }));
+      r = answer;
+      if (answer.state === "error") continue;
       break;
     }
     return await done(r.state, r.score, used, r.state === "error" ? (r.detail ?? "error") : null);
@@ -437,7 +528,7 @@ export async function handleOnlineFaceCompare(
     const [apiProviders, verify] = await Promise.all([deps.apiProviders(), deps.verifySettings()]);
     const key = rekognitionKey(apiProviders);
     const server = faceServerKey(apiProviders);
-    const plan = providerPlan(faceSetting(verify), key !== null, server !== null);
+    const plan = planFor(verify, key !== null, server !== null);
     if (plan.reason) return await notChecked(plan.reason);
     const at = (url: string | null) => {
       const o = storageObject(url);
@@ -463,10 +554,12 @@ export async function handleOnlineFaceCompare(
           if (answer.failed) continue;
           break;
         }
-        const res = await deps.compare(key!, selfie, other);
-        const answer = readCompare(res.status, res.body);
+        const answer = await deps.compare(key!, selfie, other)
+          .then((res) => readCompare(res.status, res.body))
+          .catch(() => ({ state: "error" as const, score: null, detail: "AWS: no answer" }));
         r = { state: answer.state, score: answer.score };
         if (answer.detail) detail = answer.detail;
+        if (answer.state === "error") continue;
         break;
       }
       return r;

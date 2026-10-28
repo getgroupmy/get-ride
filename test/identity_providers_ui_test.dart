@@ -5,6 +5,7 @@
 // Google Vision.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';
 import 'package:get_ride/src/admin/admin_providers.dart';
@@ -45,6 +46,29 @@ class _Identity extends IdentityRepository {
   }
 
   @override
+  Future<IdentityConfig> setOrder({List<OrderSlot>? faceOrder, List<OrderSlot>? idReaders, int? faceLowScore}) async {
+    calls.add([
+      if (faceOrder != null) 'face ${faceOrder.join(',')}',
+      if (idReaders != null) 'read ${idReaders.join(',')}',
+      if (faceLowScore != null) 'low $faceLowScore',
+    ].join(' '));
+    cfg = cfg.copyWith(faceOrder: faceOrder, idReaders: idReaders, faceLowScore: faceLowScore);
+    return cfg;
+  }
+
+  List<Map<String, dynamic>> queue = const [];
+  final saved = <String>[];
+
+  @override
+  Future<List<Map<String, dynamic>>> browserQueue() async => queue;
+
+  @override
+  Future<int> saveBrowserScore(String id, String? otherId, String state, double? score) async {
+    saved.add('$id $otherId $state $score');
+    return 2;
+  }
+
+  @override
   Future<Map<String, dynamic>> readCardWithVision(String checkId) async {
     calls.add('read $checkId');
     return {
@@ -67,7 +91,32 @@ class _Identity extends IdentityRepository {
   ];
 }
 
-Future<void> _pump(WidgetTester tester, Widget child, _Identity identity, Brightness b, {bool scroll = true}) async {
+class _ClosersIdentity extends _Identity {
+  _ClosersIdentity(super.cfg);
+
+  @override
+  Future<List<Map<String, dynamic>>> list(String filter) async => [
+    _row({'id': 'c1', 'face_state': 'match', 'face_score': 91, 'face_provider': 'aws'}),
+    _row({
+      'id': 'c5',
+      'kind': 'selfie',
+      'name': 'Ravi',
+      'face_state': 'no_match',
+      'face_score': 22,
+      'face_provider': 'browser',
+      'created_at': DateTime.now().toUtc().subtract(const Duration(days: 2)).toIso8601String(),
+    }),
+  ];
+}
+
+Future<void> _pump(
+  WidgetTester tester,
+  Widget child,
+  _Identity identity,
+  Brightness b, {
+  bool scroll = true,
+  List<Override> overrides = const [],
+}) async {
   await tester.binding.setSurfaceSize(const Size(500, 1100));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
@@ -78,6 +127,7 @@ Future<void> _pump(WidgetTester tester, Widget child, _Identity identity, Bright
         identityRepositoryProvider.overrideWithValue(identity),
         adminAccessProvider.overrideWith((_) async => AdminAccess(const [AdminGrant(page: '*', edit: true)])),
         currentUserIdProvider.overrideWithValue('me'),
+        ...overrides,
       ],
       child: MaterialApp(
         theme: appTheme(b),
@@ -113,38 +163,53 @@ Map<String, dynamic> _row(Map<String, dynamic> extra) => {
 void main() {
   for (final b in Brightness.values) {
     group('${b.name}:', () {
-      testWidgets('the two settings, what a missing key means, the free reads', (tester) async {
-        final identity = _Identity(const IdentityConfig(awsKey: false, faceServer: false, visionKey: false));
+      testWidgets('the two orders, what a missing key means, the free reads', (tester) async {
+        final identity = _Identity(
+          // As 0320's server gives it unsaved: NAS, then AWS, then in-browser.
+          IdentityConfig.fromJson({
+            'faceOrder': [
+              {'id': 'nas', 'on': true},
+              {'id': 'aws', 'on': true},
+              {'id': 'browser', 'on': true},
+            ],
+            'awsKey': false,
+            'faceServer': false,
+            'visionKey': false,
+            'nasReader': false,
+          }),
+        );
         await _pump(tester, const IdentityProviderFields(), identity, b);
-        expect(find.text('Face match'), findsOneWidget);
-        expect(find.text('AWS Rekognition'), findsOneWidget, reason: 'the default');
-        expect(find.text('On the phone only'), findsOneWidget, reason: 'the default');
-        expect(find.byKey(const ValueKey('face-provider-note')), findsOneWidget, reason: 'no AWS key yet');
+        expect(find.textContaining('NAS, then AWS, then in-browser'), findsOneWidget, reason: 'the default');
+        expect(find.textContaining('Phone, then NAS'), findsOneWidget, reason: 'Google Vision off by default');
+        expect(find.byKey(const ValueKey('face-provider-note')), findsOneWidget, reason: 'no AWS key or server yet');
         expect(find.textContaining('First 1,000 reads a month free'), findsOneWidget);
-        expect(find.byKey(const ValueKey('id-read-note')), findsNothing, reason: 'the phone needs no key');
+        expect(find.byKey(const ValueKey('id-read-note')), findsNothing, reason: 'Vision is off');
+        expect(find.byKey(const ValueKey('id-read-nas-note')), findsOneWidget, reason: 'no NAS connected');
         expect(unreadableTexts(tester, find.byKey(const ValueKey('identity-providers'))), isEmpty);
 
-        await _tap(tester, find.text('AWS Rekognition'));
-        expect(find.text('Self-hosted, then AWS'), findsWidgets);
-        await _tap(tester, find.text('Self-hosted, then AWS').last);
-        expect(identity.calls, ['set self_hosted_aws -']);
-        expect(find.textContaining('face match server or an AWS key'), findsOneWidget);
+        await _tap(tester, find.byKey(const ValueKey('face-order-down-aws')));
+        expect(identity.calls, ['face nas:true,browser:true,aws:true']);
+        expect(find.textContaining('NAS, then in-browser, then AWS'), findsOneWidget);
 
-        await _tap(tester, find.text('On the phone only'));
-        await _tap(tester, find.text('Google Vision always').last);
-        expect(identity.calls.last, 'set - vision');
+        await _tap(tester, find.byKey(const ValueKey('id-reader-switch-vision')));
+        expect(identity.calls.last, 'read phone:true,nas:true,vision:true');
         expect(find.byKey(const ValueKey('id-read-note')), findsOneWidget, reason: 'no Vision key yet');
+
+        await _tap(tester, find.byKey(const ValueKey('face-low-up')));
+        expect(identity.calls.last, 'low 65');
+        expect(find.text('Needs a closer look below 65% match'), findsOneWidget);
         expect(unreadableTexts(tester, find.byKey(const ValueKey('identity-providers'))), isEmpty);
       });
 
       testWidgets('read only without edit', (tester) async {
         final identity = _Identity(const IdentityConfig(faceProvider: 'self_hosted', awsKey: true, faceServer: true));
         await _pump(tester, const IdentityProviderFields(enabled: false), identity, b);
-        expect(find.text('Self-hosted server'), findsOneWidget);
+        expect(find.textContaining('compared by: NAS, then in-browser'), findsOneWidget);
         expect(find.byKey(const ValueKey('face-provider-note')), findsNothing, reason: 'its key is there');
-        await tester.tap(find.text('Self-hosted server'), warnIfMissed: false);
-        await tester.pumpAndSettle();
-        expect(find.text('Off'), findsNothing, reason: 'no list opens');
+        final up = tester.widget<IconButton>(find.byKey(const ValueKey('face-order-down-nas')));
+        expect(up.onPressed, isNull);
+        final sw = tester.widget<Switch>(find.byKey(const ValueKey('face-order-switch-aws')));
+        expect(sw.onChanged, isNull);
       });
 
       testWidgets('the review: who gave the score', (tester) async {
@@ -158,14 +223,29 @@ void main() {
           identity,
           b,
         );
-        expect(find.text('82% match · self-hosted'), findsOneWidget);
+        expect(find.text('82% match · NAS'), findsOneWidget);
         expect(unreadableTexts(tester, find.byType(DetailTable)), isEmpty);
       });
 
       testWidgets('the review: not checked, and why', (tester) async {
-        final identity = _Identity(const IdentityConfig(awsKey: false, faceServer: false));
+        final identity = _Identity(
+          const IdentityConfig(
+            awsKey: false,
+            faceServer: false,
+            savedFaceOrder: [OrderSlot('aws', true), OrderSlot('nas', false), OrderSlot('browser', false)],
+          ),
+        );
         await _pump(tester, SignInCheckSheet(row: _row({}), onChanged: () {}), identity, b);
         expect(find.text('Not checked · No AWS key yet'), findsOneWidget);
+        final browser = _Identity(
+          const IdentityConfig(
+            awsKey: false,
+            faceServer: false,
+            savedFaceOrder: [OrderSlot('aws', true), OrderSlot('nas', false), OrderSlot('browser', true)],
+          ),
+        );
+        await _pump(tester, SignInCheckSheet(row: _row({'id': 'c9'}), onChanged: () {}), browser, b);
+        expect(find.text('Not checked · No AWS key yet · in-browser check next'), findsOneWidget);
       });
 
       testWidgets('the review: the card read again with Google Vision', (tester) async {
@@ -196,6 +276,50 @@ void main() {
         expect(find.textContaining('Not checked · Self-hosted server not set up'), findsOneWidget);
         // The status chip is the shared admin one; the line's own words are checked.
         expect(unreadableTexts(tester, find.textContaining('Not checked ·')), isEmpty);
+      });
+
+      testWidgets('the queue: low matches first, and the in-browser check scores what waits', (tester) async {
+        final identity = _ClosersIdentity(const IdentityConfig(awsKey: false, faceServer: false));
+        identity.queue = [
+          {'id': 's1', 'other_id': 'c3', 'selfie_url': 'https://x/selfie.jpg', 'card_url': 'https://x/card.jpg'},
+        ];
+        final compared = <String>[];
+        await _pump(
+          tester,
+          const SignInChecksReview(),
+          identity,
+          b,
+          scroll: false,
+          overrides: [
+            browserFaceCompareProvider.overrideWithValue((a, c) async {
+              compared.add('$a $c');
+              return (state: 'match', score: 71.5);
+            }),
+            photoLinkProvider.overrideWithValue((url) async => '$url?signed'),
+          ],
+        );
+        expect(compared, ['https://x/selfie.jpg?signed https://x/card.jpg?signed']);
+        expect(identity.saved, ['s1 c3 match 71.5']);
+        expect(find.textContaining('1 scored'), findsOneWidget);
+        final tiles = tester.widgetList<ListTile>(find.byType(ListTile)).map((t) => '${t.key}').toList();
+        expect(tiles.first, contains('signin-check-c5'), reason: 'faces that differ come first');
+        expect(find.textContaining('Needs a closer look'), findsOneWidget);
+        expect(unreadableTexts(tester, find.byKey(const ValueKey('browser-face-status'))), isEmpty);
+      });
+
+      testWidgets('the in-browser check stays off when the order has it off', (tester) async {
+        final identity = _Identity(
+          const IdentityConfig(savedFaceOrder: [OrderSlot('aws', true), OrderSlot('nas', true), OrderSlot('browser', false)]),
+        );
+        await _pump(
+          tester,
+          const SignInChecksReview(),
+          identity,
+          b,
+          scroll: false,
+          overrides: [browserFaceCompareProvider.overrideWithValue((a, c) async => null)],
+        );
+        expect(find.byKey(const ValueKey('browser-face-status')), findsNothing);
       });
 
       testWidgets('a selfie has no card to read', (tester) async {

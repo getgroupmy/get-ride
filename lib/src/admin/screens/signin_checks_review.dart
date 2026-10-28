@@ -10,11 +10,23 @@
 // too (why it was asked, the phone, the match, the live check); low matches
 // come first as "Needs a closer look", under Waiting and All, and all of them
 // under Going online.
+//
+// 0320: an upload whose faces differ, or match less than the admin's "needs
+// a closer look" percentage, is marked so and listed first too. In the admin
+// web app, while this queue is open and the in-browser check is on in the
+// face match order, the waiting selfie/ID pairs no server has scored are
+// compared in this browser (vladmandic/human) one by one and the scores
+// saved, marked "in-browser". Never in the phone or desktop apps, never over
+// a server's score, never a decision.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/signin_checks.dart';
 import '../../data/identity_repository.dart';
+import '../../data/storage_links.dart' show signedStorageUrl;
+import '../../platform/browser_face_check.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/date_boxes.dart' show formatStoredDateForUser;
@@ -34,6 +46,19 @@ final signInChecksProvider = FutureProvider.autoDispose.family<List<Map<String, 
 final signInChecksWaitingProvider = FutureProvider.autoDispose<int>(
   (ref) => ref.watch(identityRepositoryProvider).waitingCount(),
 );
+
+/// Compares a selfie with an ID photo in this browser: {state, score}, or
+/// null when it couldn't.
+typedef BrowserFaceCompare = Future<({String state, double? score})?> Function(String selfieUrl, String cardUrl);
+
+/// The in-browser check (0320); null where it can't run (the phone and
+/// desktop apps).
+final browserFaceCompareProvider = Provider<BrowserFaceCompare?>(
+  (_) => browserFaceCheckSupported ? browserFaceCompare : null,
+);
+
+/// A short-lived link to a stored photo, for the in-browser check.
+final photoLinkProvider = Provider<Future<String> Function(String url)>((_) => (url) => signedStorageUrl(url));
 
 const _filters = {
   'waiting': 'Waiting for approval',
@@ -110,8 +135,12 @@ class _SignInChecksReviewState extends ConsumerState<SignInChecksReview> {
     final onlineShown = online.where((c) => onlineCheckMatches(c, _query)).toList();
     final closer = [for (final c in onlineShown) if (c['closer'] == true) c];
     final calm = [for (final c in onlineShown) if (c['closer'] != true) c];
+    final canEdit = ref.watch(moduleAccessProvider('documents')) == AccessLevel.edit;
+    final browser = ref.watch(browserFaceCompareProvider);
     return Column(
       children: [
+        if (browser != null && canEdit && config?.browserOn == true)
+          BrowserFaceRunner(compare: browser, onScored: () => _refresh(ref)),
         FilterBar(
           filters: {
             for (final e in _filters.entries)
@@ -134,12 +163,18 @@ class _SignInChecksReviewState extends ConsumerState<SignInChecksReview> {
               final list = _filter == 'online'
                   ? const <Map<String, dynamic>>[]
                   : rows.where((c) => checkMatches(c, _query)).toList();
+              final low = config?.faceLowScore ?? defaultFaceLowScore;
+              bool uploadCloser(Map<String, dynamic> c) =>
+                  c['status'] == 'Pending Review' && signInFaceCloser(c['face_state'], c['face_score'], lowScore: low);
               // Low matches first; then the uploads, the newest first, the
               // calm going-online checks among them.
               final items = <(Map<String, dynamic>, bool)>[
                 for (final c in closer) (c, true),
+                for (final c in list)
+                  if (uploadCloser(c)) (c, false),
                 ...[
-                  for (final c in list) (c, false),
+                  for (final c in list)
+                    if (!uploadCloser(c)) (c, false),
                   for (final c in calm) (c, true),
                 ]..sort((a, b) => '${b.$1['answered_at'] ?? b.$1['created_at']}'.compareTo(
                       '${a.$1['answered_at'] ?? a.$1['created_at']}',
@@ -154,12 +189,14 @@ class _SignInChecksReviewState extends ConsumerState<SignInChecksReview> {
                   final (c, goingOnline) = items[i];
                   if (goingOnline) return OnlineCheckTile(row: c);
                   final warn = mismatchWarning(c['mismatch']);
+                  final look = uploadCloser(c);
                   return ListTile(
                     key: ValueKey('signin-check-${c['id']}'),
                     leading: _Thumb(url: c['file_url'] as String?),
                     title: Text('${c['name'] ?? c['phone'] ?? 'Someone'}'),
                     subtitle: Text(
                       [
+                        if (look) 'Needs a closer look',
                         checkKindText(c),
                         if (c['kind'] == 'selfie') livenessText(c['liveness'], c['liveness_detail']),
                         ?warn,
@@ -168,6 +205,7 @@ class _SignInChecksReviewState extends ConsumerState<SignInChecksReview> {
                           c['face_score'],
                           provider: c['face_provider'],
                           reason: c['face_reason'] ?? config?.faceUnusable,
+                          browserNext: config?.browserOn == true && c['status'] == 'Pending Review',
                         ),
                         dateText(c['created_at']),
                       ].where((s) => s.isNotEmpty).join(' · '),
@@ -241,8 +279,17 @@ class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
       };
     });
     final why = faceReasonText(r['reason']);
-    if (why != null) showInfo(context, 'Not checked: $why.');
-    if (r['fell_back'] == true) showInfo(context, "The self-hosted server didn't answer, so AWS checked it.");
+    if (why != null) {
+      showInfo(
+        context,
+        r['browser'] == true
+            ? 'Not checked: $why. The in-browser check scores it while Sign-in checks is open in the admin web app.'
+            : 'Not checked: $why.',
+      );
+    }
+    if (r['fell_back'] == true) {
+      showInfo(context, "The first in the face match order didn't answer, so ${faceProviderText(r['provider']) ?? 'the next'} checked it.");
+    }
     if (r['state'] == 'error' && r['detail'] != null) showInfo(context, "Couldn't check: ${r['detail']}");
     widget.onChanged();
   }
@@ -376,6 +423,8 @@ class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
           if (!selfie) 'Name read': c['read_name'] ?? 'Not read',
           if (!selfie) 'IC read': c['read_ic'] ?? 'Not read',
           if (!selfie && c['read_passport'] != null) 'Passport no. read': c['read_passport'],
+          if (!selfie && c['read_birth'] != null) 'Birth date read': formatStoredDateForUser(c['read_birth']),
+          if (!selfie && c['read_nationality'] != null) 'Nationality read': c['read_nationality'],
           if (!selfie && readBy != null) 'Read by': readBy,
           if (!selfie && c['expiry_date'] != null) 'Expiry': formatStoredDateForUser(c['expiry_date']),
           'Face match': faceMatchText(
@@ -383,7 +432,11 @@ class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
             c['face_score'],
             provider: c['face_provider'],
             reason: c['face_reason'] ?? config?.faceUnusable,
+            browserNext: config?.browserOn == true && c['status'] == 'Pending Review',
           ),
+          if (c['status'] == 'Pending Review' &&
+              signInFaceCloser(c['face_state'], c['face_score'], lowScore: config?.faceLowScore ?? defaultFaceLowScore))
+            'Look': 'Needs a closer look',
           'Phone': c['phone'],
           'Sent': dateText(c['created_at']),
           if (c['reviewed_at'] != null) 'Reviewed': '${dateText(c['reviewed_at'])} · ${c['reviewer'] ?? ''}',
@@ -436,6 +489,106 @@ class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
             ],
           ),
       ],
+    );
+  }
+}
+
+/// The in-browser check (0320), while this queue is open: the waiting pairs
+/// no server has scored are compared here one at a time, again every minute
+/// for new ones, and each score is saved. A pair that couldn't be compared
+/// isn't tried again until the queue is opened again.
+class BrowserFaceRunner extends ConsumerStatefulWidget {
+  const BrowserFaceRunner({super.key, required this.compare, required this.onScored});
+
+  final BrowserFaceCompare compare;
+  final VoidCallback onScored;
+
+  @override
+  ConsumerState<BrowserFaceRunner> createState() => _BrowserFaceRunnerState();
+}
+
+class _BrowserFaceRunnerState extends ConsumerState<BrowserFaceRunner> {
+  Timer? _tick;
+  bool _running = false;
+  final _tried = <String>{};
+  int _scored = 0;
+  int _waiting = 0;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _run());
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) => _run());
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _run() async {
+    if (_running || !mounted) return;
+    _running = true;
+    try {
+      final repo = ref.read(identityRepositoryProvider);
+      final link = ref.read(photoLinkProvider);
+      final queue = [
+        for (final q in await repo.browserQueue())
+          if (!_tried.contains('${q['id']}')) q,
+      ];
+      if (!mounted) return;
+      setState(() => _waiting = queue.length);
+      var saved = 0;
+      for (final q in queue) {
+        if (!mounted) return;
+        final id = '${q['id']}';
+        _tried.add(id);
+        final r = await widget.compare(await link('${q['selfie_url']}'), await link('${q['card_url']}'));
+        if (!mounted) return;
+        if (r == null) {
+          setState(() => _failed = true);
+          continue;
+        }
+        saved += await repo.saveBrowserScore(id, q['other_id'] as String?, r.state, r.score) > 0 ? 1 : 0;
+        setState(() {
+          _scored++;
+          _waiting--;
+        });
+      }
+      if (saved > 0) widget.onScored();
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    } finally {
+      _running = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final text = [
+      if (_running && _waiting > 0) 'In-browser face check: comparing, $_waiting waiting',
+      if (!(_running && _waiting > 0)) 'In-browser face check: on while this page is open',
+      if (_scored > 0) '$_scored scored',
+      if (_failed) "some photos couldn't be compared here",
+    ].join(' · ');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Row(
+        children: [
+          Icon(Icons.face_retouching_natural_outlined, size: 18, color: t.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              key: const ValueKey('browser-face-status'),
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
