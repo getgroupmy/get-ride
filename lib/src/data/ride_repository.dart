@@ -88,6 +88,7 @@ class RideRepository {
     required double fare,
     String paymentMode = 'Cash',
     int passengers = 1,
+    int luggage = 0,
     String? note,
     List<RidePet> pets = const [],
     RideAssistance? assistance,
@@ -145,7 +146,8 @@ class RideRepository {
       'ride_fare': fare,
       'currency': currency,
       'passengers': passengers,
-      'luggage': 0,
+      // The bags (0314); their charge, if any, is an option_charges line.
+      'luggage': luggage < 0 ? 0 : luggage,
       'note': note,
       // "Pet with me" (0247): each pet's type, size and photo; the note
       // carries the summary for drivers on an older app.
@@ -1020,12 +1022,18 @@ class RideRepository {
     }
   }
 
-  Future<void> updateStatus(String id, RideStatus status) async {
+  /// [lat] and [lng]: where the driver is at Arrived; the server checks it
+  /// is near the pickup before the waiting clock starts (0314).
+  Future<void> updateStatus(String id, RideStatus status, {double? lat, double? lng}) async {
     final now = DateTime.now().toUtc().toIso8601String();
     final patch = <String, dynamic>{'status': status.db};
     switch (status) {
       case RideStatus.arrived:
         patch['arrived_at'] = now;
+        if (lat != null && lng != null) {
+          patch['partner_arrive_lat'] = lat;
+          patch['partner_arrive_lng'] = lng;
+        }
       case RideStatus.onTrip:
         patch['started_at'] = now;
       case RideStatus.completed:

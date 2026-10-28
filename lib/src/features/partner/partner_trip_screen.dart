@@ -38,6 +38,7 @@ import '../../data/trip_handover_repository.dart';
 import '../../providers.dart';
 import 'rate_rider.dart';
 import '../ride/city_cancel_parts.dart' show NoShowPanel, DriverCancelRateNote;
+import '../ride/city_extras_parts.dart' show DriverTipCard, WaitingClockCard;
 import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
@@ -491,8 +492,16 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     await ref.read(rideRepositoryProvider).recordCheckpoint(id, checkpoint, fix.latitude, fix.longitude);
   }
 
+  /// Arrived goes with where the driver is: the server checks it is near
+  /// the pickup and starts the waiting clock (0314); too far, it says so.
   Future<void> _arrive(RideRequest r) => _run(() async {
-    await ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.arrived);
+    LatLng? fix = _me;
+    if (fix == null) {
+      try {
+        fix = await ref.read(tripFixProvider)();
+      } catch (_) {}
+    }
+    await ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.arrived, lat: fix?.latitude, lng: fix?.longitude);
     _advance(r, RideStatus.arrived);
     unawaited(_checkpoint(r.id, TripCheckpoint.arrive));
   });
@@ -1026,6 +1035,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         // The phones find each other at the kerb (Phase D); the code still works.
         if (r.status == RideStatus.accepted || r.status == RideStatus.arrived)
           BleHandshakeBadge(rideId: r.id, status: r.status.db, driver: true),
+        // At the pickup: the waiting charge's clock, the rider's too (0314).
+        if (WaitingClockCard.shows(r)) WaitingClockCard(ride: r),
         // At the pickup: the waiting timer and "Rider didn't come" (0269).
         if (r.status == RideStatus.arrived) NoShowPanel(ride: r),
         if (!primaryInFooter) ?_primaryAction(r),
@@ -1038,6 +1049,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         // Their cancel rate, and the pause it brings over the limit (0269).
         if (driverMayCancel(r.status)) const DriverCancelRateNote(),
         if (r.status == RideStatus.completed) _CollectCard(ride: r),
+        // The rider's tip, and "Got a cash tip" (0314).
+        if (r.status == RideStatus.completed) DriverTipCard(ride: r),
         if (r.status == RideStatus.completed)
           OutlinedButton.icon(
             key: const ValueKey('trip-receipt'),

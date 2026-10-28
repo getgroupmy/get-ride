@@ -81,7 +81,9 @@ begin
     -- Ride safety: settings, report categories, passenger cover, rider blocks (migration 0311).
     'ride_safety_settings', 'trip_report_categories', 'passenger_cover_rules', 'rider_blocks',
     -- Freight and Courier add-ons: the rules and cover claims (migration 0312).
-    'delivery_addon_rules', 'cover_claims'
+    'delivery_addon_rules', 'cover_claims',
+    -- City ride extras by place, and tips on the driver's trip card (migration 0314).
+    'city_ride_extra_places', 'ride_tips'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

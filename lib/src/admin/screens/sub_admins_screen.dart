@@ -17,6 +17,7 @@ import '../../core/city_to_city.dart' show c2cPage;
 import '../../core/city_to_city_seats.dart' show c2cSeatsPage;
 import '../../core/ride_safety.dart' show rideSafetyPage;
 import '../../core/business_accounts.dart' show businessAccountsPage;
+import '../../core/city_ride_extras.dart' show cityRideExtrasPage;
 import 'geo/place_types_screen.dart' show placeTypesPage;
 import '../god_view_people.dart';
 import '../widgets/admin_widgets.dart';
@@ -50,6 +51,7 @@ final grantablePages = <String, String>{
   c2cSeatsPage: 'Settings · City to City per-seat trips',
   rideSafetyPage: 'Settings · Ride safety',
   businessAccountsPage: 'People · Business accounts',
+  cityRideExtrasPage: 'Settings · City ride extras',
 };
 
 String _personLabel(Map<String, dynamic>? p, String id) => '${p?['name'] ?? p?['phone'] ?? p?['email'] ?? id}'.trim();

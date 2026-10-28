@@ -39,7 +39,15 @@ class StatementTotals {
   double get feesCollected => _d('platformCollected');
   double get incentives => _d('incentives');
   double get handoverIn => _d('handoverIn');
+
+  /// Tips riders gave in the app, as they reached the driver (0314).
+  double get tips => _d('tips');
   double get totalEarnings => _d('totalEarnings');
+
+  /// Cash tips the driver marked, for the Earnings page only (0314): not in
+  /// the totals, and never on the statement.
+  double get cashTips => _d('cashTips');
+  int get cashTipCount => _d('cashTipCount').round();
 
   // Deductions.
   double get commission => _d('commission');

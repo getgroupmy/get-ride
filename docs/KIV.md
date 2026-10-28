@@ -4,9 +4,6 @@ Items the owner has parked. Remove an item in the same PR that ships it.
 
 ## City ride, after launch
 
-- Tips after the trip (GET.wallet).
-- Waiting-time charge on city rides (Freight and Courier have one).
-- Luggage option when the rider books a city ride (fares already have a luggage charge; the driver and meter show luggage).
 - Rider-side audio recording (the driver side already records trip audio).
 - Premium tier.
 

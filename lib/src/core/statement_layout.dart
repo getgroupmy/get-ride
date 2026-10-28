@@ -58,6 +58,7 @@ const statementFields = <StatementField>[
   StatementField('feesCollected', StatementFieldGroup.earnings, 'Fees collected for GET.ride', 'Fi dikutip untuk GET.ride'),
   StatementField('incentives', StatementFieldGroup.earnings, 'Incentives', 'Insentif'),
   StatementField('handoverIn', StatementFieldGroup.earnings, 'Trip handover share received', 'Syer serahan perjalanan diterima'),
+  StatementField('tips', StatementFieldGroup.earnings, 'Tips', 'Tip'),
   StatementField('totalEarnings', StatementFieldGroup.earnings, 'Total earnings', 'Jumlah pendapatan'),
   StatementField('deductions', StatementFieldGroup.deductions, 'Deductions', 'Potongan'),
   StatementField('commission', StatementFieldGroup.deductions, 'Commission', 'Komisen'),

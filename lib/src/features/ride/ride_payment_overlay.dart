@@ -13,6 +13,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../wallet/wallet_screen.dart' show walletBalancesProvider, walletTxProvider;
+import 'city_extras_parts.dart' show TipCard;
 
 /// What the payment popup is showing, apart from what the ride row says.
 enum _Stage { choose, options, paying, failed }
@@ -60,6 +61,16 @@ class _RidePaymentOverlayState extends ConsumerState<RidePaymentOverlay> {
   void _close() {
     _closeTimer?.cancel();
     context.go('/');
+  }
+
+  /// The rider is tipping: the Done page waits for Close.
+  bool _held = false;
+
+  void _holdClose() {
+    if (_held) return;
+    _closeTimer?.cancel();
+    _closeTimer = null;
+    setState(() => _held = true);
   }
 
   @override
@@ -126,7 +137,9 @@ class _RidePaymentOverlayState extends ConsumerState<RidePaymentOverlay> {
     final Widget body;
     if (status == RidePaymentStatus.paid || _paidHere) {
       body = _done(t);
-      if (_closeTimer == null) WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? _startClose() : null);
+      if (_closeTimer == null && !_held) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => mounted && !_held ? _startClose() : null);
+      }
     } else if (_stage == _Stage.paying) {
       body = _paying(t);
     } else if (_stage == _Stage.failed) {
@@ -391,8 +404,14 @@ class _RidePaymentOverlayState extends ConsumerState<RidePaymentOverlay> {
         ),
         const SizedBox(height: 4),
         Text('Thanks for riding!', textAlign: TextAlign.center, style: t.textTheme.bodySmall),
+        // A tip for the driver (0314); touching it stops the countdown.
+        TipCard(ride: r, onInteract: _holdClose),
         const SizedBox(height: 20),
-        FilledButton(key: const ValueKey('payment-close'), onPressed: _close, child: Text('Close ($_closeIn)')),
+        FilledButton(
+          key: const ValueKey('payment-close'),
+          onPressed: _close,
+          child: Text(_closeTimer == null && _held ? 'Close' : 'Close ($_closeIn)'),
+        ),
       ],
     );
   }

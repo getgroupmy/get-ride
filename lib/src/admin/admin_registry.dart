@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'screens/business/business_module.dart';
 import 'screens/catalogue/catalogue_module.dart';
+import 'screens/city_ride_extras_screen.dart';
 import 'screens/city_to_city/city_to_city_module.dart';
 import 'screens/commerce/commerce_module.dart';
 import 'screens/geo/geo_module.dart';
@@ -57,6 +58,7 @@ final allAdminEntries = <AdminScreenEntry>[
   ...businessEntries,
   ...catalogueEntries,
   ...cityToCityEntries,
+  ...cityRideExtrasEntries,
   ...commerceEntries,
   ...geoEntries,
   ...meterappEntries,
@@ -71,6 +73,7 @@ final allPortedAdminRoutes = <RouteBase>[
   ...businessRoutes,
   ...catalogueRoutes,
   ...cityToCityRoutes,
+  ...cityRideExtrasRoutes,
   ...commerceRoutes,
   ...geoRoutes,
   ...meterappRoutes,

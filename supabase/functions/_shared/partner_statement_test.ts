@@ -334,3 +334,13 @@ Deno.test("preview: admins get a sample PDF in the layout being edited", async (
   assertEquals(body.fileName, "getride-statement-weekly-SAMPLE-ms.pdf");
   assertEquals(atob(body.pdf).slice(0, 5), "%PDF-");
 });
+
+Deno.test("tips (0314): an earnings line before the total, only when there are some", () => {
+  const rows = summaryRows({ ...totals, tips: 6.3 }, words("en"));
+  const tip = rows.findIndex((r) => r.id === "tips");
+  assertEquals(rows[tip]?.label, "Tips");
+  assertEquals(rows[tip]?.amount, 6.3);
+  assert(tip < rows.findIndex((r) => r.id === "totalEarnings"));
+  assertEquals(summaryRows({ ...totals, tips: 6.3 }, words("ms")).find((r) => r.id === "tips")?.label, "Tip");
+  assertEquals(summaryRows(totals, words("en")).some((r) => r.id === "tips"), false);
+});

@@ -313,11 +313,19 @@ class EarningsTotalsCard extends StatelessWidget {
             if (s.feesCollected != 0) row('Fees collected for GET.ride', money(s.feesCollected)),
             if (s.incentives != 0) row('Incentives', money(s.incentives), key: const ValueKey('earnings-incentives')),
             if (s.handoverIn != 0) row('Handover share received', money(s.handoverIn)),
+            if (s.tips != 0) row('Tips', money(s.tips), key: const ValueKey('earnings-tips')),
             row('Commission', less(s.commission)),
             if (s.platformFees != 0) row('Platform fees', less(s.platformFees)),
             if (s.handoverOut != 0) row('Handover share paid', less(s.handoverOut)),
             if (s.adjustments != 0)
               row('Adjustments', money(s.adjustments), key: const ValueKey('earnings-adjustments')),
+            // Marked by the driver, for themselves: not in what they earned above.
+            if (s.cashTipCount != 0)
+              row(
+                'Cash tips you marked (${s.cashTipCount}${s.cashTipCount == 1 ? ' trip' : ' trips'})',
+                s.cashTips > 0 ? money(s.cashTips) : 'Not counted',
+                key: const ValueKey('earnings-cash-tips'),
+              ),
             if (s.passThrough != 0)
               Theme(
                 data: t.copyWith(dividerColor: Colors.transparent),

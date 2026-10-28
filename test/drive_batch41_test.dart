@@ -50,7 +50,7 @@ class _TripRides implements RideRepository {
   Object? error;
 
   @override
-  Future<void> updateStatus(String id, RideStatus status) async {
+  Future<void> updateStatus(String id, RideStatus status, {double? lat, double? lng}) async {
     log.add('status:${status.db}');
     await hold?.future;
     if (error case final e?) throw e;

@@ -52,6 +52,11 @@ const liveSettingTables = <String>[
   'ride_option_places',
   // City ride cancel and no-show rules by place (0269).
   'ride_cancel_places',
+  // City ride extras by place: tips, waiting, luggage (0314).
+  'city_ride_extra_places',
+  // Tips: the driver's trip card shows one as it is given (0314; row-level
+  // security keeps them to the rider's and the driver's own).
+  'ride_tips',
   'get_coin_rate_history',
   'required_document',
   'document_type',

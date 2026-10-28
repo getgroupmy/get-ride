@@ -291,7 +291,7 @@ class _Editor extends StatelessWidget {
   final VoidCallback onUploadLogo;
   final String? logoUrl;
 
-  static const _onlyWhenNotZero = {'handoverIn', 'handoverOut', 'adjustments', 'otherCharges', 'otherSurcharges'};
+  static const _onlyWhenNotZero = {'handoverIn', 'tips', 'handoverOut', 'adjustments', 'otherCharges', 'otherSurcharges'};
 
   @override
   Widget build(BuildContext context) {
@@ -713,7 +713,7 @@ class StatementPreview extends StatelessWidget {
   };
   static const _activity = {'trips': '84', 'meterTrips': '6', 'onlineHours': '134.4', 'distance': '798.0'};
   static const _heads = {'earnings', 'deductions', 'passThrough', 'howPaid', 'activity'};
-  static const _quiet = {'handoverIn', 'handoverOut', 'otherCharges', 'otherSurcharges'};
+  static const _quiet = {'handoverIn', 'tips', 'handoverOut', 'otherCharges', 'otherSurcharges'};
 
   static String _money(double v) {
     final s = v.abs().toStringAsFixed(2).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
