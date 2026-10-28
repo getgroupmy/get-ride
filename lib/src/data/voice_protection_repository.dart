@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/voice_protection.dart';
 import '../providers.dart';
 import 'realtime_backup.dart';
+import 'trip_audio_vault.dart';
 
 /// True where trip audio is recorded: the phone apps. A browser or a desktop
 /// build never records, and never answers an upload request either (it
@@ -56,8 +57,14 @@ class _MicRecorder implements TripAudioRecorder {
 }
 
 /// The phone-local half: the per-profile toggle, the folder the recordings
-/// live in and the manifest of which recording is which file.
+/// live in and the manifest of which recording is which file. New recordings
+/// are sealed by the [TripAudioVault] the rider's share (an `.enc` file, its
+/// key in secure storage); a plain `.m4a` from before it is still read,
+/// uploaded and purged as it was until it ages out.
 class VoiceDeviceStore {
+  VoiceDeviceStore(this.vault);
+  final TripAudioVault vault;
+
   Future<bool> enabled(String profileId) async =>
       (await SharedPreferences.getInstance()).getBool(voiceEnabledKey(profileId)) ?? false;
 
@@ -77,11 +84,21 @@ class VoiceDeviceStore {
   Future<void> saveManifest(Map<String, String> m) async =>
       (await SharedPreferences.getInstance()).setString(voiceManifestKey, jsonEncode(m));
 
-  /// A new file path in the app's private folder (not the user's documents).
-  Future<String> newRecordingPath(String id) async {
+  Future<Directory> _dir() async {
     final dir = Directory('${(await getApplicationSupportDirectory()).path}/voice-protection');
     await dir.create(recursive: true);
-    return '${dir.path}/$id.m4a';
+    return dir;
+  }
+
+  /// A new file path in the app's private folder (not the user's documents).
+  Future<String> newRecordingPath(String id) async => '${(await _dir()).path}/$id.m4a';
+
+  /// Seals the finished recording at [rawPath] under a fresh key, deletes the
+  /// plain file and answers the sealed one.
+  Future<String> seal(String id, String rawPath) async {
+    final out = '${(await _dir()).path}/$id.enc';
+    await vault.seal(id, rawPath, out);
+    return out;
   }
 
   bool exists(String path) => File(path).existsSync();
@@ -94,9 +111,15 @@ class VoiceDeviceStore {
     }
   }
 
-  Future<Uint8List> read(String path) => File(path).readAsBytes();
+  /// The recording, decrypted in memory when sealed. Throws
+  /// TripAudioCipherException when a sealed file's key is gone or the file
+  /// was changed.
+  Future<Uint8List> read(String id, String path) =>
+      isSealedVoicePath(path) ? vault.open(id, path) : File(path).readAsBytes();
 
-  Future<void> delete(String path) async {
+  /// Deletes [path], and with [id] the recording's key as well.
+  Future<void> delete(String path, {String? id}) async {
+    if (id != null) return vault.delete(id, path: path);
     try {
       await File(path).delete();
     } catch (_) {}
@@ -217,5 +240,5 @@ class VoiceProtectionRepository {
 }
 
 final voiceProtectionRepositoryProvider = Provider((ref) => VoiceProtectionRepository(ref.watch(supabaseProvider)));
-final voiceDeviceStoreProvider = Provider((_) => VoiceDeviceStore());
+final voiceDeviceStoreProvider = Provider((ref) => VoiceDeviceStore(ref.watch(tripAudioVaultProvider)));
 final tripAudioRecorderProvider = Provider<TripAudioRecorder>((_) => _MicRecorder());

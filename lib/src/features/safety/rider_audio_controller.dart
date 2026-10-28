@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/rider_audio.dart';
+import '../../core/trip_audio_cipher.dart' show TripAudioCipherException;
 import '../../data/models.dart';
 import '../../data/rider_audio_repository.dart';
 import '../../data/voice_protection_repository.dart';
@@ -227,6 +229,7 @@ class RiderAudioController extends Notifier<RiderAudioState> {
     final device = ref.read(riderAudioDeviceStoreProvider);
     final repo = ref.read(voiceProtectionRepositoryProvider);
     try {
+      await device.migrateKeys();
       final manifest = await device.manifest();
       var expired = <String>{};
       try {
@@ -239,7 +242,7 @@ class RiderAudioController extends Notifier<RiderAudioState> {
         exists: device.exists,
       );
       for (final id in drop) {
-        await device.delete(manifest[id]!.path);
+        await device.delete(manifest[id]!.path, id: id);
         manifest.remove(id);
       }
       if (drop.isNotEmpty) await device.saveManifest(manifest);
@@ -262,13 +265,22 @@ class RiderAudioController extends Notifier<RiderAudioState> {
         if (!rec.byRider) continue;
         final local = manifest[rec.id];
         if (local == null) continue; // recorded on another phone
-        if (!device.exists(local.path)) {
+        Uint8List? bytes;
+        if (device.exists(local.path)) {
+          try {
+            bytes = await device.open(rec.id, local);
+          } on TripAudioCipherException {
+            // Its key is gone or the file was changed: it can't be sent.
+          }
+        }
+        if (bytes == null) {
           await repo.markUnavailable([rec.id]);
+          await device.delete(local.path, id: rec.id);
           manifest.remove(rec.id);
           await device.saveManifest(manifest);
           continue;
         }
-        await repo.upload(rec, await device.open(local), riderUploadName(rec.id));
+        await repo.upload(rec, bytes, riderUploadName(rec.id));
       }
     } catch (_) {
       // Retried on the next request, launch or sign-in.

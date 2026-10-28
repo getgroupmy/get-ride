@@ -3,7 +3,9 @@
 ///
 /// When the driver has it on, trip audio is recorded with the phone's
 /// microphone while a ride is under way. The file stays on the phone only,
-/// is never played back to the user, and is deleted after 24 hours. A
+/// encrypted with its own key held in the phone's Keychain or Keystore
+/// (trip_audio_cipher.dart), is never played back to the user, and is
+/// deleted, key and all, after 24 hours. A
 /// metadata row in `voice_protection_recordings` lets a support agent
 /// *request* the file (e.g. for a ride complaint); the phone that holds it
 /// then uploads it to the private `voice-protection` bucket.
@@ -139,6 +141,15 @@ String _ext(String path) {
   final m = RegExp(r'\.([a-z0-9]{2,5})$').firstMatch(path.toLowerCase().split('?').first);
   return m?.group(1) ?? 'm4a';
 }
+
+/// Whether a recording on the phone is sealed (trip_audio_cipher.dart): every
+/// one since the vault. A plain `.m4a` is from before it.
+bool isSealedVoicePath(String path) => path.endsWith('.enc');
+
+/// The name the recording at [localPath] is uploaded under: a sealed file
+/// goes up as the plain AAC it holds, as before.
+String voiceUploadName(String localPath) =>
+    isSealedVoicePath(localPath) ? '${localPath.substring(0, localPath.length - 4)}.m4a' : localPath;
 
 /// Where an upload goes in the private bucket (the owner's folder, which the
 /// storage policy scopes to them and admins).

@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:get_ride/src/admin/widgets/trip_audio_panel.dart';
+import 'package:get_ride/src/core/trip_audio_cipher.dart';
 import 'package:get_ride/src/core/voice_protection.dart';
+import 'package:get_ride/src/data/trip_audio_vault.dart';
 import 'package:get_ride/src/data/voice_protection_repository.dart';
 import 'package:get_ride/src/features/safety/voice_protection_card.dart';
 import 'package:get_ride/src/features/safety/voice_protection_controller.dart';
@@ -39,6 +41,20 @@ class _FakeDevice implements VoiceDeviceStore {
   Map<String, String> stored = {};
   final files = <String, DateTime>{};
   final deleted = <String>[];
+  final keys = <String>{};
+  final droppedKeys = <String>[];
+
+  @override
+  TripAudioVault get vault => throw UnimplementedError();
+
+  @override
+  Future<String> seal(String id, String rawPath) async {
+    files.remove(rawPath);
+    final out = '/private/voice-protection/$id.enc';
+    files[out] = DateTime.now();
+    keys.add(id);
+    return out;
+  }
 
   @override
   Future<bool> enabled(String profileId) async => prefs[profileId] ?? false;
@@ -62,12 +78,16 @@ class _FakeDevice implements VoiceDeviceStore {
   DateTime? modified(String path) => files[path];
 
   @override
-  Future<Uint8List> read(String path) async => Uint8List.fromList([1, 2, 3]);
+  Future<Uint8List> read(String id, String path) async {
+    if (isSealedVoicePath(path) && !keys.contains(id)) throw const TripAudioCipherException('no key');
+    return Uint8List.fromList([1, 2, 3]);
+  }
 
   @override
-  Future<void> delete(String path) async {
+  Future<void> delete(String path, {String? id}) async {
     files.remove(path);
     deleted.add(path);
+    if (id != null && keys.remove(id)) droppedKeys.add(id);
   }
 }
 
@@ -75,6 +95,7 @@ class _FakeRepo implements VoiceProtectionRepository {
   final inserted = <Map<String, dynamic>>[];
   final unavailable = <String>[];
   final uploaded = <String>[];
+  final uploadedAs = <String>[];
   final requested = <(String, String?)>[];
   List<VoiceRecording> pending = [];
   List<VoiceRecording> recordings = [];
@@ -94,7 +115,10 @@ class _FakeRepo implements VoiceProtectionRepository {
   Future<List<VoiceRecording>> pendingUploads(String profileId) async => pending;
 
   @override
-  Future<void> upload(VoiceRecording rec, Uint8List bytes, String localPath) async => uploaded.add(rec.id);
+  Future<void> upload(VoiceRecording rec, Uint8List bytes, String localPath) async {
+    uploaded.add(rec.id);
+    uploadedAs.add(voiceStoragePath(rec.profileId, rec.id, localPath));
+  }
 
   @override
   Future<void> Function() watch(String profileId, void Function() onChange) {
@@ -199,6 +223,11 @@ void main() {
       expect(voiceStoragePath(_me, 'r1', '/data/r1'), '$_me/r1.m4a');
       expect(voiceContentType('/x.mp3'), 'audio/mpeg');
       expect(voiceContentType('/x.m4a'), 'audio/mp4');
+      expect(isSealedVoicePath('/p/r1.enc'), isTrue);
+      expect(isSealedVoicePath('/p/r1.m4a'), isFalse);
+      expect(voiceUploadName('/p/r1.enc'), '/p/r1.m4a');
+      expect(voiceUploadName('/p/r1.m4a'), '/p/r1.m4a');
+      expect(voiceContentType(voiceUploadName('/p/r1.enc')), 'audio/mp4');
       expect(formatRecordingDuration(754), '12:34');
       expect(formatRecordingDuration(-3), '0:00');
       final now = DateTime.now();
@@ -251,7 +280,9 @@ void main() {
       expect(row['ride_id'], 'ride-1');
       expect(row['ride_label'], 'A → B');
       expect(row['unavailable'], isFalse);
-      expect(device.stored[row['id']], startsWith('/private/voice-protection/'));
+      expect(device.stored[row['id']], '/private/voice-protection/${row['id']}.enc', reason: 'sealed');
+      expect(device.files.keys.where((f) => f.endsWith('.m4a')), isEmpty, reason: 'the plain file is gone');
+      expect(device.keys, {row['id']});
 
       await voice.stopTrip(); // nothing left to file
       expect(repo.inserted, hasLength(1));
@@ -273,26 +304,46 @@ void main() {
     test('answers upload requests for the recordings this phone holds', () async {
       final c = make();
       await settle();
-      device.stored = {'held': '/p/held.m4a', 'lost': '/p/lost.m4a'};
+      device.stored = {
+        'held': '/p/held.m4a', // plain, from before the vault
+        'sealed': '/p/sealed.enc',
+        'lost': '/p/lost.enc',
+        'nokey': '/p/nokey.enc',
+      };
       device.files['/p/held.m4a'] = DateTime.now();
-      repo.pending = [_rec('held', requested: true), _rec('lost', requested: true), _rec('other', requested: true)];
+      device.files['/p/sealed.enc'] = DateTime.now();
+      device.files['/p/nokey.enc'] = DateTime.now();
+      device.keys.addAll(['sealed', 'lost']);
+      repo.pending = [
+        _rec('held', requested: true),
+        _rec('sealed', requested: true),
+        _rec('lost', requested: true),
+        _rec('nokey', requested: true),
+        _rec('other', requested: true),
+      ];
 
       await c.read(voiceProtectionProvider.notifier).runPendingUploads();
-      expect(repo.uploaded, ['held']);
-      expect(repo.unavailable, ['lost']);
-      expect(device.stored.keys, ['held']);
+      expect(repo.uploaded, ['held', 'sealed']);
+      expect(repo.uploadedAs, ['$_me/held.m4a', '$_me/sealed.m4a'], reason: 'plain audio, as before');
+      expect(repo.unavailable, ['lost', 'nokey']);
+      expect(device.droppedKeys, ['lost']);
+      expect(device.deleted, contains('/p/nokey.enc'));
+      expect(device.stored.keys, ['held', 'sealed']);
     });
 
     test('purge deletes expired files and tells agents', () async {
       final c = make();
       await settle();
-      device.stored = {'old': '/p/old.m4a', 'new': '/p/new.m4a'};
-      device.files['/p/old.m4a'] = DateTime.now();
-      device.files['/p/new.m4a'] = DateTime.now();
+      device.stored = {'old': '/p/old.enc', 'new': '/p/new.enc', 'plain': '/p/plain.m4a'};
+      device.files['/p/old.enc'] = DateTime.now();
+      device.files['/p/new.enc'] = DateTime.now();
+      device.files['/p/plain.m4a'] = DateTime.now().subtract(const Duration(hours: 25));
+      device.keys.addAll(['old', 'new']);
       repo.expired = {'old', 'elsewhere'};
 
       await c.read(voiceProtectionProvider.notifier).purgeExpired();
-      expect(device.deleted, ['/p/old.m4a']);
+      expect(device.deleted, unorderedEquals(['/p/old.enc', '/p/plain.m4a']));
+      expect(device.keys, {'new'}, reason: 'the key goes with its file');
       expect(device.stored.keys, ['new']);
       expect(repo.unavailable, unorderedEquals(['old', 'elsewhere']));
     });
