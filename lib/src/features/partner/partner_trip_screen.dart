@@ -1355,6 +1355,14 @@ class _CollectCard extends ConsumerWidget {
             subtitle: const Text('Added to your GET.wallet'),
             trailing: Text('−${formatMoney(r.promoDiscount, r.currency)}'),
           ),
+        if (r.plusDiscount > 0)
+          ListTile(
+            key: const ValueKey('trip-collect-plus'),
+            leading: const Icon(Icons.workspace_premium_outlined),
+            title: const Text('GET.Plus member discount'),
+            subtitle: const Text('Added to your GET.wallet'),
+            trailing: Text('−${formatMoney(r.plusDiscount, r.currency)}'),
+          ),
         if (paidOnline)
           ListTile(
             key: const ValueKey('trip-collect-wallet'),

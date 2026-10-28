@@ -26,6 +26,8 @@ import '../../core/search_timer.dart';
 import '../../core/smart_address.dart' show isCoordinateLabel;
 import '../../core/fare_tariff.dart';
 import '../../core/fare_coins.dart';
+import '../../core/premium_plus.dart' show PremiumPlusTerms, premiumRuleLine;
+import '../../data/premium_plus_repository.dart' show premiumPlusTermsProvider;
 import '../../core/fare_offer.dart';
 import '../../core/city_cancel.dart' show owedFeesNote;
 import '../../core/city_ride_extras.dart' show CityRideExtras;
@@ -101,6 +103,7 @@ import 'auto_accept.dart';
 import 'book_for_sheet.dart';
 import 'confirm_parts.dart';
 import 'city_extras_parts.dart';
+import 'plus_parts.dart' show PlusMemberBanner;
 import 'offer_fare_screen.dart';
 import 'demo_ride.dart' show demoRiderProvider, demoRidesProvider;
 import 'home_parts.dart';
@@ -3110,6 +3113,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return km == null ? null : driverEtaMinutes(km);
     }
 
+    // Premium's rules and the rider's GET.Plus at the pickup (0316).
+    final plusAt = confirming ? _pickup?.point : null;
+    final plus = plusAt == null
+        ? null
+        : ref.watch(premiumPlusTermsProvider((
+            lat: (plusAt.latitude * 1000).round() / 1000,
+            lng: (plusAt.longitude * 1000).round() / 1000,
+            country: _pickupArea?.country,
+            state: _pickupArea?.state,
+            city: _pickupArea?.city,
+          ))).value;
     final panel = _BookingPanel(
       // City ride extras (0314): the luggage picker and the waiting rule,
       // under the vehicles in the sheet (not the pinned footer, so the
@@ -3123,6 +3137,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               money: (v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : 2),
             )
           : null,
+      plus: plus,
       disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),
       fareAdjusted: _biddingFor(_service) && _adjust != 0,
       bidding: _biddingFor(_service),
@@ -3360,7 +3375,13 @@ class _BookingPanel extends StatelessWidget {
     this.currency = AppConfig.currency,
     this.etaFor,
     this.upliftFor,
+    this.plus,
   });
+
+  /// Premium's rules and the rider's GET.Plus at the pickup (migration
+  /// 0316): the rule line on Premium cards, and a member's prices with the
+  /// full one struck through under the member banner.
+  final PremiumPlusTerms? plus;
 
   /// What high demand adds to a vehicle's fare (the uplift, formatted);
   /// null where it adds nothing.
@@ -3512,6 +3533,11 @@ class _BookingPanel extends StatelessWidget {
                   demandNote: s0Uplift(),
                 ),
               ),
+              if (plus?.benefits case final b?)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),
+                  child: PlusMemberBanner(benefits: b),
+                ),
               for (final (i, s) in services.indexed)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 4),
@@ -3519,7 +3545,11 @@ class _BookingPanel extends StatelessWidget {
                     i == 0,
                     ConfirmServiceCard(
                       service: s,
-                      price: formatMoney(fareFor(s), currency, fareDecimals),
+                      price: formatMoney(plus?.benefits?.price(fareFor(s)) ?? fareFor(s), currency, fareDecimals),
+                      was: plus?.benefits == null || plus!.benefits!.price(fareFor(s)) == fareFor(s)
+                          ? null
+                          : formatMoney(fareFor(s), currency, fareDecimals),
+                      note: s.premium && plus != null ? premiumRuleLine(plus!.premium) : null,
                       selected: s.name == service.name,
                       etaMinutes: etaFor?.call(s),
                       onTap: () => onService(s),

@@ -268,12 +268,18 @@ class RideRequest {
   /// The promo discount settled on the completed trip (0 when none).
   double get promoDiscount => _d(raw['promo_discount']) ?? 0;
 
-  /// What is left for the driver to collect after GET.coin and the promo
-  /// (the promo's amount goes to the driver's GET.wallet).
+  /// GET.Plus (migration 0316): the member's discount settled on the
+  /// completed trip (0 when none; the driver's GET.wallet is credited the
+  /// same), and whether the request is a member's, shown to drivers first.
+  double get plusDiscount => _d(raw['plus_discount']) ?? 0;
+  bool get plusPriority => raw['plus_priority'] == true;
+
+  /// What is left for the driver to collect after GET.coin, the promo and
+  /// GET.Plus (their amounts go to the driver's GET.wallet).
   double? get cashDue {
     final t = totalDue;
     if (t == null) return null;
-    final left = t - fareCoinsValue - promoDiscount;
+    final left = t - fareCoinsValue - promoDiscount - plusDiscount;
     return left < 0 ? 0 : (left * 100).roundToDouble() / 100;
   }
 

@@ -19,6 +19,8 @@ import '../../core/driver_permit.dart';
 import '../../core/format.dart';
 import '../../core/partner_doc_check.dart';
 import '../../core/partner_queue.dart';
+import '../../core/premium_plus.dart' show plusPriorityFirst, premiumRefusalReason;
+import '../../widgets/app_notice.dart' show showAppNotice;
 import '../../core/request_alert.dart';
 import '../../core/taxi_meter.dart';
 import '../../data/destination_store.dart';
@@ -983,7 +985,17 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         // The server's reasons (0269): declined already, offers paused for
         // cancelling too much, an amount out of range.
         final vehicle = vehicleRequiredReason(e);
-        if (vehicle != null) {
+        // 0316: a Premium request this driver doesn't qualify for, and why.
+        final premium = premiumRefusalReason(e);
+        if (premium != null) {
+          unawaited(showAppNotice(
+            id: 'notice.premium',
+            context: context,
+            title: 'Premium needs more',
+            message: premium,
+            key: const ValueKey('premium-refused'),
+          ));
+        } else if (vehicle != null) {
           unawaited(_vehicleFirst(vehicle));
         } else {
           '$e'.contains('OFFER') ? showInfo(context, rideOfferError(e)) : showError(context, e);
@@ -1610,7 +1622,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       pinAssignedFirst(
         pinDirectFirst(
           pinStarredFirst(
-            _order(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+            // GET.Plus members' requests next (0316's priority matching).
+            plusPriorityFirst(
+              _order(queued, toward: (r) => destinationOn && _towardDestination(r), awayKm: _distanceTo),
+              (r) => r.plusPriority,
+            ),
             _starred,
           ),
           _myId,
@@ -1760,6 +1776,16 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               const SizedBox(width: 6),
             ],
             Expanded(child: Text(r.service ?? 'Ride', style: t.textTheme.titleMedium)),
+            // A GET.Plus member's request (0316): shown first; the full fare
+            // is still the driver's.
+            if (r.plusPriority) ...[
+              Tooltip(
+                message: 'GET.Plus member: you\'re paid the full fare',
+                child: Icon(Icons.workspace_premium, key: ValueKey('plus-request-${r.id}'), size: 20,
+                    color: t.colorScheme.tertiary),
+              ),
+              const SizedBox(width: 6),
+            ],
             // The full fare; a promo is paid to the driver by the platform (0242).
             if (rideHasPromo(r)) ...[
               PromoAppliedIcon(key: ValueKey('promo-applied-${r.id}')),

@@ -39,6 +39,7 @@ List<RideService> rideServicesFromCatalogue(List<CatalogueEntry> entries, Map<St
         serviceTypes: types,
         parentIds: serviceParentIds(v),
         rates: ServiceRates.fromValues(v),
+        premium: v['premium'] == true,
       ),
     );
   }

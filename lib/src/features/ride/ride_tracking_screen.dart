@@ -1388,7 +1388,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             ),
           if (r.status == RideStatus.completed &&
               ((r.tollCharges ?? 0) > 0 || (r.otherCharges ?? 0) > 0 || r.fareCoinsValue > 0 ||
-                  r.chargeLines.isNotEmpty || r.promoDiscount > 0))
+                  r.chargeLines.isNotEmpty || r.promoDiscount > 0 || r.plusDiscount > 0))
             Card(
               key: const ValueKey('ride-charges'),
               child: Column(children: [
@@ -1421,9 +1421,17 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                     title: Text('Promo ${r.promo?.code ?? ''}'.trim()),
                     trailing: Text('−${formatMoney(r.promoDiscount, r.currency)}'),
                   ),
+                // GET.Plus (0316): the member's discount; the driver has it from get.ride.
+                if (r.plusDiscount > 0)
+                  ListTile(
+                    key: const ValueKey('ride-plus'),
+                    dense: true,
+                    title: const Text('GET.Plus member discount'),
+                    trailing: Text('−${formatMoney(r.plusDiscount, r.currency)}'),
+                  ),
                 const Divider(height: 1),
                 ListTile(
-                  title: Text(r.fareCoinsValue > 0 || r.promoDiscount > 0 ? 'Left to pay' : 'Total to pay',
+                  title: Text(r.fareCoinsValue > 0 || r.promoDiscount > 0 || r.plusDiscount > 0 ? 'Left to pay' : 'Total to pay',
                       style: const TextStyle(fontWeight: FontWeight.w700)),
                   trailing: Text(formatMoney(r.cashDue, r.currency),
                       style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),

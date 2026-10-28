@@ -13,7 +13,9 @@ import '../../core/format.dart' show formatDateForUser;
 import '../../core/ride_extras.dart';
 import '../../core/vehicle_assignment.dart';
 import '../../data/driver_extras_repository.dart';
+import '../../core/premium_plus.dart' show PremiumStatus;
 import '../../data/driver_services_repository.dart';
+import '../../data/premium_plus_repository.dart' show myPremiumStatusProvider;
 import '../../data/ride_option_providers.dart';
 import '../../data/ride_pet_repository.dart' show petConfigProvider;
 import '../../data/vehicle_assignment_repository.dart';
@@ -136,6 +138,10 @@ class _DriverServicesScreenState extends ConsumerState<DriverServicesScreen> {
             children: [
               _CarCard(car: car, details: o.carDetails, busy: _changingCar, onChange: _changeCar),
               const SizedBox(height: 12),
+              // Premium services and whether this driver qualifies (0316).
+              if (tab != ServiceTab.deliveries)
+                for (final p in ref.watch(myPremiumStatusProvider).value ?? const <PremiumStatus>[])
+                  Padding(padding: const EdgeInsets.only(bottom: 12), child: PremiumStatusCard(status: p)),
               SegmentedButton<ServiceTab>(
                 key: const ValueKey('driver-services-tabs'),
                 showSelectedIcon: false,
@@ -190,6 +196,52 @@ class _DriverServicesScreenState extends ConsumerState<DriverServicesScreen> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A Premium service (0316): "You can take Premium requests", or why not.
+class PremiumStatusCard extends StatelessWidget {
+  const PremiumStatusCard({super.key, required this.status});
+  final PremiumStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final ok = status.ok;
+    return Card(
+      key: ValueKey('premium-status-${status.service}'),
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(ok ? Icons.verified_outlined : Icons.diamond_outlined,
+              color: ok ? t.colorScheme.primary : t.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                ok ? 'You can take ${status.service} requests' : 'You don\'t qualify for ${status.service} yet',
+                style: t.textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              if (ok)
+                Text(
+                  status.rulesOn
+                      ? 'Your car, rating and trips meet the ${status.service} rules here.'
+                      : 'No ${status.service} rules apply here.',
+                  style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
+                )
+              else
+                for (final r in status.reasons)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text('• $r', style: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t))),
+                  ),
+            ]),
+          ),
+        ]),
+      ),
     );
   }
 }

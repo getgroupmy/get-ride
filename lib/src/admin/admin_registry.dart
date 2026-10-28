@@ -12,6 +12,7 @@ import 'screens/meterapp/meterapp_module.dart';
 import 'screens/people/people_module.dart';
 import 'screens/ride_safety/ride_safety_screen.dart';
 import 'screens/rider_audio/rider_audio_screen.dart';
+import 'screens/premium_plus/premium_plus_module.dart';
 import 'screens/security/security_module.dart';
 
 /// A ported admin screen, listed on the Settings hub under [section] and
@@ -61,6 +62,7 @@ final allAdminEntries = <AdminScreenEntry>[
   ...cityToCityEntries,
   ...cityRideExtrasEntries,
   ...riderAudioEntries,
+  ...premiumPlusEntries,
   ...commerceEntries,
   ...geoEntries,
   ...meterappEntries,
@@ -77,6 +79,7 @@ final allPortedAdminRoutes = <RouteBase>[
   ...cityToCityRoutes,
   ...cityRideExtrasRoutes,
   ...riderAudioRoutes,
+  ...premiumPlusRoutes,
   ...commerceRoutes,
   ...geoRoutes,
   ...meterappRoutes,
