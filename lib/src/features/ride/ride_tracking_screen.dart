@@ -81,6 +81,7 @@ import '../../widgets/page_style_host.dart';
 import 'promo_parts.dart' show ridePromoLine;
 import '../../core/promo_codes.dart' show promoPayLine;
 import 'freight_parts.dart' show FreightSenderPanel;
+import 'live_map_overlays.dart' show CompanyTripChip;
 
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>((ref, id) {
   // A demo rider's request lives on the phone alone: it is never asked of
@@ -1241,6 +1242,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           // Family (0317): "Shared with family" and who can see, "Paid with
           // Family", and a child's pickup code for the parent who booked.
           if (!_isDemo) FamilyTripStrip(tripId: r.id, host: true),
+          // Rider live map (0322): a company-paid trip says so, and who can see it.
+          if (!_isDemo) CompanyTripChip(tripId: r.id),
           if (r.status == RideStatus.open) ...[
             const SizedBox(height: 12),
             ..._searchSheet(r),

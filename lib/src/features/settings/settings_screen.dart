@@ -15,6 +15,7 @@ import '../safety/voice_protection_card.dart';
 import 'app_icon_screen.dart';
 import 'blocked_drivers_screen.dart';
 import 'change_pin_screen.dart';
+import 'map_settings_card.dart';
 import 'navigation_app_card.dart';
 import 'passkeys_screen.dart';
 import 'permissions_card.dart';
@@ -58,6 +59,8 @@ class SettingsScreen extends ConsumerWidget {
                 ]),
               ),
             ),
+            // The home map: cars near me and the overlays (0322).
+            const MapSettingsCard(),
             const AppIconTile(),
             // Admin → App Settings → Permissions can hide it (0196).
             if (ref.watch(permissionRulesProvider).value?.showPermissionsCard ?? true) const PermissionsCard(),
