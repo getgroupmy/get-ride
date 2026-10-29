@@ -121,6 +121,10 @@ const liveSettingTables = <String>[
   // Scheduled rides (0189): the rider's bookings and a driver's accepted
   // ones, as their state moves (row-level security keeps them to those).
   'scheduled_rides',
+  // Hire for several days (0327): the rider's bookings, a driver's, and the
+  // ones waiting for a driver for every day (row-level security keeps them
+  // to the parties; the open ones come through hire_bookings_open).
+  'hire_bookings',
   // Handovers and passengers' choices of driver (0198; the parties only).
   'scheduled_ride_offers',
   // Mid-trip handovers (0199; the drivers and passenger in each only).

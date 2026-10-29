@@ -21,6 +21,7 @@ import '../safety/sos_ops_card.dart';
 import '../security/pin_policy_card.dart';
 import '../security/sign_in_security_card.dart';
 import '../hourly_hire_card.dart';
+import '../multi_hire_card.dart';
 import '../scheduled_rides_card.dart';
 import '../trip_handover_card.dart';
 import '../permission_rules_card.dart';
@@ -530,6 +531,9 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                 const SizedBox(height: 8),
                 // Hourly hire (0326).
                 HourlyHireCard(canEdit: canEdit),
+                const SizedBox(height: 8),
+                // Daily hire (0327).
+                MultiHireCard(package: 'daily', title: 'Daily hire', canEdit: canEdit),
                 const SizedBox(height: 8),
                 TripHandoverCard(canEdit: canEdit),
                 const SizedBox(height: 8),

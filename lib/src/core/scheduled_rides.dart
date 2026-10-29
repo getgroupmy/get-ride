@@ -169,9 +169,16 @@ DateTime earliestPickup(DateTime now, ScheduledRidesConfig c) {
 DateTime latestPickup(DateTime now, ScheduledRidesConfig c) => now.add(Duration(days: c.maxDaysAhead));
 
 /// Why [at] can't be booked at [now], or null.
+/// "30 minutes", "12 hours", "3 days": the soonest a pickup may be booked.
+String pickupLeadText(int minutes) => minutes >= 1440 && minutes % 1440 == 0
+    ? '${minutes ~/ 1440} ${minutes == 1440 ? 'day' : 'days'}'
+    : minutes >= 120 && minutes % 60 == 0
+    ? '${minutes ~/ 60} hours'
+    : '$minutes minutes';
+
 String? pickupTimeProblem(DateTime at, DateTime now, ScheduledRidesConfig c) {
   if (at.isBefore(now.add(Duration(minutes: c.minLeadMinutes)))) {
-    return 'Pick a time at least ${c.minLeadMinutes} minutes from now.';
+    return 'Pick a time at least ${pickupLeadText(c.minLeadMinutes)} from now.';
   }
   if (at.isAfter(latestPickup(now, c))) {
     return 'Rides can be booked up to ${c.maxDaysAhead} ${c.maxDaysAhead == 1 ? 'day' : 'days'} ahead.';
@@ -232,11 +239,28 @@ class ScheduledRide {
     this.promoError,
     this.placeFees = const [],
     this.hireHours,
+    this.hirePackage,
+    this.hireBookingId,
+    this.hireDayNo,
+    this.hireDays,
+    this.hireTitle,
   });
 
-  /// An hourly hire's hours (0326); null for a ride.
+  /// An hourly hire's hours (0326), or a hire day's hours (0327); null for a ride.
   final double? hireHours;
   bool get isHire => hireHours != null;
+
+  /// A day of a hire for several days (0327): its package, booking, day
+  /// number, the booking's days and its title ("Daily hire").
+  final String? hirePackage, hireBookingId;
+  final int? hireDayNo, hireDays;
+  final String? hireTitle;
+  bool get isHireDay => hireBookingId != null && hireDayNo != null;
+
+  /// "Daily hire · day 2 of 3"; null for anything else.
+  String? get hireDayLabel => !isHireDay
+      ? null
+      : '${hireTitle ?? 'Hire'} · day $hireDayNo${hireDays == null ? '' : ' of $hireDays'}';
 
   /// The place fees locked when it was booked (0324: request.charges with
   /// locked), charged at release whatever they are by then.
@@ -307,7 +331,19 @@ class ScheduledRide {
         ? placeFeeLinesOf((r['request'] as Map)['charges']).where((l) => l.locked).toList()
         : const [],
     hireHours: r['hire_package'] == null || r['hire_hours'] == null ? null : _num(r['hire_hours']),
+    hirePackage: r['hire_package'] as String?,
+    hireBookingId: r['hire_booking_id'] as String?,
+    hireDayNo: r['hire_day_no'] == null ? null : _num(r['hire_day_no']).round(),
+    hireDays: (_hireQuote(r)?['days'] ?? r['hire_days']) == null
+        ? null
+        : _num(_hireQuote(r)?['days'] ?? r['hire_days']).round(),
+    hireTitle: (_hireQuote(r)?['title'] ?? r['hire_title']) as String?,
   );
+
+  static Map<String, dynamic>? _hireQuote(Map<String, dynamic> r) {
+    final q = r['request'] is Map ? (r['request'] as Map)['hire_quote'] : null;
+    return q is Map ? Map<String, dynamic>.from(q) : null;
+  }
 
   /// Still to happen: the rider can cancel it.
   bool get upcoming =>

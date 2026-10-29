@@ -125,10 +125,13 @@ class RideRepository {
     bool riderAudio = false,
     FamilyPick? family,
     double? hireHours,
+    // Hire for several days (0327): the row goes to hire_book with its
+    // booking (the days, the hours a day...) instead of being inserted.
+    Future<void> Function(Map<String, dynamic> row)? bookHireDays,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
-    if (hireHours == null && (dropName == null || dropLat == null || dropLng == null)) {
+    if (hireHours == null && bookHireDays == null && (dropName == null || dropLat == null || dropLng == null)) {
       throw StateError('Choose where you are going.');
     }
     final otp = (1000 + math.Random.secure().nextInt(9000)).toString();
@@ -252,6 +255,15 @@ class RideRepository {
       // 0315; without it the phone turns it on when the trip starts.
       'rider_audio',
     };
+    if (bookHireDays != null) {
+      // The server writes the booking and a row a day from it (hire_book).
+      for (final k in ['target_driver_ids', 'my_ride_max_km', 'direct_qr_token', 'auto_accept_fare', 'hire_package',
+                       'hire_hours']) {
+        row.remove(k);
+      }
+      await bookHireDays(row);
+      return (now: null, later: null);
+    }
     if (scheduleAt != null) {
       // Favourites and a scanned driver are for a ride now; the server
       // drops them from a booking anyway.

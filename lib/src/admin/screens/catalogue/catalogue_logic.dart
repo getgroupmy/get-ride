@@ -202,6 +202,20 @@ const vehicleServiceHireFields = [
   NumField('hireExtraKm', 'Extra km', suffix: 'per km'),
 ];
 
+/// Daily hire (migration 0327): the day rate (for the hours a day), the
+/// hours a day it is for, the km included a day, overtime and extra km on
+/// a day, and the overnight allowance. Blank: the hourly price × the hours
+/// a day, the Daily hire settings' hours, km and overnight, the hourly
+/// overtime and extra km. A fare tariff card may set its own.
+const vehicleServiceHireDayFields = [
+  NumField('hireDayRate', 'Day rate'),
+  NumField('hireDayHours', 'Hours in a day', suffix: 'hr'),
+  NumField('hireDayKm', 'Km included a day', suffix: 'km'),
+  NumField('hireDayOvertimePerHour', 'Overtime per hour on a day'),
+  NumField('hireDayExtraKm', 'Extra km on a day', suffix: 'per km'),
+  NumField('hireOvernight', 'Overnight allowance'),
+];
+
 /// A covered van or lorry: what the rider's "Closed body" option books.
 const closedBodyKey = 'closedBody';
 
@@ -268,7 +282,7 @@ ValuesResult buildVehicleServiceValues({
       return (values: const {}, error: '${sentenceCaseLabel(f.label)} must be a number of 0 or more.');
     }
   }
-  for (final f in vehicleServiceHireFields) {
+  for (final f in [...vehicleServiceHireFields, ...vehicleServiceHireDayFields]) {
     final t = (hire[f.key] ?? '').trim();
     final n = num.tryParse(t);
     if (t.isNotEmpty && (n == null || !n.isFinite || n < 0)) {
@@ -276,6 +290,9 @@ ValuesResult buildVehicleServiceValues({
     }
     if (f.key == 'hireMinHours' && n != null && (n < 0.5 || n > 72)) {
       return (values: const {}, error: 'Least hours are between 0.5 and 72.');
+    }
+    if (f.key == 'hireDayHours' && n != null && (n < 1 || n > 24)) {
+      return (values: const {}, error: 'Hours in a day are between 1 and 24.');
     }
   }
   if (hireEnabled == true && num.tryParse((hire['hirePerHour'] ?? '').trim()) == null) {
@@ -332,7 +349,7 @@ ValuesResult buildVehicleServiceValues({
   }
   // Hourly hire (0326).
   if (hireEnabled != null) values[hireEnabledKey] = hireEnabled;
-  for (final f in vehicleServiceHireFields) {
+  for (final f in [...vehicleServiceHireFields, ...vehicleServiceHireDayFields]) {
     if (!hire.containsKey(f.key)) continue;
     final n = num.tryParse(hire[f.key]!.trim());
     if (n == null) {

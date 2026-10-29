@@ -9,6 +9,9 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/hourly_hire.dart' show hireSpanText;
+import '../../core/multi_day_hire.dart' show HireDaysBooking;
+import '../../data/hourly_hire_repository.dart' show myHireBookingsProvider;
+import 'multi_hire_parts.dart' show HireBookingCard;
 import '../../core/format.dart';
 import '../../core/scheduled_rides.dart';
 import '../../data/scheduled_ride_repository.dart';
@@ -76,7 +79,14 @@ class ScheduledRidesList extends ConsumerWidget {
     return AsyncView(
       value: ref.watch(myScheduledRidesProvider),
       onRetry: () => ref.invalidate(myScheduledRidesProvider),
-      data: (all) {
+      data: (rows) {
+        // Hire for several days (0327): a booking's days show on its card.
+        final bookings = ref.watch(myHireBookingsProvider).value ?? const <HireDaysBooking>[];
+        final booked = {for (final b in bookings) b.id};
+        final all = [
+          for (final r in rows)
+            if (r.hireBookingId == null || !booked.contains(r.hireBookingId)) r,
+        ];
         final upcoming = [
           for (final r in all)
             if (r.upcoming) r,
@@ -85,8 +95,17 @@ class ScheduledRidesList extends ConsumerWidget {
           for (final r in all.reversed)
             if (!r.upcoming) r,
         ];
+        Widget hireCard(HireDaysBooking b) => HireBookingCard(
+          booking: b,
+          money: (v) => formatMoney(v, b.currency ?? 'MYR'),
+          days: [
+            for (final r in rows)
+              if (r.hireBookingId == b.id && r.hireDayNo != null)
+                (day: r.hireDayNo!, at: r.pickupAt, status: scheduledStatusLabel(r)),
+          ]..sort((a, b) => a.day.compareTo(b.day)),
+        );
         // Near the top, as Trips and Wallet history have theirs.
-        if (all.isEmpty) {
+        if (all.isEmpty && bookings.isEmpty) {
           return ListView(
             children: const [
               EmptyState(
@@ -103,12 +122,16 @@ class ScheduledRidesList extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              if (upcoming.isNotEmpty) ...[
+              if (upcoming.isNotEmpty || bookings.any((b) => b.open)) ...[
                 const _Heading('Upcoming'),
+                for (final b in bookings)
+                  if (b.open) hireCard(b),
                 for (final r in upcoming) _BookingCard(ride: r, config: config),
               ],
-              if (past.isNotEmpty) ...[
+              if (past.isNotEmpty || bookings.any((b) => !b.open)) ...[
                 const _Heading('Past'),
+                for (final b in bookings.take(10))
+                  if (!b.open) hireCard(b),
                 for (final r in past.take(30)) _BookingCard(ride: r, config: config),
               ],
             ],
@@ -238,10 +261,11 @@ class _BookingCard extends ConsumerWidget {
                 Text(formatMoney(ride.total, currency), style: t.textTheme.titleSmall),
               ],
             ),
-            // Hourly hire (0326): "Hourly hire · 4 hr, 9:00 am to 1:00 pm".
+            // Hourly hire (0326): "Hourly hire · 4 hr, 9:00 am to 1:00 pm";
+            // a day of a hire for several days (0327): "Daily hire · day 2 of 3".
             if (ride.hireHours case final h?) ...[
               const SizedBox(height: 4),
-              Text(hireSpanText(h, ride.pickupAt), key: ValueKey('scheduled-hire-${ride.id}')),
+              Text(ride.hireDayLabel ?? hireSpanText(h, ride.pickupAt), key: ValueKey('scheduled-hire-${ride.id}')),
             ],
             const SizedBox(height: 6),
             Text(scheduledStatusLabel(ride), style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),

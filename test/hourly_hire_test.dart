@@ -242,7 +242,7 @@ void main() {
     expect(allAppRoutes, contains(hireTileRoute));
     expect(routeLabel(hireTileRoute), 'Hire a driver — opens Hire by time');
     expect(rideBookingModule(hire: true, scheduled: true), 'hire');
-    expect(bookingModule('hire')?.name, 'Hourly hire');
-    expect(bookingModule('hire')?.tables, ['ride_requests']);
+    expect(bookingModule('hire')?.name, 'Hire');
+    expect(bookingModule('hire')?.tables, ['ride_requests', 'hire_bookings']);
   });
 }

@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/hourly_hire.dart' show RideHire, hireAdminDetails, hireTitle;
+import '../../core/hourly_hire.dart' show RideHire, hireAdminDetails;
+import 'hire_booking_view.dart';
 import '../../core/format.dart';
 import '../../core/region_time.dart' show formatInZone;
 import '../../data/models.dart';
@@ -24,7 +25,7 @@ import '../widgets/trip_audio_panel.dart';
 String adminRideSubtitle(RideRequest r) => [
       formatInZone(r.createdAt, r.timezone),
       // Hourly hire (0326).
-      if (RideHire.fromRow(r.raw) case final h?) hireTitle(h.hours),
+      if (RideHire.fromRow(r.raw) case final h?) h.heading,
       'Rider ${(r.riderName ?? '').trim().isEmpty ? 'unknown' : r.riderName!.trim()}',
       if ((r.partnerName ?? '').trim().isNotEmpty) 'Driver ${r.partnerName!.trim()}',
     ].join(' · ');
@@ -121,6 +122,11 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
               : '${formatMoney(r.raw['commission_amount'] as num, r.currency)} '
                   '(${((r.raw['commission_rate'] as num? ?? 0) * 100).toStringAsFixed(1)}%)',
         }),
+        // Hire for several days (0327): the booking and every day.
+        if (r.raw['hire_booking_id'] case final String bookingId) ...[
+          const SizedBox(height: 12),
+          AdminHireBookingView(bookingId: bookingId, canEdit: canEdit),
+        ],
         // Trip audio (0315): the driver's VoiceProtection and the rider's
         // audio protection recordings of this ride, to request and play.
         const SizedBox(height: 12),

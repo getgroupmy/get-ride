@@ -100,16 +100,24 @@ class ScheduledRideRepository {
         .inFilter('status', ['assigned', 'released'])
         .order('pickup_at', ascending: true);
     List<Map<String, dynamic>> rows;
+    const hire = 'place_fee_lines, hire_package, hire_hours';
+    // 0327: a hire day's booking, its number, and the booking's days and title.
+    const hireDay = '$hire, hire_booking_id, hire_day_no, '
+        'hire_days:request->hire_quote->days, hire_title:request->hire_quote->>title';
     try {
-      // 0326: a hire's package and hours, for its span.
-      rows = await read('$columns, place_fee_lines, hire_package, hire_hours');
+      rows = await read('$columns, $hireDay');
     } on PostgrestException {
       try {
-        // Before 0326: without the hire columns.
-        rows = await read('$columns, place_fee_lines');
+        // Before 0327: a hire's package and hours, for its span (0326).
+        rows = await read('$columns, $hire');
       } on PostgrestException {
-        // Before 0325: without the place fees.
-        rows = await read(columns);
+        try {
+          // Before 0326: without the hire columns.
+          rows = await read('$columns, place_fee_lines');
+        } on PostgrestException {
+          // Before 0325: without the place fees.
+          rows = await read(columns);
+        }
       }
     }
     return [for (final r in rows) ScheduledRide.fromRow(r)];

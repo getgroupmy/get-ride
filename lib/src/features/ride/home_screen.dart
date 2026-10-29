@@ -11,9 +11,11 @@ import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
 import '../../core/booking_modules.dart' show familyModuleHire, familyModuleRide;
-import '../../core/hourly_hire.dart' show HourlyHireConfig, hireTileRoute, hireTitle;
+import '../../core/hourly_hire.dart' show HourlyHireConfig, hirePackageHourly, hireTileRoute, hireTitle;
+import '../../core/multi_day_hire.dart' show HireDaysBooking, MultiHireConfig, hireBookingSpan, hirePackageDaily;
 import '../../data/hourly_hire_repository.dart';
 import 'hire_parts.dart';
+import 'multi_hire_parts.dart';
 import '../../core/family.dart' show FamilyPick, withFamilyPayment;
 import '../../data/family_repository.dart' show familyPayOptionProvider, familyPassengersProvider;
 import '../../core/app_display.dart';
@@ -73,6 +75,7 @@ import '../../widgets/side_menu_tiles.dart';
 import '../../widgets/toll_booths.dart';
 import '../../core/route_estimate.dart';
 import '../../data/scheduled_ride_repository.dart';
+import '../../data/ride_repository.dart' show Booked;
 import '../../data/app_display_repository.dart';
 import '../../data/coin_trade_repository.dart';
 import '../../data/device_access.dart';
@@ -148,7 +151,7 @@ import '../../data/rider_live_map_repository.dart';
 import 'live_map_feed.dart';
 import 'live_map_overlays.dart';
 
-enum _PinTarget { none, pickup, drop }
+enum _PinTarget { none, pickup, drop, hireDrop }
 
 /// Rider home: pick pickup + destination, choose a service, book.
 /// The nearest online drivers to a pickup, per vehicle type (0111); empty
@@ -364,15 +367,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _hirePaymentPick = 'Get Pay';
 
   /// The methods a hire may be paid with: GET.wallet and the admin's others
-  /// (cash only where the admin allows it for hire; no business account),
-  /// and Family's row where the admin allows it.
+  /// (cash only where the admin allows it for hire), a business account
+  /// (0327), and Family's row where the admin allows it.
   List<PaymentChoice> _hirePaymentsFor(HourlyHireConfig c) => withFamilyPayment(
     [
       for (final p in ref.read(paymentChoicesProvider).value ?? builtInPayments)
-        if (p.kind != PaymentKind.business && (c.allowCash || p.kind != PaymentKind.cash)) p,
+        if (c.allowCash || p.kind != PaymentKind.cash) p,
     ],
     ref.read(familyPayOptionProvider(familyModuleHire)).value,
   );
+
+  /// A hire for several days (0327) is paid in the app: GET.wallet, Family
+  /// or a business account; never cash.
+  List<PaymentChoice> _daysPaymentsFor() => withFamilyPayment(
+    [
+      for (final p in ref.read(paymentChoicesProvider).value ?? builtInPayments)
+        if (p.kind == PaymentKind.wallet || p.kind == PaymentKind.business) p,
+    ],
+    ref.read(familyPayOptionProvider(familyModuleHire)).value,
+  );
+
+  /// The hire package on the "Hire by time" side: 'hourly', or one booked
+  /// for several days ('daily', 0327).
+  String _hirePackage = hirePackageHourly;
+
+  /// The plan of a hire for several days: stops on the way (optional).
+  final List<Place> _hireStops = [];
   bool _useCoins = false;
 
   /// Admin → Display → Ride Confirm Layout, read when booking: a row the
@@ -1306,6 +1326,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() => _pinTarget = _PinTarget.none);
     final place = await ref.read(geoServiceProvider).reverse(p);
     if (!mounted) return;
+    // A hire's drop-off (0327): not the trip's, so no route and no confirm step.
+    if (target == _PinTarget.hireDrop) {
+      setState(() => _hireDrop = place);
+      return;
+    }
     if (target != _PinTarget.pickup) _dropQuery = null;
     setState(() => target == _PinTarget.pickup ? _pickup = place : _drop = place);
     if (target == _PinTarget.pickup) await _syncPickupGate();
@@ -2635,13 +2660,103 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: HireModeSwitch(config: hc, hire: _hireMode, onChanged: (v) => setState(() => _hireMode = v)),
       ),
       if (_hireMode) ...[
-        _hirePanel(hc),
+        ..._hirePackageParts(hc),
         // All the way down, the sheet shows the whole hire booking.
         KeyedSubtree(key: _foldKey, child: const SizedBox(width: double.infinity)),
       ] else
         _homeParts(sections, layout, blob, display),
     ]);
   }
+
+  /// The hire packages offered (0327): the chips, then the chosen one's panel.
+  List<Widget> _hirePackageParts(HourlyHireConfig hc) {
+    final daily = ref.watch(multiHireConfigProvider(hirePackageDaily)).value ?? MultiHireConfig.off;
+    final packages = [
+      if (hc.enabled) (key: hirePackageHourly, label: 'Hourly'),
+      if (daily.enabled) (key: hirePackageDaily, label: daily.chipLabel),
+    ];
+    final selected = packages.any((p) => p.key == _hirePackage) ? _hirePackage : packages.firstOrNull?.key;
+    final multi = selected == hirePackageDaily ? daily : null;
+    return [
+      if (packages.length > 1)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: HirePackageChips(
+            packages: packages,
+            selected: selected ?? hirePackageHourly,
+            onChanged: (k) => setState(() => _hirePackage = k),
+          ),
+        ),
+      if (multi != null) _multiHirePanel(multi) else _hirePanel(hc),
+    ];
+  }
+
+  Widget _multiHirePanel(MultiHireConfig c) {
+    final payments = _daysPaymentsFor();
+    final area = _pickupArea;
+    return MultiHirePanel(
+      key: ValueKey('multi-hire-${c.package}'),
+      config: c,
+      pickup: _pickup,
+      drop: _hireDrop,
+      onPickup: () => _choose(_PinTarget.pickup),
+      onDrop: _chooseHireDrop,
+      onClearDrop: () => setState(() => _hireDrop = null),
+      stops: _hireStops,
+      onAddStop: _addHireStop,
+      onRemoveStop: (i) => setState(() => _hireStops.removeAt(i)),
+      services: _services,
+      place: (country: area?.country, state: area?.state, city: area?.city, suburb: area?.suburb),
+      pricingFor: (s) => _pricingFor(s),
+      money: (v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : 2),
+      payments: payments,
+      payment: resolvePayment(_hirePaymentPick, payments),
+      onPayment: (p) => setState(() => _hirePaymentPick = p),
+      onBook: _bookMultiHire,
+      whoRiding: _hireWhoRiding(),
+    );
+  }
+
+  /// A stop on a hire's plan (0327): searched for.
+  Future<void> _addHireStop() async {
+    if (_hireStops.length >= maxRideStops) {
+      showInfo(context, 'A plan has up to $maxRideStops stops.');
+      return;
+    }
+    final pick = await showPlaceSearch(
+      context,
+      title: 'Add a stop to the plan',
+      near: _pickup?.point ?? _me,
+      current: _here,
+      usage: GateUsage.drop,
+      from: _pickup,
+    );
+    if (pick == null || !mounted) return;
+    final place = pick.place;
+    if (pick.pickOnMap || place == null) {
+      showInfo(context, 'Search for the stop by its name or address.');
+      return;
+    }
+    setState(() => _hireStops.add(place));
+  }
+
+  Widget? _hireWhoRiding() => !_confirmLayout.showBookForOther
+      ? null
+      : _WhoRiding(
+          forOther: _forOther,
+          name: _otherName,
+          phone: _otherPhone,
+          family: _familyPick,
+          onFamily: (f) => _familyPick = f,
+          onChanged: (who) => setState(() {
+            _forOther = who != null;
+            if (who == null) _familyPick = null;
+            if (who != null) {
+              _otherName.text = who.name;
+              _otherPhone.text = who.phone;
+            }
+          }),
+        );
 
   Widget _hirePanel(HourlyHireConfig hc) {
     final sc = ref.watch(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
@@ -2663,23 +2778,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       onPayment: (p) => setState(() => _hirePaymentPick = p),
       onBook: _bookHire,
       pickLater: hc.allowLater && sc.enabled ? () => showPickupTimeSheet(context, sc) : null,
-      whoRiding: !_confirmLayout.showBookForOther
-          ? null
-          : _WhoRiding(
-              forOther: _forOther,
-              name: _otherName,
-              phone: _otherPhone,
-              family: _familyPick,
-              onFamily: (f) => _familyPick = f,
-              onChanged: (who) => setState(() {
-                _forOther = who != null;
-                if (who == null) _familyPick = null;
-                if (who != null) {
-                  _otherName.text = who.name;
-                  _otherPhone.text = who.phone;
-                }
-              }),
-            ),
+      whoRiding: _hireWhoRiding(),
     );
   }
 
@@ -2696,15 +2795,107 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     if (pick == null || !mounted) return;
     final place = pick.place;
-    if (pick.pickOnMap || place == null) {
-      showInfo(context, 'Search for the place, or leave the drop-off empty.');
+    if (pick.pickOnMap) {
+      // 0327: dropped on the map as well as searched for.
+      setState(() => _pinTarget = _PinTarget.hireDrop);
+      showInfo(context, 'Tap the map to set the drop-off');
       return;
     }
+    if (place == null) return;
     setState(() => _hireDrop = place);
   }
 
   /// Books a hire (0326) now, or for later at [at]: the server prices it.
   Future<void> _bookHire(HireBooking b, DateTime? at) async {
+    final hc = ref.read(hourlyHireConfigProvider).value ?? HourlyHireConfig.off;
+    final payments = _hirePaymentsFor(hc);
+    await _submitHire(
+      service: b.service,
+      fare: b.quote.base,
+      durationMin: (b.hours * 60).round(),
+      at: at,
+      hireHours: b.hours,
+      payments: payments,
+      paymentPick: _hirePaymentPick,
+      onBooked: (booked) async {
+        final later = booked.later;
+        if (later != null) {
+          ref.invalidate(myScheduledRidesProvider);
+          if (!mounted) return;
+          await showNotice(
+            context,
+            title: 'Hire booked',
+            message: 'Pickup ${pickupLabel(confirmedPickupAt(later, at))} · ${hireTitle(b.hours)}'
+                '${later.bookedForName == null ? '' : ' for ${later.bookedForName}'}. '
+                "We'll find your driver before then and let you know.",
+          );
+          if (mounted) context.push('/trips/scheduled');
+          return;
+        }
+        final req = booked.now!;
+        if (mounted) context.push('/ride/${req.id}').then((_) => _checkOngoing());
+      },
+    );
+  }
+
+  /// Books a hire for several days (0327): the server writes the booking
+  /// and a row a day, and takes what is paid now.
+  Future<void> _bookMultiHire(MultiHireBooking b) async {
+    final payments = _daysPaymentsFor();
+    HireDaysBooking? made;
+    await _submitHire(
+      service: b.service,
+      fare: b.quote.perDay,
+      durationMin: (b.hours * 60).round(),
+      at: b.firstAt,
+      payments: payments,
+      paymentPick: _hirePaymentPick,
+      stops: _hireStops,
+      bookHireDays: (row) async {
+        made = await ref.read(hourlyHireRepositoryProvider).book(row, {
+          'package': b.quote.package,
+          'first_at': b.firstAt.toUtc().toIso8601String(),
+          'days': b.days,
+          'hours': b.hours,
+          'overnight': b.overnight,
+          'same_driver': b.sameDriver,
+          'payment_plan': b.plan.db,
+        });
+      },
+      onBooked: (_) async {
+        ref.invalidate(myScheduledRidesProvider);
+        ref.invalidate(myHireBookingsProvider);
+        final m = made;
+        if (!mounted || m == null) return;
+        await showNotice(
+          context,
+          title: '${m.title} booked',
+          message: '${hireBookingSpan(m.firstAt, m.days, m.hoursPerDay)}. '
+              '${m.paymentText((v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : 2))}. '
+              "We'll find your driver before then and let you know.",
+        );
+        if (!mounted) return;
+        setState(_hireStops.clear);
+        context.push('/trips/scheduled');
+      },
+    );
+  }
+
+  /// The checks and the booking a hire shares with a ride: who it is for,
+  /// one on the go, the device, the service, where GET.ride serves, the
+  /// pickup time, a business account's own checks; then the ride row.
+  Future<void> _submitHire({
+    required RideService service,
+    required double fare,
+    required int durationMin,
+    required DateTime? at,
+    double? hireHours,
+    required List<PaymentChoice> payments,
+    required String paymentPick,
+    List<Place> stops = const [],
+    Future<void> Function(Map<String, dynamic> row)? bookHireDays,
+    required Future<void> Function(Booked booked) onBooked,
+  }) async {
     final a = _pickup;
     if (a == null) return;
     final forWhom = _forOtherOn ? bookedFor(_otherName.text, _otherPhone.text) : null;
@@ -2725,18 +2916,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
     final d = _hireDrop;
-    final gap = await _findGap(a, const [], d ?? a);
+    final gap = await _findGap(a, stops, d ?? a);
     if (gap != null) {
       if (mounted) _showGap(gap);
       return;
     }
-    if (at != null) {
+    if (at != null && bookHireDays == null) {
       final c = await ref.read(scheduledRidesConfigProvider.future);
       final problem = !c.enabled ? 'Scheduled rides are not available.' : pickupTimeProblem(at, DateTime.now(), c);
       if (problem != null) {
         if (mounted) showInfo(context, problem);
         return;
       }
+    }
+    final payment = resolvePayment(paymentPick, payments);
+    // On a business account (0313, 0327): its checks first (a note, an
+    // Admin's approval), and the server's again as it is written.
+    final businessId = businessAccountIdOf(payment);
+    String? businessNote;
+    if (businessId != null) {
+      if (!mounted) return;
+      final ready = await prepareBusinessBooking(
+        context,
+        ref,
+        accountId: businessId,
+        company: businessAccountFor(payment, ref.read(myBusinessAccountsProvider).value ?? const [])?.name ??
+            'your company',
+        service: service.name,
+        fare: fare,
+        pickupAt: at,
+        forOther: forWhom != null,
+        pickup: a.name,
+        dropoff: d?.name ?? a.name,
+      );
+      if (ready == null || !mounted) return;
+      businessNote = ready.note;
     }
     if (!mounted) return;
     setState(() => _booking = true);
@@ -2757,11 +2971,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       try {
         area = await areaLookup.timeout(const Duration(seconds: 5));
       } catch (_) {}
-      final hc = ref.read(hourlyHireConfigProvider).value ?? HourlyHireConfig.off;
-      final payments = _hirePaymentsFor(hc);
       final booked = await rides.createRequest(
-        scheduleAt: at,
-        service: b.service.name,
+        scheduleAt: bookHireDays == null ? at : null,
+        service: service.name,
         pickupName: a.name,
         pickupAddress: a.address,
         pickupLat: a.point.latitude,
@@ -2771,13 +2983,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         dropLat: d?.point.latitude,
         dropLng: d?.point.longitude,
         distanceKm: 0,
-        durationMin: (b.hours * 60).round(),
-        // The server's price replaces it (hire_quote).
-        fare: b.quote.base,
-        paymentMode: bookedPaymentMode(resolvePayment(_hirePaymentPick, payments), payments),
+        durationMin: durationMin,
+        // The server's price replaces it (hire_quote, hire_multi_quote).
+        fare: fare,
+        paymentMode: bookedPaymentMode(payment, payments),
+        businessAccountId: businessId,
+        businessNote: businessNote,
         riderName: profile?.name,
         riderPhone: profile?.phone,
         deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
+        stops: stops,
         metadata: rideRequestMetadata(
           area: area,
           ipAddress: await ipLookup,
@@ -2787,26 +3002,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         bookedFor: forWhom,
         family: forWhom == null ? null : _familyPick,
         currency: _currency,
-        pricing: _pricingFor(b.service, rules: rules, base: base),
+        pricing: _pricingFor(service, rules: rules, base: base),
         timezone: rules.timezone,
-        hireHours: b.hours,
+        hireHours: hireHours,
+        bookHireDays: bookHireDays,
       );
-      final later = booked.later;
-      if (later != null) {
-        ref.invalidate(myScheduledRidesProvider);
-        if (!mounted) return;
-        await showNotice(
-          context,
-          title: 'Hire booked',
-          message: 'Pickup ${pickupLabel(confirmedPickupAt(later, at))} · ${hireTitle(b.hours)}'
-              '${later.bookedForName == null ? '' : ' for ${later.bookedForName}'}. '
-              "We'll find your driver before then and let you know.",
-        );
-        if (mounted) context.push('/trips/scheduled');
-        return;
-      }
-      final req = booked.now!;
-      if (mounted) context.push('/ride/${req.id}').then((_) => _checkOngoing());
+      await onBooked(booked);
     } on DuplicateRideRequest catch (e) {
       if (mounted) showInfo(context, e.toString());
     } catch (e) {
@@ -3343,7 +3544,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               elevation: 3,
               child: ListTile(
                 leading: const Icon(Icons.touch_app),
-                title: Text('Tap the map to set the ${_pinTarget == _PinTarget.pickup ? 'pickup' : 'destination'}'),
+                title: Text('Tap the map to set the ${switch (_pinTarget) {
+                  _PinTarget.pickup => 'pickup',
+                  _PinTarget.hireDrop => 'drop-off',
+                  _ => 'destination',
+                }}'),
                 trailing: IconButton(
                   tooltip: 'Stop picking on the map',
                   icon: const Icon(Icons.close),

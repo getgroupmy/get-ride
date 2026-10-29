@@ -8,8 +8,30 @@ import 'dart:math' as math;
 
 import 'package:intl/intl.dart';
 
+import 'multi_day_hire.dart' show multiHireRefusalText;
+
 /// The only package today; daily, weekly and monthly come later.
 const hirePackageHourly = 'hourly';
+
+/// What a later hire booked in cash does at its release when the admin has
+/// since turned cash off (0327).
+enum HireCashOffLater {
+  /// It goes ahead in cash, as booked.
+  cash('cash', 'Go ahead in cash'),
+
+  /// It is paid from GET.wallet instead; the rider is told.
+  wallet('wallet', 'Switch to GET.wallet'),
+
+  /// It is cancelled free; the rider is told.
+  cancel('cancel', 'Cancel it free');
+
+  const HireCashOffLater(this.db, this.label);
+  final String db;
+  final String label;
+
+  static HireCashOffLater parse(Object? v) =>
+      HireCashOffLater.values.firstWhere((e) => e.db == v, orElse: () => HireCashOffLater.cash);
+}
 
 /// A home tile, box or card set to this opens the booking panel on its
 /// "Hire by time" side (Admin › Display › Home page targets).
@@ -72,6 +94,7 @@ class HourlyHireConfig {
     this.kmPerHourDefault = 20,
     this.reminderBeforeEndMin = 15,
     this.autoEndAfterMin = 30,
+    this.cashOffLater = HireCashOffLater.cash,
     this.tileTitle = 'Hire a driver',
     this.tripLabel = 'Go somewhere',
     this.hireLabel = 'Hire by time',
@@ -112,6 +135,7 @@ class HourlyHireConfig {
       kmPerHourDefault: clamp(j['kmPerHourDefault'], 20, 0, 500),
       reminderBeforeEndMin: clamp(j['reminderBeforeEndMin'], 15, 0, 240).round(),
       autoEndAfterMin: clamp(j['autoEndAfterMin'], 30, 5, 1440).round(),
+      cashOffLater: HireCashOffLater.parse(j['cashOffLater']),
       tileTitle: _text(j['tileTitle'], 'Hire a driver', 40),
       tripLabel: _text(labels['trip'], 'Go somewhere', 30),
       hireLabel: _text(labels['hire'], 'Hire by time', 30),
@@ -129,6 +153,7 @@ class HourlyHireConfig {
   final bool allowCash;
   final double kmPerHourDefault;
   final int reminderBeforeEndMin, autoEndAfterMin;
+  final HireCashOffLater cashOffLater;
   final String tileTitle, tripLabel, hireLabel;
 
   /// Bookable at all (now or later).
@@ -152,6 +177,7 @@ class HourlyHireConfig {
     'kmPerHourDefault': kmPerHourDefault,
     'reminderBeforeEndMin': reminderBeforeEndMin,
     'autoEndAfterMin': autoEndAfterMin,
+    'cashOffLater': cashOffLater.db,
     'tileTitle': tileTitle,
     'panelLabels': {'trip': tripLabel, 'hire': hireLabel},
   };
@@ -324,6 +350,10 @@ class RideHire {
     this.kmUsed,
     this.settledLines = const [],
     this.settledFare,
+    this.package = hirePackageHourly,
+    this.title,
+    this.dayNo,
+    this.days,
   });
 
   static RideHire? fromRow(Map<String, dynamic> r) {
@@ -355,6 +385,10 @@ class RideHire {
           for (final x in l)
             if (x is Map) (label: '${x['label'] ?? ''}', amount: _num(x['amount']) ?? 0),
       ],
+      package: '${r['hire_package']}',
+      title: q['title'] is String ? q['title'] as String : null,
+      dayNo: _num(r['hire_day_no'])?.round(),
+      days: _num(q['days'])?.round(),
     );
   }
 
@@ -366,6 +400,19 @@ class RideHire {
   final double? kmUsed;
   final List<HireLine> settledLines;
   final double? settledFare;
+
+  /// 'hourly', or a booking's package ('daily', 0327) with its day.
+  final String package;
+  final String? title;
+  final int? dayNo, days;
+
+  /// A day of a booking for several days.
+  bool get isDay => package != hirePackageHourly && dayNo != null;
+
+  /// "Hourly hire · 4 hr", or "Daily hire · day 2 of 3".
+  String get heading => isDay
+      ? '${title ?? 'Hire'} · day $dayNo of ${days ?? dayNo}'
+      : hireTitle(hours);
 
   bool get started => startedAt != null;
   bool get settled => settledFare != null;
@@ -421,7 +468,9 @@ class RideHire {
 
   /// The hire's lines for a receipt: the settled ones, else the booked hours.
   List<HireLine> lines(double fare) =>
-      settledLines.isNotEmpty ? settledLines : [(label: 'Hourly hire ${hireHoursText(hours)}', amount: fare)];
+      settledLines.isNotEmpty
+          ? settledLines
+          : [(label: isDay ? heading : 'Hourly hire ${hireHoursText(hours)}', amount: fare)];
 }
 
 /// "9:00 am".
@@ -444,7 +493,7 @@ String? hireRefusalText(String? message) {
     'HIRE_CASH': 'Hourly hire is paid in the app. Choose GET.wallet.',
     'HIRE_NOW_OFF': 'Hourly hire can only be booked for later.',
     'HIRE_LATER_OFF': "Hourly hire can't be booked for later.",
-    'HIRE_BUSINESS': "Hourly hire can't be charged to a business account yet.",
+    'HIRE_BUSINESS': "This hire can't be charged to a business account.",
     'HIRE_BALANCE': 'Top up your GET.wallet: the hire price is held until the hire ends.',
     'HIRE_EXTEND_PENDING': 'An extension is already waiting for an answer.',
     'HIRE_EXTEND_GONE': 'This extension was already answered.',
@@ -458,7 +507,7 @@ String? hireRefusalText(String? message) {
   for (final e in codes.entries) {
     if (m.contains(e.key)) return e.value;
   }
-  return null;
+  return multiHireRefusalText(m);
 }
 
 /// What the rider pays if they end now, in plain words.
@@ -471,7 +520,9 @@ String hireEarlyEndText(HireEarlyEndPays pays, double minHours) => switch (pays)
 /// The hire on an admin's ride details: the package and hours, the rates,
 /// the clock, each extension and the settled breakdown.
 Map<String, String?> hireAdminDetails(RideHire h, String Function(double) money) => {
-  'Hourly hire': '${hireHoursText(h.hours)} at ${money(h.rate)} / hr, ${h.kmIncluded.round()} km included',
+  if (h.isDay) 'Hire booking': h.heading,
+  h.isDay ? 'Hire day' : 'Hourly hire':
+      '${hireHoursText(h.hours)} at ${money(h.rate)} / hr, ${h.kmIncluded.round()} km included',
   'Hire overtime / extra km': '${money(h.overtimeRate)} / hr per ${h.stepMinutes} min · ${money(h.extraKmRate)} / km',
   'Hire started': h.startedAt == null ? null : hireClock(h.startedAt!),
   'Hire ends': h.endsAt == null ? null : hireClock(h.endsAt!),

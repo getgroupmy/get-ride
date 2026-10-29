@@ -68,6 +68,7 @@ class _HourlyHireFormState extends ConsumerState<HourlyHireForm> {
       _cash = s.allowCash;
   late double _step = s.hourStep;
   late HireEarlyEndPays _pays = s.earlyEndPays;
+  late HireCashOffLater _cashOff = s.cashOffLater;
   late final _min = TextEditingController(text: _plain(s.minHours));
   late final _max = TextEditingController(text: _plain(s.maxHours));
   late final _stepMin = TextEditingController(text: '${s.stepMinutes}');
@@ -132,6 +133,7 @@ class _HourlyHireFormState extends ConsumerState<HourlyHireForm> {
         'kmPerHourDefault': d(_kmh),
         'reminderBeforeEndMin': d(_remind),
         'autoEndAfterMin': d(_autoEnd),
+        'cashOffLater': _cashOff.db,
         'tileTitle': _tile.text.trim(),
         'panelLabels': {'trip': _trip.text.trim(), 'hire': _hireText.text.trim()},
       }),
@@ -231,6 +233,17 @@ class _HourlyHireFormState extends ConsumerState<HourlyHireForm> {
       _switch('hold', 'Hold the price in GET.wallet', 'Held when booked, settled when the hire ends.',
           _hold, (v) => _hold = v),
       _switch('cash', 'Allow cash', null, _cash, (v) => _cash = v),
+      const SizedBox(height: 4),
+      Text('A hire booked for later in cash, after cash is turned off', style: t.textTheme.bodyMedium),
+      const SizedBox(height: 4),
+      SegmentedButton<HireCashOffLater>(
+        key: const ValueKey('hire-admin-cash-off'),
+        segments: [for (final m in HireCashOffLater.values) ButtonSegment(value: m, label: Text(m.label))],
+        selected: {_cashOff},
+        onSelectionChanged: edit ? (v) => setState(() => _cashOff = v.first) : null,
+      ),
+      Text('Decided when the hire is released; the rider is told.',
+          style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
       wrap([
         _field('buffer', _buffer, 'Hold buffer', 'Percent over the price, 0–100'),
         _field('kmh', _kmh, 'Km included per hour', 'Where a Vehicle Service sets none'),
