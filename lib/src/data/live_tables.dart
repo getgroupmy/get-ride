@@ -125,6 +125,8 @@ const liveSettingTables = <String>[
   // ones waiting for a driver for every day (row-level security keeps them
   // to the parties; the open ones come through hire_bookings_open).
   'hire_bookings',
+  // Public holidays a weekly or monthly hire skips (0328).
+  'public_holidays',
   // Handovers and passengers' choices of driver (0198; the parties only).
   'scheduled_ride_offers',
   // Mid-trip handovers (0199; the drivers and passenger in each only).

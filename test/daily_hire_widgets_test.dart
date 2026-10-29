@@ -161,7 +161,7 @@ void main() {
             quote: _quote((
               package: 'daily', lat: 0, lng: 0, dropLat: null, dropLng: null, service: 'Saloon', days: 2,
               hours: 10, firstAt: DateTime(2026, 11, 2, 9), overnight: false, country: null, state: null,
-              city: null, suburb: null,
+              city: null, suburb: null, periods: 0, weekdays: '',
             )),
             pricing: RegionPricing.none,
             money: rm,

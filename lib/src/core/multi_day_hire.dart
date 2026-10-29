@@ -10,6 +10,8 @@ import 'hourly_hire.dart' show hireClock, hireHoursText;
 import 'region_pricing.dart';
 
 const hirePackageDaily = 'daily';
+const hirePackageWeekly = 'weekly';
+const hirePackageMonthly = 'monthly';
 
 double? _num(Object? v) {
   if (v is num) return v.toDouble();
@@ -40,8 +42,24 @@ enum HireLateCancel {
       HireLateCancel.values.firstWhere((e) => e.db == v, orElse: () => HireLateCancel.deposit);
 }
 
-/// Admin › Settings › Daily hire (app_settings 'daily_hire'), as
-/// hire_multi_normalize keeps it.
+/// A package's defaults, as hire_multi_normalize has them (0327, 0328).
+typedef _Defaults = ({int maxPeriods, double minH, double maxH, double h, double km, int lead, int ahead,
+    bool deposit, int free, int cut, String chip, String title});
+
+_Defaults _defaultsFor(String package) => switch (package) {
+  hirePackageWeekly => (maxPeriods: 8, minH: 4, maxH: 12, h: 8, km: 1000, lead: 24, ahead: 60, deposit: false,
+      free: 48, cut: 24, chip: 'Weekly', title: 'Weekly hire'),
+  hirePackageMonthly => (maxPeriods: 3, minH: 4, maxH: 12, h: 8, km: 4000, lead: 72, ahead: 90, deposit: false,
+      free: 72, cut: 48, chip: 'Monthly', title: 'Monthly hire'),
+  _ => (maxPeriods: 6, minH: 8, maxH: 12, h: 10, km: 200, lead: 12, ahead: 30, deposit: true, free: 24, cut: 6,
+      chip: 'Daily', title: 'Daily hire'),
+};
+
+/// Monday to Sunday, ISO numbers 1 to 7.
+const hireWeekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+/// Admin › Settings › Daily hire, Weekly hire, Monthly hire (app_settings
+/// 'daily_hire', 'weekly_hire', 'monthly_hire'), as hire_multi_normalize keeps them.
 class MultiHireConfig {
   const MultiHireConfig({
     this.package = hirePackageDaily,
@@ -55,6 +73,8 @@ class MultiHireConfig {
     this.bookAheadDays = 30,
     this.depositPercent = 30,
     this.allowPrepay = true,
+    this.allowDeposit = true,
+    this.allowBusiness = true,
     this.freeCancelHours = 24,
     this.lateCancel = HireLateCancel.deposit,
     this.lateCancelPercent = 50,
@@ -66,50 +86,87 @@ class MultiHireConfig {
     this.maxOpenBookings = 3,
     this.chipLabel = 'Daily',
     this.title = 'Daily hire',
+    this.rateWeekdays = 5,
+    this.weekdaysDefault = const [1, 2, 3, 4, 5],
+    this.skipHolidays = true,
+    this.kmByPeriod = true,
+    this.noticeDays = 0,
   });
 
   static const off = MultiHireConfig();
 
   factory MultiHireConfig.fromJson(String package, Map<String, dynamic>? j) {
-    if (j == null) return MultiHireConfig(package: package);
-    double n(Object? v, double d, double lo, double hi) => (_num(v) ?? d).clamp(lo, hi).toDouble();
+    final d = _defaultsFor(package);
+    j ??= const {};
+    double n(Object? v, double dv, double lo, double hi) => (_num(v) ?? dv).clamp(lo, hi).toDouble();
     double half(double v) => (v * 2).round() / 2;
-    final minH = half(n(j['minHoursPerDay'], 8, 1, 24));
-    final maxH = half(n(j['maxHoursPerDay'], 12, 1, 24)).clamp(minH, 24).toDouble();
+    final minH = half(n(j['minHoursPerDay'], d.minH, 1, 24));
+    final maxH = half(n(j['maxHoursPerDay'], d.maxH, 1, 24)).clamp(minH, 24).toDouble();
     final labels = j['labels'] is Map ? Map<String, dynamic>.from(j['labels'] as Map) : const {};
+    final periodKey = switch (package) {
+      hirePackageWeekly => 'Week',
+      hirePackageMonthly => 'Month',
+      _ => null,
+    };
+    var prepay = _bool(j['allowPrepay'], true);
+    final deposit = _bool(j['allowDeposit'], d.deposit);
+    if (!prepay && !deposit) prepay = true;
+    final days = <int>{
+      if (j['weekdaysDefault'] case final List l)
+        for (final x in l)
+          if (_num(x) case final v? when v >= 1 && v <= 7 && v == v.roundToDouble()) v.round(),
+    }.toList()
+      ..sort();
     return MultiHireConfig(
       package: package,
       enabled: _bool(j['enabled'], false),
-      maxDays: n(j['maxDays'], 6, 1, 60).round(),
+      maxDays: periodKey == null
+          ? n(j['maxDays'], 6, 1, 60).round()
+          : n(j['max${periodKey}s'], d.maxPeriods.toDouble(), 1, package == hirePackageWeekly ? 26 : 12).round(),
       minHoursPerDay: minH,
       maxHoursPerDay: maxH,
-      hoursPerDayDefault: half(n(j['hoursPerDayDefault'], 10, 1, 24)).clamp(minH, maxH).toDouble(),
-      kmPerDayDefault: n(j['kmPerDayDefault'], 200, 0, 5000),
-      leadHours: n(j['leadHours'], 12, 0, 720).round(),
-      bookAheadDays: n(j['bookAheadDays'], 30, 1, 365).round(),
+      hoursPerDayDefault: half(n(j['hoursPerDayDefault'], d.h, 1, 24)).clamp(minH, maxH).toDouble(),
+      kmPerDayDefault: periodKey == null
+          ? n(j['kmPerDayDefault'], 200, 0, 5000)
+          : n(j['kmPer${periodKey}Default'], d.km, 0, 500000),
+      leadHours: n(j['leadHours'], d.lead.toDouble(), 0, 720).round(),
+      bookAheadDays: n(j['bookAheadDays'], d.ahead.toDouble(), 1, 365).round(),
       depositPercent: n(j['depositPercent'], 30, 0, 100),
-      allowPrepay: _bool(j['allowPrepay'], true),
-      freeCancelHours: n(j['freeCancelHours'], 24, 0, 720).round(),
+      allowPrepay: prepay,
+      allowDeposit: deposit,
+      allowBusiness: _bool(j['allowBusiness'], true),
+      freeCancelHours: n(j['freeCancelHours'], d.free.toDouble(), 0, 720).round(),
       lateCancel: HireLateCancel.parse(j['lateCancelMode']),
       lateCancelPercent: n(j['lateCancelPercent'], 50, 0, 100),
       sameDriverDefault: _bool(j['sameDriverDefault'], true),
-      splitAfterHours: n(j['splitAfterHours'], 6, 0, 720).round(),
+      splitAfterHours: n(j['splitAfterHours'], d.cut.toDouble(), 0, 720).round(),
       splitDays: _bool(j['splitDays'], true),
       overnightAllowance: n(j['overnightAllowance'], 50, 0, 100000),
       mealAllowance: n(j['mealAllowance'], 0, 0, 100000),
       maxOpenBookings: n(j['maxOpenBookings'], 3, 1, 20).round(),
-      chipLabel: _text(labels['chip'], 'Daily', 20),
-      title: _text(labels['title'], 'Daily hire', 40),
+      chipLabel: _text(labels['chip'], d.chip, 20),
+      title: _text(labels['title'], d.title, 40),
+      rateWeekdays: n(j['rateWeekdays'], 5, 1, 7).round(),
+      weekdaysDefault: days.isEmpty ? const [1, 2, 3, 4, 5] : days,
+      skipHolidays: j['holidays'] != 'work',
+      kmByPeriod: j['kmMode'] != 'day',
+      noticeDays: package == hirePackageMonthly ? n(j['noticeDays'], 7, 0, 60).round() : 0,
     );
   }
 
   final String package;
   final bool enabled;
+
+  /// The most days (daily), weeks (weekly) or months (monthly).
   final int maxDays;
-  final double minHoursPerDay, maxHoursPerDay, hoursPerDayDefault, kmPerDayDefault;
+  final double minHoursPerDay, maxHoursPerDay, hoursPerDayDefault;
+
+  /// The km included a day (daily), a week or a month, where a Vehicle
+  /// Service sets none.
+  final double kmPerDayDefault;
   final int leadHours, bookAheadDays;
   final double depositPercent;
-  final bool allowPrepay;
+  final bool allowPrepay, allowDeposit, allowBusiness;
   final int freeCancelHours;
   final HireLateCancel lateCancel;
   final double lateCancelPercent;
@@ -120,34 +177,74 @@ class MultiHireConfig {
   final int maxOpenBookings;
   final String chipLabel, title;
 
-  Map<String, dynamic> toJson() => {
-    'enabled': enabled,
-    'maxDays': maxDays,
-    'minHoursPerDay': minHoursPerDay,
-    'maxHoursPerDay': maxHoursPerDay,
-    'hoursPerDayDefault': hoursPerDayDefault,
-    'kmPerDayDefault': kmPerDayDefault,
-    'leadHours': leadHours,
-    'bookAheadDays': bookAheadDays,
-    'depositPercent': depositPercent,
-    'allowPrepay': allowPrepay,
-    'freeCancelHours': freeCancelHours,
-    'lateCancelMode': lateCancel.db,
-    'lateCancelPercent': lateCancelPercent,
-    'sameDriverDefault': sameDriverDefault,
-    'splitAfterHours': splitAfterHours,
-    'splitDays': splitDays,
-    'overnightAllowance': overnightAllowance,
-    'mealAllowance': mealAllowance,
-    'maxOpenBookings': maxOpenBookings,
-    'labels': {'chip': chipLabel, 'title': title},
+  /// Weekly and monthly (0328): the weekdays a rate is for, those offered
+  /// first, public holidays skipped (or worked), extra km by the period (or
+  /// the day), and a monthly hire's notice once it has started.
+  final int rateWeekdays;
+  final List<int> weekdaysDefault;
+  final bool skipHolidays, kmByPeriod;
+  final int noticeDays;
+
+  /// Weeks or months rather than days.
+  bool get byPeriod => package == hirePackageWeekly || package == hirePackageMonthly;
+
+  /// "week", "month", "day".
+  String get periodWord => switch (package) {
+    hirePackageWeekly => 'week',
+    hirePackageMonthly => 'month',
+    _ => 'day',
   };
+
+  /// "2 weeks", "1 month", "3 days".
+  String periodsText(int n) => n == 1 ? '1 $periodWord' : '$n ${periodWord}s';
+
+  Map<String, dynamic> toJson() {
+    final periodKey = switch (package) {
+      hirePackageWeekly => 'Week',
+      hirePackageMonthly => 'Month',
+      _ => null,
+    };
+    return {
+      'enabled': enabled,
+      if (periodKey == null) 'maxDays': maxDays else 'max${periodKey}s': maxDays,
+      'minHoursPerDay': minHoursPerDay,
+      'maxHoursPerDay': maxHoursPerDay,
+      'hoursPerDayDefault': hoursPerDayDefault,
+      if (periodKey == null) 'kmPerDayDefault': kmPerDayDefault else 'kmPer${periodKey}Default': kmPerDayDefault,
+      'leadHours': leadHours,
+      'bookAheadDays': bookAheadDays,
+      'depositPercent': depositPercent,
+      'allowPrepay': allowPrepay,
+      'allowDeposit': allowDeposit,
+      'allowBusiness': allowBusiness,
+      'freeCancelHours': freeCancelHours,
+      'lateCancelMode': lateCancel.db,
+      'lateCancelPercent': lateCancelPercent,
+      'sameDriverDefault': sameDriverDefault,
+      'splitAfterHours': splitAfterHours,
+      'splitDays': splitDays,
+      'overnightAllowance': overnightAllowance,
+      'mealAllowance': mealAllowance,
+      'maxOpenBookings': maxOpenBookings,
+      'labels': {'chip': chipLabel, 'title': title},
+      if (byPeriod) ...{
+        'rateWeekdays': rateWeekdays,
+        'weekdaysDefault': weekdaysDefault,
+        'holidays': skipHolidays ? 'skip' : 'work',
+        'kmMode': kmByPeriod ? 'period' : 'day',
+        if (package == hirePackageMonthly) 'noticeDays': noticeDays,
+      },
+    };
+  }
 
   /// The hours a day the stepper offers, in half hours.
   List<double> get hourChoices => [for (var h = minHoursPerDay; h <= maxHoursPerDay + 1e-9; h += 0.5) h];
 
   double clampHours(double h) => ((h * 2).round() / 2).clamp(minHoursPerDay, maxHoursPerDay).toDouble();
   int clampDays(int d) => d.clamp(1, maxDays);
+
+  /// The plan a booking starts on: a deposit where one is taken, else in full.
+  HirePayPlan get defaultPlan => allowDeposit ? HirePayPlan.deposit : HirePayPlan.prepay;
 
   /// The soonest the first day may start, from [now].
   DateTime earliest(DateTime now) => now.add(Duration(hours: leadHours));
@@ -192,6 +289,14 @@ class MultiHireQuote {
     this.allowPrepay = true,
     this.freeCancelUntil,
     this.dates = const [],
+    this.dateList = const [],
+    this.periods = 1,
+    this.weekdays = const [],
+    this.periodPrice = 0,
+    this.kmPerPeriod = 0,
+    this.kmByPeriod = false,
+    this.holidaysSkipped = const [],
+    this.noticeDays = 0,
   });
 
   factory MultiHireQuote.fromJson(Map<String, dynamic> j) => MultiHireQuote(
@@ -228,6 +333,30 @@ class MultiHireQuote {
       if (j['dates'] case final List l)
         for (final d in l) ?DateTime.tryParse('$d')?.toLocal(),
     ],
+    dateList: [
+      if (j['dateList'] case final List l)
+        for (final d in l)
+          if (d is Map)
+            (
+              at: DateTime.tryParse('${d['at']}')?.toLocal() ?? DateTime.now(),
+              period: (_num(d['period']) ?? 1).round(),
+              perDay: _num(d['perDay']) ?? 0,
+              km: _num(d['km']) ?? 0,
+            ),
+    ],
+    periods: (_num(j['periods']) ?? 1).round(),
+    weekdays: [
+      if (j['weekdays'] case final List l)
+        for (final d in l) ?_num(d)?.round(),
+    ],
+    periodPrice: _num(j['periodPrice']) ?? 0,
+    kmPerPeriod: _num(j['kmPerPeriod']) ?? 0,
+    kmByPeriod: j['kmMode'] == 'period',
+    holidaysSkipped: [
+      if (j['holidaysSkipped'] case final List l)
+        for (final d in l) ?DateTime.tryParse('$d'),
+    ],
+    noticeDays: (_num(j['noticeDays']) ?? 0).round(),
   );
 
   final bool available;
@@ -247,6 +376,23 @@ class MultiHireQuote {
   final DateTime? freeCancelUntil;
   final List<DateTime> dates;
 
+  /// Every day: when, its period (week or month; a day's own for daily),
+  /// its price and its km (0328).
+  final List<({DateTime at, int period, double perDay, double km})> dateList;
+
+  /// Weekly and monthly (0328): the weeks or months, the weekdays chosen,
+  /// a period's price and km, km by the period, the holidays skipped and a
+  /// monthly hire's notice.
+  final int periods;
+  final List<int> weekdays;
+  final double periodPrice, kmPerPeriod;
+  final bool kmByPeriod;
+  final List<DateTime> holidaysSkipped;
+  final int noticeDays;
+
+  /// Day [day]'s price (1-based): its own (a period's share), else the day price.
+  double dayPrice(int day) => day >= 1 && day <= dateList.length ? dateList[day - 1].perDay : perDay;
+
   /// The allowance for the night after day [day] (1-based): none after the last.
   double overnightOn(int day) => overnight && day < days ? overnightAllowance : 0;
 }
@@ -259,7 +405,7 @@ class MultiHireQuote {
   RegionPricing pricing,
   int day,
 ) {
-  final base = pricing.wholeFare ? (q.perDay - 1e-9).ceilToDouble() : q.perDay;
+  final base = pricing.wholeFare ? (q.dayPrice(day) - 1e-9).ceilToDouble() : q.dayPrice(day);
   final fixed = [
     for (final f in q.placeFees) (name: f.name, amount: f.amount),
     if (q.mealAllowance > 0) (name: 'Meal allowance', amount: q.mealAllowance),
@@ -363,6 +509,11 @@ class HireDaysBooking {
     this.pickupAddress,
     this.dropAddress,
     this.riderId,
+    this.weekdays = const [],
+    this.periods,
+    this.kmByPeriod = false,
+    this.kmPerPeriod,
+    this.noticeUntil,
   });
 
   factory HireDaysBooking.fromRow(Map<String, dynamic> r) {
@@ -393,6 +544,14 @@ class HireDaysBooking {
       pickupAddress: r['pickup_address'] as String?,
       dropAddress: r['drop_address'] as String?,
       riderId: r['rider_id'] as String?,
+      weekdays: [
+        if (r['weekdays'] case final List l)
+          for (final d in l) ?_num(d)?.round(),
+      ],
+      periods: _num(r['periods'])?.round(),
+      kmByPeriod: r['km_mode'] == 'period',
+      kmPerPeriod: _num(r['km_per_period']),
+      noticeUntil: DateTime.tryParse('${r['notice_until']}')?.toLocal(),
     );
   }
 
@@ -409,11 +568,27 @@ class HireDaysBooking {
   final double price, depositAmount, balanceAmount, paidAmount, refundedAmount, cancelFee;
   final String? currency, pickupAddress, dropAddress, riderId;
 
+  /// Weekly and monthly (0328).
+  final List<int> weekdays;
+  final int? periods;
+  final bool kmByPeriod;
+  final double? kmPerPeriod;
+
+  /// A monthly hire cancelled with notice: it ends before this.
+  final DateTime? noticeUntil;
+
+  /// "2 weeks from Mon 2 Nov, 9:00 am · Mon to Fri · 8 hr a day", or the
+  /// days of a daily hire.
+  String get span => periods == null
+      ? hireBookingSpan(firstAt, days, hoursPerDay)
+      : hirePeriodSpan(package, periods!, weekdays, firstAt, hoursPerDay);
+
   /// Still to happen or on the go: the rider can cancel it.
   bool get open => const {'booked', 'assigned', 'in_progress'}.contains(status);
 
   String get statusLabel => switch (status) {
     'booked' when splitAt != null || !sameDriver => 'Finding a driver for each day',
+    'in_progress' when noticeUntil != null => 'Ending early, with notice',
     'booked' => 'Finding a driver for every day',
     'assigned' => 'Driver confirmed',
     'in_progress' => 'On the go',
@@ -451,6 +626,10 @@ class OpenHireBooking {
     this.pickupAddress,
     this.dropAddress,
     this.dayList = const [],
+    this.package = hirePackageDaily,
+    this.periods,
+    this.weekdays = const [],
+    this.kmPerPeriod,
   });
 
   factory OpenHireBooking.fromRow(Map<String, dynamic> r) => OpenHireBooking(
@@ -476,6 +655,13 @@ class OpenHireBooking {
               fare: _num(d['fare']) ?? 0,
             ),
     ],
+    package: '${r['package'] ?? hirePackageDaily}',
+    periods: _num(r['periods'])?.round(),
+    weekdays: [
+      if (r['weekdays'] case final List l)
+        for (final d in l) ?_num(d)?.round(),
+    ],
+    kmPerPeriod: _num(r['km_per_period']),
   );
 
   final String id, title, service;
@@ -487,6 +673,10 @@ class OpenHireBooking {
   final double fare;
   final String? currency, pickupAddress, dropAddress;
   final List<({int day, DateTime at, double fare})> dayList;
+  final String package;
+  final int? periods;
+  final List<int> weekdays;
+  final double? kmPerPeriod;
 }
 
 /// "Day 2 of 3".
@@ -502,6 +692,23 @@ String hireDate(DateTime d) => DateFormat('EEE d MMM').format(d.toLocal());
 String hireBookingSpan(DateTime first, int days, double hoursPerDay) =>
     '${days == 1 ? '1 day' : '$days days'} from ${hireDate(first)}, ${hireClock(first)} · '
     '${hireHoursText(hoursPerDay)} a day';
+
+/// "Mon to Fri", "Mon, Wed, Fri", "Every day".
+String hireWeekdaysText(List<int> days) {
+  final d = [...{...days}]..sort();
+  if (d.isEmpty) return 'No day';
+  if (d.length == 7) return 'Every day';
+  final run = d.length >= 3 && d.last - d.first == d.length - 1;
+  if (run) return '${hireWeekdayNames[d.first - 1]} to ${hireWeekdayNames[d.last - 1]}';
+  return [for (final x in d) hireWeekdayNames[x - 1]].join(', ');
+}
+
+/// "2 weeks from Mon 2 Nov, 9:00 am · Mon to Fri · 8 hr a day".
+String hirePeriodSpan(String package, int periods, List<int> weekdays, DateTime first, double hoursPerDay) {
+  final word = package == hirePackageMonthly ? 'month' : 'week';
+  return '${periods == 1 ? '1 $word' : '$periods ${word}s'} from ${hireDate(first)}, ${hireClock(first)} · '
+      '${hireWeekdaysText(weekdays)} · ${hireHoursText(hoursPerDay)} a day';
+}
 
 /// The days of a booking from [first] (each at the same local time).
 List<DateTime> hireDailyDates(DateTime first, int days) => [
@@ -526,6 +733,10 @@ String? multiHireRefusalText(String? message) {
   final m = message ?? '';
   const codes = {
     'HIRE_DAYS': 'Choose a number of days within the range shown.',
+    'HIRE_PERIODS': 'Choose a number of weeks or months within the range shown.',
+    'HIRE_WEEKDAYS': 'Choose the days of the week with at least one working day.',
+    'HIRE_DEPOSIT_OFF': 'This hire is paid in full when you book it.',
+    'HIRE_BUSINESS_OFF': "This hire can't be charged to a business account.",
     'HIRE_LEAD': 'Choose a later first day.',
     'HIRE_AHEAD': 'Choose a sooner first day.',
     'HIRE_PAY': 'This hire is paid from GET.wallet, or charged to a business account.',

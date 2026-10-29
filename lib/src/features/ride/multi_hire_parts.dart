@@ -65,6 +65,10 @@ typedef MultiHireQuoteArgs = ({
   String? state,
   String? city,
   String? suburb,
+  // Weekly and monthly (0328): the weeks or months, and the weekdays as
+  // "1,2,3,4,5" (a string, so the same choice is the same quote).
+  int periods,
+  String weekdays,
 });
 
 final multiHireQuoteProvider = FutureProvider.autoDispose.family<MultiHireQuote?, MultiHireQuoteArgs>((ref, a) async {
@@ -79,6 +83,10 @@ final multiHireQuoteProvider = FutureProvider.autoDispose.family<MultiHireQuote?
       firstAt: a.firstAt,
       overnight: a.overnight,
       place: (country: a.country, state: a.state, city: a.city, suburb: a.suburb),
+      options: {
+        if (a.periods > 0) 'periods': a.periods,
+        if (a.weekdays.isNotEmpty) 'weekdays': [for (final d in a.weekdays.split(',')) int.parse(d)],
+      },
     );
   } catch (_) {
     return null;
@@ -96,6 +104,9 @@ typedef MultiHireBooking = ({
   bool overnight,
   HirePayPlan plan,
   double total,
+  // Weekly and monthly (0328).
+  int periods,
+  List<int> weekdays,
 });
 
 /// The first day at 9:00 am, [lead] hours ahead at least.
@@ -163,6 +174,8 @@ class _MultiHirePanelState extends ConsumerState<MultiHirePanel> {
   late int _days = widget.config.clampDays(2);
   late double _hours = widget.config.hoursPerDayDefault;
   late bool _sameDriver = widget.config.sameDriverDefault;
+  late int _periods = 1;
+  late final Set<int> _weekdays = {...widget.config.weekdaysDefault};
   bool _overnight = false;
   String? _serviceName;
 
@@ -176,6 +189,7 @@ class _MultiHirePanelState extends ConsumerState<MultiHirePanel> {
   void didUpdateWidget(MultiHirePanel old) {
     super.didUpdateWidget(old);
     _days = widget.config.clampDays(_days);
+    _periods = widget.config.clampDays(_periods);
     _hours = widget.config.clampHours(_hours);
   }
 
@@ -197,6 +211,8 @@ class _MultiHirePanelState extends ConsumerState<MultiHirePanel> {
       state: widget.place.state,
       city: widget.place.city,
       suburb: widget.place.suburb,
+      periods: widget.config.byPeriod ? _periods : 0,
+      weekdays: widget.config.byPeriod ? ([..._weekdays]..sort()).join(',') : '',
     );
   }
 
@@ -268,10 +284,12 @@ class _MultiHirePanelState extends ConsumerState<MultiHirePanel> {
     }
     final chosen = offered.where((o) => o.$1.name == _serviceName).firstOrNull ?? offered.firstOrNull;
     final pay = paymentChoiceFor(widget.payment, widget.payments);
-    final plan = pay.kind == PaymentKind.business ? HirePayPlan.business : HirePayPlan.deposit;
+    final business = pay.kind == PaymentKind.business;
+    final plan = business ? HirePayPlan.business : c.defaultPlan;
     final totals = chosen == null ? null : multiHireTotals(chosen.$2, widget.pricingFor(chosen.$1), plan);
     final timeProblem = c.firstDayProblem(_first, now);
-    final ready = chosen != null && chosen.$2.available && timeProblem == null && widget.pickup != null;
+    final ready = chosen != null && chosen.$2.available && timeProblem == null && widget.pickup != null &&
+        (!business || c.allowBusiness);
 
     Widget stepper(String label, String value, {required String id, VoidCallback? minus, VoidCallback? plus,
         VoidCallback? onTap}) =>
@@ -372,13 +390,45 @@ class _MultiHirePanelState extends ConsumerState<MultiHirePanel> {
                 style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.error)),
           ),
         const SizedBox(height: 8),
-        stepper(
-          'How many days?',
-          _days == 1 ? '1 day' : '$_days days',
-          id: 'hire-days-count',
-          minus: _days > 1 ? () => setState(() => _days--) : null,
-          plus: _days < c.maxDays ? () => setState(() => _days++) : null,
-        ),
+        if (c.byPeriod) ...[
+          stepper(
+            'How many ${c.periodWord}s?',
+            c.periodsText(_periods),
+            id: 'hire-days-periods',
+            minus: _periods > 1 ? () => setState(() => _periods--) : null,
+            plus: _periods < c.maxDays ? () => setState(() => _periods++) : null,
+          ),
+          const SizedBox(height: 4),
+          Text('Working days', style: t.textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Wrap(
+            key: const ValueKey('hire-days-weekdays'),
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (var d = 1; d <= 7; d++)
+                FilterChip(
+                  key: ValueKey('hire-weekday-$d'),
+                  label: Text(hireWeekdayNames[d - 1]),
+                  selected: _weekdays.contains(d),
+                  onSelected: (on) => setState(() {
+                    if (on) {
+                      _weekdays.add(d);
+                    } else if (_weekdays.length > 1) {
+                      _weekdays.remove(d);
+                    }
+                  }),
+                ),
+            ],
+          ),
+        ] else
+          stepper(
+            'How many days?',
+            _days == 1 ? '1 day' : '$_days days',
+            id: 'hire-days-count',
+            minus: _days > 1 ? () => setState(() => _days--) : null,
+            plus: _days < c.maxDays ? () => setState(() => _days++) : null,
+          ),
         stepper(
           'Hours a day',
           hireHoursText(_hours),
@@ -406,7 +456,7 @@ class _MultiHirePanelState extends ConsumerState<MultiHirePanel> {
               ? 'The driver stays away from home between the days.'
               : 'The driver stays away from home: ${widget.money(chosen.$2.overnightAllowance)} a night.'),
           value: _overnight,
-          onChanged: _days > 1 ? (v) => setState(() => _overnight = v ?? false) : null,
+          onChanged: c.byPeriod || _days > 1 ? (v) => setState(() => _overnight = v ?? false) : null,
         ),
         const SizedBox(height: 4),
         if (widget.pickup == null)
@@ -429,6 +479,13 @@ class _MultiHirePanelState extends ConsumerState<MultiHirePanel> {
               selected: s.name == chosen?.$1.name,
               onTap: () => setState(() => _serviceName = s.name),
             ),
+          if (chosen != null && c.byPeriod && chosen.$2.available)
+            Text(
+              '${chosen.$2.days} working days · ${chosen.$2.kmPerPeriod.round()} km a ${c.periodWord} included'
+              '${chosen.$2.holidaysSkipped.isEmpty ? '' : ' · ${chosen.$2.holidaysSkipped.length} public holiday off'}',
+              key: const ValueKey('hire-days-period-summary'),
+              style: t.textTheme.bodySmall,
+            ),
           if (chosen != null && !chosen.$2.available && chosen.$2.hint != null)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -437,6 +494,19 @@ class _MultiHirePanelState extends ConsumerState<MultiHirePanel> {
         ],
         const SizedBox(height: 12),
         ?widget.whoRiding,
+        if (business)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              c.allowBusiness
+                  ? 'Charged to ${pay.label.replaceFirst('Business: ', '')} as each day ends, on its monthly invoice.'
+                  : "This hire can't be charged to a business account. Choose GET.wallet.",
+              key: const ValueKey('hire-days-business-note'),
+              style: t.textTheme.bodySmall?.copyWith(
+                color: c.allowBusiness ? t.colorScheme.onSurfaceVariant : t.colorScheme.error,
+              ),
+            ),
+          ),
         Row(children: [
           Tooltip(
             message: 'Payment method: ${pay.label}. Change',
@@ -471,19 +541,21 @@ class _MultiHirePanelState extends ConsumerState<MultiHirePanel> {
                         service: ch.$1.name,
                         firstAt: _first,
                         sameDriver: _sameDriver,
-                        business: plan == HirePayPlan.business,
+                        business: business,
                       );
                       if (planned == null || !mounted) return;
                       await widget.onBook((
                         service: ch.$1,
                         quote: ch.$2,
                         firstAt: _first,
-                        days: _days,
+                        days: ch.$2.days,
                         hours: _hours,
                         sameDriver: _sameDriver,
                         overnight: _overnight,
                         plan: planned,
                         total: multiHireTotals(ch.$2, widget.pricingFor(ch.$1), planned).total,
+                        periods: c.byPeriod ? _periods : 0,
+                        weekdays: c.byPeriod ? ([..._weekdays]..sort()) : const [],
                       ));
                     },
               child: Text(totals == null ? 'Review' : 'Review · ${widget.money(totals.total)}'),
@@ -535,7 +607,13 @@ class _DayServiceCard extends StatelessWidget {
             Expanded(
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(service.name, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
-                Text('${money(quote.perDay)} a day · ${quote.kmPerDay.round()} km a day', style: t.textTheme.bodySmall),
+                Text(
+                  quote.package == hirePackageDaily
+                      ? '${money(quote.perDay)} a day · ${quote.kmPerDay.round()} km a day'
+                      : '${money(quote.periodPrice)} a ${quote.package == hirePackageMonthly ? 'month' : 'week'} · '
+                            '${quote.kmPerPeriod.round()} km included',
+                  style: t.textTheme.bodySmall,
+                ),
               ]),
             ),
             Text(price, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
@@ -601,7 +679,7 @@ class MultiHireReview extends StatefulWidget {
 }
 
 class _MultiHireReviewState extends State<MultiHireReview> {
-  late HirePayPlan _plan = widget.business ? HirePayPlan.business : HirePayPlan.deposit;
+  late HirePayPlan _plan = widget.business ? HirePayPlan.business : widget.config.defaultPlan;
 
   @override
   Widget build(BuildContext context) {
@@ -630,15 +708,26 @@ class _MultiHireReviewState extends State<MultiHireReview> {
           children: [
             Text('Review your ${c.title.toLowerCase()}', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
-            Text('${widget.service} · ${hireBookingSpan(widget.firstAt, q.days, q.hours)}', style: muted),
             Text(
-              'First day ${formatDateForUser(widget.firstAt)}, last day ${formatDateForUser(dates.last)}',
+              '${widget.service} · ${c.byPeriod ? hirePeriodSpan(c.package, q.periods, q.weekdays, widget.firstAt, q.hours) : hireBookingSpan(widget.firstAt, q.days, q.hours)}',
+              style: muted,
+            ),
+            Text(
+              'First day ${formatDateForUser(q.dateList.isEmpty ? widget.firstAt : q.dateList.first.at)}, '
+              'last day ${formatDateForUser(q.dateList.isEmpty ? dates.last : q.dateList.last.at)}'
+              '${q.holidaysSkipped.isEmpty ? '' : ' · ${q.holidaysSkipped.length} public holiday off'}',
               key: const ValueKey('hire-review-dates'),
               style: muted,
             ),
             if (widget.sameDriver) Text('The same driver every day.', style: muted),
             const Divider(height: 20),
-            row('${q.days == 1 ? '1 day' : '${q.days} days'} × ${money(q.perDay)}', x.base, key: const ValueKey('hire-review-base')),
+            row(
+              c.byPeriod
+                  ? '${c.periodsText(q.periods)}, ${q.days} working days'
+                  : '${q.days == 1 ? '1 day' : '${q.days} days'} × ${money(q.perDay)}',
+              x.base,
+              key: const ValueKey('hire-review-base'),
+            ),
             for (final f in q.placeFees) row('${f.name} × ${q.days}', f.amount * q.days),
             if (q.mealAllowance > 0) row('Driver meal allowance × ${q.days}', q.mealAllowance * q.days),
             if (q.nights > 0) row('Overnight allowance × ${q.nights}', q.overnightAllowance * q.nights),
@@ -657,13 +746,17 @@ class _MultiHireReviewState extends State<MultiHireReview> {
               key: const ValueKey('hire-review-cancel'),
               style: muted,
             ),
+            if (c.noticeDays > 0)
+              Text('Once it has started, cancelling keeps the next ${c.noticeDays} days.', style: muted),
             Text(
-              '${q.kmPerDay.round()} km a day included. Overtime ${money(q.overtimePerHour)} / hr, '
+              '${c.byPeriod ? '${q.kmPerPeriod.round()} km a ${c.periodWord}' : '${q.kmPerDay.round()} km a day'} '
+              'included${c.byPeriod && q.kmByPeriod ? ', extra km settled at the end of each ${c.periodWord}' : ''}. '
+              'Overtime ${money(q.overtimePerHour)} / hr, '
               'extra km ${money(q.extraKm)} / km, fuel included. Tolls and parking are added as declared.',
               key: const ValueKey('hire-review-rates'),
               style: muted,
             ),
-            if (!widget.business && q.allowPrepay && c.allowPrepay) ...[
+            if (!widget.business && c.allowPrepay && c.allowDeposit) ...[
               const SizedBox(height: 12),
               SegmentedButton<HirePayPlan>(
                 key: const ValueKey('hire-review-plan'),
@@ -755,13 +848,13 @@ class HireBookingCard extends ConsumerWidget {
             ),
             Text(money(b.price), style: t.textTheme.titleSmall),
           ]),
-          Text('${b.service} · ${hireBookingSpan(b.firstAt, b.days, b.hoursPerDay)}', style: muted),
+          Text('${b.service} · ${b.span}', style: muted),
           const SizedBox(height: 4),
           Text(b.statusLabel, key: ValueKey('hire-booking-status-${b.id}'),
               style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
           Text(b.paymentText(money), style: muted),
           if (b.pickupAddress != null) Text('From ${b.pickupAddress}', maxLines: 2, overflow: TextOverflow.ellipsis),
-          for (final d in days)
+          for (final d in days.take(7))
             Padding(
               padding: const EdgeInsets.only(top: 2),
               child: Text(
@@ -770,6 +863,8 @@ class HireBookingCard extends ConsumerWidget {
                 style: t.textTheme.bodySmall,
               ),
             ),
+          if (days.length > 7)
+            Text('and ${days.length - 7} more days, to ${hireDate(days.last.at)}', style: t.textTheme.bodySmall),
           if (b.open)
             Align(
               alignment: AlignmentDirectional.centerEnd,
@@ -808,7 +903,11 @@ class OpenHireBookingCard extends ConsumerWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
             Expanded(
-              child: Text('${b.title} · ${b.days == 1 ? '1 day' : '${b.days} days'}',
+              child: Text(
+                  '${b.title} · ${switch (b.periods) {
+                    null => b.days == 1 ? '1 day' : '${b.days} days',
+                    final p => '${p == 1 ? '1' : '$p'} ${b.package == hirePackageMonthly ? 'month' : 'week'}${p == 1 ? '' : 's'}, ${b.days} days',
+                  }}',
                   style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
             ),
             Text(money(b.fare), style: t.textTheme.titleSmall),
@@ -819,10 +918,19 @@ class OpenHireBookingCard extends ConsumerWidget {
             '${b.overnight ? ' · overnight' : ''}',
             style: muted,
           ),
+          if (b.periods != null)
+            Text(
+              '${hireWeekdaysText(b.weekdays)}'
+              '${b.kmPerPeriod == null ? '' : ' · ${b.kmPerPeriod!.round()} km a ${b.package == hirePackageMonthly ? 'month' : 'week'}'}',
+              key: ValueKey('open-hire-weekdays-${b.id}'),
+              style: muted,
+            ),
           const SizedBox(height: 4),
-          for (final d in b.dayList)
+          for (final d in b.dayList.take(7))
             Text('${hireDayText(d.day, b.days)} · ${hireDate(d.at)}, ${hireClock(d.at)} · ${money(d.fare)}',
                 key: ValueKey('open-hire-day-${b.id}-${d.day}'), style: t.textTheme.bodySmall),
+          if (b.dayList.length > 7)
+            Text('and ${b.dayList.length - 7} more days, to ${hireDate(b.dayList.last.at)}', style: t.textTheme.bodySmall),
           const SizedBox(height: 4),
           Text('From ${b.pickupAddress ?? 'pickup'}', maxLines: 2, overflow: TextOverflow.ellipsis),
           if (b.dropAddress != null) Text('To ${b.dropAddress}', maxLines: 2, overflow: TextOverflow.ellipsis, style: muted),

@@ -238,6 +238,48 @@ extension MultiHireCalls on HourlyHireRepository {
     ];
   }
 
+  /// Admin (0328): approved drivers who take hire, free on every day of
+  /// [bookingId] still to come (or on its day [day]) first.
+  Future<List<({String id, String name, String? phone, bool free})>> adminDrivers(String bookingId, {int? day}) =>
+      _call(() async {
+        final rows = await _client.rpc('hire_booking_admin_drivers', params: {'p_booking': bookingId, 'p_day': day});
+        return [
+          if (rows is List)
+            for (final r in rows)
+              if (r is Map) (id: '${r['id']}', name: '${r['name'] ?? 'Driver'}', phone: r['phone'] as String?,
+                  free: r['free'] == true),
+        ];
+      });
+
+  /// Admin (0328): [driverId] takes every day still to come, or day [day].
+  Future<void> adminAssign(String bookingId, String driverId, {int? day}) => _call(() async {
+    await _client.rpc('hire_booking_admin_assign', params: {'p_booking': bookingId, 'p_driver': driverId, 'p_day': day});
+  });
+
+  /// Public holidays (0328), soonest first.
+  Future<List<({String id, DateTime day, String name, String country})>> holidays() async {
+    final rows = await _client.from(publicHolidaysTable).select().order('day', ascending: true).limit(500);
+    return [
+      for (final r in rows)
+        (
+          id: '${r['id']}',
+          day: DateTime.tryParse('${r['day']}') ?? DateTime(2000),
+          name: '${r['name'] ?? ''}',
+          country: '${r['country'] ?? ''}',
+        ),
+    ];
+  }
+
+  Future<void> addHoliday(DateTime day, String name, {String country = ''}) => _call(() async {
+    final d = '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-'
+        '${day.day.toString().padLeft(2, '0')}';
+    await _client.from(publicHolidaysTable).insert({'day': d, 'name': name.trim(), 'country': country.trim()});
+  });
+
+  Future<void> removeHoliday(String id) => _call(() async {
+    await _client.from(publicHolidaysTable).delete().eq('id', id);
+  });
+
   /// Bookings a driver can take for all their days.
   Future<List<OpenHireBooking>> openBookings() async {
     final rows = await _client.rpc('hire_bookings_open');
@@ -255,6 +297,7 @@ extension MultiHireCalls on HourlyHireRepository {
 }
 
 const hireBookingsTable = 'hire_bookings';
+const publicHolidaysTable = 'public_holidays';
 
 final hourlyHireRepositoryProvider = Provider((ref) => HourlyHireRepository(ref.watch(supabaseProvider)));
 
@@ -302,4 +345,11 @@ final openHireBookingsProvider = FutureProvider.autoDispose<List<OpenHireBooking
   } catch (_) {
     return const [];
   }
+});
+
+/// Public holidays (0328), kept live.
+final publicHolidaysProvider =
+    FutureProvider.autoDispose<List<({String id, DateTime day, String name, String country})>>((ref) {
+  ref.watchLive(publicHolidaysTable);
+  return ref.watch(hourlyHireRepositoryProvider).holidays();
 });

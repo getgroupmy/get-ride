@@ -713,9 +713,10 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
           ),
         // Daily hire (0327): the day's rates.
         const SectionLabel(
-          'Daily hire',
-          hint: 'Riders hire this vehicle for whole days (Admin › Settings › Daily hire). Blank: the price per hour × '
-              'the hours in a day, the km and overnight allowance from those settings, overtime and extra km as hourly.',
+          'Daily, weekly and monthly hire',
+          hint: 'Riders hire this vehicle for whole days, weeks or months (Admin › Settings › Daily, Weekly, Monthly '
+              'hire). Blank: the price per hour × the hours in a day, the km and overnight allowance from those '
+              'settings, overtime and extra km as hourly; a week the day rate × 5 weekdays, a month 52 / 12 weeks.',
         ),
         for (final f in vehicleServiceHireDayFields)
           Padding(

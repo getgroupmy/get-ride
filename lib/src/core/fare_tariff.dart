@@ -41,6 +41,10 @@ class FareTariff {
     this.hireDayOvertimePerHour,
     this.hireDayExtraKm,
     this.hireOvernight,
+    this.hireWeekRate,
+    this.hireWeekKm,
+    this.hireMonthRate,
+    this.hireMonthKm,
   });
 
   factory FareTariff.fromRow(Map<String, dynamic> r) {
@@ -86,6 +90,10 @@ class FareTariff {
       hireDayOvertimePerHour: opt('hire_day_overtime_per_hour'),
       hireDayExtraKm: opt('hire_day_extra_km'),
       hireOvernight: opt('hire_overnight'),
+      hireWeekRate: opt('hire_week_rate'),
+      hireWeekKm: opt('hire_week_km'),
+      hireMonthRate: opt('hire_month_rate'),
+      hireMonthKm: opt('hire_month_km'),
     );
   }
 
@@ -115,6 +123,9 @@ class FareTariff {
   /// overtime and extra km on a day, the overnight allowance (null: not set
   /// on this card).
   final double? hireDayRate, hireDayHours, hireDayKm, hireDayOvertimePerHour, hireDayExtraKm, hireOvernight;
+
+  /// Weekly and monthly hire (0328) here: the rates and the km included.
+  final double? hireWeekRate, hireWeekKm, hireMonthRate, hireMonthKm;
 
   /// Whether it is for every service.
   bool get allServices => serviceType == null && vehicleService == null;
@@ -279,6 +290,11 @@ Map<String, dynamic> fareTariffRow(FareTariff t) {
     'hire_day_overtime_per_hour': t.hireDayOvertimePerHour,
     'hire_day_extra_km': t.hireDayExtraKm,
     'hire_overnight': t.hireOvernight,
+    // 0328: weekly and monthly hire on this card.
+    'hire_week_rate': t.hireWeekRate,
+    'hire_week_km': t.hireWeekKm,
+    'hire_month_rate': t.hireMonthRate,
+    'hire_month_km': t.hireMonthKm,
   };
 }
 

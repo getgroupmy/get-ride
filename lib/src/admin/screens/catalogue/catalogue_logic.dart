@@ -214,6 +214,12 @@ const vehicleServiceHireDayFields = [
   NumField('hireDayOvertimePerHour', 'Overtime per hour on a day'),
   NumField('hireDayExtraKm', 'Extra km on a day', suffix: 'per km'),
   NumField('hireOvernight', 'Overnight allowance'),
+  // Weekly and monthly hire (0328): blank, the day rate × 5 weekdays (a
+  // month 52 / 12 weeks) and the settings' km.
+  NumField('hireWeekRate', 'Week rate'),
+  NumField('hireWeekKm', 'Km included a week', suffix: 'km'),
+  NumField('hireMonthRate', 'Month rate'),
+  NumField('hireMonthKm', 'Km included a month', suffix: 'km'),
 ];
 
 /// A covered van or lorry: what the rider's "Closed body" option books.

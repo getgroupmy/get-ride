@@ -493,6 +493,11 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
     'dayOvertime': TextEditingController(text: _opt(widget.card?.hireDayOvertimePerHour)),
     'dayExtraKm': TextEditingController(text: _opt(widget.card?.hireDayExtraKm)),
     'overnight': TextEditingController(text: _opt(widget.card?.hireOvernight)),
+    // Weekly and monthly hire (0328).
+    'weekRate': TextEditingController(text: _opt(widget.card?.hireWeekRate)),
+    'weekKm': TextEditingController(text: _opt(widget.card?.hireWeekKm)),
+    'monthRate': TextEditingController(text: _opt(widget.card?.hireMonthRate)),
+    'monthKm': TextEditingController(text: _opt(widget.card?.hireMonthKm)),
   };
   static String _opt(double? v) => v == null ? '' : v.toString();
   String? _error;
@@ -579,6 +584,10 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
       hireDayOvertimePerHour: hire['dayOvertime'],
       hireDayExtraKm: hire['dayExtraKm'],
       hireOvernight: hire['overnight'],
+      hireWeekRate: hire['weekRate'],
+      hireWeekKm: hire['weekKm'],
+      hireMonthRate: hire['monthRate'],
+      hireMonthKm: hire['monthKm'],
     );
     final problem = fareTariffProblem(card);
     if (problem != null) return _fail(problem);
@@ -784,6 +793,11 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
                 ('dayOvertime', 'Daily hire overtime per hour'),
                 ('dayExtraKm', 'Daily hire extra km, per km'),
                 ('overnight', 'Daily hire overnight allowance'),
+                // Weekly and monthly hire (0328).
+                ('weekRate', 'Weekly hire week rate'),
+                ('weekKm', 'Weekly hire km a week'),
+                ('monthRate', 'Monthly hire month rate'),
+                ('monthKm', 'Monthly hire km a month'),
               ])
                 gap(
                   TextField(
