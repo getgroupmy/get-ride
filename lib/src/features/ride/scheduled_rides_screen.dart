@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/hourly_hire.dart' show hireSpanText;
 import '../../core/format.dart';
 import '../../core/scheduled_rides.dart';
 import '../../data/scheduled_ride_repository.dart';
@@ -237,11 +238,20 @@ class _BookingCard extends ConsumerWidget {
                 Text(formatMoney(ride.total, currency), style: t.textTheme.titleSmall),
               ],
             ),
+            // Hourly hire (0326): "Hourly hire · 4 hr, 9:00 am to 1:00 pm".
+            if (ride.hireHours case final h?) ...[
+              const SizedBox(height: 4),
+              Text(hireSpanText(h, ride.pickupAt), key: ValueKey('scheduled-hire-${ride.id}')),
+            ],
             const SizedBox(height: 6),
             Text(scheduledStatusLabel(ride), style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
             const SizedBox(height: 6),
             _Place(icon: Icons.trip_origin, color: Colors.green.shade600, text: ride.pickupAddress ?? 'Pickup'),
-            _Place(icon: Icons.location_on, color: Colors.red.shade600, text: ride.dropAddress ?? 'Destination'),
+            _Place(
+              icon: Icons.location_on,
+              color: Colors.red.shade600,
+              text: ride.dropAddress ?? (ride.isHire ? 'No drop-off set' : 'Destination'),
+            ),
             if (ride.bookedForName != null)
               Padding(
                 padding: const EdgeInsets.only(top: 4),

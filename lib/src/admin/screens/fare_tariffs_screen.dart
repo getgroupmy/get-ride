@@ -478,6 +478,16 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
     'minimum': TextEditingController(text: _show(widget.card?.minimumFare)),
     'fee': TextEditingController(text: _show(widget.card?.bookingFee)),
   };
+  // Hourly hire (0326): blank is not set here.
+  late bool? _hireEnabled = widget.card?.hireEnabled;
+  late final _hire = {
+    'perHour': TextEditingController(text: _opt(widget.card?.hirePerHour)),
+    'minHours': TextEditingController(text: _opt(widget.card?.hireMinHours)),
+    'kmPerHour': TextEditingController(text: _opt(widget.card?.hireKmPerHour)),
+    'overtime': TextEditingController(text: _opt(widget.card?.hireOvertimePerHour)),
+    'extraKm': TextEditingController(text: _opt(widget.card?.hireExtraKm)),
+  };
+  static String _opt(double? v) => v == null ? '' : v.toString();
   String? _error;
   final _errorKey = GlobalKey();
 
@@ -504,7 +514,7 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
 
   @override
   void dispose() {
-    for (final c in [_label, _currency, ..._money.values]) {
+    for (final c in [_label, _currency, ..._money.values, ..._hire.values]) {
       c.dispose();
     }
     super.dispose();
@@ -520,6 +530,16 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
   void _save() {
     final values = {for (final k in _money.keys) k: _n(k)};
     if (values.values.any((v) => v == null)) return _fail('Charges are numbers of 0 or more.');
+    final hire = <String, double?>{};
+    for (final e in _hire.entries) {
+      final t = e.value.text.trim();
+      final v = double.tryParse(t);
+      if (t.isNotEmpty && (v == null || v < 0)) return _fail('Hourly hire values are numbers of 0 or more.');
+      hire[e.key] = t.isEmpty ? null : v;
+    }
+    if (hire['minHours'] case final m? when m < 0.5 || m > 72) {
+      return _fail('Hourly hire least hours are between 0.5 and 72.');
+    }
     final card = FareTariff(
       id: widget.card?.id,
       level: _level,
@@ -537,6 +557,12 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
       active: _active,
       serviceType: _serviceType,
       vehicleService: _vehicle,
+      hireEnabled: _hireEnabled,
+      hirePerHour: hire['perHour'],
+      hireMinHours: hire['minHours'],
+      hireKmPerHour: hire['kmPerHour'],
+      hireOvertimePerHour: hire['overtime'],
+      hireExtraKm: hire['extraKm'],
     );
     final problem = fareTariffProblem(card);
     if (problem != null) return _fail(problem);
@@ -707,6 +733,43 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
               money('min', 'Per minute'),
               money('minimum', 'Minimum fare'),
               money('fee', 'Booking fee'),
+              // Hourly hire (0326): this place's own, over the Vehicle Service's.
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 4),
+                child: Text('Hourly hire', style: Theme.of(context).textTheme.titleSmall),
+              ),
+              gap(
+                SegmentedButton<String>(
+                  key: const ValueKey('tariff-hire-enabled'),
+                  showSelectedIcon: false,
+                  segments: const [
+                    ButtonSegment(value: 'inherit', label: Text("Service's")),
+                    ButtonSegment(value: 'on', label: Text('On here')),
+                    ButtonSegment(value: 'off', label: Text('Off here')),
+                  ],
+                  selected: {switch (_hireEnabled) { null => 'inherit', true => 'on', false => 'off' }},
+                  onSelectionChanged: (v) => setState(() => _hireEnabled = switch (v.first) {
+                    'on' => true,
+                    'off' => false,
+                    _ => null,
+                  }),
+                ),
+              ),
+              for (final (k, label) in const [
+                ('perHour', 'Hire price per hour'),
+                ('minHours', 'Hire least hours'),
+                ('kmPerHour', 'Hire km included per hour'),
+                ('overtime', 'Hire overtime per hour'),
+                ('extraKm', 'Hire extra km, per km'),
+              ])
+                gap(
+                  TextField(
+                    key: ValueKey('tariff-hire-$k'),
+                    controller: _hire[k],
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(labelText: label, helperText: 'Blank: the service\'s own'),
+                  ),
+                ),
               gap(
                 TextField(
                   controller: _label,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/hourly_hire.dart' show RideHire, hireAdminDetails, hireTitle;
 import '../../core/format.dart';
 import '../../core/region_time.dart' show formatInZone;
 import '../../data/models.dart';
@@ -22,6 +23,8 @@ import '../widgets/trip_audio_panel.dart';
 /// trip's region), then who: "12 Mar 2026, 3:15 PM · Rider Aisyah · Driver Ali".
 String adminRideSubtitle(RideRequest r) => [
       formatInZone(r.createdAt, r.timezone),
+      // Hourly hire (0326).
+      if (RideHire.fromRow(r.raw) case final h?) hireTitle(h.hours),
       'Rider ${(r.riderName ?? '').trim().isEmpty ? 'unknown' : r.riderName!.trim()}',
       if ((r.partnerName ?? '').trim().isNotEmpty) 'Driver ${r.partnerName!.trim()}',
     ].join(' · ');
@@ -97,6 +100,8 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
           'Completed': dateText(r.raw['completed_at']),
           'Cancelled': dateText(r.raw['cancelled_at']),
           'Cancel reason': r.raw['cancel_reason'],
+          // Hourly hire (0326): the package, the clock, extensions and the settled lines.
+          if (RideHire.fromRow(r.raw) case final h?) ...hireAdminDetails(h, (v) => formatMoney(v, r.currency)),
           // Freight (0267).
           // Courier (0268).
           'Parcel size': r.parcelSize,

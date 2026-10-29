@@ -8,6 +8,9 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../family/family_trip_parts.dart' show FamilyTripStrip;
+import '../../core/hourly_hire.dart' show HourlyHireConfig;
+import '../../data/hourly_hire_repository.dart' show hourlyHireConfigProvider;
+import 'hire_parts.dart' show HireTripCard;
 import '../../data/ride_cancel_config.dart';
 import '../safety/rider_audio_controller.dart' show riderAudioProvider;
 import '../safety/rider_audio_widgets.dart' show RiderAudioTripLine;
@@ -1244,6 +1247,16 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           if (!_isDemo) FamilyTripStrip(tripId: r.id, host: true),
           // Rider live map (0322): a company-paid trip says so, and who can see it.
           if (!_isDemo) CompanyTripChip(tripId: r.id),
+          // Hourly hire (0326): time used, Extend, End hire and the driver's ask.
+          if (!_isDemo && r.raw['hire_package'] != null && r.status.isOngoing && r.status != RideStatus.open)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: HireTripCard(
+                ride: r,
+                config: ref.watch(hourlyHireConfigProvider).value ?? HourlyHireConfig.off,
+                money: (v) => formatMoney(v, r.currency),
+              ),
+            ),
           if (r.status == RideStatus.open) ...[
             const SizedBox(height: 12),
             ..._searchSheet(r),

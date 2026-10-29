@@ -11,6 +11,7 @@ import '../../core/format.dart';
 import '../../core/place_fees.dart' show passedOnPlaceFeeNames;
 import '../../core/request_alert.dart';
 import '../../core/request_viewers.dart' show requestViewHeartbeat;
+import '../../core/hourly_hire.dart' show RideHire, hireTitle;
 import '../../core/ride_bidding.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
@@ -408,7 +409,9 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     final r = widget.request;
     final fare = r.effectiveFare;
     final muted = mutedTextColor(t);
-    final offer = widget.onOffer;
+    // Hourly hire (0326) is at a fixed price: no counter-offer.
+    final hire = RideHire.fromRow(r.raw);
+    final offer = hire != null ? null : widget.onOffer;
     final off = widget.busy;
     final h = MediaQuery.sizeOf(context).height;
     final details = SingleChildScrollView(
@@ -437,6 +440,12 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
                 PromoAppliedIcon(key: ValueKey('promo-applied-${r.id}'), size: 20),
               ],
             ]),
+            if (hire != null)
+              Text(
+                '${hireTitle(hire.hours)} · ${hire.kmIncluded.round()} km included',
+                key: const ValueKey('request-hire'),
+                style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
             MyRideForYouLabel(request: r, me: widget.driverId, clock: () => widget.now),
             DirectBookingLabel(request: r, me: widget.driverId ?? _driverId),
             StandOrderLabel(request: r, me: widget.driverId ?? _driverId),
@@ -471,7 +480,8 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
             ),
             // The door the rider chose at an airport (0249).
             if (r.pickupDoor case final door?) _doorLine(context, 'Pickup door: $door', 'request-pickup-door'),
-            _end(context, 'B', RideRequestSheet.trip, _place(r.dropLabel, null)),
+            _end(context, 'B', RideRequestSheet.trip,
+                _place(hire != null && r.dropLat == null ? 'No drop-off set' : r.dropLabel, null)),
             RidePlaceTypeTag(
               key: const ValueKey('request-drop-type'),
               typeKey: r.dropPlaceType,

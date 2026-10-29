@@ -8,6 +8,7 @@ library;
 
 import 'dart:math' as math;
 import '../../../core/home_sections.dart' show pinMiddleOffsetKey;
+import '../../../core/hourly_hire.dart' show hireTileRoute;
 import '../../../core/home_layout.dart' show HomeLayouts, HomeSectionType;
 import '../../../core/demo_mode.dart' show demoAccountIds, demoDriverIdsKey, demoRiderIdsKey;
 import '../../../core/ride_assistance.dart';
@@ -263,6 +264,8 @@ const rideSearchRoute = '/ride-search';
 /// are Expo paths, so the Expo app keeps working).
 const allAppRoutes = <String>[
   rideSearchRoute,
+  // Hourly hire (0326): the booking panel on "Hire by time".
+  hireTileRoute,
   // The Freight and Courier pages (0267, 0268), for the home service boxes.
   '/freight', '/courier',
   '/', '/onboarding', '/role-selection', '/phone-auth', '/otp-verify', '/pin-setup', '/pin-verify',
@@ -309,6 +312,7 @@ const _routeAcronyms = {'api', 'ev', 'pin', 'otp', 'ui', 'teksi', 'id'};
 const _routeLabelOverrides = {
   '/': 'Home',
   rideSearchRoute: 'Ride — opens Where to?, as the search bar does',
+  hireTileRoute: 'Hire a driver — opens Hire by time',
   '/freight': 'Freight',
   '/courier': 'Courier',
   '/teksi-ev': 'Book TEKSI EV',

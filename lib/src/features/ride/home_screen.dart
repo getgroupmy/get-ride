@@ -10,7 +10,10 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
-import '../../core/booking_modules.dart' show familyModuleRide;
+import '../../core/booking_modules.dart' show familyModuleHire, familyModuleRide;
+import '../../core/hourly_hire.dart' show HourlyHireConfig, hireTileRoute, hireTitle;
+import '../../data/hourly_hire_repository.dart';
+import 'hire_parts.dart';
 import '../../core/family.dart' show FamilyPick, withFamilyPayment;
 import '../../data/family_repository.dart' show familyPayOptionProvider, familyPassengersProvider;
 import '../../core/app_display.dart';
@@ -348,6 +351,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   FamilyPick? _familyPick;
 
   String get _payment => resolvePayment(_paymentPick, _payments);
+
+  // ---- Hourly hire (0326) ----
+  /// The booking panel is on its "Hire by time" side.
+  bool _hireMode = false;
+
+  /// Where a hire ends, when the rider says (optional, and not the trip's
+  /// drop-off: choosing one doesn't open the ride confirm step).
+  Place? _hireDrop;
+
+  /// The rider's pick of how to pay for a hire.
+  String _hirePaymentPick = 'Get Pay';
+
+  /// The methods a hire may be paid with: GET.wallet and the admin's others
+  /// (cash only where the admin allows it for hire; no business account),
+  /// and Family's row where the admin allows it.
+  List<PaymentChoice> _hirePaymentsFor(HourlyHireConfig c) => withFamilyPayment(
+    [
+      for (final p in ref.read(paymentChoicesProvider).value ?? builtInPayments)
+        if (p.kind != PaymentKind.business && (c.allowCash || p.kind != PaymentKind.cash)) p,
+    ],
+    ref.read(familyPayOptionProvider(familyModuleHire)).value,
+  );
   bool _useCoins = false;
 
   /// Admin → Display → Ride Confirm Layout, read when booking: a row the
@@ -2598,6 +2623,199 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await _book();
   }
 
+  /// The panel before a destination is chosen: the "Go somewhere" / "Hire by
+  /// time" switch where the admin offers hire (0326), then the home page or
+  /// the hire booking.
+  Widget _idleParts(HourlyHireConfig hc, HomeSections sections, HomeLayout layout, Map<String, dynamic> blob,
+      AppDisplay? display) {
+    if (!hc.bookable) return _homeParts(sections, layout, blob, display);
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: HireModeSwitch(config: hc, hire: _hireMode, onChanged: (v) => setState(() => _hireMode = v)),
+      ),
+      if (_hireMode) ...[
+        _hirePanel(hc),
+        // All the way down, the sheet shows the whole hire booking.
+        KeyedSubtree(key: _foldKey, child: const SizedBox(width: double.infinity)),
+      ] else
+        _homeParts(sections, layout, blob, display),
+    ]);
+  }
+
+  Widget _hirePanel(HourlyHireConfig hc) {
+    final sc = ref.watch(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
+    final payments = _hirePaymentsFor(hc);
+    final area = _pickupArea;
+    return HireBookingPanel(
+      config: hc,
+      pickup: _pickup,
+      drop: _hireDrop,
+      onPickup: () => _choose(_PinTarget.pickup),
+      onDrop: _chooseHireDrop,
+      onClearDrop: () => setState(() => _hireDrop = null),
+      services: _services,
+      place: (country: area?.country, state: area?.state, city: area?.city, suburb: area?.suburb),
+      pricingFor: (s) => _pricingFor(s),
+      money: (v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : 2),
+      payments: payments,
+      payment: resolvePayment(_hirePaymentPick, payments),
+      onPayment: (p) => setState(() => _hirePaymentPick = p),
+      onBook: _bookHire,
+      pickLater: hc.allowLater && sc.enabled ? () => showPickupTimeSheet(context, sc) : null,
+      whoRiding: !_confirmLayout.showBookForOther
+          ? null
+          : _WhoRiding(
+              forOther: _forOther,
+              name: _otherName,
+              phone: _otherPhone,
+              family: _familyPick,
+              onFamily: (f) => _familyPick = f,
+              onChanged: (who) => setState(() {
+                _forOther = who != null;
+                if (who == null) _familyPick = null;
+                if (who != null) {
+                  _otherName.text = who.name;
+                  _otherPhone.text = who.phone;
+                }
+              }),
+            ),
+    );
+  }
+
+  /// Where a hire ends: optional, searched for (not dropped on the map).
+  Future<void> _chooseHireDrop() async {
+    final pick = await showPlaceSearch(
+      context,
+      title: 'Where to? (optional)',
+      near: _pickup?.point ?? _me,
+      current: _here,
+      usage: GateUsage.drop,
+      from: _pickup,
+      to: _hireDrop,
+    );
+    if (pick == null || !mounted) return;
+    final place = pick.place;
+    if (pick.pickOnMap || place == null) {
+      showInfo(context, 'Search for the place, or leave the drop-off empty.');
+      return;
+    }
+    setState(() => _hireDrop = place);
+  }
+
+  /// Books a hire (0326) now, or for later at [at]: the server prices it.
+  Future<void> _bookHire(HireBooking b, DateTime? at) async {
+    final a = _pickup;
+    if (a == null) return;
+    final forWhom = _forOtherOn ? bookedFor(_otherName.text, _otherPhone.text) : null;
+    if (_forOtherOn && forWhom == null) {
+      showInfo(context, bookForProblem(_otherName.text, _otherPhone.text) ?? "Enter the passenger's details.");
+      return;
+    }
+    if (at == null && forWhom == null && _ongoing != null) {
+      showInfo(context, 'You already have a ride in progress. Finish or cancel it before booking another.');
+      return;
+    }
+    if (await ref.read(deviceBlockedProvider.future)) {
+      if (mounted) showInfo(context, '$serviceNotAvailable. This device is not permitted to place a request.');
+      return;
+    }
+    if (!(await ref.read(appDisplayProvider.future)).serviceEnabled) {
+      if (mounted) showInfo(context, serviceComingSoonMessage);
+      return;
+    }
+    final d = _hireDrop;
+    final gap = await _findGap(a, const [], d ?? a);
+    if (gap != null) {
+      if (mounted) _showGap(gap);
+      return;
+    }
+    if (at != null) {
+      final c = await ref.read(scheduledRidesConfigProvider.future);
+      final problem = !c.enabled ? 'Scheduled rides are not available.' : pickupTimeProblem(at, DateTime.now(), c);
+      if (problem != null) {
+        if (mounted) showInfo(context, problem);
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _booking = true);
+    try {
+      final profile = await ref.read(profileProvider.future);
+      final rides = ref.read(rideRepositoryProvider);
+      final areaLookup = ref.read(geoServiceProvider).reverseArea(a.point);
+      final ipLookup = rides.publicIp();
+      var base = _pricing;
+      try {
+        base = await rides.pricingFor(a.point, () => areaLookup);
+      } catch (_) {}
+      var rules = _rules;
+      try {
+        rules = await rides.ruleContextFor(a.point, () => areaLookup);
+      } catch (_) {}
+      AreaInfo? area;
+      try {
+        area = await areaLookup.timeout(const Duration(seconds: 5));
+      } catch (_) {}
+      final hc = ref.read(hourlyHireConfigProvider).value ?? HourlyHireConfig.off;
+      final payments = _hirePaymentsFor(hc);
+      final booked = await rides.createRequest(
+        scheduleAt: at,
+        service: b.service.name,
+        pickupName: a.name,
+        pickupAddress: a.address,
+        pickupLat: a.point.latitude,
+        pickupLng: a.point.longitude,
+        dropName: d?.name,
+        dropAddress: d?.address,
+        dropLat: d?.point.latitude,
+        dropLng: d?.point.longitude,
+        distanceKm: 0,
+        durationMin: (b.hours * 60).round(),
+        // The server's price replaces it (hire_quote).
+        fare: b.quote.base,
+        paymentMode: bookedPaymentMode(resolvePayment(_hirePaymentPick, payments), payments),
+        riderName: profile?.name,
+        riderPhone: profile?.phone,
+        deviceOs: kIsWeb ? 'web' : defaultTargetPlatform.name,
+        metadata: rideRequestMetadata(
+          area: area,
+          ipAddress: await ipLookup,
+          gender: profile?.raw['gender'] as String?,
+          riderPhoto: profile?.avatarUrl,
+        ),
+        bookedFor: forWhom,
+        family: forWhom == null ? null : _familyPick,
+        currency: _currency,
+        pricing: _pricingFor(b.service, rules: rules, base: base),
+        timezone: rules.timezone,
+        hireHours: b.hours,
+      );
+      final later = booked.later;
+      if (later != null) {
+        ref.invalidate(myScheduledRidesProvider);
+        if (!mounted) return;
+        await showNotice(
+          context,
+          title: 'Hire booked',
+          message: 'Pickup ${pickupLabel(confirmedPickupAt(later, at))} · ${hireTitle(b.hours)}'
+              '${later.bookedForName == null ? '' : ' for ${later.bookedForName}'}. '
+              "We'll find your driver before then and let you know.",
+        );
+        if (mounted) context.push('/trips/scheduled');
+        return;
+      }
+      final req = booked.now!;
+      if (mounted) context.push('/ride/${req.id}').then((_) => _checkOngoing());
+    } on DuplicateRideRequest catch (e) {
+      if (mounted) showInfo(context, e.toString());
+    } catch (e) {
+      if (mounted) showError(context, HireError.wrap(e));
+    } finally {
+      if (mounted) setState(() => _booking = false);
+    }
+  }
+
   /// The home page under the map before a destination is chosen: the
   /// sections Admin → Display Settings → Home page lays out for where the
   /// rider is (the master layout, or a place's own), in their order. Those
@@ -2650,9 +2868,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final moreRecent = (recentSection?.more ?? true) ? recent.skip(atRest).toList() : const <Place>[];
 
     // A tile, a heading or a promo card: its page, or Coming Soon.
+    final hireOn = (ref.read(hourlyHireConfigProvider).value ?? HourlyHireConfig.off).bookable;
     void openTile(String? route, String title) {
       if (route == rideSearchRoute) {
         whereTo();
+      } else if (serviceOn && hireOn && route == hireTileRoute) {
+        // "Hire a driver" (0326): the panel on its Hire by time side.
+        setState(() => _hireMode = true);
       } else if (serviceOn && route == freightPageRoute) {
         openFreightPage(context);
       } else if (serviceOn && route == courierPageRoute) {
@@ -2717,6 +2939,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ? comingSoon(serviceBoxComingSoon(b.title))
                   : b.route == rideSearchRoute
                       ? whereTo()
+                      : b.route == hireTileRoute
+                      ? (serviceOn && hireOn ? setState(() => _hireMode = true) : comingSoon(serviceBoxComingSoon(b.title)))
                       : b.route == freightPageRoute
                           ? openFreightPage(context)
                           : b.route == courierPageRoute
@@ -2773,6 +2997,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // member, and the members and children a host can book for, kept loaded.
     ref.watch(familyPayOptionProvider(familyModuleRide));
     ref.watch(familyPassengersProvider(familyModuleRide));
+    // Hourly hire (0326): its settings, and Family's row for it.
+    ref.watch(familyPayOptionProvider(familyModuleHire));
+    final hireConfig = ref.watch(hourlyHireConfigProvider).value ?? HourlyHireConfig.off;
     // The ride card follows its ride: a ride that is cancelled, expires or
     // ends (on this device or anywhere else) leaves the home screen, and one
     // that moves on shows its new status, however the rider came back here
@@ -3523,7 +3750,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           : null,
       onEditFare: _biddingFor(_service) && _basis != null && !_routing ? _openOfferFare : null,
       onOpenOngoing: () => context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing()),
-      idle: _drop == null ? _homeParts(sections, homeLayout, blob, display) : null,
+      idle: _drop == null ? _idleParts(hireConfig, sections, homeLayout, blob, display) : null,
       footer: wide ? footer : null,
     );
 

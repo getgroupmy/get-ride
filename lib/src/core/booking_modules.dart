@@ -55,6 +55,7 @@ const familyModuleCourier = 'courier';
 const familyModuleTips = 'tips';
 const familyModuleSeatTrip = 'seat_trip';
 const familyModuleGetPlus = 'get_plus';
+const familyModuleHire = 'hire';
 
 const bookingModules = <BookingModule>[
   BookingModule(familyModuleRide, 'Ride',
@@ -65,6 +66,12 @@ const bookingModules = <BookingModule>[
   BookingModule(familyModuleScheduled, 'Scheduled ride',
       tables: ['scheduled_rides'],
       repositories: ['lib/src/data/ride_repository.dart', 'lib/src/data/scheduled_ride_repository.dart'],
+      screens: ['lib/src/features/ride/home_screen.dart']),
+  // Hourly hire (0326): a ride_requests row with hire columns, booked on the
+  // ride booking panel's "Hire by time" side, now or later.
+  BookingModule(familyModuleHire, 'Hourly hire',
+      tables: ['ride_requests'],
+      repositories: ['lib/src/data/ride_repository.dart'],
       screens: ['lib/src/features/ride/home_screen.dart']),
   BookingModule(familyModuleCityToCity, 'City to City',
       tables: ['c2c_bookings'],
@@ -113,8 +120,10 @@ const bookingModules = <BookingModule>[
 ];
 
 /// The module a ride request books, as the server reads it
-/// (family_ride_module, 0317): Courier, Freight, a scheduled ride, else Ride.
-String rideBookingModule({bool scheduled = false, bool freight = false, bool courier = false}) {
+/// (family_ride_module, 0317 and 0326): an hourly hire, Courier, Freight, a
+/// scheduled ride, else Ride.
+String rideBookingModule({bool scheduled = false, bool freight = false, bool courier = false, bool hire = false}) {
+  if (hire) return familyModuleHire;
   if (courier) return familyModuleCourier;
   if (freight) return familyModuleFreight;
   if (scheduled) return familyModuleScheduled;

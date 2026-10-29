@@ -21,6 +21,7 @@ import '../../data/ride_pet_repository.dart' show petConfigProvider;
 import '../../data/vehicle_assignment_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import '../ride/hire_parts.dart' show TakeHourlyHireTile;
 import 'vehicle_picker.dart';
 
 const driverServicesPath = '/drive/services';
@@ -152,6 +153,8 @@ class _DriverServicesScreenState extends ConsumerState<DriverServicesScreen> {
                 selected: {tab},
                 onSelectionChanged: (s) => setState(() => _tab = s.first),
               ),
+              // Hourly hire (0326): off until the driver turns it on.
+              if (tab != ServiceTab.deliveries) const TakeHourlyHireTile(),
               for (final s in sections) ...[
                 Padding(
                   padding: const EdgeInsets.fromLTRB(4, 20, 4, 4),

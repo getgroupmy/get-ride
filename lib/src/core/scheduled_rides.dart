@@ -231,7 +231,12 @@ class ScheduledRide {
     this.promoEstimate,
     this.promoError,
     this.placeFees = const [],
+    this.hireHours,
   });
+
+  /// An hourly hire's hours (0326); null for a ride.
+  final double? hireHours;
+  bool get isHire => hireHours != null;
 
   /// The place fees locked when it was booked (0324: request.charges with
   /// locked), charged at release whatever they are by then.
@@ -301,6 +306,7 @@ class ScheduledRide {
         : r['request'] is Map
         ? placeFeeLinesOf((r['request'] as Map)['charges']).where((l) => l.locked).toList()
         : const [],
+    hireHours: r['hire_package'] == null || r['hire_hours'] == null ? null : _num(r['hire_hours']),
   );
 
   /// Still to happen: the rider can cancel it.

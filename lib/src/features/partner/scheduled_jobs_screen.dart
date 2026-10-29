@@ -21,6 +21,7 @@ import '../../widgets/offer_motion.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../ride/driver_code_sheet.dart';
+import '../../core/hourly_hire.dart' show hireSpanText;
 import '../ride/scheduled_rides_screen.dart' show pickupLabel;
 import '../../widgets/back_or_go_button.dart';
 import '../../widgets/page_style_host.dart';
@@ -448,7 +449,12 @@ class _BookingCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              [ride.service ?? 'Ride', if (km != null) formatDistance(km)].join(' · '),
+              [
+                // Hourly hire (0326): its span.
+                if (ride.hireHours case final h?) '${hireSpanText(h, ride.pickupAt)} · ${ride.service ?? 'Ride'}'
+                else ride.service ?? 'Ride',
+                if (km != null && !ride.isHire) formatDistance(km),
+              ].join(' · '),
               style: t.textTheme.bodySmall?.copyWith(color: muted),
             ),
             // The place fees the booking locked (0325), in its total; one
@@ -468,7 +474,7 @@ class _BookingCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text('From ${ride.pickupAddress ?? 'pickup'}', maxLines: 2, overflow: TextOverflow.ellipsis),
             Text(
-              'To ${ride.dropAddress ?? 'destination'}',
+              'To ${ride.dropAddress ?? (ride.isHire ? 'no drop-off set' : 'destination')}',
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: t.textTheme.bodyMedium?.copyWith(color: muted),

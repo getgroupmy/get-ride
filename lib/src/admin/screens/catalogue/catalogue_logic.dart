@@ -189,6 +189,19 @@ const vehicleServiceFreightFields = [
   NumField('loadHeightM', 'Load height', suffix: 'm'),
 ];
 
+/// Hourly hire (migration 0326): whether riders may hire this vehicle by
+/// the hour, and its rates. A blank rate is not set: the least hours are the
+/// Hourly hire settings', the km per hour too, overtime is the hourly price
+/// and extra km the cost per km. A fare tariff card may set its own.
+const hireEnabledKey = 'hireEnabled';
+const vehicleServiceHireFields = [
+  NumField('hirePerHour', 'Price per hour'),
+  NumField('hireMinHours', 'Least hours', suffix: 'hr'),
+  NumField('hireKmPerHour', 'Km included per hour', suffix: 'km'),
+  NumField('hireOvertimePerHour', 'Overtime per hour'),
+  NumField('hireExtraKm', 'Extra km', suffix: 'per km'),
+];
+
 /// A covered van or lorry: what the rider's "Closed body" option books.
 const closedBodyKey = 'closedBody';
 
@@ -235,6 +248,8 @@ ValuesResult buildVehicleServiceValues({
   bool? refrigerated,
   bool? premium,
   String? goodsPermit,
+  Map<String, String> hire = const {},
+  bool? hireEnabled,
   Map<String, dynamic>? existing,
 }) {
   final name = (text['name'] ?? '').trim();
@@ -252,6 +267,19 @@ ValuesResult buildVehicleServiceValues({
     if (t.isNotEmpty && (n == null || !n.isFinite || n < 0)) {
       return (values: const {}, error: '${sentenceCaseLabel(f.label)} must be a number of 0 or more.');
     }
+  }
+  for (final f in vehicleServiceHireFields) {
+    final t = (hire[f.key] ?? '').trim();
+    final n = num.tryParse(t);
+    if (t.isNotEmpty && (n == null || !n.isFinite || n < 0)) {
+      return (values: const {}, error: '${sentenceCaseLabel(f.label)} must be a number of 0 or more.');
+    }
+    if (f.key == 'hireMinHours' && n != null && (n < 0.5 || n > 72)) {
+      return (values: const {}, error: 'Least hours are between 0.5 and 72.');
+    }
+  }
+  if (hireEnabled == true && num.tryParse((hire['hirePerHour'] ?? '').trim()) == null) {
+    return (values: const {}, error: 'Give the price per hour to offer hourly hire.');
   }
   final values = <String, dynamic>{
     ...?existing,
@@ -300,6 +328,17 @@ ValuesResult buildVehicleServiceValues({
       values[refrigeratedKey] = true;
     } else {
       values.remove(refrigeratedKey);
+    }
+  }
+  // Hourly hire (0326).
+  if (hireEnabled != null) values[hireEnabledKey] = hireEnabled;
+  for (final f in vehicleServiceHireFields) {
+    if (!hire.containsKey(f.key)) continue;
+    final n = num.tryParse(hire[f.key]!.trim());
+    if (n == null) {
+      values.remove(f.key);
+    } else {
+      values[f.key] = n;
     }
   }
   // Premium (0316): its drivers meet the Premium rules.
