@@ -726,6 +726,13 @@ class _PlaceFeeSettingsFormState extends State<PlaceFeeSettingsForm> {
           onChanged: on ? (v) => setState(() => _s = s.copyWith(showMapLabel: v)) : null,
         ),
         AirportSwitch(
+          key: const ValueKey('place-fee-show-outline'),
+          title: 'Show the place outline on the map',
+          subtitle: 'A light outline of the place when the pickup, drop-off or a stop is in it',
+          value: s.showOutline,
+          onChanged: on ? (v) => setState(() => _s = s.copyWith(showOutline: v)) : null,
+        ),
+        AirportSwitch(
           title: 'Hint under the address',
           value: s.showAddressHint,
           onChanged: on ? (v) => setState(() => _s = s.copyWith(showAddressHint: v)) : null,

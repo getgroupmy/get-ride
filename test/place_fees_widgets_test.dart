@@ -141,6 +141,7 @@ void main() {
           'showMapLabel': true,
           'showAddressHint': true,
           'showCardBadge': true,
+          'showOutline': true,
           'badgeText': 'with fee',
           'addressHintText': '{name}: {amount}',
           'maxTotal': 25.0,

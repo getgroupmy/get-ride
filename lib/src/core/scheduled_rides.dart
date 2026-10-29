@@ -291,7 +291,14 @@ class ScheduledRide {
     promoCode: (r['promo_code'] as String?)?.trim().isEmpty ?? true ? null : (r['promo_code'] as String).trim(),
     promoEstimate: r['promo_estimate'] == null ? null : _num(r['promo_estimate']),
     promoError: r['promo_error'] as String?,
-    placeFees: r['request'] is Map
+    // The rider's own booking carries its request; a driver's list (0325)
+    // only the locked fee lines: place_fees from the RPCs, place_fee_lines
+    // on My rides.
+    placeFees: r['place_fees'] is List
+        ? placeFeeLinesOf(r['place_fees']).where((l) => l.locked).toList()
+        : r['place_fee_lines'] is List
+        ? placeFeeLinesOf(r['place_fee_lines']).where((l) => l.locked).toList()
+        : r['request'] is Map
         ? placeFeeLinesOf((r['request'] as Map)['charges']).where((l) => l.locked).toList()
         : const [],
   );
