@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/format.dart';
+import '../../core/place_fees.dart' show PlaceFeeGoesTo;
 import '../../core/scheduled_rides.dart';
 import '../../data/scheduled_ride_repository.dart';
 import '../../widgets/offer_motion.dart';
@@ -438,7 +439,11 @@ class _BookingCard extends StatelessWidget {
                     style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
                 ),
-                Text(formatMoney(ride.total, ride.currency ?? 'MYR'), style: t.textTheme.titleSmall),
+                Text(
+                  formatMoney(ride.total, ride.currency ?? 'MYR'),
+                  key: ValueKey('scheduled-total-${ride.id}'),
+                  style: t.textTheme.titleSmall,
+                ),
               ],
             ),
             const SizedBox(height: 4),
@@ -446,6 +451,20 @@ class _BookingCard extends StatelessWidget {
               [ride.service ?? 'Ride', if (km != null) formatDistance(km)].join(' · '),
               style: t.textTheme.bodySmall?.copyWith(color: muted),
             ),
+            // The place fees the booking locked (0325), in its total; one
+            // that is passed on says so, as on the offer card.
+            if (ride.placeFees.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                [
+                  for (final l in ride.placeFees)
+                    '+ ${l.label} ${formatMoney(l.amount, ride.currency ?? 'MYR')}'
+                        '${l.goesTo == PlaceFeeGoesTo.pass ? ' (passed on)' : ''}',
+                ].join(' · '),
+                key: ValueKey('scheduled-place-fees-${ride.id}'),
+                style: t.textTheme.bodySmall?.copyWith(color: muted),
+              ),
+            ],
             const SizedBox(height: 4),
             Text('From ${ride.pickupAddress ?? 'pickup'}', maxLines: 2, overflow: TextOverflow.ellipsis),
             Text(

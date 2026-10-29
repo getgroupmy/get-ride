@@ -2950,6 +2950,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       place: livePlace,
     );
     final liveBusy = liveOn.contains(LiveOverlay.busy) ? _liveFeed.busy : BusyAreas.none;
+    // The outline of a place with a fee at the pickup, the drop-off or a
+    // stop (0325), from the areas the app already has; not the piece the
+    // gate area below draws already.
+    final gate = _gateArea, pickupAt = _pickup?.point;
+    final gateRings = gate != null && pickupAt != null && gate.area.contains(pickupAt, bufferM: 0)
+        ? ringsAround(gate.area.rings, pickupAt)
+        : const <List<LatLng>>[];
+    final feeRings = !confirming
+        ? const <List<LatLng>>[]
+        : [
+            for (final r in placeFeeOutlineRings(
+              _placeFeesFor(_service),
+              ref.watch(airportAreasProvider).value ?? const <AirportArea>[],
+              pickup: _pickup?.point,
+              drop: _drop?.point,
+              stops: [for (final p in _stops) p.point],
+            ))
+              if (!gateRings.any((g) => identical(g, r))) r,
+          ];
     final livePeople = liveOn.contains(LiveOverlay.people) ? _liveFeed.people : LivePeople.none;
     final liveTeam = liveOn.contains(LiveOverlay.team) ? _liveFeed.team : LivePeople.none;
     final liveCars = liveCarsOn ? _liveFeed.cars : LiveCars.none;
@@ -2985,6 +3004,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 _route, satellite, _cars, serviceIndex, showPill, screenWidth, mapLayout.pillGap, ai, tolls.length,
                 _stops.length, for (final p in _stops) p.point, _gateArea, _pickupDoor,
                 liveBusy, livePeople, liveTeam, liveCars, liveCarsOn, _liveCell, _livePicked,
+                _placeFees, feeRings.length, for (final r in feeRings) r,
               ], () => RideMap(
               controller: _map,
               me: _me,
@@ -3009,12 +3029,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 // The rider live map's honeycomb and kept routes (0322).
                 ...busyLayers(context, liveBusy, selected: _liveCell),
                 ...trailLayers(livePeople),
-                if (_gateArea case final g? when _pickup != null && g.area.contains(_pickup!.point, bufferM: 0))
+                // A place with a fee on the trip (0325): its outline, under the pins.
+                ...placeFeeOutlineLayers(context, feeRings),
+                if (_gateArea case final g? when gateRings.isNotEmpty)
                   ...gateAreaLayers(
                     context,
                     // Only the outline the pickup is in, not every piece
                     // of the area (KLIA's terminals and runways).
-                    rings: ringsAround(g.area.rings, _pickup!.point),
+                    rings: gateRings,
                     gates: g.gates,
                     selectedId: _pickupDoor?.id,
                     letters: {for (var i = 0; i < g.gates.length; i++) g.gates[i].id: gateLetter(i)},

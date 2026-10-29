@@ -1,10 +1,14 @@
 // Place fees (migration 0324) as the rider sees them before booking: one
 // line per fee ("KLIA kerbside fee (pickup)  RM 5.00", its note in the fare
-// details), the label on the map pin, and Freight's and Courier's lines and
-// total from the server's quote.
+// details), the label on the map pin, the place's outline on the map (0325),
+// and Freight's and Courier's lines and total from the server's quote.
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
 
+import '../../core/airport_areas.dart' show AirportArea, ringContains;
+import '../../core/gate_snap.dart' show ringsAround;
 import '../../core/place_fees.dart';
 import '../../data/place_fees_repository.dart';
 
@@ -162,4 +166,84 @@ class PlaceFeesSummary extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// The outlines to draw for a trip's place fees (0325): for each place with
+/// a fee in [quote], the piece of its boundary ([areas], the rider's own
+/// copy of airport_areas) the pickup, the drop-off or a counted stop is in.
+/// None when the admin turned the outline off. At most [max] rings, each
+/// once; a stop outside every piece of a place adds nothing.
+List<List<LatLng>> placeFeeOutlineRings(
+  PlaceFeesQuote quote,
+  Iterable<AirportArea> areas, {
+  LatLng? pickup,
+  LatLng? drop,
+  List<LatLng> stops = const [],
+  int max = 4,
+}) {
+  if (quote.isEmpty || !quote.display.showOutline) return const [];
+  final byId = {for (final a in areas) a.id: a};
+  // Each place with the trip's point(s) it is charged for.
+  final spots = <(String, LatLng, bool)>[];
+  void add(String? area, LatLng? at, {bool stop = false}) {
+    if (area == null || area.isEmpty || at == null) return;
+    if (spots.any((x) => x.$1 == area && x.$2 == at)) return;
+    spots.add((area, at, stop));
+  }
+
+  for (final l in quote.lines) {
+    switch (l.end) {
+      case 'pick':
+        add(l.areaId, pickup);
+      case 'drop':
+        add(l.areaId, drop);
+      case 'stop':
+        for (final s in stops) {
+          add(l.areaId, s, stop: true);
+        }
+      default:
+        // Either end, charged once: the end that is in it.
+        if (quote.pickup?.areaId == l.areaId) {
+          add(l.areaId, pickup);
+        } else if (quote.drop?.areaId == l.areaId) {
+          add(l.areaId, drop);
+        } else {
+          for (final s in stops) {
+            add(l.areaId, s, stop: true);
+          }
+        }
+    }
+  }
+  final out = <List<LatLng>>[];
+  for (final (id, at, stop) in spots) {
+    final area = byId[id];
+    if (area == null) continue;
+    if (stop && !area.rings.any((r) => ringContains(r, at))) continue;
+    for (final r in ringsAround(area.rings, at)) {
+      if (out.length >= max) return out;
+      if (!out.any((o) => identical(o, r))) out.add(r);
+    }
+  }
+  return out;
+}
+
+/// The places' outlines: lightly filled, in the theme's accent, under the
+/// pins. Nothing for no rings.
+List<Widget> placeFeeOutlineLayers(BuildContext context, List<List<LatLng>> rings) {
+  if (rings.isEmpty) return const [];
+  final scheme = Theme.of(context).colorScheme;
+  return [
+    PolygonLayer(
+      key: const ValueKey('place-fee-outline'),
+      polygons: [
+        for (final r in rings)
+          Polygon(
+            points: r,
+            color: scheme.primary.withValues(alpha: 0.10),
+            borderColor: scheme.primary.withValues(alpha: 0.75),
+            borderStrokeWidth: 1.5,
+          ),
+      ],
+    ),
+  ];
 }

@@ -87,20 +87,27 @@ class ScheduledRideRepository {
     ];
   }
 
-  /// The bookings this driver has accepted (still to come).
-  Future<List<ScheduledRide>> accepted(String uid) async => [
-    for (final r
-        in await _db
-            .from(_table)
-            .select(
-              'id, pickup_at, status, service, pickup_address, drop_address, fare, scheduling_fee, currency, '
-              'partner_id, ride_id, distance_km',
-            )
-            .eq('partner_id', uid)
-            .inFilter('status', ['assigned', 'released'])
-            .order('pickup_at', ascending: true))
-      ScheduledRide.fromRow(r),
-  ];
+  /// The bookings this driver has accepted (still to come), with the place
+  /// fees each locked (0325's place_fee_lines, not the rider's request).
+  Future<List<ScheduledRide>> accepted(String uid) async {
+    const columns =
+        'id, pickup_at, status, service, pickup_address, drop_address, fare, scheduling_fee, currency, '
+        'partner_id, ride_id, distance_km';
+    Future<List<Map<String, dynamic>>> read(String select) => _db
+        .from(_table)
+        .select(select)
+        .eq('partner_id', uid)
+        .inFilter('status', ['assigned', 'released'])
+        .order('pickup_at', ascending: true);
+    List<Map<String, dynamic>> rows;
+    try {
+      rows = await read('$columns, place_fee_lines');
+    } on PostgrestException {
+      // Before 0325: without the place fees.
+      rows = await read(columns);
+    }
+    return [for (final r in rows) ScheduledRide.fromRow(r)];
+  }
 
   Future<void> accept(String id) => _call(() => _db.rpc('scheduled_ride_accept', params: {'p_id': id}));
 

@@ -316,6 +316,7 @@ class PlaceFeeSettings {
     this.showMapLabel = true,
     this.showAddressHint = true,
     this.showCardBadge = true,
+    this.showOutline = true,
     this.badgeText = defaultBadgeText,
     this.addressHintText = defaultHintText,
     this.maxTotal,
@@ -332,6 +333,10 @@ class PlaceFeeSettings {
   /// The time zone the days and hours are read in.
   final String timeZone;
   final bool showMapLabel, showAddressHint, showCardBadge;
+
+  /// The place's outline on the rider's map when an end of the trip (or a
+  /// counted stop) is in a place with a fee (0325).
+  final bool showOutline;
   final String badgeText;
 
   /// With {name} and {amount}.
@@ -355,6 +360,7 @@ class PlaceFeeSettings {
       showMapLabel: b('showMapLabel'),
       showAddressHint: b('showAddressHint'),
       showCardBadge: b('showCardBadge'),
+      showOutline: b('showOutline'),
       badgeText: s('badgeText', defaultBadgeText, 40),
       addressHintText: s('addressHintText', defaultHintText, 120),
       maxTotal: cap == null || cap < 0 || cap > 10000 ? null : cap,
@@ -368,6 +374,7 @@ class PlaceFeeSettings {
     'showMapLabel': showMapLabel,
     'showAddressHint': showAddressHint,
     'showCardBadge': showCardBadge,
+    'showOutline': showOutline,
     'badgeText': badgeText.trim(),
     'addressHintText': addressHintText.trim(),
     'maxTotal': maxTotal,
@@ -379,6 +386,7 @@ class PlaceFeeSettings {
     bool? showMapLabel,
     bool? showAddressHint,
     bool? showCardBadge,
+    bool? showOutline,
     String? badgeText,
     String? addressHintText,
     double? Function()? maxTotal,
@@ -388,6 +396,7 @@ class PlaceFeeSettings {
     showMapLabel: showMapLabel ?? this.showMapLabel,
     showAddressHint: showAddressHint ?? this.showAddressHint,
     showCardBadge: showCardBadge ?? this.showCardBadge,
+    showOutline: showOutline ?? this.showOutline,
     badgeText: badgeText ?? this.badgeText,
     addressHintText: addressHintText ?? this.addressHintText,
     maxTotal: maxTotal == null ? this.maxTotal : maxTotal(),
@@ -515,11 +524,12 @@ class PlaceFeeDisplay {
     this.showMapLabel = true,
     this.showAddressHint = true,
     this.showCardBadge = true,
+    this.showOutline = true,
     this.badgeText = PlaceFeeSettings.defaultBadgeText,
     this.addressHintText = PlaceFeeSettings.defaultHintText,
   });
 
-  final bool showMapLabel, showAddressHint, showCardBadge;
+  final bool showMapLabel, showAddressHint, showCardBadge, showOutline;
   final String badgeText, addressHintText;
 
   factory PlaceFeeDisplay.fromJson(Object? raw) {
@@ -528,6 +538,7 @@ class PlaceFeeDisplay {
       showMapLabel: s.showMapLabel,
       showAddressHint: s.showAddressHint,
       showCardBadge: s.showCardBadge,
+      showOutline: s.showOutline,
       badgeText: s.badgeText,
       addressHintText: s.addressHintText,
     );

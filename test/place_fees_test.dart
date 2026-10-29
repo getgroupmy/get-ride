@@ -159,6 +159,7 @@ void main() {
         'showMapLabel': true,
         'showAddressHint': true,
         'showCardBadge': true,
+        'showOutline': true,
         'badgeText': 'incl. place fee',
         'addressHintText': '{name} {amount} applies here',
         'maxTotal': 20.0,
