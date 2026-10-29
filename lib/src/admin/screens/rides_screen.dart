@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/hourly_hire.dart' show RideHire, hireAdminDetails;
 import 'hire_booking_view.dart';
+import 'hire_bookings_screen.dart' show hireBookingsPath;
+import 'package:go_router/go_router.dart';
 import '../../core/format.dart';
 import '../../core/region_time.dart' show formatInZone;
 import '../../data/models.dart';
@@ -201,6 +203,13 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
       title: 'Rides',
       module: 'rides',
       actions: [
+        // Hire for several days (0327, 0328): every booking, before day 1 too.
+        IconButton(
+          key: const ValueKey('rides-hire-bookings'),
+          tooltip: 'Hire bookings',
+          icon: const Icon(Icons.event_repeat_outlined),
+          onPressed: () => context.push(hireBookingsPath),
+        ),
         IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(adminRidesProvider(_group))),
       ],
       body: Column(children: [

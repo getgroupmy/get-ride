@@ -256,6 +256,36 @@ extension MultiHireCalls on HourlyHireRepository {
     await _client.rpc('hire_booking_admin_assign', params: {'p_booking': bookingId, 'p_driver': driverId, 'p_day': day});
   });
 
+  /// Admin › Hire bookings (0328): newest first, a page of [limit], with
+  /// how many match.
+  Future<({List<AdminHireBooking> rows, int total})> adminBookings({
+    String? status,
+    String? package,
+    String? query,
+    DateTime? from,
+    DateTime? to,
+    int limit = 50,
+  }) => _call(() async {
+    String? d(DateTime? x) => x == null
+        ? null
+        : '${x.year.toString().padLeft(4, '0')}-${x.month.toString().padLeft(2, '0')}-${x.day.toString().padLeft(2, '0')}';
+    final rows = await _client.rpc('hire_bookings_admin', params: {
+      'p_status': status,
+      'p_package': package,
+      'p_query': (query ?? '').trim().isEmpty ? null : query!.trim(),
+      'p_from': d(from),
+      'p_to': d(to),
+      'p_limit': limit,
+      'p_offset': 0,
+    });
+    final list = [
+      if (rows is List)
+        for (final r in rows)
+          if (r is Map) AdminHireBooking.fromRow(Map<String, dynamic>.from(r)),
+    ];
+    return (rows: list, total: list.isEmpty ? 0 : list.first.total);
+  });
+
   /// Public holidays (0328), soonest first.
   Future<List<({String id, DateTime day, String name, String country})>> holidays() async {
     final rows = await _client.from(publicHolidaysTable).select().order('day', ascending: true).limit(500);

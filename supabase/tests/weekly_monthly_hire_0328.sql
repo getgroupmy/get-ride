@@ -304,4 +304,28 @@ select pg_temp.check((select status = 'in_progress' and notice_until is not null
                      and (pg_temp.day('m2', 2)).status = 'scheduled',
   'the days within the notice go ahead; the rest are cancelled');
 
+-- ---- 8. Admin › Hire bookings ------------------------------------------------------------------------------
+select pg_temp.check(pg_temp.value_as('00000000-0000-0000-0000-0000000328a1',
+  $q$select count(*)::text from public.hire_bookings_admin()$q$) like 'not_authorized%', 'admins only');
+select pg_temp.check(pg_temp.value_as('00000000-0000-0000-0000-0000000328d1',
+  format('select count(*)::text from public.hire_bookings_admin(p_package => %L) where id = %L and rider_name = %L
+            and last_at > first_at and days = 9', 'weekly', pg_temp.id('w1'), 'Aina Mingguan')) = '1',
+  'a weekly booking with its rider and last day');
+select pg_temp.check(pg_temp.value_as('00000000-0000-0000-0000-0000000328d1',
+  format('select count(*)::text from public.hire_bookings_admin(p_status => ''booked'', p_package => ''monthly'') where id = %L',
+         pg_temp.id('m1'))) = '0'
+                     and pg_temp.value_as('00000000-0000-0000-0000-0000000328d1',
+  format('select count(*)::text from public.hire_bookings_admin(p_status => ''assigned'') where id = %L and partner_name = %L',
+         pg_temp.id('m1'), 'Gani Bulan')) = '1', 'filtered by status, with its driver');
+select pg_temp.check(pg_temp.value_as('00000000-0000-0000-0000-0000000328d1',
+  $q$select string_agg(distinct rider_name, ',')  from public.hire_bookings_admin(p_query => '0032802')$q$) = 'Badrul Bulanan'
+                     and pg_temp.value_as('00000000-0000-0000-0000-0000000328d1',
+  format('select count(*)::text from public.hire_bookings_admin(p_query => %L)', left(pg_temp.id('w2')::text, 8))) = '1'
+                     and pg_temp.value_as('00000000-0000-0000-0000-0000000328d1',
+  $q$select count(*)::text from public.hire_bookings_admin(p_from => current_date + 400)$q$) = '0',
+  'searched by phone and booking id; a date range');
+select pg_temp.check(pg_temp.value_as('00000000-0000-0000-0000-0000000328d1',
+  $q$select (count(*) = 2 and bool_and(total >= 4))::text from public.hire_bookings_admin(p_limit => 2)$q$) = 'true',
+  'a page at a time, with the count of all that match');
+
 rollback;

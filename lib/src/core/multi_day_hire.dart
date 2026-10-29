@@ -610,6 +610,76 @@ class HireDaysBooking {
   };
 }
 
+/// A row of Admin › Hire bookings (hire_bookings_admin, 0328).
+class AdminHireBooking {
+  const AdminHireBooking({
+    required this.id,
+    required this.package,
+    required this.title,
+    required this.status,
+    required this.service,
+    required this.firstAt,
+    this.lastAt,
+    required this.days,
+    this.price = 0,
+    this.paidAmount = 0,
+    this.depositAmount = 0,
+    this.balanceAmount = 0,
+    this.paymentPlan = HirePayPlan.deposit,
+    this.paymentState = 'none',
+    this.currency,
+    this.riderName,
+    this.riderPhone,
+    this.partnerName,
+    this.partnerId,
+    this.total = 0,
+  });
+
+  factory AdminHireBooking.fromRow(Map<String, dynamic> r) => AdminHireBooking(
+    id: '${r['id']}',
+    package: '${r['package'] ?? hirePackageDaily}',
+    title: '${r['title'] ?? 'Hire'}',
+    status: '${r['status'] ?? 'booked'}',
+    service: '${r['service'] ?? ''}',
+    firstAt: DateTime.tryParse('${r['first_at']}')?.toLocal() ?? DateTime.now(),
+    lastAt: DateTime.tryParse('${r['last_at']}')?.toLocal(),
+    days: (_num(r['days']) ?? 0).round(),
+    price: _num(r['price']) ?? 0,
+    paidAmount: _num(r['paid_amount']) ?? 0,
+    depositAmount: _num(r['deposit_amount']) ?? 0,
+    balanceAmount: _num(r['balance_amount']) ?? 0,
+    paymentPlan: HirePayPlan.parse(r['payment_plan']),
+    paymentState: '${r['payment_state'] ?? 'none'}',
+    currency: r['currency'] as String?,
+    riderName: r['rider_name'] as String?,
+    riderPhone: r['rider_phone'] as String?,
+    partnerName: r['partner_name'] as String?,
+    partnerId: r['partner_id'] as String?,
+    total: (_num(r['total']) ?? 0).round(),
+  );
+
+  final String id, package, title, status, service;
+  final DateTime firstAt;
+  final DateTime? lastAt;
+  final int days;
+  final double price, paidAmount, depositAmount, balanceAmount;
+  final HirePayPlan paymentPlan;
+  final String paymentState;
+  final String? currency, riderName, riderPhone, partnerName, partnerId;
+
+  /// How many bookings match the filters (every row carries it).
+  final int total;
+
+  /// "Paid", "Deposit paid", "Business account".
+  String get paymentLabel => switch (paymentState) {
+    'paid' => 'Paid',
+    'deposit_paid' => 'Deposit paid',
+    'balance_short' => 'Balance not taken',
+    'business' => 'Business account',
+    _ => 'Not paid',
+  };
+}
+
 /// A booking a driver can take for all its days (hire_bookings_open).
 class OpenHireBooking {
   const OpenHireBooking({

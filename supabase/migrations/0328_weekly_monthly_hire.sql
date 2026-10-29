@@ -1154,4 +1154,60 @@ $$;
 revoke execute on function public.hire_bookings_open() from public, anon;
 grant execute on function public.hire_bookings_open() to authenticated, service_role;
 
+-- ---- 11. Admin › Hire bookings ------------------------------------------------------------------
+-- Every hire for several days, newest first, filtered by status, package,
+-- the rider (name or phone), the booking's id and the first day's date
+-- (from / to, in the booking's time zone), [p_limit] rows from [p_offset];
+-- total is how many match. Any admin reads it; assigning and cancelling
+-- are hire_booking_admin_assign and hire_booking_cancel.
+drop function if exists public.hire_bookings_admin(text, text, text, date, date, integer, integer);
+create or replace function public.hire_bookings_admin(p_status text default null, p_package text default null,
+                                                      p_query text default null, p_from date default null,
+                                                      p_to date default null, p_limit integer default 50,
+                                                      p_offset integer default 0)
+returns table(id uuid, package text, title text, status text, service text, first_at timestamptz,
+              last_at timestamptz, days integer, price numeric, paid_amount numeric, deposit_amount numeric,
+              balance_amount numeric, payment_plan text, payment_state text, currency text, split_at timestamptz,
+              same_driver boolean, rider_id uuid, rider_name text, rider_phone text, partner_id uuid,
+              partner_name text, created_at timestamptz, total bigint)
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  q text := nullif(lower(btrim(coalesce(p_query, ''))), '');
+  digits text := nullif(regexp_replace(coalesce(p_query, ''), '\D', '', 'g'), '');
+begin
+  if not public.caller_is_admin() then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  return query
+    select b.id, b.package, coalesce(b.quote->>'title', initcap(b.package) || ' hire'), b.status, b.service,
+           b.first_at,
+           (select max(s.pickup_at) from public.scheduled_rides s where s.hire_booking_id = b.id),
+           b.days, b.price, b.paid_amount, b.deposit_amount, b.balance_amount, b.payment_plan, b.payment_state,
+           b.currency, b.split_at, b.same_driver, b.rider_id, rp.name, rp.phone, b.partner_id,
+           coalesce(nullif(btrim(pp.name), ''), dp.name), b.created_at,
+           count(*) over ()
+      from public.hire_bookings b
+      left join public.profiles rp on rp.id = b.rider_id
+      left join public.profiles dp on dp.id = b.partner_id
+      left join lateral (select p.name from public.partners p where p.auth_user_id = b.partner_id limit 1) pp on true
+     where (p_status is null or b.status = p_status)
+       and (p_package is null or b.package = p_package)
+       and (p_from is null or (b.first_at at time zone b.timezone)::date >= p_from)
+       and (p_to is null or (b.first_at at time zone b.timezone)::date <= p_to)
+       and (q is null
+            or b.id::text like q || '%'
+            or lower(coalesce(rp.name, '')) like '%' || q || '%'
+            or (digits is not null and length(digits) >= 4
+                and regexp_replace(coalesce(rp.phone, ''), '\D', '', 'g') like '%' || digits || '%'))
+     order by b.created_at desc
+     limit least(200, greatest(1, coalesce(p_limit, 50))) offset greatest(0, coalesce(p_offset, 0));
+end;
+$$;
+revoke execute on function public.hire_bookings_admin(text, text, text, date, date, integer, integer) from public, anon;
+grant execute on function public.hire_bookings_admin(text, text, text, date, date, integer, integer) to authenticated;
+
 notify pgrst, 'reload schema';
