@@ -1,12 +1,14 @@
 // Admin → Airport Areas, one airport's editor (migration 0249): the Gates &
-// doors, Pickup rules, Waiting queue, Fares and Charges tabs, and a pickup
-// door's guide. Each takes the airport's settings and hands changes back;
-// airport_editor.dart reads and saves them.
+// doors, Pickup rules, Waiting queue and Fares tabs, and a pickup door's
+// guide (the Fees tab is place_fees_tab.dart, 0324). Each takes the
+// airport's settings and hands changes back; airport_editor.dart reads and
+// saves them.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/airport_queue.dart';
 import '../../../core/format.dart';
+import '../../../core/place_fees.dart';
 import '../../../data/airport_repository.dart'
     show AirportZone, zoneSourceLabel;
 import '../../../widgets/search_select.dart';
@@ -1096,10 +1098,14 @@ class AirportFaresTab extends StatefulWidget {
     this.onZoneAmounts,
     this.currency = 'MYR',
     this.noun = 'airport',
+    this.fees = const [],
   });
   final AirportSettings settings;
   final List<String> services;
   final List<AirportZone> zones;
+
+  /// The area's place fees (0324), added in the trial fare.
+  final List<PlaceFee> fees;
   final ValueChanged<AirportSettings>? onChanged;
   final VoidCallback? onAddZone;
   final void Function(AirportZone z)? onEditZone, onRemoveZone;
@@ -1496,7 +1502,7 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
           '1. Fixed zone fare if the other end is in a zone, else the distance band, else the normal rate\n'
           "2. + the service's $noun base\n"
           '3. Raised to the minimum fare if lower\n'
-          '4. + the $noun charge (Charges tab)'
+          '4. + the $noun fees (Fees tab)'
           '${f.roundUp ? '\n5. Rounded up to the next whole amount' : ''}',
         ),
         _gap,
@@ -1528,13 +1534,12 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
                   ? zone.fromAmount
                   : zone.toAmount,
             ),
-      charges: [
-        if (s.chargeFor(tr.side).applied > 0)
-          (
-            name: s.chargeFor(tr.side).name,
-            amount: s.chargeFor(tr.side).applied,
-          ),
-      ],
+      charges: placeFeesForTrial(
+        widget.fees,
+        pickup: tr.side == AirportSide.pick,
+        service: tr.service,
+        fare: tr.normal,
+      ),
     );
     String money(double v) => formatMoney(v, widget.currency);
     return _section(
@@ -1653,115 +1658,6 @@ class _AirportFaresTabState extends State<AirportFaresTab> {
             const Expanded(child: Text('Rider pays')),
             Text(money(q.total), style: t.textTheme.titleMedium),
           ],
-        ),
-      ],
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Charges
-// ---------------------------------------------------------------------------
-
-class AirportChargesTab extends StatelessWidget {
-  const AirportChargesTab({
-    super.key,
-    required this.settings,
-    this.onChanged,
-    this.currency = 'MYR',
-  });
-  final AirportSettings settings;
-  final ValueChanged<AirportSettings>? onChanged;
-  final String currency;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = settings;
-    final on = onChanged;
-    Widget charge(
-      String key,
-      String title,
-      String subtitle,
-      AirportCharge c,
-      AirportSettings Function(AirportCharge) set,
-    ) => _section(
-      context,
-      key: ValueKey('airport-charge-$key'),
-      children: [
-        AirportSwitch(
-          title: title,
-          subtitle: subtitle,
-          value: c.on,
-          onChanged: on == null
-              ? null
-              : (v) => on(
-                  set(
-                    AirportCharge(
-                      on: v,
-                      name: c.name,
-                      amount: v && c.amount <= 0 ? 5 : c.amount,
-                    ),
-                  ),
-                ),
-        ),
-        if (c.on)
-          Wrap(
-            spacing: 12,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.end,
-            children: [
-              SizedBox(
-                width: 220,
-                child: NameField(
-                  key: ValueKey('airport-charge-name-$key'),
-                  value: c.name,
-                  label: 'Name the rider sees',
-                  onChanged: on == null
-                      ? null
-                      : (v) => on(
-                          set(
-                            AirportCharge(on: true, name: v, amount: c.amount),
-                          ),
-                        ),
-                ),
-              ),
-              AmountField(
-                key: ValueKey('airport-charge-amount-$key'),
-                value: c.amount,
-                label: 'Amount ($currency)',
-                onChanged: on == null
-                    ? null
-                    : (v) => on(
-                        set(AirportCharge(on: true, name: c.name, amount: v)),
-                      ),
-              ),
-            ],
-          ),
-      ],
-    );
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const AirportNote(
-          'Optional. A charge is added to the fare and shown to the rider before they confirm. Leave it off and nothing changes.',
-        ),
-        _gap,
-        charge(
-          'drop',
-          'Drop-off at the airport',
-          'Riders going to the airport',
-          s.dropFee,
-          (c) => s.copyWith(dropFee: c),
-        ),
-        charge(
-          'pick',
-          'Pickup at the airport',
-          'Riders leaving from the airport',
-          s.pickFee,
-          (c) => s.copyWith(pickFee: c),
-        ),
-        const AirportNote(
-          "The charge goes to the airport fee line on the receipt and isn't part of the driver's commission base.",
         ),
       ],
     );

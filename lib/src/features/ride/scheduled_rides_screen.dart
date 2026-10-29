@@ -255,6 +255,13 @@ class _BookingCard extends ConsumerWidget {
                 'Includes ${formatMoney(ride.schedulingFee, currency)} scheduling fee',
                 style: t.textTheme.bodySmall?.copyWith(color: muted),
               ),
+            // The place fees locked when it was booked (0324).
+            for (final (i, l) in ride.placeFees.indexed)
+              Text(
+                'Includes ${formatMoney(l.amount, currency)} ${l.label}',
+                key: ValueKey('scheduled-place-fee-${ride.id}-$i'),
+                style: t.textTheme.bodySmall?.copyWith(color: muted),
+              ),
             // A promo code kept on the booking (0242): off the fare, not the fee.
             if (ride.promoCode != null && ride.upcoming)
               Text(

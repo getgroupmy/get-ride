@@ -197,6 +197,8 @@ class AirportRepository {
     String? city,
     String? suburb,
     List<Map<String, Object>> optionCharges = const [],
+    List<LatLng> stops = const [],
+    DateTime? at,
   }) async {
     final res = await _db.rpc(
       'airport_fare_quote',
@@ -215,6 +217,9 @@ class AirportRepository {
         // The fare has these in it (0248); the server takes them out for the
         // airport fare and adds them back after the minimum.
         'p_option_charges': optionCharges.isEmpty ? null : optionCharges,
+        // The trip's stops and its pickup time, for its place fees (0324).
+        if (stops.isNotEmpty) 'p_stops': [for (final s in stops) {'lat': s.latitude, 'lng': s.longitude}],
+        'p_at': ?at?.toUtc().toIso8601String(),
       },
     );
     return AirportQuote.fromJson(res);

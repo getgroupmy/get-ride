@@ -158,6 +158,9 @@ set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000249a1');
 update public.airport_settings set pick_fee_on = true, pick_fee_name = 'Airport pickup fee', pick_fee_amount = 6
  where airport_id = '00000000-0000-0000-0000-0000000249e0';
+-- The charge itself is a place fee since 0324 (place_fees, written by the same page).
+insert into public.place_fees (area_id, name, applies_to, amount) values
+  ('00000000-0000-0000-0000-0000000249e0', 'Airport pickup fee', 'pickup', 6);
 insert into public.airport_waiting_zones (airport_id, name, shape) values
   ('00000000-0000-0000-0000-0000000249e0', 'Holding bay',
    '{"coords":[{"latitude":15.05,"longitude":105.0},{"latitude":15.05,"longitude":105.05},{"latitude":15.0,"longitude":105.05},{"latitude":15.0,"longitude":105.0}],"bbox":{"north":15.05,"south":15.0,"east":105.05,"west":105.0},"source":"manual"}');
@@ -293,8 +296,9 @@ insert into rides values ('door', pg_temp.book('00000000-0000-0000-0000-00000002
   '[{"kind":"surcharge","name":"Free money","charge":"fixed","value":-50,"airport":"pick"}]'));
 select pg_temp.check((select pickup_door_name from public.ride_requests where id = (select id from rides where k = 'door'))
   = 'Arrivals, Door 3', 'the door''s name is stamped by the server');
-select pg_temp.check((select charges from public.ride_requests where id = (select id from rides where k = 'door'))
-  = '[{"kind":"surcharge","name":"Airport pickup fee","charge":"fixed","value":6.00,"airport":"pick"}]'::jsonb,
+select pg_temp.check((select charges @> '[{"kind":"surcharge","name":"Airport pickup fee","charge":"fixed","value":6.00,"airport":"pick"}]'
+                             and jsonb_array_length(charges) = 1
+                        from public.ride_requests where id = (select id from rides where k = 'door')),
   'the airport charge is stamped, and one the app sent is dropped');
 select pg_temp.check((select fare = 53 and ride_fare = 53 and (airport_fare->>'total')::numeric = 59
                         from public.ride_requests where id = (select id from rides where k = 'door')),
@@ -319,8 +323,8 @@ select pg_temp.refused_with($q$update public.ride_requests set pickup_door_id = 
   'AIRPORT_DOOR_RIDER_ONLY', 'the driver changing the door');
 -- Going to the airport: the drop-off door and its charge.
 reset role;
-update public.airport_settings set drop_fee_on = true, drop_fee_name = 'Airport fee', drop_fee_amount = 2.5
- where airport_id = '00000000-0000-0000-0000-0000000249e0';
+insert into public.place_fees (area_id, name, applies_to, amount) values
+  ('00000000-0000-0000-0000-0000000249e0', 'Airport fee', 'dropoff', 2.5);
 set local role authenticated;
 select pg_temp.refused_with($q$select pg_temp.book('00000000-0000-0000-0000-0000000249c2', 13, 103, 14.95, 104.95, null, '00000000-0000-0000-0000-0000000249f2')$q$,
   'AIRPORT_DOOR_INVALID', 'a pickup-only door for a drop-off');

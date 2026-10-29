@@ -29,6 +29,7 @@ import 'fare_offer_controls.dart';
 import 'home_parts.dart' show uriImage;
 import 'assistance_parts.dart' show showRideAssistanceSheet;
 import 'pet_parts.dart' show showRidePetsSheet;
+import 'place_fee_parts.dart';
 import '../../core/page_styles.dart' show fareInfoSurface, homeSurface;
 import '../../widgets/page_style_host.dart';
 
@@ -77,7 +78,14 @@ class ConfirmAddressCard extends StatelessWidget {
     required this.onEntrance,
     required this.onStops,
     this.onAddStop,
+    this.pickupHint,
+    this.dropHint,
   });
+
+  /// Under the pickup and the drop-off when a place fee applies there
+  /// (0324): the admin's address hint ("KLIA kerbside fee RM 5.00 applies
+  /// here"); null for none.
+  final String? pickupHint, dropHint;
 
   final Place? pickup;
   final Place drop;
@@ -170,6 +178,7 @@ class ConfirmAddressCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (pickupHint != null) _FeeHint(pickupHint!, key: const ValueKey('confirm-pickup-fee-hint')),
             const SizedBox(height: 2),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -261,8 +270,37 @@ class ConfirmAddressCard extends StatelessWidget {
                 ],
               ],
             ),
+            if (dropHint != null) _FeeHint(dropHint!, key: const ValueKey('confirm-drop-fee-hint')),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A place fee's address hint, under its address row.
+class _FeeHint extends StatelessWidget {
+  const _FeeHint(this.text, {super.key});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(start: 34, end: 8, bottom: 2),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 13, color: t.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -680,7 +718,12 @@ class ConfirmServiceCard extends StatelessWidget {
     this.uplift,
     this.was,
     this.note,
+    this.badge,
   });
+
+  /// Under the price when it includes place fees (0324): the admin's badge
+  /// text ("incl. place fee"); null for none.
+  final String? badge;
 
   /// The price before a GET.Plus member's discount, struck through under
   /// [price] (migration 0316); null when there is none.
@@ -720,25 +763,42 @@ class ConfirmServiceCard extends StatelessWidget {
   /// shown under the price; null when it adds nothing.
   final String? uplift;
 
-  /// The price, with the demand uplift under it.
+  /// The price, with the demand uplift under it, and the place fee badge.
   Widget _withUplift(BuildContext context, Widget price) {
     final u = uplift;
-    if (u == null) return price;
+    final b = badge;
+    if (u == null && b == null) return price;
     final t = Theme.of(context);
+    final muted = mutedTextColor(t, background: ConfirmCardColors.of(context).card);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         price,
-        Semantics(
-          label: 'High demand, $u',
-          excludeSemantics: true,
-          child: Text(
-            u,
-            key: ValueKey('uplift-${service.name}'),
-            style: t.textTheme.labelSmall?.copyWith(color: mutedTextColor(t, background: ConfirmCardColors.of(context).card), fontWeight: FontWeight.w600),
+        if (u != null)
+          Semantics(
+            label: 'High demand, $u',
+            excludeSemantics: true,
+            child: Text(
+              u,
+              key: ValueKey('uplift-${service.name}'),
+              style: t.textTheme.labelSmall?.copyWith(color: muted, fontWeight: FontWeight.w600),
+            ),
           ),
-        ),
+        if (b != null)
+          Container(
+            key: ValueKey('place-fee-badge-${service.name}'),
+            margin: const EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: t.colorScheme.secondaryContainer,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              b,
+              style: t.textTheme.labelSmall?.copyWith(color: t.colorScheme.onSecondaryContainer, fontSize: 10),
+            ),
+          ),
       ],
     );
   }
@@ -1060,7 +1120,11 @@ class ConfirmFareSection extends StatelessWidget {
     this.tax,
     this.onEdit,
     this.trend,
+    this.placeFees = const [],
   });
+
+  /// The place fees (0324), one line each, above the taxes and the total.
+  final List<PlaceFeeRow> placeFees;
 
   /// The arrows before the recommended amount (fare trend); not shown once
   /// the rider raises or lowers it.
@@ -1182,6 +1246,12 @@ class ConfirmFareSection extends StatelessWidget {
             key: const ValueKey('route-tolls'),
             padding: const EdgeInsets.only(top: 2),
             child: Text('Est. Toll Charges $tollCharges', style: t.textTheme.bodySmall?.copyWith(color: muted)),
+          ),
+        if (placeFees.isNotEmpty)
+          Padding(
+            key: const ValueKey('fare-place-fees'),
+            padding: const EdgeInsets.only(top: 2),
+            child: PlaceFeeLinesView(rows: placeFees),
           ),
         if (tax != null)
           Padding(
@@ -2383,9 +2453,13 @@ class FareInfoSheet extends StatelessWidget {
     this.tax,
     this.earn,
     this.trend,
+    this.placeFees = const [],
   });
 
   final RideService service;
+
+  /// The place fees on this trip (0324), each with its note for riders.
+  final List<PlaceFeeRow> placeFees;
 
   /// [fareRateLines] for it at the pickup.
   final List<String> rates;
@@ -2448,7 +2522,7 @@ class FareInfoSheet extends StatelessWidget {
               Text(appFareNotesTitle, style: body),
               for (final n in appFareNotes) Text('• $n', style: body),
             ],
-            if (earn != null || tollCharges != null || tax != null) ...[
+            if (earn != null || tollCharges != null || tax != null || placeFees.isNotEmpty) ...[
               const SizedBox(height: 20),
               if (earn != null)
                 Text(
@@ -2461,6 +2535,16 @@ class FareInfoSheet extends StatelessWidget {
                   'Est. Toll Charges $tollCharges',
                   key: const ValueKey('route-tolls'),
                   style: body?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                ),
+              if (placeFees.isNotEmpty)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: PlaceFeeLinesView(
+                    rows: placeFees,
+                    notes: true,
+                    center: false,
+                    style: body?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                  ),
                 ),
               if (tax != null)
                 Text(tax!, key: const ValueKey('fare-tax'), style: body?.copyWith(color: t.colorScheme.onSurfaceVariant)),
