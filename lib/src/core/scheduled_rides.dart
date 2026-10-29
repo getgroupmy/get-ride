@@ -3,6 +3,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'date_order.dart' show formatWeekdayDayMonthForUser;
+import 'place_fees.dart' show PlaceFeeLine, placeFeeLinesOf, placeFeesTotal;
 
 /// Admin → App Settings → Scheduled rides, as `scheduled_rides_config()`
 /// returns it. Off until the admin turns it on.
@@ -229,7 +230,12 @@ class ScheduledRide {
     this.promoCode,
     this.promoEstimate,
     this.promoError,
+    this.placeFees = const [],
   });
+
+  /// The place fees locked when it was booked (0324: request.charges with
+  /// locked), charged at release whatever they are by then.
+  final List<PlaceFeeLine> placeFees;
 
   final String id;
   final DateTime pickupAt;
@@ -285,6 +291,9 @@ class ScheduledRide {
     promoCode: (r['promo_code'] as String?)?.trim().isEmpty ?? true ? null : (r['promo_code'] as String).trim(),
     promoEstimate: r['promo_estimate'] == null ? null : _num(r['promo_estimate']),
     promoError: r['promo_error'] as String?,
+    placeFees: r['request'] is Map
+        ? placeFeeLinesOf((r['request'] as Map)['charges']).where((l) => l.locked).toList()
+        : const [],
   );
 
   /// Still to happen: the rider can cancel it.
@@ -293,8 +302,9 @@ class ScheduledRide {
 
   bool get driverConfirmed => partnerId != null && status != ScheduledStatus.scheduled;
 
-  /// What the rider pays for the ride (before tolls and taxes).
-  double get total => _cents(fare + schedulingFee);
+  /// What the rider pays for the ride (before tolls and taxes), with its
+  /// locked place fees.
+  double get total => _cents(fare + schedulingFee + placeFeesTotal(placeFees));
 }
 
 /// The booking's state in a few words, for its card.

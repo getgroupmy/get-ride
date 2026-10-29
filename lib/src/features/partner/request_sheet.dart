@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/format.dart';
+import '../../core/place_fees.dart' show passedOnPlaceFeeNames;
 import '../../core/request_alert.dart';
 import '../../core/request_viewers.dart' show requestViewHeartbeat;
 import '../../core/ride_bidding.dart';
@@ -440,9 +441,14 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
             DirectBookingLabel(request: r, me: widget.driverId ?? _driverId),
             StandOrderLabel(request: r, me: widget.driverId ?? _driverId),
             // The region's surcharges and taxes, collected on top.
+            // A place fee that is passed on (0324) says so: not the driver's.
             if (r.chargeLines.isNotEmpty)
               Text(
-                [for (final l in r.chargeLines) '+ ${l.label} ${formatMoney(l.amount, r.currency)}'].join(' · '),
+                [
+                  for (final l in r.chargeLines)
+                    '+ ${l.label} ${formatMoney(l.amount, r.currency)}'
+                        '${!l.isTax && passedOnPlaceFeeNames(r.raw['charges']).contains(l.label) ? ' (passed on)' : ''}',
+                ].join(' · '),
                 key: const ValueKey('request-charges'),
                 style: t.textTheme.bodySmall?.copyWith(color: muted),
               ),

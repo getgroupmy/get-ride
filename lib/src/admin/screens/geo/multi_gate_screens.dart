@@ -15,6 +15,7 @@ import '../../../core/place_types.dart';
 import '../../../data/place_types_repository.dart';
 import '../../../widgets/place_type_badge.dart';
 import '../../../data/airport_repository.dart' show airportSettingsProvider;
+import '../../../data/place_fees_repository.dart' show placeFeesProvider;
 import 'airport_editor.dart';
 import 'boundary_editor.dart';
 import 'geo_data.dart';
@@ -84,6 +85,11 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
     final canEdit = ref.watch(pageAccessProvider(multiGatePlacesPage)) == AccessLevel.edit;
     final async = ref.watch(multiGatePlacesProvider);
     final settings = ref.watch(airportSettingsProvider).value ?? const <String, AirportSettings>{};
+    // Each place's fees (0324), counted on its card.
+    final feeCounts = <String, int>{};
+    for (final f in ref.watch(placeFeesProvider).value ?? const []) {
+      feeCounts[f.areaId] = (feeCounts[f.areaId] ?? 0) + 1;
+    }
     final types = placeTypesNow(ref);
     return AdminPage(
       title: 'Multi-Gate Places',
@@ -133,7 +139,7 @@ class AdminMultiGatePlacesScreen extends ConsumerWidget {
                           _pill(placeIsActive(e.values) ? 'Active' : 'Inactive',
                               placeIsActive(e.values) ? Colors.green : Colors.grey),
                           _pill(placeGateRequired(e.values) ? 'Gate required' : 'Gate optional', Colors.orange),
-                          for (final tool in placeToolLabels(e.values, settings[e.id])) _pill(tool, Colors.teal),
+                          for (final tool in placeToolLabels(e.values, settings[e.id], fees: feeCounts[e.id] ?? 0)) _pill(tool, Colors.teal),
                         ]),
                         if ('${e.values['address'] ?? ''}'.isNotEmpty)
                           Text('${e.values['address']}', maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -779,16 +785,16 @@ class _GateFormBodyState extends State<_GateFormBody> {
 
 
 /// The tools a place has on, for its card (0258): "Boundary", "Doors
-/// required", "Guide", "Charge", "Own fares", "Queue". Empty without a
-/// boundary.
-List<String> placeToolLabels(Map<String, dynamic> values, AirportSettings? s) {
+/// required", "Guide", its place fees ("2 fees", 0324), "Own fares",
+/// "Queue". Empty without a boundary.
+List<String> placeToolLabels(Map<String, dynamic> values, AirportSettings? s, {int fees = 0}) {
   if (!placeAreaOn(values)) return const [];
   return [
     'Boundary',
     if (s != null) ...[
       if (s.doorsRequired) 'Doors required',
       if (s.guideOn) 'Guide',
-      if (s.placeChargeOn) 'Charge',
+      if (fees > 0) fees == 1 ? '1 fee' : '$fees fees',
       if (s.faresOn) 'Own fares',
       if (s.restrictPickups) 'Queue',
     ],

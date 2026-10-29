@@ -17,6 +17,8 @@ import '../../config.dart';
 import '../../core/booking_modules.dart' show familyModuleFreight;
 import '../../core/family.dart' show withFamilyPayment;
 import '../../data/family_repository.dart' show familyPayOptionProvider;
+import '../../data/place_fees_repository.dart' show placeFeesQuoteArgs;
+import 'place_fee_parts.dart' show PlaceFeesSummary;
 import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
 import '../../core/early_end.dart' show serviceTypeIds;
@@ -1012,6 +1014,29 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
                     );
                     return DeliveryBreakdown(lines: b.lines, total: b.total, money: _money);
                   }(),
+                ),
+              // The place fees at either end (0324), as the server adds them,
+              // and what the request comes to with them.
+              if (_offer != null && v != null && _pickup != null && _drop != null)
+                PlaceFeesSummary(
+                  args: placeFeesQuoteArgs(
+                    pickup: _pickup!.place.point,
+                    drop: _drop!.place.point,
+                    service: v.name,
+                    fare: _offer!,
+                    at: _time == FreightPickupTime.scheduled ? _scheduleAt : null,
+                  ),
+                  money: _money,
+                  baseTotal: addonPicks.any
+                      ? addonBreakdown(
+                          tripLabel: '',
+                          offer: _offer!,
+                          lines: [...charges, ...addonCharges],
+                          picks: addonPicks,
+                          a: addonRule,
+                          money: _money,
+                        ).total
+                      : freightFare(_offer!, charges),
                 ),
             ],
           ),

@@ -1,5 +1,6 @@
 // Admin → Airport Areas: one airport's editor (migration 0249) with six tabs
-// — Area, Gates & doors, Pickup rules, Waiting queue, Fares and Charges.
+// — Area, Gates & doors, Pickup rules, Waiting queue, Fares and Fees (0324:
+// the airport's list of place fees, place_fees_tab.dart).
 // Doors are the airport's gates in multi_gate (the Multi-Gate page's rows),
 // so a change here shows there at once and the reverse; settings, waiting
 // zones and fare zones are airport_settings / airport_waiting_zones /
@@ -7,7 +8,7 @@
 //
 // The same editor serves Admin → Multi-Gate Places (migration 0258) with
 // [AirportEditor.place]: six tabs, one per tool, each with its own switch —
-// Boundary, Doors, Pickup guide, Extra charge, Own fares and Waiting queue.
+// Boundary, Doors, Pickup guide, Fees (0324), Own fares and Waiting queue.
 // A place's tools work once its boundary is on (the server keeps its area
 // row and settings, see 0258); a place with no boundary keeps its gates only.
 import 'dart:convert';
@@ -19,7 +20,9 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../core/airport_queue.dart';
+import '../../../core/place_fees.dart';
 import '../../../data/airport_repository.dart';
+import '../../../data/place_fees_repository.dart';
 import '../../../features/ride/airport_door_sheet.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
@@ -33,6 +36,7 @@ import 'boundary_editor.dart';
 import 'geo_data.dart';
 import 'geo_logic.dart';
 import 'place_area_tabs.dart';
+import 'place_fees_tab.dart';
 
 /// The editor's tabs, in order.
 /// A place's tabs (Admin → Multi-Gate Places), in order.
@@ -40,7 +44,7 @@ const placeEditorTabs = [
   'Boundary',
   'Doors',
   'Pickup guide',
-  'Extra charge',
+  'Fees',
   'Own fares',
   'Waiting queue',
 ];
@@ -51,7 +55,7 @@ const airportEditorTabs = [
   'Pickup rules',
   'Waiting queue',
   'Fares',
-  'Charges',
+  'Fees',
 ];
 
 class AirportEditor extends ConsumerStatefulWidget {
@@ -628,6 +632,7 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
     );
     Widget faresTab() => AirportFaresTab(
       settings: s,
+      fees: placeFeesFor(ref.watch(placeFeesProvider).value ?? const <PlaceFee>[], _id),
       services: services.isEmpty ? const ['Ride'] : services,
       zones: fareZones,
       onChanged: on,
@@ -725,14 +730,13 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
                 guideEditor: guideEditor,
               ),
             ),
-            PlaceFeatureTab(
-              switchKey: const ValueKey('place-switch-charge'),
-              title: 'Extra charge',
-              subtitle: 'Added to the fare for a pickup or drop-off here',
-              value: s.placeChargeOn,
-              enabled: ready,
-              onChanged: on == null ? null : (v) => on(withPlaceCharge(s, on: v)),
-              child: PlaceChargeTab(settings: s, onChanged: on),
+            // Place fees (0324): a list, each with its own switch.
+            PlaceFeesTab(
+              areaId: _id,
+              canEdit: _edit,
+              services: services,
+              ready: ready && areaOn,
+              noun: _noun,
             ),
             PlaceFeatureTab(
               switchKey: const ValueKey('place-switch-fares'),
@@ -782,7 +786,7 @@ class _AirportEditorState extends ConsumerState<AirportEditor> {
             AirportRulesTab(settings: s, onChanged: on),
             waitTab(),
             faresTab(),
-            AirportChargesTab(settings: s, onChanged: on),
+            PlaceFeesTab(areaId: _id, canEdit: _edit, services: services, noun: _noun),
           ];
 
     return DefaultTabController(

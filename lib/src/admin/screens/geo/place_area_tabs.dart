@@ -1,12 +1,12 @@
 // Admin → Multi-Gate Places, one place's tools (migration 0258): each tab is
 // one optional tool with its own switch at the top — the boundary, "riders
-// must pick a door", the pickup guide, the extra charge, own fares and the
-// driver waiting queue. The tools themselves are the airports' (airport_tabs);
-// these are the parts a place does differently.
+// must pick a door", the pickup guide, own fares and the driver waiting
+// queue (a place's fees are place_fees_tab.dart's, 0324). The tools
+// themselves are the airports' (airport_tabs); these are the parts a place
+// does differently.
 import 'package:flutter/material.dart';
 
 import '../../../core/airport_queue.dart';
-import '../../../core/format.dart';
 import 'airport_tabs.dart';
 
 /// A tool's switch over its settings. Off (or [enabled] false: the place
@@ -129,63 +129,6 @@ class PlaceGuideTab extends StatelessWidget {
             ),
           ),
         if (guideEditor != null) ...[const Divider(height: 32), guideEditor!],
-      ],
-    );
-  }
-}
-
-/// The extra charge: what a pickup and a drop-off here add, and the label
-/// riders see on the fare.
-class PlaceChargeTab extends StatelessWidget {
-  const PlaceChargeTab({super.key, required this.settings, this.onChanged, this.currency = 'MYR'});
-
-  final AirportSettings settings;
-  final ValueChanged<AirportSettings>? onChanged;
-  final String currency;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = settings;
-    final on = onChanged;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.end,
-          children: [
-            AmountField(
-              key: const ValueKey('place-charge-pick'),
-              value: s.pickFee.amount,
-              label: 'Pickup here ($currency)',
-              width: 150,
-              onChanged: on == null ? null : (v) => on(withPlaceCharge(s, pickAmount: v)),
-            ),
-            AmountField(
-              key: const ValueKey('place-charge-drop'),
-              value: s.dropFee.amount,
-              label: 'Drop-off here ($currency)',
-              width: 150,
-              onChanged: on == null ? null : (v) => on(withPlaceCharge(s, dropAmount: v)),
-            ),
-            SizedBox(
-              width: 240,
-              child: NameField(
-                key: const ValueKey('place-charge-label'),
-                value: s.pickFee.name,
-                label: 'Label riders see',
-                onChanged: on == null ? null : (v) => on(withPlaceCharge(s, label: v)),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        AirportNote(
-          'Added to the fare of a ride that starts or ends inside the boundary and shown to the rider before they '
-          'confirm, e.g. "${s.pickFee.name.trim().isEmpty ? 'Place fee' : s.pickFee.name.trim()} '
-          '${formatMoney(s.pickFee.amount, currency)}". 0 adds nothing.',
-        ),
       ],
     );
   }

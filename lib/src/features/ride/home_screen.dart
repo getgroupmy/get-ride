@@ -48,6 +48,9 @@ import '../../widgets/place_type_badge.dart';
 import '../../core/gate_snap.dart';
 import 'gate_picker.dart';
 import '../../core/region_pricing.dart';
+import '../../core/place_fees.dart';
+import '../../data/place_fees_repository.dart';
+import 'place_fee_parts.dart';
 import '../../core/service_tree.dart';
 import '../../core/ride_bidding.dart';
 import '../../core/ride_request_metadata.dart';
@@ -201,6 +204,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The server's airport fare for the confirm step, and what it was asked for.
   AirportQuote? _airportQuote;
   String? _airportQuoteKey;
+
+  // ---- Place fees (0324) ----
+  /// The server's place fees for the trip, by vehicle service, and what
+  /// they were asked for (asked again, debounced, when the trip changes).
+  Map<String, PlaceFeesQuote> _placeFees = const {};
+  String? _placeFeesKey;
+  Timer? _placeFeesTimer;
 
   // ---- Promo codes (0242) ----
   /// The codes that apply to the trip on the confirm step.
@@ -815,6 +825,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _liveFeed.dispose();
     _lifecycle?.dispose();
     _promoTimer?.cancel();
+    _placeFeesTimer?.cancel();
     _draftTimer?.cancel();
     _expiry?.cancel();
     _note.dispose();
@@ -1537,20 +1548,154 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// The selected service's surcharges and taxes on its fare, one per line
   /// ("+ Night surcharge: RM 2.00"); null when there are none.
   String? _chargeLines() {
-    final lines = _pricingFor(_service).linesFor(_fareFor(_service));
+    final fare = _fareFor(_service);
+    final fees = _placeFeesFor(_service);
+    // The place fees (0324) are surcharges on the ride: the taxes are on
+    // them too, as the receipt has them. They show as their own lines
+    // ([_placeFeeRows]), so they are left out here.
+    final base = _pricingFor(_service);
+    final regionSurcharges = base.charges.where((c) => !c.isTax).length;
+    final all = _withPlaceFees(base, fees).linesFor(fare);
+    final lines = [
+      for (final (i, l) in all.indexed)
+        if (l.isTax || i < regionSurcharges) l,
+    ];
     final airport = _airportQuoteNow();
-    if (lines.isEmpty && airport == null) return null;
+    if (lines.isEmpty && airport == null && fees.isEmpty) return null;
     return [
       // The airport fare, as the server books it (0249): how it is made up,
       // its charges and the total.
       if (airport != null) ...[
-        for (final l in airport.lines) '${l.charge ? '+ ' : ''}${l.label}: ${formatMoney(l.amount, _currency)}',
+        for (final l in airport.lines)
+          // Its charges are the place fees, shown on their own above.
+          if (!(l.charge && !fees.isEmpty)) '${l.charge ? '+ ' : ''}${l.label}: ${formatMoney(l.amount, _currency)}',
         // A place's (0258) is the fare with its charge: no "Airport" in it.
         '${(ref.read(airportAreasProvider).value ?? const <AirportArea>[]).any((x) => x.isPlace && x.id == airport.areaId) ? 'Total' : 'Airport fare'}: '
             '${formatMoney(airport.total, _currency)}',
       ],
       for (final l in lines) '+ ${l.label}: ${formatMoney(l.amount, _currency)}',
+      if (!fees.isEmpty && airport == null) 'Total: ${formatMoney(_totalWithFees(_service), _currency)}',
     ].join('\n');
+  }
+
+  /// [pricing] with [fees] added as fixed surcharges, as the ride is stamped.
+  RegionPricing _withPlaceFees(RegionPricing pricing, PlaceFeesQuote fees) => fees.isEmpty
+      ? pricing
+      : RegionPricing(
+          wholeFare: pricing.wholeFare,
+          tax: pricing.tax,
+          charges: [
+            ...pricing.charges,
+            for (final l in fees.lines) FareCharge(isTax: false, name: l.name, percent: false, value: l.amount),
+          ],
+        );
+
+  /// What [s] comes to with its place fees, its surcharges and taxes.
+  double _totalWithFees(RideService s) {
+    final fare = _fareFor(s);
+    final all = _withPlaceFees(_pricingFor(s), _placeFeesFor(s)).linesFor(fare);
+    return ((fare + all.fold(0.0, (a, l) => a + l.amount)) * 100).roundToDouble() / 100;
+  }
+
+  /// "Find a driver · RM 59.00": with place fees on the trip (0324), the
+  /// button says what the ride comes to with them.
+  String _withFeesTotal(String label) =>
+      _placeFeesFor(_service).isEmpty ? label : '$label · ${formatMoney(_totalWithFees(_service), _currency)}';
+
+  /// The place fee lines (0324) of [s], as shown before booking.
+  List<PlaceFeeRow> _placeFeeRows(RideService s) =>
+      placeFeeRows(_placeFeesFor(s).lines, (v) => formatMoney(v, _currency));
+
+  /// [s]'s route fare: what a place fee's percentage is of (the fare less
+  /// the option charges), as the server takes it (0324).
+  double _placeFeeFare(RideService s) {
+    final left = _fareFor(s) - optionChargesTotal(_optionChargesOn(_routeFareFor(s), s));
+    return left < 0 ? 0 : (left * 100).roundToDouble() / 100;
+  }
+
+  /// The server's place fees (0324) for [s] on this trip: what the ride
+  /// will be stamped with (place_fees_quote). None until it answers.
+  PlaceFeesQuote _placeFeesFor(RideService s) {
+    _syncPlaceFees();
+    return _placeFees[s.name] ?? PlaceFeesQuote.none;
+  }
+
+  /// Asks for every vehicle's place fees again when the trip, the fares or
+  /// the pickup time change, a moment after the last change.
+  void _syncPlaceFees() {
+    final a = _pickup, b = _drop;
+    if (a == null || b == null || _basis == null) return;
+    final list = [..._services.take(8)];
+    if (!list.any((x) => x.name == _service.name)) list.add(_service);
+    final stops = [for (final p in _stops) p.point];
+    final at = _scheduleAt;
+    final fares = {for (final s in list) s.name: _placeFeeFare(s)};
+    final key = '${a.point.latitude},${a.point.longitude}|${b.point.latitude},${b.point.longitude}|'
+        '${[for (final p in stops) '${p.latitude},${p.longitude}']}|${at?.millisecondsSinceEpoch}|$fares';
+    if (key == _placeFeesKey) return;
+    // A new trip shows no fee until the server answers for it.
+    if (_placeFeesKey?.split('|').take(3).join('|') != key.split('|').take(3).join('|')) _placeFees = const {};
+    _placeFeesKey = key;
+    _placeFeesTimer?.cancel();
+    _placeFeesTimer = Timer(const Duration(milliseconds: 350), () async {
+      if (!mounted) return;
+      final got = <String, PlaceFeesQuote>{};
+      try {
+        final repo = ref.read(placeFeesRepositoryProvider);
+        await Future.wait([
+          for (final s in list)
+            repo
+                .quote(pickup: a.point, drop: b.point, stops: stops, service: s.name, fare: fares[s.name]!, at: at)
+                .then((q) => got[s.name] = q)
+                .catchError((_) => got[s.name] = PlaceFeesQuote.none),
+        ]);
+      } catch (_) {
+        // Unreachable: no fee is shown; the server still stamps them.
+      }
+      if (mounted && _placeFeesKey == key) setState(() => _placeFees = got);
+    });
+  }
+
+  /// Booked for later (0324): the place fees at that pickup time, which
+  /// the booking locks. When they differ from those shown, the rider is
+  /// asked first. False when they say no.
+  Future<bool> _placeFeesForLater(DateTime at) async {
+    final a = _pickup, b = _drop;
+    if (a == null || b == null) return true;
+    final shown = _placeFees[_service.name] ?? PlaceFeesQuote.none;
+    final PlaceFeesQuote later;
+    try {
+      later = await ref.read(placeFeesRepositoryProvider).quote(
+            pickup: a.point,
+            drop: b.point,
+            stops: [for (final p in _stops) p.point],
+            service: _service.name,
+            fare: _placeFeeFare(_service),
+            at: at,
+          );
+    } catch (_) {
+      return true;
+    }
+    if (!mounted) return false;
+    if ((later.total - shown.total).abs() < 0.005) return true;
+    final ok = await showAppDialog<bool>(
+      id: 'place-fees.later',
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Place fees at that time'),
+        content: Text(
+          later.isEmpty
+              ? 'No place fee applies at that pickup time.'
+              : [for (final l in later.lines) '${l.label}: ${formatMoney(l.amount, _currency)}'].join('\n'),
+          key: const ValueKey('place-fees-later'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Book')),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   /// The server's airport fare for the trip on the confirm step, when it
@@ -1564,7 +1709,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final normal = _fareFor(_service);
     final options = [for (final c in _optionCharges) c.toJson()];
     final key = '${a.point.latitude},${a.point.longitude}|${b.point.latitude},${b.point.longitude}|'
-        '${_service.name}|${basis.distanceKm.toStringAsFixed(2)}|$normal|$options';
+        '${_service.name}|${basis.distanceKm.toStringAsFixed(2)}|$normal|$options|'
+        '${[for (final p in _stops) p.point]}|${_scheduleAt?.millisecondsSinceEpoch}';
     if (key == _airportQuoteKey) return _airportQuote;
     _airportQuoteKey = key;
     _airportQuote = null;
@@ -1584,6 +1730,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           city: area?.city,
           suburb: area?.suburb,
           optionCharges: options,
+          stops: [for (final p in _stops) p.point],
+          at: _scheduleAt,
         )
         .then((q) {
           if (mounted && _airportQuoteKey == key) setState(() => _airportQuote = q);
@@ -1828,6 +1976,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             : null,
         // No trip yet (the home bar's (i)): no fare to work a tax out on.
         tax: _basis == null ? null : _chargeLines(),
+        // The place fees with their notes for riders (0324).
+        placeFees: _basis == null || s.name != _service.name ? const [] : _placeFeeRows(s),
         trend: ai?.trend,
       ),
     );
@@ -2411,6 +2561,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     try {
       // The codes for that pickup time, to keep, change or take off first.
       if (!await _promosForLater(at)) return;
+      // The place fees at that time, locked when it is booked (0324).
+      if (!await _placeFeesForLater(at)) return;
       await _find();
     } finally {
       if (mounted && _scheduleAt != null) setState(() => _scheduleAt = null);
@@ -2907,6 +3059,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     gap: mapLayout.pillGap,
                   ),
                 for (final m in tolls) tollMarker(m, onTap: ai == null ? null : () => showTollBooths(context, ai)),
+                // A place fee at the pickup or the drop-off (0324): the place
+                // and its fee over the pin.
+                if (confirming && !_pinMoving) ...[
+                  for (final (which, end, at) in [
+                    ('pickup', _placeFeesFor(_service).pickup, _pickup?.point),
+                    ('drop', _placeFeesFor(_service).drop, _drop?.point),
+                  ])
+                    if (at != null)
+                      if (_placeFeesFor(_service).mapLabelFor(end, (v) => formatMoney(v, _currency)) case final text?)
+                        labelAbovePin(
+                          at,
+                          PlaceFeeMapLabel(key: ValueKey('place-fee-map-$which'), text: text),
+                          width: math.min(260, screenWidth - 32),
+                          height: 30,
+                          gap: mapLayout.pillGap,
+                        ),
+                ],
               ],
             )),
             ),
@@ -3051,6 +3220,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               pickup: _pickup,
               drop: _drop!,
               stops: _stops,
+              // Where a place fee applies (0324): the admin's hint.
+              pickupHint: _placeFeesFor(_service).hintFor(_placeFeesFor(_service).pickup, (v) => formatMoney(v, _currency)),
+              dropHint: _placeFeesFor(_service).hintFor(_placeFeesFor(_service).drop, (v) => formatMoney(v, _currency)),
               duration: _routing ? '' : confirmDuration(_basis?.durationMin),
               entrance: _entrance,
               onPickup: () => _choose(_PinTarget.pickup),
@@ -3173,11 +3345,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             autoAcceptLabel: layout.showAutoAccept && _biddingFor(_service) ? 'Auto-accept offer of ${_fareMoney(_fareFor(_service))}' : null,
             autoAccept: _autoAccept,
             onAutoAccept: (v) => setState(() => _autoAccept = v),
-            label: _forOtherOn
+            label: _withFeesTotal(_forOtherOn
                 ? 'Find a driver for ${otherName.isEmpty ? 'someone else' : otherName}'
                 : direct != null
                 ? 'Book ${direct.driverName}'
-                : 'Find a driver',
+                : 'Find a driver'),
             onFind: _booking ||
                     _routing ||
                     _basis == null ||
@@ -3298,6 +3470,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       services: _services,
       service: _service,
       fareFor: _fareFor,
+      // The vehicle cards' fares include the place fees (0324), with a badge.
+      feeFor: (s) => _placeFeesFor(s).total,
+      feeBadge: (s) => _placeFeesFor(s).badge,
       fareDecimals: _pricing.fareDecimals,
       onPickup: () => _choose(_PinTarget.pickup),
       onDrop: () => _choose(_PinTarget.drop),
@@ -3320,6 +3495,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ? formatMoney(ai!.tollsToShow, _currency)
                   : null,
               tax: _chargeLines(),
+              placeFees: _placeFeeRows(_service),
               trend: ai?.trend,
             )
           : null,
@@ -3495,6 +3671,8 @@ class _BookingPanel extends StatelessWidget {
     required this.services,
     required this.service,
     required this.fareFor,
+    this.feeFor,
+    this.feeBadge,
     this.fareDecimals = 2,
     required this.onPickup,
     required this.onDrop,
@@ -3563,6 +3741,14 @@ class _BookingPanel extends StatelessWidget {
   final List<RideService> services;
   final RideService service;
   final double Function(RideService) fareFor;
+
+  /// The place fees (0324) on [s]'s card's fare, and the badge that says
+  /// so; null where there are none.
+  final double Function(RideService)? feeFor;
+  final String? Function(RideService)? feeBadge;
+
+  /// [s]'s fare as its card shows it: with its place fees.
+  double _cardFare(RideService s, double fare) => fare + (feeFor?.call(s) ?? 0);
 
   /// The decimals a fare is shown with (none where the region's are whole).
   final int fareDecimals;
@@ -3679,10 +3865,15 @@ class _BookingPanel extends StatelessWidget {
                     i == 0,
                     ConfirmServiceCard(
                       service: s,
-                      price: formatMoney(plus?.benefits?.price(fareFor(s)) ?? fareFor(s), currency, fareDecimals),
+                      price: formatMoney(
+                        _cardFare(s, plus?.benefits?.price(fareFor(s)) ?? fareFor(s)),
+                        currency,
+                        fareDecimals,
+                      ),
                       was: plus?.benefits == null || plus!.benefits!.price(fareFor(s)) == fareFor(s)
                           ? null
-                          : formatMoney(fareFor(s), currency, fareDecimals),
+                          : formatMoney(_cardFare(s, fareFor(s)), currency, fareDecimals),
+                      badge: feeBadge?.call(s),
                       note: s.premium && plus != null ? premiumRuleLine(plus!.premium) : null,
                       selected: s.name == service.name,
                       etaMinutes: etaFor?.call(s),

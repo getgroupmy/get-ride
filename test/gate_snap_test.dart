@@ -154,7 +154,9 @@ void main() {
       expect(placeAreaOn({...values, 'areaOn': 'false'}), isFalse);
       final s = withPlaceCharge(const AirportSettings.place('p'), on: true, pickAmount: 1)
           .copyWith(pickDoorRequired: true, dropDoorRequired: true, restrictPickups: true);
-      expect(placeToolLabels(values, s), ['Boundary', 'Doors required', 'Charge', 'Queue']);
+      // The old charge isn't a tool since 0324: the place's fees are.
+      expect(placeToolLabels(values, s), ['Boundary', 'Doors required', 'Queue']);
+      expect(placeToolLabels(values, s, fees: 2), ['Boundary', 'Doors required', '2 fees', 'Queue']);
       expect(placeToolLabels({}, s), isEmpty);
     });
 

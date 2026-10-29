@@ -186,33 +186,32 @@ void main() {
             b,
             StatefulBuilder(
               builder: (context, set) => PlaceFeatureTab(
-                switchKey: const ValueKey('place-switch-charge'),
-                title: 'Extra charge',
-                subtitle: 'Added to the fare',
+                switchKey: const ValueKey('place-switch-guide'),
+                title: 'Pickup guide',
+                subtitle: 'Step-by-step photos',
                 value: value,
                 onChanged: (v) => set(() => value = v),
-                child: PlaceChargeTab(settings: const AirportSettings.place('p'), onChanged: (_) {}),
+                child: PlaceGuideTab(doors: _gates, onGuide: (_) {}),
               ),
             ),
           ),
         );
         double opacity() => tester
             .widget<AnimatedOpacity>(
-              find.ancestor(of: find.byType(PlaceChargeTab), matching: find.byType(AnimatedOpacity)).first,
+              find.ancestor(of: find.byType(PlaceGuideTab), matching: find.byType(AnimatedOpacity)).first,
             )
             .opacity;
         IgnorePointer gate() => tester.widget<IgnorePointer>(
-          find.ancestor(of: find.byType(PlaceChargeTab), matching: find.byType(IgnorePointer)).first,
+          find.ancestor(of: find.byType(PlaceGuideTab), matching: find.byType(IgnorePointer)).first,
         );
         expect(opacity(), lessThan(1));
         expect(gate().ignoring, isTrue);
-        await tester.tap(find.byKey(const ValueKey('place-switch-charge')));
+        await tester.tap(find.byKey(const ValueKey('place-switch-guide')));
         await tester.pumpAndSettle();
         expect(value, isTrue);
         expect(opacity(), 1);
         expect(gate().ignoring, isFalse);
-        expect(find.byKey(const ValueKey('place-charge-pick')), findsOneWidget);
-        expect(find.byKey(const ValueKey('place-charge-label')), findsOneWidget);
+        expect(find.byKey(const ValueKey('place-guide-door-a')), findsOneWidget);
 
         // Without a boundary the switch can't be used.
         await tester.pumpWidget(

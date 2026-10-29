@@ -185,6 +185,9 @@ set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000257a1');
 update public.airport_settings set pick_fee_on = true, pick_fee_name = 'Mall entry fee', pick_fee_amount = 2
  where airport_id = '00000000-0000-0000-0000-0000000257f2';
+-- The charge itself is a place fee since 0324 (place_fees, written by the same page).
+insert into public.place_fees (area_id, name, applies_to, amount) values
+  ('00000000-0000-0000-0000-0000000257f2', 'Mall entry fee', 'pickup', 2);
 insert into public.airport_waiting_zones (airport_id, name, shape) values
   ('00000000-0000-0000-0000-0000000257f2', 'Taxi rank', pg_temp.box(33.18, 33.15, 123.18, 123.15)::jsonb);
 select pg_temp.check((select pick_fee_on from public.airport_settings where airport_id = '00000000-0000-0000-0000-0000000257f2'),

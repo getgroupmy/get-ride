@@ -34,6 +34,8 @@ const liveSettingTables = <String>[
   'airport_settings',
   'airport_waiting_zones',
   'airport_fare_zones',
+  // Place fees: each airport's and place's list of fees (0324; admins only).
+  'place_fees',
   // Vehicle services, lowest to highest (0249).
   'vehicle_service_order',
   // Whether that order applies to every booking (0250).

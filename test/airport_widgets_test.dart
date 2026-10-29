@@ -4,6 +4,7 @@ import 'package:get_ride/src/admin/screens/catalogue/service_order_screen.dart';
 import 'package:get_ride/src/admin/screens/geo/airport_tabs.dart';
 import 'package:get_ride/src/app.dart';
 import 'package:get_ride/src/core/airport_queue.dart';
+import 'package:get_ride/src/core/place_fees.dart';
 import 'package:get_ride/src/data/airport_repository.dart' show AirportZone;
 import 'package:get_ride/src/features/partner/airport_queue_card.dart';
 import 'package:get_ride/src/features/ride/airport_door_sheet.dart';
@@ -284,11 +285,6 @@ void main() {
       ) async {
         var s = const AirportSettings(
           airportId: 'a',
-          pickFee: AirportCharge(
-            on: true,
-            name: 'Airport pickup fee',
-            amount: 6,
-          ),
           fares: AirportFares(
             base: {'comfort': 8},
             band: DistanceBand(
@@ -303,6 +299,8 @@ void main() {
             StatefulBuilder(
               builder: (_, set) => AirportFaresTab(
                 settings: s,
+                // The airport's place fee (0324) is in the trial fare.
+                fees: const [PlaceFee(areaId: 'a', name: 'Airport pickup fee', amount: 6)],
                 services: const ['Ride', 'Comfort'],
                 zones: const [],
                 onChanged: (v) => set(() => s = v),
@@ -340,38 +338,6 @@ void main() {
         );
         await tester.pump();
         expect(s.fares.roundUp, isFalse);
-      });
-
-      testWidgets('admin charges: switch one on, name and amount', (
-        tester,
-      ) async {
-        var s = const AirportSettings(airportId: 'a');
-        await tester.pumpWidget(
-          _app(
-            b,
-            StatefulBuilder(
-              builder: (_, set) => AirportChargesTab(
-                settings: s,
-                onChanged: (v) => set(() => s = v),
-              ),
-            ),
-          ),
-        );
-        await tester.tap(find.byType(Switch).last);
-        await tester.pump();
-        expect(s.pickFee.on, isTrue);
-        expect(s.pickFee.amount, 5);
-        await tester.enterText(
-          find.byKey(const ValueKey('airport-charge-amount-pick')).first,
-          '6.5',
-        );
-        await tester.pump();
-        expect(s.pickFee.amount, 6.5);
-        await tester.enterText(
-          find.byKey(const ValueKey('airport-charge-name-pick')).first,
-          'Airport pickup fee',
-        );
-        expect(s.pickFee.name, 'Airport pickup fee');
       });
 
       testWidgets('admin gates & doors with the guide editor', (tester) async {
