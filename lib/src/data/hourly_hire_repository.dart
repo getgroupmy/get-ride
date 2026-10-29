@@ -2,10 +2,15 @@
 // extensions and its end, and a driver's "Take hourly hire" switch. Booking
 // a hire is RideRepository.createRequest with its hours (a ride_requests row
 // with hire columns), so it is the Ride module's repository too.
+//
+// Hire for several days (0327): a package's settings and quote, booking
+// (hire_book, with the row RideRepository.createRequest builds), a driver
+// taking a whole booking, the rider's bookings and cancelling one.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/hourly_hire.dart';
+import '../core/multi_day_hire.dart';
 import '../providers.dart';
 import 'driver_extras_repository.dart' show driverRideExtrasTable;
 import 'live_tables.dart';
@@ -111,6 +116,146 @@ class HourlyHireRepository {
   });
 }
 
+extension MultiHireCalls on HourlyHireRepository {
+  SupabaseClient get _client => _db;
+
+  /// A package's settings ('daily'); off when it can't be read.
+  Future<MultiHireConfig> packageConfig(String package) async {
+    final v = await _client.rpc('hire_package_config', params: {'p_package': package});
+    return MultiHireConfig.fromJson(package, v is Map ? Map<String, dynamic>.from(v) : null);
+  }
+
+  /// Admin › Settings › Daily hire: saved as the server keeps it.
+  Future<MultiHireConfig> savePackage(MultiHireConfig c) => _call(() async {
+    final v = await _client.rpc('set_hire_package_config', params: {'p_package': c.package, 'p_config': c.toJson()});
+    return v is Map ? MultiHireConfig.fromJson(c.package, Map<String, dynamic>.from(v)) : c;
+  });
+
+  /// The server's price for [days] days of [hours] a day from [firstAt].
+  Future<MultiHireQuote> multiQuote({
+    required String package,
+    required ({double lat, double lng}) pickup,
+    ({double lat, double lng})? drop,
+    required String service,
+    required int days,
+    double? hours,
+    required DateTime firstAt,
+    HirePlace place = (country: null, state: null, city: null, suburb: null),
+    String? payment,
+    bool overnight = false,
+    String? timezone,
+    Map<String, dynamic> options = const {},
+  }) => _call(() async {
+    final v = await _client.rpc('hire_multi_quote', params: {
+      'p_package': package,
+      'p_pickup_lat': pickup.lat,
+      'p_pickup_lng': pickup.lng,
+      'p_drop_lat': drop?.lat,
+      'p_drop_lng': drop?.lng,
+      'p_service': service,
+      'p_days': days,
+      'p_hours': hours,
+      'p_first_at': firstAt.toUtc().toIso8601String(),
+      'p_country': place.country,
+      'p_state': place.state,
+      'p_city': place.city,
+      'p_suburb': place.suburb,
+      'p_payment': payment,
+      'p_overnight': overnight,
+      'p_timezone': timezone,
+      'p_options': options,
+    });
+    return MultiHireQuote.fromJson(v is Map ? Map<String, dynamic>.from(v) : const {});
+  });
+
+  /// Books [booking] ({package, first_at, days, hours, overnight,
+  /// same_driver, payment_plan}) with the ride [row] the app would send for
+  /// day 1: the booking and its days, the deposit taken.
+  Future<HireDaysBooking> book(Map<String, dynamic> row, Map<String, dynamic> booking) => _call(() async {
+    final v = await _client.rpc('hire_book', params: {'p_request': row, 'p_booking': booking});
+    return HireDaysBooking.fromRow(Map<String, dynamic>.from(v as Map));
+  });
+
+  /// The signed-in rider's bookings, newest first.
+  Future<List<HireDaysBooking>> myBookings() async {
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) return const [];
+    final rows = await _client
+        .from(hireBookingsTable)
+        .select()
+        .eq('rider_id', uid)
+        .order('first_at', ascending: false)
+        .limit(50);
+    return [for (final r in rows) HireDaysBooking.fromRow(r)];
+  }
+
+  /// One booking (the rider's, its driver's, or an admin's view).
+  Future<HireDaysBooking?> booking(String id) async {
+    final r = await _client.from(hireBookingsTable).select().eq('id', id).maybeSingle();
+    return r == null ? null : HireDaysBooking.fromRow(r);
+  }
+
+  /// What cancelling now costs.
+  Future<({bool free, double fee, double refund, DateTime? freeUntil, bool started})> cancelQuote(String id) =>
+      _call(() async {
+        final v = Map<String, dynamic>.from(
+          await _client.rpc('hire_booking_cancel_quote', params: {'p_booking': id}) as Map,
+        );
+        double n(Object? x) => x is num ? x.toDouble() : double.tryParse('$x') ?? 0;
+        return (
+          free: v['free'] == true,
+          fee: n(v['fee']),
+          refund: n(v['refund']),
+          freeUntil: DateTime.tryParse('${v['freeUntil']}')?.toLocal(),
+          started: v['started'] == true,
+        );
+      });
+
+  Future<void> cancelBooking(String id, {String? reason}) => _call(() async {
+    await _client.rpc('hire_booking_cancel', params: {'p_booking': id, 'p_reason': reason});
+  });
+
+  /// A booking's days (its rider's, its drivers' or an admin's view): the
+  /// day, the pickup, the status, the driver and the ride once released.
+  Future<List<({String id, int day, DateTime at, String status, String? partnerId, String? rideId})>> bookingDays(
+    String id,
+  ) async {
+    final rows = await _client
+        .from('scheduled_rides')
+        .select('id, hire_day_no, pickup_at, status, partner_id, ride_id')
+        .eq('hire_booking_id', id)
+        .order('hire_day_no', ascending: true);
+    return [
+      for (final r in rows)
+        (
+          id: '${r['id']}',
+          day: (r['hire_day_no'] as num?)?.toInt() ?? 0,
+          at: DateTime.tryParse('${r['pickup_at']}')?.toLocal() ?? DateTime.now(),
+          status: '${r['status']}',
+          partnerId: r['partner_id'] as String?,
+          rideId: r['ride_id'] as String?,
+        ),
+    ];
+  }
+
+  /// Bookings a driver can take for all their days.
+  Future<List<OpenHireBooking>> openBookings() async {
+    final rows = await _client.rpc('hire_bookings_open');
+    return [
+      if (rows is List)
+        for (final r in rows)
+          if (r is Map) OpenHireBooking.fromRow(Map<String, dynamic>.from(r)),
+    ];
+  }
+
+  /// The driver takes every day of a booking.
+  Future<void> acceptBooking(String id) => _call(() async {
+    await _client.rpc('hire_booking_accept', params: {'p_booking': id});
+  });
+}
+
+const hireBookingsTable = 'hire_bookings';
+
 final hourlyHireRepositoryProvider = Provider((ref) => HourlyHireRepository(ref.watch(supabaseProvider)));
 
 /// The settings, kept live; off when they can't be read.
@@ -127,4 +272,34 @@ final hourlyHireConfigProvider = FutureProvider<HourlyHireConfig>((ref) async {
 final myTakesHireProvider = FutureProvider.autoDispose<bool>((ref) {
   ref.watchLive(driverRideExtrasTable);
   return ref.watch(hourlyHireRepositoryProvider).takesHire();
+});
+
+/// A package's settings ('daily'), kept live; off when they can't be read.
+final multiHireConfigProvider = FutureProvider.family<MultiHireConfig, String>((ref, package) async {
+  ref.watchLive('app_settings');
+  try {
+    return await ref.watch(hourlyHireRepositoryProvider).packageConfig(package);
+  } catch (_) {
+    return MultiHireConfig(package: package);
+  }
+});
+
+/// The signed-in rider's bookings for several days, kept live.
+final myHireBookingsProvider = FutureProvider.autoDispose<List<HireDaysBooking>>((ref) async {
+  ref.watchLive(hireBookingsTable);
+  try {
+    return await ref.watch(hourlyHireRepositoryProvider).myBookings();
+  } catch (_) {
+    return const [];
+  }
+});
+
+/// Bookings waiting for one driver for all their days (drivers' Upcoming).
+final openHireBookingsProvider = FutureProvider.autoDispose<List<OpenHireBooking>>((ref) async {
+  ref.watchLive(hireBookingsTable);
+  try {
+    return await ref.watch(hourlyHireRepositoryProvider).openBookings();
+  } catch (_) {
+    return const [];
+  }
 });

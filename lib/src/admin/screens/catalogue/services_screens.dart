@@ -456,7 +456,8 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
   };
   // Hourly hire (0326).
   late final _hire = {
-    for (final f in vehicleServiceHireFields) f.key: TextEditingController(text: v[f.key] == null ? '' : '${v[f.key]}'),
+    for (final f in [...vehicleServiceHireFields, ...vehicleServiceHireDayFields])
+      f.key: TextEditingController(text: v[f.key] == null ? '' : '${v[f.key]}'),
   };
   late bool _hireEnabled = v[hireEnabledKey] == true;
   late bool _closedBody = v[closedBodyKey] == true;
@@ -700,6 +701,23 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
           onChanged: widget.canEdit ? (x) => setState(() => _hireEnabled = x) : null,
         ),
         for (final f in vehicleServiceHireFields)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: TextField(
+              key: ValueKey('vs-${f.key}'),
+              controller: _hire[f.key],
+              enabled: widget.canEdit,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: sentenceCaseLabel(f.label), suffixText: f.suffix),
+            ),
+          ),
+        // Daily hire (0327): the day's rates.
+        const SectionLabel(
+          'Daily hire',
+          hint: 'Riders hire this vehicle for whole days (Admin › Settings › Daily hire). Blank: the price per hour × '
+              'the hours in a day, the km and overnight allowance from those settings, overtime and extra km as hourly.',
+        ),
+        for (final f in vehicleServiceHireDayFields)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: TextField(

@@ -22,6 +22,9 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../ride/driver_code_sheet.dart';
 import '../../core/hourly_hire.dart' show hireSpanText;
+import '../../core/multi_day_hire.dart' show OpenHireBooking;
+import '../../data/hourly_hire_repository.dart' show openHireBookingsProvider;
+import '../ride/multi_hire_parts.dart' show OpenHireBookingCard;
 import '../ride/scheduled_rides_screen.dart' show pickupLabel;
 import '../../widgets/back_or_go_button.dart';
 import '../../widgets/page_style_host.dart';
@@ -67,6 +70,7 @@ class ScheduledJobsScreen extends ConsumerWidget {
 
 void _refresh(WidgetRef ref) {
   ref.invalidate(upcomingBookingsProvider);
+  ref.invalidate(openHireBookingsProvider);
   ref.invalidate(acceptedScheduledRidesProvider);
   ref.invalidate(scheduledOffersProvider);
 }
@@ -114,6 +118,11 @@ class _UpcomingTab extends ConsumerWidget {
                   : 'Each one comes to drivers nearby as a request ${config.releaseMinutes} minutes before pickup.',
               style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
             ),
+            // Hire for several days (0327): bookings taken for every day at once.
+            ...[
+              for (final b in ref.watch(openHireBookingsProvider).value ?? const <OpenHireBooking>[])
+                OpenHireBookingCard(booking: b, money: (v) => formatMoney(v, b.currency ?? 'MYR')),
+            ],
             if (all.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 32),
@@ -450,8 +459,9 @@ class _BookingCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               [
-                // Hourly hire (0326): its span.
-                if (ride.hireHours case final h?) '${hireSpanText(h, ride.pickupAt)} · ${ride.service ?? 'Ride'}'
+                // Hourly hire (0326): its span; a hire day (0327): "Daily hire · day 2 of 3".
+                if (ride.hireDayLabel case final d?) '$d · ${ride.service ?? 'Ride'}'
+                else if (ride.hireHours case final h?) '${hireSpanText(h, ride.pickupAt)} · ${ride.service ?? 'Ride'}'
                 else ride.service ?? 'Ride',
                 if (km != null && !ride.isHire) formatDistance(km),
               ].join(' · '),

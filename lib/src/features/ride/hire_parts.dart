@@ -174,16 +174,25 @@ class HireServiceCard extends StatelessWidget {
 
 /// The price of the chosen hire, line by line, and what isn't in it.
 class HireFareSummary extends StatelessWidget {
-  const HireFareSummary({super.key, required this.quote, required this.regionLines, required this.money});
+  const HireFareSummary({
+    super.key,
+    required this.quote,
+    required this.regionLines,
+    required this.money,
+    this.wholeFare = false,
+  });
 
   final HireQuote quote;
+
+  /// Fares are whole amounts here: the hire price rounds up (0327).
+  final bool wholeFare;
 
   /// The region's surcharges and taxes, as for a ride (with the place fees
   /// among the surcharges' base).
   final List<ChargeLine> regionLines;
   final String Function(double) money;
 
-  double get total => hireTotal(quote, regionLines);
+  double get total => hireTotal(quote, regionLines, wholeFare: wholeFare);
 
   @override
   Widget build(BuildContext context) {
@@ -200,7 +209,7 @@ class HireFareSummary extends StatelessWidget {
       key: const ValueKey('hire-fare'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        row('Hourly hire ${hireHoursText(quote.hours)}', quote.base),
+        row('Hourly hire ${hireHoursText(quote.hours)}', hireBase(quote, wholeFare: wholeFare)),
         for (final f in quote.placeFees) row(f.name, f.amount),
         for (final l in regionLines) row(l.label, l.amount),
         const Divider(height: 12),
@@ -216,9 +225,15 @@ class HireFareSummary extends StatelessWidget {
   }
 }
 
+/// The hire's price: rounded up where fares are whole amounts, as a ride's
+/// fare is (0327; the server stamps it so).
+double hireBase(HireQuote q, {bool wholeFare = false}) => wholeFare ? (q.base - 1e-9).ceilToDouble() : q.base;
+
 /// The quote's total with the region's lines.
-double hireTotal(HireQuote q, List<ChargeLine> regionLines) =>
-    ((q.base + q.placeFeesTotal + regionLines.fold(0.0, (a, l) => a + l.amount)) * 100).roundToDouble() / 100;
+double hireTotal(HireQuote q, List<ChargeLine> regionLines, {bool wholeFare = false}) =>
+    ((hireBase(q, wholeFare: wholeFare) + q.placeFeesTotal + regionLines.fold(0.0, (a, l) => a + l.amount)) * 100)
+        .roundToDouble() /
+    100;
 
 /// The region's lines on a hire: its surcharges and taxes, with the place
 /// fees as fixed surcharges (the taxes are on them too), as the ride is stamped.
@@ -231,7 +246,7 @@ List<ChargeLine> hireRegionLines(RegionPricing pricing, HireQuote q) {
       ...pricing.charges,
       for (final f in q.placeFees) FareCharge(isTax: false, name: f.name, percent: false, value: f.amount),
     ],
-  ).linesFor(q.base);
+  ).linesFor(hireBase(q, wholeFare: pricing.wholeFare));
   return [
     for (final (i, l) in all.indexed)
       if (l.isTax || i < regionSurcharges) l,
@@ -366,7 +381,8 @@ class _HireBookingPanelState extends ConsumerState<HireBookingPanel> {
     }
     final chosen = offered.where((o) => o.$1.name == _serviceName).firstOrNull ?? offered.firstOrNull;
     final lines = chosen == null ? const <ChargeLine>[] : hireRegionLines(widget.pricingFor(chosen.$1), chosen.$2);
-    final total = chosen == null ? 0.0 : hireTotal(chosen.$2, lines);
+    final whole = chosen != null && widget.pricingFor(chosen.$1).wholeFare;
+    final total = chosen == null ? 0.0 : hireTotal(chosen.$2, lines, wholeFare: whole);
     final pay = paymentChoiceFor(widget.payment, widget.payments);
     final cashRefused = pay.kind == PaymentKind.cash && !c.allowCash;
     final ready = chosen != null && chosen.$2.available && !cashRefused && widget.pickup != null;
@@ -428,7 +444,9 @@ class _HireBookingPanelState extends ConsumerState<HireBookingPanel> {
             HireServiceCard(
               service: s,
               quote: q,
-              price: widget.money(hireTotal(q, hireRegionLines(widget.pricingFor(s), q))),
+              price: widget.money(
+                hireTotal(q, hireRegionLines(widget.pricingFor(s), q), wholeFare: widget.pricingFor(s).wholeFare),
+              ),
               money: widget.money,
               selected: s.name == chosen?.$1.name,
               onTap: () => setState(() => _serviceName = s.name),
@@ -440,7 +458,7 @@ class _HireBookingPanelState extends ConsumerState<HireBookingPanel> {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(chosen.$2.hint!, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.error)),
               ),
-            HireFareSummary(quote: chosen.$2, regionLines: lines, money: widget.money),
+            HireFareSummary(quote: chosen.$2, regionLines: lines, money: widget.money, wholeFare: whole),
           ],
         ],
         const SizedBox(height: 12),
@@ -687,7 +705,7 @@ class _HireTripCardState extends ConsumerState<HireTripCard> with _MinuteTick {
       builder: (c) => AlertDialog(
         title: const Text('End the hire now?'),
         content: Text(
-          '${hireEarlyEndText(widget.config.earlyEndPays, h.minHours)} '
+          '${h.isDay ? 'Ending early still pays the day.' : hireEarlyEndText(widget.config.earlyEndPays, h.minHours)} '
           'Overtime you approved and km past the ${h.kmIncluded.round()} km included are added.',
         ),
         actions: [
@@ -723,7 +741,7 @@ class _HireTripCardState extends ConsumerState<HireTripCard> with _MinuteTick {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(hireTitle(h.hours), style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          Text(h.heading, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           if (h.started) ...[
             Text('Time used: ${h.usedText(now)}', key: const ValueKey('hire-used')),
@@ -855,7 +873,7 @@ class _DriverHireCardState extends ConsumerState<DriverHireCard> with _MinuteTic
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(hireTitle(h.hours), style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          Text(h.heading, style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
           if (h.started) ...[
             Text('Time used: ${h.usedText(now)}', key: const ValueKey('driver-hire-used')),
             if (h.endsAt != null) Text('Ends at ${hireClock(h.endsAt!)}'),

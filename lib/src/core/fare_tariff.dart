@@ -35,6 +35,12 @@ class FareTariff {
     this.hireKmPerHour,
     this.hireOvertimePerHour,
     this.hireExtraKm,
+    this.hireDayRate,
+    this.hireDayHours,
+    this.hireDayKm,
+    this.hireDayOvertimePerHour,
+    this.hireDayExtraKm,
+    this.hireOvernight,
   });
 
   factory FareTariff.fromRow(Map<String, dynamic> r) {
@@ -74,6 +80,12 @@ class FareTariff {
       hireKmPerHour: opt('hire_km_per_hour'),
       hireOvertimePerHour: opt('hire_overtime_per_hour'),
       hireExtraKm: opt('hire_extra_km'),
+      hireDayRate: opt('hire_day_rate'),
+      hireDayHours: opt('hire_day_hours'),
+      hireDayKm: opt('hire_day_km'),
+      hireDayOvertimePerHour: opt('hire_day_overtime_per_hour'),
+      hireDayExtraKm: opt('hire_day_extra_km'),
+      hireOvernight: opt('hire_overnight'),
     );
   }
 
@@ -98,6 +110,11 @@ class FareTariff {
   /// on this card; a broader card's, else the service's, apply).
   final bool? hireEnabled;
   final double? hirePerHour, hireMinHours, hireKmPerHour, hireOvertimePerHour, hireExtraKm;
+
+  /// Daily hire (0327) here: the day rate, its hours, the km a day,
+  /// overtime and extra km on a day, the overnight allowance (null: not set
+  /// on this card).
+  final double? hireDayRate, hireDayHours, hireDayKm, hireDayOvertimePerHour, hireDayExtraKm, hireOvernight;
 
   /// Whether it is for every service.
   bool get allServices => serviceType == null && vehicleService == null;
@@ -255,6 +272,13 @@ Map<String, dynamic> fareTariffRow(FareTariff t) {
     'hire_km_per_hour': t.hireKmPerHour,
     'hire_overtime_per_hour': t.hireOvertimePerHour,
     'hire_extra_km': t.hireExtraKm,
+    // 0327: daily hire on this card.
+    'hire_day_rate': t.hireDayRate,
+    'hire_day_hours': t.hireDayHours,
+    'hire_day_km': t.hireDayKm,
+    'hire_day_overtime_per_hour': t.hireDayOvertimePerHour,
+    'hire_day_extra_km': t.hireDayExtraKm,
+    'hire_overnight': t.hireOvernight,
   };
 }
 

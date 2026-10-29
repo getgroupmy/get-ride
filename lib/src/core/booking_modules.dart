@@ -67,11 +67,12 @@ const bookingModules = <BookingModule>[
       tables: ['scheduled_rides'],
       repositories: ['lib/src/data/ride_repository.dart', 'lib/src/data/scheduled_ride_repository.dart'],
       screens: ['lib/src/features/ride/home_screen.dart']),
-  // Hourly hire (0326): a ride_requests row with hire columns, booked on the
-  // ride booking panel's "Hire by time" side, now or later.
-  BookingModule(familyModuleHire, 'Hourly hire',
-      tables: ['ride_requests'],
-      repositories: ['lib/src/data/ride_repository.dart'],
+  // Hire (0326 hourly, 0327 daily): a ride_requests row with hire columns,
+  // booked on the ride booking panel's "Hire by time" side; a hire for
+  // several days is a hire_bookings row and a scheduled ride a day.
+  BookingModule(familyModuleHire, 'Hire',
+      tables: ['ride_requests', 'hire_bookings'],
+      repositories: ['lib/src/data/ride_repository.dart', 'lib/src/data/hourly_hire_repository.dart'],
       screens: ['lib/src/features/ride/home_screen.dart']),
   BookingModule(familyModuleCityToCity, 'City to City',
       tables: ['c2c_bookings'],

@@ -160,7 +160,7 @@ class _PickupTimeSheetState extends State<PickupTimeSheet> {
           children: [
             Text('Choose date and time', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
             const SizedBox(height: 4),
-            Text('Book your pickup from ${c.minLeadMinutes} minutes to $days ahead.', style: muted),
+            Text('Book your pickup from ${pickupLeadText(c.minLeadMinutes)} to $days ahead.', style: muted),
             const SizedBox(height: 16),
             SizedBox(
               height: _rowHeight * rows,

@@ -35,6 +35,8 @@ begin
     'ride_lost_items',
     -- Scheduled rides (migration 0189).
     'scheduled_rides',
+    -- Hire for several days (migration 0327).
+    'hire_bookings',
     -- Handovers and passengers' choices of driver (migration 0198).
     'scheduled_ride_offers',
     -- Mid-trip handovers (migration 0199).

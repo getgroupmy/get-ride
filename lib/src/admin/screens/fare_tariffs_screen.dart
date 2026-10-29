@@ -486,6 +486,13 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
     'kmPerHour': TextEditingController(text: _opt(widget.card?.hireKmPerHour)),
     'overtime': TextEditingController(text: _opt(widget.card?.hireOvertimePerHour)),
     'extraKm': TextEditingController(text: _opt(widget.card?.hireExtraKm)),
+    // Daily hire (0327).
+    'dayRate': TextEditingController(text: _opt(widget.card?.hireDayRate)),
+    'dayHours': TextEditingController(text: _opt(widget.card?.hireDayHours)),
+    'dayKm': TextEditingController(text: _opt(widget.card?.hireDayKm)),
+    'dayOvertime': TextEditingController(text: _opt(widget.card?.hireDayOvertimePerHour)),
+    'dayExtraKm': TextEditingController(text: _opt(widget.card?.hireDayExtraKm)),
+    'overnight': TextEditingController(text: _opt(widget.card?.hireOvernight)),
   };
   static String _opt(double? v) => v == null ? '' : v.toString();
   String? _error;
@@ -534,11 +541,14 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
     for (final e in _hire.entries) {
       final t = e.value.text.trim();
       final v = double.tryParse(t);
-      if (t.isNotEmpty && (v == null || v < 0)) return _fail('Hourly hire values are numbers of 0 or more.');
+      if (t.isNotEmpty && (v == null || v < 0)) return _fail('Hire values are numbers of 0 or more.');
       hire[e.key] = t.isEmpty ? null : v;
     }
     if (hire['minHours'] case final m? when m < 0.5 || m > 72) {
       return _fail('Hourly hire least hours are between 0.5 and 72.');
+    }
+    if (hire['dayHours'] case final m? when m < 1 || m > 24) {
+      return _fail('Daily hire hours in a day are between 1 and 24.');
     }
     final card = FareTariff(
       id: widget.card?.id,
@@ -563,6 +573,12 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
       hireKmPerHour: hire['kmPerHour'],
       hireOvertimePerHour: hire['overtime'],
       hireExtraKm: hire['extraKm'],
+      hireDayRate: hire['dayRate'],
+      hireDayHours: hire['dayHours'],
+      hireDayKm: hire['dayKm'],
+      hireDayOvertimePerHour: hire['dayOvertime'],
+      hireDayExtraKm: hire['dayExtraKm'],
+      hireOvernight: hire['overnight'],
     );
     final problem = fareTariffProblem(card);
     if (problem != null) return _fail(problem);
@@ -761,6 +777,13 @@ class _TariffDialogState extends ConsumerState<TariffDialog> {
                 ('kmPerHour', 'Hire km included per hour'),
                 ('overtime', 'Hire overtime per hour'),
                 ('extraKm', 'Hire extra km, per km'),
+                // Daily hire (0327).
+                ('dayRate', 'Daily hire day rate'),
+                ('dayHours', 'Daily hire hours in a day'),
+                ('dayKm', 'Daily hire km a day'),
+                ('dayOvertime', 'Daily hire overtime per hour'),
+                ('dayExtraKm', 'Daily hire extra km, per km'),
+                ('overnight', 'Daily hire overnight allowance'),
               ])
                 gap(
                   TextField(
