@@ -37,6 +37,8 @@ begin
     'scheduled_rides',
     -- Hire for several days (migration 0327).
     'hire_bookings',
+    -- Public holidays (migration 0328).
+    'public_holidays',
     -- Handovers and passengers' choices of driver (migration 0198).
     'scheduled_ride_offers',
     -- Mid-trip handovers (migration 0199).

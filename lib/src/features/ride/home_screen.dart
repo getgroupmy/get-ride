@@ -12,7 +12,8 @@ import 'package:latlong2/latlong.dart';
 import '../../config.dart';
 import '../../core/booking_modules.dart' show familyModuleHire, familyModuleRide;
 import '../../core/hourly_hire.dart' show HourlyHireConfig, hirePackageHourly, hireTileRoute, hireTitle;
-import '../../core/multi_day_hire.dart' show HireDaysBooking, MultiHireConfig, hireBookingSpan, hirePackageDaily;
+import '../../core/multi_day_hire.dart'
+    show HireDaysBooking, MultiHireConfig, hirePackageDaily, hirePackageMonthly, hirePackageWeekly;
 import '../../data/hourly_hire_repository.dart';
 import 'hire_parts.dart';
 import 'multi_hire_parts.dart';
@@ -2653,7 +2654,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// the hire booking.
   Widget _idleParts(HourlyHireConfig hc, HomeSections sections, HomeLayout layout, Map<String, dynamic> blob,
       AppDisplay? display) {
-    if (!hc.bookable) return _homeParts(sections, layout, blob, display);
+    if (!hc.bookable && !_multiHireOn) return _homeParts(sections, layout, blob, display);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
@@ -2668,15 +2669,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ]);
   }
 
+  /// A hire for several days is on (0327, 0328).
+  bool get _multiHireOn => [hirePackageDaily, hirePackageWeekly, hirePackageMonthly]
+      .any((k) => ref.watch(multiHireConfigProvider(k)).value?.enabled ?? false);
+
   /// The hire packages offered (0327): the chips, then the chosen one's panel.
   List<Widget> _hirePackageParts(HourlyHireConfig hc) {
-    final daily = ref.watch(multiHireConfigProvider(hirePackageDaily)).value ?? MultiHireConfig.off;
+    // Daily (0327), weekly and monthly (0328): each where the admin turned it on.
+    final multis = {
+      for (final k in [hirePackageDaily, hirePackageWeekly, hirePackageMonthly])
+        k: ref.watch(multiHireConfigProvider(k)).value ?? MultiHireConfig(package: k),
+    };
     final packages = [
       if (hc.enabled) (key: hirePackageHourly, label: 'Hourly'),
-      if (daily.enabled) (key: hirePackageDaily, label: daily.chipLabel),
+      for (final c in multis.values)
+        if (c.enabled) (key: c.package, label: c.chipLabel),
     ];
     final selected = packages.any((p) => p.key == _hirePackage) ? _hirePackage : packages.firstOrNull?.key;
-    final multi = selected == hirePackageDaily ? daily : null;
+    final multi = multis[selected];
     return [
       if (packages.length > 1)
         Padding(
@@ -2860,6 +2870,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           'overnight': b.overnight,
           'same_driver': b.sameDriver,
           'payment_plan': b.plan.db,
+          // Weekly and monthly (0328).
+          if (b.periods > 0) 'periods': b.periods,
+          if (b.weekdays.isNotEmpty) 'weekdays': b.weekdays,
         });
       },
       onBooked: (_) async {
@@ -2870,7 +2883,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         await showNotice(
           context,
           title: '${m.title} booked',
-          message: '${hireBookingSpan(m.firstAt, m.days, m.hoursPerDay)}. '
+          message: '${m.span}. '
               '${m.paymentText((v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : 2))}. '
               "We'll find your driver before then and let you know.",
         );
@@ -3069,7 +3082,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final moreRecent = (recentSection?.more ?? true) ? recent.skip(atRest).toList() : const <Place>[];
 
     // A tile, a heading or a promo card: its page, or Coming Soon.
-    final hireOn = (ref.read(hourlyHireConfigProvider).value ?? HourlyHireConfig.off).bookable;
+    final hireOn = (ref.read(hourlyHireConfigProvider).value ?? HourlyHireConfig.off).bookable || _multiHireOn;
     void openTile(String? route, String title) {
       if (route == rideSearchRoute) {
         whereTo();

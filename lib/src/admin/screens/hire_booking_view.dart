@@ -8,7 +8,8 @@ import '../../core/format.dart';
 import '../../core/hourly_hire.dart' show hireClock;
 import '../../core/multi_day_hire.dart';
 import '../../data/hourly_hire_repository.dart';
-import '../../widgets/common.dart' show AsyncView;
+import '../../widgets/common.dart' show AsyncView, showError, showInfo;
+import '../../widgets/search_select.dart';
 import '../widgets/admin_widgets.dart';
 
 typedef HireBookingDay = ({String id, int day, DateTime at, String status, String? partnerId, String? rideId});
@@ -30,6 +31,39 @@ class AdminHireBookingView extends ConsumerWidget {
   final String bookingId;
   final bool canEdit;
 
+  /// The admin gives every day still to come (or day [day]) to a driver
+  /// they choose (0328).
+  Future<void> _assign(BuildContext context, WidgetRef ref, {int? day}) async {
+    final repo = ref.read(hourlyHireRepositoryProvider);
+    try {
+      final drivers = await repo.adminDrivers(bookingId, day: day);
+      if (!context.mounted) return;
+      if (drivers.isEmpty) {
+        showInfo(context, 'No approved driver takes hire yet.');
+        return;
+      }
+      final picked = await showSearchPicker<String>(
+        context,
+        title: day == null ? 'Give every day still to come to' : 'Give day $day to',
+        choices: [
+          for (final d in drivers)
+            (
+              value: d.id,
+              label: d.name,
+              subtitle: [?d.phone, d.free ? 'free' : 'has a ride that clashes'].join(' · '),
+              leading: null,
+            ),
+        ],
+      );
+      if (picked == null || !context.mounted) return;
+      await runAdminAction(context, () => repo.adminAssign(bookingId, picked, day: day),
+          success: day == null ? 'Every day still to come is the driver\'s' : 'Day $day is the driver\'s');
+      ref.invalidate(adminHireBookingProvider(bookingId));
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
@@ -48,7 +82,12 @@ class AdminHireBookingView extends ConsumerWidget {
               Text(b.title, style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
               DetailTable({
                 'Booking': b.id,
-                'Days': hireBookingSpan(b.firstAt, b.days, b.hoursPerDay),
+                'Days': b.span,
+                'Km': b.kmByPeriod && b.kmPerPeriod != null
+                    ? '${b.kmPerPeriod!.round()} km a ${b.package == hirePackageMonthly ? 'month' : 'week'}, '
+                          'extra km at its end'
+                    : null,
+                'Ending with notice': b.noticeUntil == null ? null : 'Days from ${hireDate(b.noticeUntil!)} cancelled',
                 'Status': b.statusLabel,
                 'Price': money(b.price),
                 'Payment': b.paymentText(money),
@@ -58,8 +97,30 @@ class AdminHireBookingView extends ConsumerWidget {
               }),
               const SizedBox(height: 4),
               for (final d in v.days)
-                Text(hireBookingDayLine(d, b.days), key: ValueKey('admin-hire-day-${d.day}'),
-                    style: t.textTheme.bodySmall),
+                Row(children: [
+                  Expanded(
+                    child: Text(hireBookingDayLine(d, b.days), key: ValueKey('admin-hire-day-${d.day}'),
+                        style: t.textTheme.bodySmall),
+                  ),
+                  if (canEdit && b.open && (d.status == 'scheduled' || d.status == 'assigned') &&
+                      d.at.isAfter(DateTime.now()))
+                    IconButton(
+                      key: ValueKey('admin-hire-day-assign-${d.day}'),
+                      tooltip: 'Give day ${d.day} to a driver',
+                      icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),
+                      onPressed: () => _assign(context, ref, day: d.day),
+                    ),
+                ]),
+              if (canEdit && b.open)
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    key: const ValueKey('admin-hire-booking-assign'),
+                    onPressed: () => _assign(context, ref),
+                    icon: const Icon(Icons.person_add_alt_1_outlined),
+                    label: const Text('Give every day still to come to a driver'),
+                  ),
+                ),
               if (canEdit && b.open)
                 Align(
                   alignment: AlignmentDirectional.centerEnd,

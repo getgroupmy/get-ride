@@ -9,6 +9,7 @@ import 'screens/commerce/commerce_module.dart';
 import 'screens/family/family_module.dart';
 import 'screens/geo/geo_module.dart';
 import 'screens/help/help_module.dart';
+import 'screens/hire_bookings_screen.dart';
 import 'screens/live_map/rider_live_map_module.dart';
 import 'screens/meterapp/meterapp_module.dart';
 import 'screens/office_nas/office_nas_module.dart';
@@ -59,6 +60,7 @@ const adminSections = [
 final allAdminEntries = <AdminScreenEntry>[
   ...helpEntries,
   ...rideSafetyEntries,
+  ...hireBookingsEntries,
   ...peopleEntries,
   ...businessEntries,
   ...familyAdminEntries,
@@ -79,6 +81,7 @@ final allAdminEntries = <AdminScreenEntry>[
 final allPortedAdminRoutes = <RouteBase>[
   ...helpRoutes,
   ...rideSafetyRoutes,
+  ...hireBookingsRoutes,
   ...peopleRoutes,
   ...businessRoutes,
   ...familyAdminRoutes,
