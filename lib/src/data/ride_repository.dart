@@ -9,6 +9,7 @@ import '../config.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../core/family.dart' show FamilyPick, familyBookingColumns, familyRefusal;
+import '../core/hourly_hire.dart' show hirePackageHourly;
 import '../core/book_for.dart';
 import '../core/driver_eta.dart';
 import '../core/request_viewers.dart';
@@ -80,10 +81,11 @@ class RideRepository {
     required String pickupAddress,
     required double pickupLat,
     required double pickupLng,
-    required String dropName,
-    required String dropAddress,
-    required double dropLat,
-    required double dropLng,
+    // Optional only for an hourly hire (0326), which may have no drop-off.
+    required String? dropName,
+    required String? dropAddress,
+    required double? dropLat,
+    required double? dropLng,
     required double distanceKm,
     required int durationMin,
     required double fare,
@@ -122,9 +124,13 @@ class RideRepository {
     String? businessNote,
     bool riderAudio = false,
     FamilyPick? family,
+    double? hireHours,
   }) async {
     final uid = _uid;
     if (uid == null) throw StateError('Sign in to book a ride.');
+    if (hireHours == null && (dropName == null || dropLat == null || dropLng == null)) {
+      throw StateError('Choose where you are going.');
+    }
     final otp = (1000 + math.Random.secure().nextInt(9000)).toString();
     final row = {
       'id': const Uuid().v4(),
@@ -214,6 +220,10 @@ class RideRepository {
       // dropped: a child's trip without it would start without the pickup
       // code. Payment by the family is paymentMode 'Family'.
       ...familyBookingColumns(passengerId: family?.id, withAdult: family?.withAdult ?? false),
+      // Hourly hire (0326): the hours; the server prices it (hire_quote) and
+      // refuses it (HIRE_…) rather than book it another way. Never dropped.
+      if (hireHours != null) 'hire_package': hirePackageHourly,
+      'hire_hours': ?hireHours,
     };
     // Stops, the metadata, the region's pricing and its time zone are
     // extras: a database without one of their columns (stops needs 0098,

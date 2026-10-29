@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/hourly_hire.dart' show RideHire, hireTitle;
 import '../../data/permits_repository.dart';
 import '../../data/dispatch_repository.dart' show dispatchRepositoryProvider;
 import '../../data/scheduled_ride_repository.dart';
@@ -1794,6 +1795,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             Text(r.fareText(r.effectiveFare),
                 style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
           ]),
+          // Hourly hire (0326): the hours, at a fixed price.
+          if (RideHire.fromRow(r.raw) case final h?)
+            Text(hireTitle(h.hours), key: ValueKey('request-hire-${r.id}'),
+                style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
           MyRideForYouLabel(request: r, me: _myId, clock: ref.read(requestAlertClockProvider)),
           DirectBookingLabel(request: r, me: _myId),
           StandOrderLabel(request: r, me: _myId),
@@ -2012,6 +2017,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             Text(r.fareText(r.effectiveFare),
                 style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800)),
           ]),
+          if (RideHire.fromRow(r.raw) case final h?)
+            Text(hireTitle(h.hours), key: ValueKey('request-card-hire-${r.id}'),
+                style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
           const SizedBox(height: 10),
           ListTile(
             dense: true,

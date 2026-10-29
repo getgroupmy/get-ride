@@ -101,10 +101,16 @@ class ScheduledRideRepository {
         .order('pickup_at', ascending: true);
     List<Map<String, dynamic>> rows;
     try {
-      rows = await read('$columns, place_fee_lines');
+      // 0326: a hire's package and hours, for its span.
+      rows = await read('$columns, place_fee_lines, hire_package, hire_hours');
     } on PostgrestException {
-      // Before 0325: without the place fees.
-      rows = await read(columns);
+      try {
+        // Before 0326: without the hire columns.
+        rows = await read('$columns, place_fee_lines');
+      } on PostgrestException {
+        // Before 0325: without the place fees.
+        rows = await read(columns);
+      }
     }
     return [for (final r in rows) ScheduledRide.fromRow(r)];
   }

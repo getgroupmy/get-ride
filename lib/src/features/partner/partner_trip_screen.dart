@@ -9,6 +9,9 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../family/family_trip_parts.dart' show DriverChildCheck;
+import '../../core/hourly_hire.dart' show HourlyHireConfig, RideHire;
+import '../../data/hourly_hire_repository.dart';
+import '../ride/hire_parts.dart' show DriverHireCard, showHireEndDialog;
 import '../../data/family_repository.dart' show familyDriverChildProvider;
 import '../../data/dispatch_repository.dart' show dispatchRepositoryProvider;
 import '../../widgets/app_notice.dart';
@@ -574,6 +577,23 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     });
   }
 
+  /// Ends an hourly hire (0326): the km driven (from the phone's count when
+  /// it has one), then the server settles it and completes the trip.
+  Future<void> _endHire(RideRequest r) async {
+    final hire = RideHire.fromRow(r.raw);
+    final km = await showHireEndDialog(
+      context,
+      measuredKm: ref.read(telematicsTrackerProvider).passengerKm(r.id),
+      kmIncluded: hire?.kmIncluded ?? 0,
+    );
+    if (km == null || !mounted) return;
+    await _run(() async {
+      unawaited(_checkpoint(r.id, TripCheckpoint.drop));
+      await ref.read(hourlyHireRepositoryProvider).end(r.id, kmUsed: km);
+      _advance(r, RideStatus.completed);
+    });
+  }
+
   /// The flag fall of the tariff [r] was priced on (Admin → Fare tariffs for
   /// its pickup and service), the least an early end may charge. The
   /// built-in TEKSI one when the cards or the catalogue can't be read.
@@ -802,6 +822,12 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         child: const Text("I've arrived"),
       ),
       RideStatus.arrived => BusyButton.filled(onPressed: _busy ? null : () => _start(r), child: const Text('Start trip')),
+      // Hourly hire (0326): ended with the km, the server works out the price.
+      RideStatus.onTrip when !meeting && r.raw['hire_package'] != null => BusyButton.filled(
+        key: const ValueKey('trip-end-hire'),
+        onPressed: _busy ? null : () => _endHire(r),
+        child: const Text('End hire'),
+      ),
       RideStatus.onTrip when !meeting => BusyButton.filled(
         key: const ValueKey('trip-complete'),
         onPressed: _busy ? null : () => _complete(r),
@@ -852,6 +878,14 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         // Family (0317): a child passenger: the photo and the pickup code
         // before the trip can start.
         if (r.status == RideStatus.accepted || r.status == RideStatus.arrived) DriverChildCheck(tripId: r.id),
+        // Hourly hire (0326): the clock, the km included and Ask to extend.
+        if (r.raw['hire_package'] != null && r.status.isOngoing)
+          DriverHireCard(
+            ride: r,
+            config: ref.watch(hourlyHireConfigProvider).value ?? HourlyHireConfig.off,
+            money: (v) => formatMoney(v, r.currency),
+            showEnd: false,
+          ),
         Card(
           child: Column(children: [
             // The sheet never rests lower than the passenger and their

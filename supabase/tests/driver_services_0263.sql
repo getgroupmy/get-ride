@@ -282,13 +282,14 @@ insert into public.driver_ride_extras (driver_id, off) values
   ('00000000-0000-0000-0000-0000000263d2', array['child-seat', 'assist:guide-dog']);
 select pg_temp.check((select off from public.driver_ride_extras where driver_id = '00000000-0000-0000-0000-0000000263d2')
                        = array['assist:guide-dog', 'child-seat'], 'the guide dog can be turned off, as 0253');
-select pg_temp.check(public.driver_extras_off('00000000-0000-0000-0000-0000000263d2') = array['assist:guide-dog', 'child-seat', 'pet:dog'],
+-- (0326: 'hire' is off too for a driver who doesn't take hourly hire.)
+select pg_temp.check(array_remove(public.driver_extras_off('00000000-0000-0000-0000-0000000263d2'), 'hire') = array['assist:guide-dog', 'child-seat', 'pet:dog'],
   'an add-on locked off joins the driver''s list');
 select pg_temp.check(not public.driver_takes_extras('00000000-0000-0000-0000-0000000263d2', array['pet:dog']),
   'so a dog ride isn''t offered');
 insert into public.driver_service_locks (scope, driver_id, service_key, mode) values
   ('driver', '00000000-0000-0000-0000-0000000263d2', 'extra:child-seat', 'on');
-select pg_temp.check(public.driver_extras_off('00000000-0000-0000-0000-0000000263d2') = array['assist:guide-dog', 'pet:dog'],
+select pg_temp.check(array_remove(public.driver_extras_off('00000000-0000-0000-0000-0000000263d2'), 'hire') = array['assist:guide-dog', 'pet:dog'],
   'an add-on locked on is taken whatever the driver chose');
 
 -- ---- 4. Open requests --------------------------------------------------------------------------------

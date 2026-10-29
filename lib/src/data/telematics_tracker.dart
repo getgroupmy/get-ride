@@ -85,6 +85,14 @@ class TelematicsTracker {
   /// Km counted online and not yet reported.
   double get unreportedKm => _onlineKm.metres / 1000 + _pendingKm;
 
+  /// The km driven with the passenger on [rideId] so far, as the phone
+  /// counted them; null when it isn't counting that leg (an hourly hire's
+  /// End hire starts its km box from it, 0326).
+  double? passengerKm(String rideId) {
+    final r = _rides[rideId];
+    return r == null || r.leg != _Leg.withPassenger ? null : r.km.metres / 1000;
+  }
+
   void setOnline(bool online) {
     if (!enabled || _disposed || online == _online) return;
     _online = online;

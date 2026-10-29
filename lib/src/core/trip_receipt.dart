@@ -5,6 +5,7 @@ library;
 
 import 'package:latlong2/latlong.dart';
 
+import 'hourly_hire.dart' show RideHire;
 import '../data/models.dart';
 import 'city_ride_extras.dart';
 import 'format.dart';
@@ -156,7 +157,11 @@ class TripReceipt {
       lines: [
         // The waiting charge and the luggage (0314) are in the fare: shown
         // on their own lines, the trip fare without them.
-        ...fareLinesOf(r, fare),
+        // An hourly hire (0326): its hours, overtime and extra km.
+        ...switch (RideHire.fromRow(r.raw)) {
+          final h? => h.lines(fare),
+          null => fareLinesOf(r, fare),
+        },
         // The region's surcharges and taxes in force at booking.
         for (final l in r.chargeLines) (label: l.label, amount: l.amount),
         if (tolls > 0) (label: 'Tolls', amount: tolls),

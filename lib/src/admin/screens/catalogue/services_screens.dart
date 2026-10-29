@@ -454,6 +454,11 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
     for (final f in vehicleServiceFreightFields)
       f.key: TextEditingController(text: v[f.key] == null || v[f.key] == 0 ? '' : '${v[f.key]}'),
   };
+  // Hourly hire (0326).
+  late final _hire = {
+    for (final f in vehicleServiceHireFields) f.key: TextEditingController(text: v[f.key] == null ? '' : '${v[f.key]}'),
+  };
+  late bool _hireEnabled = v[hireEnabledKey] == true;
   late bool _closedBody = v[closedBodyKey] == true;
   late bool _refrigerated = v[refrigeratedKey] == true;
   late bool _premium = v[premiumServiceKey] == true;
@@ -468,7 +473,7 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
 
   @override
   void dispose() {
-    for (final c in [..._text.values, ..._numbers.values, ..._dispatch.values, ..._freight.values]) {
+    for (final c in [..._text.values, ..._numbers.values, ..._dispatch.values, ..._freight.values, ..._hire.values]) {
       c.dispose();
     }
     _name
@@ -500,6 +505,8 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
       refrigerated: _refrigerated,
       premium: _premium,
       goodsPermit: _permit,
+      hire: {for (final e in _hire.entries) e.key: e.value.text},
+      hireEnabled: _hireEnabled,
       existing: widget.entry?.values,
     );
     if (r.error != null) return setState(() => _error = r.error);
@@ -676,6 +683,31 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
                 hintText: '0',
                 suffixText: f.suffix,
               ),
+            ),
+          ),
+        // Hourly hire (0326): riders hire this vehicle by the hour.
+        const SectionLabel(
+          'Hourly hire',
+          hint: 'Riders hire a driver and this vehicle by the hour (Admin › Settings › Hourly hire). Blank: '
+              'least hours and km per hour from those settings, overtime at the price per hour, extra km at the '
+              'cost per km. A fare tariff card can set its own.',
+        ),
+        SwitchListTile(
+          key: const ValueKey('vs-hireEnabled'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Offer hourly hire'),
+          value: _hireEnabled,
+          onChanged: widget.canEdit ? (x) => setState(() => _hireEnabled = x) : null,
+        ),
+        for (final f in vehicleServiceHireFields)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: TextField(
+              key: ValueKey('vs-${f.key}'),
+              controller: _hire[f.key],
+              enabled: widget.canEdit,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: InputDecoration(labelText: sentenceCaseLabel(f.label), suffixText: f.suffix),
             ),
           ),
         // A freight size (0267): what it carries, shown to riders and drivers.

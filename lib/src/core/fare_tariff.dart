@@ -29,6 +29,12 @@ class FareTariff {
     this.active = true,
     this.serviceType,
     this.vehicleService,
+    this.hireEnabled,
+    this.hirePerHour,
+    this.hireMinHours,
+    this.hireKmPerHour,
+    this.hireOvertimePerHour,
+    this.hireExtraKm,
   });
 
   factory FareTariff.fromRow(Map<String, dynamic> r) {
@@ -39,6 +45,12 @@ class FareTariff {
     }
 
     String? s(String k) => r[k] is String && (r[k] as String).trim().isNotEmpty ? (r[k] as String).trim() : null;
+    double? opt(String k) {
+      final v = r[k];
+      final d = v is num ? v.toDouble() : (v is String ? double.tryParse(v) : null);
+      return d == null || !d.isFinite || d < 0 ? null : d;
+    }
+
     return FareTariff(
       id: s('id'),
       level: s('level') ?? 'master',
@@ -56,6 +68,12 @@ class FareTariff {
       active: r['active'] != false,
       serviceType: s('service_type'),
       vehicleService: s('vehicle_service'),
+      hireEnabled: r['hire_enabled'] is bool ? r['hire_enabled'] as bool : null,
+      hirePerHour: opt('hire_per_hour'),
+      hireMinHours: opt('hire_min_hours'),
+      hireKmPerHour: opt('hire_km_per_hour'),
+      hireOvertimePerHour: opt('hire_overtime_per_hour'),
+      hireExtraKm: opt('hire_extra_km'),
     );
   }
 
@@ -74,6 +92,12 @@ class FareTariff {
   /// for every vehicle (in [serviceType]). Its fare is that vehicle's own:
   /// the service multiplier is not applied on top.
   final String? vehicleService;
+
+  /// Hourly hire (migration 0326) here: on or off (null: the Vehicle
+  /// Service's own), and the rates that replace the service's (null: not set
+  /// on this card; a broader card's, else the service's, apply).
+  final bool? hireEnabled;
+  final double? hirePerHour, hireMinHours, hireKmPerHour, hireOvertimePerHour, hireExtraKm;
 
   /// Whether it is for every service.
   bool get allServices => serviceType == null && vehicleService == null;
@@ -224,6 +248,13 @@ Map<String, dynamic> fareTariffRow(FareTariff t) {
     'active': t.active,
     'service_type': t.serviceType,
     'vehicle_service': t.vehicleService,
+    // 0326: hourly hire on this card.
+    'hire_enabled': t.hireEnabled,
+    'hire_per_hour': t.hirePerHour,
+    'hire_min_hours': t.hireMinHours,
+    'hire_km_per_hour': t.hireKmPerHour,
+    'hire_overtime_per_hour': t.hireOvertimePerHour,
+    'hire_extra_km': t.hireExtraKm,
   };
 }
 
