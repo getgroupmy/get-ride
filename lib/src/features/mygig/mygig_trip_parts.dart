@@ -3,7 +3,8 @@
 // only for a registered passenger paying in the app), waiting at a stop,
 // "Change destination" and "Add stop" (back to the passenger to accept),
 // and after the trip the per-trip myGiG fee, pay by link, Family and
-// business paid on their own, and "Block this number".
+// business paid on their own, and "Block this number". 0331: "Reassign to
+// another driver" before pickup and "Hand over" during the trip.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -22,6 +23,7 @@ import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
 import '../ride/place_search.dart';
 import 'mygig_new_screen.dart' show openMygigWhatsApp;
+import 'mygig_reassign.dart' show MygigReassignButton;
 import 'mygig_waiting_screen.dart';
 
 /// Whether [r] is a myGiG ride.
@@ -176,6 +178,8 @@ class _MygigTripCardState extends ConsumerState<MygigTripCard> {
           if (r.status != RideStatus.completed) MygigPayFirst(ride: r),
           if (r.status == RideStatus.arrived && !g.waitOn)
             Text('Waiting is free on this ride.', style: t.textTheme.bodySmall),
+          // 0331: reassign before pickup, hand over during the trip (as the admin allows).
+          if (r.status.isOngoing) MygigReassignButton(ride: r),
           if (r.status == RideStatus.arrived && mygigNoShowReady(r, g, _now))
             Align(
               alignment: Alignment.centerLeft,

@@ -12,12 +12,14 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/mygig.dart' show MygigConfig, mygigMoney;
+import '../../core/mygig_extras.dart' show MygigReassignRule;
 import '../../core/mygig_hire.dart';
 import '../../data/mygig_repository.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import 'mygig_reassign.dart' show MygigReassignInbox, mygigReassignPath;
 
 const mygigScheduledPath = '/drive/mygig/scheduled';
 
@@ -35,6 +37,7 @@ class MygigScheduledScreen extends ConsumerWidget {
         onRetry: () => ref.invalidate(mygigScheduledProvider),
         data: (list) => list.isEmpty
             ? ListView(children: const [
+                MygigReassignInbox(),
                 EmptyState(
                   key: ValueKey('mygig-scheduled-empty'),
                   icon: Icons.event_outlined,
@@ -50,6 +53,8 @@ class MygigScheduledScreen extends ConsumerWidget {
                     key: const ValueKey('mygig-scheduled'),
                     padding: const EdgeInsets.all(16),
                     children: [
+                      // 0331: rides other drivers want to hand to this one.
+                      const MygigReassignInbox(),
                       for (final b in list) MygigScheduledCard(booking: b, now: DateTime.now()),
                       const SizedBox(height: 4),
                       Text(
@@ -193,6 +198,16 @@ class MygigScheduledCard extends ConsumerWidget {
                 onPressed: () => _cash(context, ref),
                 child: Text('Received ${mygigMoney(b.due)} in cash'),
               ),
+            // 0331: hand the booking (with the days left) to another driver.
+            if (b.rideId == null && !b.awaitingPayment &&
+                MygigReassignRule.of(ref.watch(mygigConfigProvider(mygigAt(null, null))).value?.settings.raw ?? const {})
+                    .allows(status: 'accepted', booked: true))
+              TextButton.icon(
+                key: const ValueKey('mygig-booking-reassign'),
+                icon: const Icon(Icons.swap_horiz),
+                onPressed: () => context.push('$mygigReassignPath?booking=${Uri.encodeComponent(b.id)}'),
+                label: const Text('Reassign'),
+              ),
             if (b.canCancel)
               BusyButton.text(
                 key: const ValueKey('mygig-booking-cancel'),
@@ -242,7 +257,10 @@ class MygigPassengerBookingCard extends ConsumerWidget {
         title: const Text('Cancel this booking?'),
         content: Text(keep > 0
             ? '${mygigMoney(keep)} you paid is kept for the driver; the rest is refunded.'
-            : 'It is free to cancel now. What you paid is refunded.'),
+            : !b.cancelFree && b.lateFee > 0
+                ? 'It is past the free-cancel time, so a ${mygigMoney(b.lateFee)} cancellation fee is charged to your '
+                    'GET.wallet for the driver.'
+                : 'It is free to cancel now. What you paid is refunded.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep booking')),
           FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Cancel booking')),

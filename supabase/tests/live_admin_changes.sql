@@ -99,7 +99,9 @@ begin
     -- myGiG settings by place, and its places where it isn't allowed (migration 0329).
     'mygig_rules', 'mygig_place_rules',
     -- myGiG bookings for later and hire by time, and their days (migration 0330).
-    'mygig_bookings', 'mygig_booking_days'
+    'mygig_bookings', 'mygig_booking_days',
+    -- myGiG reassigns to another driver (migration 0331).
+    'mygig_reassigns'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/mygig.dart';
+import '../core/mygig_extras.dart';
 import '../core/mygig_hire.dart';
 import '../providers.dart';
 import 'live_tables.dart';
@@ -261,6 +262,112 @@ class MygigRepository {
       _call(() async => _map(await _db.rpc('mygig_hire_end',
           params: {'p_ride': ride, 'p_km': km, 'p_tolls': tolls, 'p_other': other, 'p_note': note})));
 
+  // ---- Reassign (0331) ------------------------------------------------------------------------------
+  /// The reasons and nearby drivers for a ride ([ride]) or a booking ([booking]).
+  Future<MygigReassignOptions> reassignOptions({String? ride, String? booking}) => _call(() async =>
+      MygigReassignOptions(_map(await _db.rpc('mygig_reassign_options', params: {'p_ride': ride, 'p_booking': booking}))));
+
+  /// Asks [to] (or the driver with [code]) to take it over.
+  Future<MygigReassign> reassignStart({String? ride, String? booking, String? to, String? code, required String reason}) =>
+      _call(() async => MygigReassign(_map(await _db.rpc('mygig_reassign_start', params: {
+            'p_ride': ride,
+            'p_booking': booking,
+            'p_to': to,
+            'p_code': code,
+            'p_reason': reason,
+          }))));
+
+  Future<MygigReassign> reassignView(String id) =>
+      _call(() async => MygigReassign(_map(await _db.rpc('mygig_reassign_view', params: {'p_reassign': id}))));
+
+  /// Open reassigns the caller is part of.
+  Future<List<MygigReassign>> reassignsMine() => _call(() async {
+    final v = await _db.rpc('mygig_reassigns_mine');
+    return [for (final r in (v is List ? v : const [])) if (r is Map) MygigReassign(Map<String, dynamic>.from(r))];
+  });
+
+  /// The new driver: accept (with the tick) or decline.
+  Future<MygigReassign> reassignDriverAnswer(String id, {required bool accept, bool ack = false}) => _call(() async =>
+      MygigReassign(_map(await _db.rpc('mygig_reassign_driver_answer',
+          params: {'p_reassign': id, 'p_accept': accept, 'p_ack': ack}))));
+
+  /// The passenger: confirm (with the tick), keep or cancel; in the app or
+  /// on the driver's phone ([id]), or on the trip link ([token]).
+  Future<MygigReassign> reassignAnswer({String? id, String? token, required String answer, bool ack = false}) =>
+      _call(() async => MygigReassign(_map(await _db.rpc('mygig_reassign_answer',
+          params: {'p_reassign': id, 'p_token': token, 'p_answer': answer, 'p_ack': ack}))));
+
+  /// The first driver: a new link for the passenger ({token, link, message, phone}).
+  Future<Map<String, dynamic>> reassignResend(String id) =>
+      _call(() async => _map(await _db.rpc('mygig_reassign_resend', params: {'p_reassign': id})));
+
+  Future<void> reassignStop(String id) => _call(() => _db.rpc('mygig_reassign_stop', params: {'p_reassign': id}));
+
+  // ---- Hotspots, quick trips, regulars (0331) ------------------------------------------------------
+  Future<MygigHotspots> hotspots({required double lat, required double lng}) => _call(() async =>
+      MygigHotspots(_map(await _db.rpc('mygig_hotspots', params: {'p_lat': lat, 'p_lng': lng}))));
+
+  Future<List<MygigPlace>> quickTrips() => _call(() async {
+    final v = await _db.rpc('mygig_quick_trips');
+    return [for (final p in (v is List ? v : const [])) if (p is Map) MygigPlace(Map<String, dynamic>.from(p))];
+  });
+
+  Future<MygigRegular?> regular(String phone) =>
+      _call(() async => MygigRegular.of(await _db.rpc('mygig_regular', params: {'p_phone': phone})));
+
+  // ---- After the trip (0331): the passenger in the app ([ride]) or on the link ([token]) ------------
+  Future<MygigAfter> afterView({String? ride, String? token}) => _call(() async =>
+      MygigAfter(_map(await _db.rpc('mygig_after_view', params: {'p_ride': ride, 'p_token': token}))));
+
+  Future<void> afterRate(String token, int stars, {String? comment}) =>
+      _call(() => _db.rpc('mygig_after_rate', params: {'p_token': token, 'p_stars': stars, 'p_comment': comment}));
+
+  /// A tip: in the app from GET.wallet; on the link [how] 'link' (gives a
+  /// pay part to pay) or 'cash'.
+  Future<Map<String, dynamic>> afterTip({String? ride, String? token, required double amount, String how = 'link'}) =>
+      _call(() async => _map(await _db.rpc('mygig_after_tip',
+          params: {'p_ride': ride, 'p_token': token, 'p_amount': amount, 'p_how': how})));
+
+  /// Splits what is owed between [parts] people; [phones] for the others.
+  Future<Map<String, dynamic>> split({String? ride, String? token, required int parts, required List<String> phones}) =>
+      _call(() async => _map(await _db.rpc('mygig_split',
+          params: {'p_ride': ride, 'p_token': token, 'p_parts': parts, 'p_phones': phones})));
+
+  Future<Map<String, dynamic>> einvoice({String? ride, String? token, required Map<String, dynamic> details}) =>
+      _call(() async => _map(await _db.rpc('mygig_einvoice_request',
+          params: {'p_ride': ride, 'p_token': token, 'p': details})));
+
+  Future<Map<String, dynamic>> bookAgain({String? ride, String? token}) =>
+      _call(() async => _map(await _db.rpc('mygig_book_again', params: {'p_ride': ride, 'p_token': token})));
+
+  /// A share's own page (the link texted to another person).
+  Future<Map<String, dynamic>> payPartView(String token) =>
+      _call(() async => _map(await _db.rpc('mygig_pay_part_view', params: {'p_token': token})));
+
+  /// The hosted page to pay a part (a share, a tip) or what the ride owes:
+  /// signed in, or on the trip link with its [token]. The url.
+  Future<String?> payLinkUrl(String request, {String? token}) => _call(() async {
+    final r = await _db.functions.invoke('payments/mygig-link', body: {'request_id': request, 'token': ?token});
+    final data = r.data;
+    return data is Map ? data['url'] as String? : null;
+  });
+
+  // ---- Admin ----------------------------------------------------------------------------------------
+  Future<MygigDashboard> adminDashboard({DateTime? day}) => _call(() async => MygigDashboard(_map(await _db.rpc(
+      'mygig_admin_dashboard',
+      params: {'p_day': day == null ? null : '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-'
+          '${day.day.toString().padLeft(2, '0')}'}))));
+
+  Future<List<Map<String, dynamic>>> adminBookings({String kind = '', String status = 'open', String search = ''}) =>
+      _call(() async {
+        final v = await _db.rpc('mygig_admin_bookings',
+            params: {'p_kind': kind, 'p_status': status, 'p_search': search, 'p_limit': 200});
+        return [for (final r in (v is List ? v : const [])) if (r is Map) Map<String, dynamic>.from(r)];
+      });
+
+  Future<void> adminEinvoiceSet(String id, String state, {String? note}) =>
+      _call(() => _db.rpc('mygig_admin_einvoice_set', params: {'p_id': id, 'p_state': state, 'p_note': note}));
+
   // ---- Admin ----------------------------------------------------------------------------------------
   Future<Map<String, dynamic>> global() => _call(() async => _map(await _db.rpc('mygig_global')));
 
@@ -346,3 +453,18 @@ final mygigMyOffersProvider = FutureProvider.autoDispose<List<MygigOffer>>(
 /// Rounds a position to about 1 km, so the config isn't asked again on every fix.
 MygigAt mygigAt(double? lat, double? lng) =>
     (lat: lat == null ? null : (lat * 100).roundToDouble() / 100, lng: lng == null ? null : (lng * 100).roundToDouble() / 100);
+
+/// The table of myGiG reassigns (0331), live in both apps.
+const mygigReassignsTable = 'mygig_reassigns';
+
+/// Open reassigns the caller is part of (0331), live.
+final mygigReassignsMineProvider = FutureProvider.autoDispose<List<MygigReassign>>((ref) {
+  ref.watchLive(mygigReassignsTable);
+  return ref.watch(mygigRepositoryProvider).reassignsMine();
+});
+
+/// One reassign, live.
+final mygigReassignProvider = FutureProvider.autoDispose.family<MygigReassign, String>((ref, id) {
+  ref.watchLive(mygigReassignsTable);
+  return ref.watch(mygigRepositoryProvider).reassignView(id);
+});

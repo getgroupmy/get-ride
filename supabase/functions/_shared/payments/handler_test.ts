@@ -152,6 +152,8 @@ function world(opts: { whsec?: boolean; admin?: boolean } = {}): World {
             }
             return Promise.resolve({ ...row, customer: { name: "Ben", phone: "+60100329099", email: "" } });
           }
+          case "payment_mygig_link_by_token":
+            return Promise.resolve(a.p_token === "linktoken0331abcdef" && a.p_request === ORDER);
           case "payment_mygig_link_set":
             links.push({ request: a.p_request, url: a.p_url, actor: "driver" });
             return Promise.resolve(null);
@@ -402,4 +404,15 @@ Deno.test("myGiG link: the ride's driver gets the pay link, put on the ride and 
   assertEquals([r.status, body.url, body.amount], [200, "https://checkout.stripe.com/c/pay/cs_m", 18]);
   assertEquals(w.links, [{ request: ORDER, url: "https://checkout.stripe.com/c/pay/cs_m", actor: "driver" }]);
   assertEquals(w.intents[0].purpose, "ride_card");
+});
+
+Deno.test("myGiG link: the passenger's trip link (signed out) with a token the database allows", async () => {
+  const w = world();
+  assertEquals((await handle(post("mygig-link", { request_id: ORDER, token: "wrongtoken0331abcd" }), w.deps)).status, 403);
+  assertEquals((await handle(post("mygig-link", { request_id: ORDER, token: "x" }), w.deps)).status, 403);
+  w.answers.push([200, { id: "cs_t", url: "https://checkout.stripe.com/c/pay/cs_t" }]);
+  const r = await handle(post("mygig-link", { request_id: ORDER, token: "linktoken0331abcdef" }), w.deps);
+  const body = JSON.parse(await noSecrets(r));
+  assertEquals([r.status, body.url], [200, "https://checkout.stripe.com/c/pay/cs_t"]);
+  assertEquals(w.links.length, 1);
 });

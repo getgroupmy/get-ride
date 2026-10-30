@@ -432,6 +432,10 @@ class MygigBooking {
   bool get canCancel => _b(raw['canCancel']);
   bool get cancelFree => _b(raw['cancelFree']);
   double get keepIfCancelled => _d(raw['keepIfCancelled']);
+
+  /// 0331: the cancellation fee a late cancel takes when nothing was paid
+  /// upfront (registered, paying in the app).
+  double get lateFee => _d(raw['lateFee']);
   Map<String, dynamic> get trip => _m(raw['trip']);
   bool get directed => _b(trip['directed']);
   String get pickupName => '${_m(trip['pickup'])['name'] ?? 'the pickup'}';
@@ -477,6 +481,7 @@ class MygigBooking {
     final until = freeCancelUntil;
     if (until != null && now.isBefore(until)) return 'Free to cancel until ${mygigWhenText(until, now)}';
     if (keepIfCancelled > 0) return 'Cancelling now keeps ${mygigMoney(keepIfCancelled)} for the driver';
+    if (lateFee > 0) return 'Cancelling now costs a ${mygigMoney(lateFee)} cancellation fee';
     return 'Cancelling now is free';
   }
 
