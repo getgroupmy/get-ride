@@ -95,7 +95,9 @@ begin
     -- Rider live map: the rules by region (migration 0322).
     'rider_live_map_rules',
     -- Place fees (migration 0324).
-    'place_fees'
+    'place_fees',
+    -- myGiG settings by place, and its places where it isn't allowed (migration 0329).
+    'mygig_rules', 'mygig_place_rules'
   ] loop
     if to_regclass('public.' || t) is not null and not exists (
       select 1 from pg_publication_tables

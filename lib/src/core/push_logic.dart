@@ -204,6 +204,15 @@ String? pushRouteFor(Map<String, dynamic> data) {
     case 'ride_expired':
       // Nobody took the request (migration 0139): home, to book again.
       return '/';
+    case 'mygig_offer':
+      // A driver sent the passenger a myGiG fare (0329): accept or decline it.
+      final offer = data['offer_id'];
+      return offer is String && offer.isNotEmpty ? '/mygig/offer/${Uri.encodeComponent(offer)}' : '/';
+    case 'mygig_answer':
+    case 'mygig_cancelled':
+      // The passenger answered the driver's myGiG (0329): the trip, or home.
+      final id = data['request_id'];
+      return id is String && id.isNotEmpty ? '/drive/trip/${Uri.encodeComponent(id)}' : '/drive';
     case 'partner_status':
     case 'document_status':
       // An approval decision on the partner account or one of its documents

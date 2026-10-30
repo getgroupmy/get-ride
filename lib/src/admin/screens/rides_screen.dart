@@ -28,13 +28,31 @@ String adminRideSubtitle(RideRequest r) => [
       formatInZone(r.createdAt, r.timezone),
       // Hourly hire (0326).
       if (RideHire.fromRow(r.raw) case final h?) h.heading,
+      // myGiG (0329): how the fare was accepted, and a flagged number.
+      if (r.raw['mygig'] is Map) adminMygigLabel(Map<String, dynamic>.from(r.raw['mygig'] as Map)),
       'Rider ${(r.riderName ?? '').trim().isEmpty ? 'unknown' : r.riderName!.trim()}',
       if ((r.partnerName ?? '').trim().isNotEmpty) 'Driver ${r.partnerName!.trim()}',
     ].join(' · ');
 
+/// "myGiG · accepted in the app · flagged".
+String adminMygigLabel(Map<String, dynamic> g) => [
+      'myGiG',
+      switch (g['via']) {
+        'app' => 'accepted in the app',
+        'link' => 'accepted on the link',
+        'here' => 'accepted on the driver\'s phone',
+        _ => null,
+      },
+      if (g['flagged'] == true) 'flagged number',
+      if (g['quote'] is Map && (g['quote'] as Map)['guard'] == true) 'above the price guard',
+    ].whereType<String>().join(' · ');
+
+/// [group] of the status groups; with `:mygig` at its end, myGiG rides only.
 final adminRidesProvider = FutureProvider.autoDispose.family<List<RideRequest>, String>((ref, group) async {
   ref.watchAdminLive('ride_requests');
-  final rows = await ref.watch(adminRepositoryProvider).rides(statuses: rideStatusGroups[group]);
+  final mygig = group.endsWith(':mygig');
+  final g = mygig ? group.substring(0, group.length - 6) : group;
+  final rows = await ref.watch(adminRepositoryProvider).rides(statuses: rideStatusGroups[g], mygigOnly: mygig);
   return rows.map(RideRequest.new).toList();
 });
 
@@ -52,6 +70,11 @@ class AdminRidesScreen extends ConsumerStatefulWidget {
 class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
   late String _group = rideStatusGroups.containsKey(widget.initialFilter) ? widget.initialFilter! : 'active';
   String _query = '';
+
+  /// myGiG rides only (0329).
+  bool _mygig = false;
+
+  String get _key => _mygig ? '$_group:mygig' : _group;
 
   @override
   void initState() {
@@ -210,7 +233,7 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
           icon: const Icon(Icons.event_repeat_outlined),
           onPressed: () => context.push(hireBookingsPath),
         ),
-        IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(adminRidesProvider(_group))),
+        IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: () => ref.invalidate(adminRidesProvider(_key))),
       ],
       body: Column(children: [
         FilterBar(
@@ -226,10 +249,23 @@ class _AdminRidesScreenState extends ConsumerState<AdminRidesScreen> {
           onSearch: (q) => setState(() => _query = q),
           hint: 'Search rider, partner, place, plate…',
         ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: FilterChip(
+              key: const ValueKey('rides-mygig'),
+              avatar: const Icon(Icons.hail, size: 18),
+              label: const Text('myGiG only'),
+              selected: _mygig,
+              onSelected: (v) => setState(() => _mygig = v),
+            ),
+          ),
+        ),
         Expanded(
           child: AsyncView(
-            value: ref.watch(adminRidesProvider(_group)),
-            onRetry: () => ref.invalidate(adminRidesProvider(_group)),
+            value: ref.watch(adminRidesProvider(_key)),
+            onRetry: () => ref.invalidate(adminRidesProvider(_key)),
             data: (rides) {
               final q = _query.trim().toLowerCase();
               final list = q.isEmpty

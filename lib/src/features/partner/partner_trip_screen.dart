@@ -42,6 +42,9 @@ import '../../data/ride_chat_repository.dart';
 import '../../data/trip_handover_repository.dart';
 import '../../providers.dart';
 import 'rate_rider.dart';
+import '../../core/mygig.dart' show mygigMoney;
+import '../../data/mygig_repository.dart';
+import '../mygig/mygig_trip_parts.dart';
 import '../ride/city_cancel_parts.dart' show NoShowPanel, DriverCancelRateNote;
 import '../ride/city_extras_parts.dart' show DriverTipCard, WaitingClockCard;
 import '../../widgets/place_type_badge.dart';
@@ -460,6 +463,13 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     if (child != null && !child.verified) {
       return showInfo(context, 'Check ${child.first}\'s photo and enter the pickup code first.');
     }
+    // myGiG (0329): the passenger is here and agreed the price: no code.
+    if (isMygigRide(r)) {
+      return _run(() async {
+        await ref.read(mygigRepositoryProvider).start(r.id);
+        _advance(r, RideStatus.onTrip);
+      });
+    }
     final repo = ref.read(rideRepositoryProvider);
     // The server checks the code (start_trip, 0152); the app never sees it.
     // A wrong code is said in the dialog, which stays open to try again.
@@ -513,7 +523,12 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         fix = await ref.read(tripFixProvider)();
       } catch (_) {}
     }
-    await ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.arrived, lat: fix?.latitude, lng: fix?.longitude);
+    if (isMygigRide(r)) {
+      // myGiG (0329): the clock runs on the terms the passenger accepted.
+      await ref.read(mygigRepositoryProvider).arrived(r.id, lat: fix?.latitude, lng: fix?.longitude);
+    } else {
+      await ref.read(rideRepositoryProvider).updateStatus(r.id, RideStatus.arrived, lat: fix?.latitude, lng: fix?.longitude);
+    }
     _advance(r, RideStatus.arrived);
     unawaited(_checkpoint(r.id, TripCheckpoint.arrive));
   });
@@ -555,6 +570,29 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         await ref.read(dispatchRepositoryProvider).driverComplete(r.id, fare);
         _advance(r, RideStatus.completed);
       });
+      return;
+    }
+    // myGiG (0329): the agreed price, the waiting and the tolls, worked out
+    // by the server; no early-end recalculation (the price was agreed).
+    if (isMygigRide(r)) {
+      final charges = await showAppDialog<TripCharges>(id: 'partner-trip.mygig-complete',
+        context: context,
+        builder: (_) => _ChargesDialog(fare: r.effectiveFare ?? 0, currency: r.currency),
+      );
+      if (charges == null || !mounted) return;
+      Map<String, dynamic>? done;
+      await _run(() async {
+        unawaited(_checkpoint(r.id, TripCheckpoint.drop));
+        done = await ref.read(mygigRepositoryProvider).complete(r.id,
+            tolls: charges.tolls, other: charges.other, note: charges.note);
+        // No losses (owner's rule): pay by link, what was added is paid
+        // first; the card under the trip sends a link or takes the cash.
+        if (done?['needsPayment'] != true) _advance(r, RideStatus.completed);
+      });
+      if (mounted && done?['needsPayment'] == true) {
+        showInfo(context, 'Collect ${mygigMoney((done!['owed'] as num).toDouble())} more first: send the passenger a '
+            'payment link, or take it in cash. The trip completes once it is paid.');
+      }
       return;
     }
     double? earlyFare;
@@ -1085,8 +1123,11 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
           BleHandshakeBadge(rideId: r.id, status: r.status.db, driver: true),
         // At the pickup: the waiting charge's clock, the rider's too (0314).
         if (WaitingClockCard.shows(r)) WaitingClockCard(ride: r),
+        // myGiG (0329): how the passenger follows, "Passenger didn't come",
+        // waiting at a stop, change destination and add a stop.
+        if (isMygigRide(r) && r.status.isOngoing) MygigTripCard(ride: r, onEnded: () => context.go('/drive')),
         // At the pickup: the waiting timer and "Rider didn't come" (0269).
-        if (r.status == RideStatus.arrived) NoShowPanel(ride: r),
+        if (r.status == RideStatus.arrived && !isMygigRide(r)) NoShowPanel(ride: r),
         if (!primaryInFooter) ?_primaryAction(r),
         if (driverMayCancel(r.status))
           restLine(restAt == _RestAt.cancel, BusyButton.text(
@@ -1097,6 +1138,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         // Their cancel rate, and the pause it brings over the limit (0269).
         if (driverMayCancel(r.status)) const DriverCancelRateNote(),
         if (r.status == RideStatus.completed) _CollectCard(ride: r),
+        if (r.status == RideStatus.completed && isMygigRide(r)) MygigCollectCard(ride: r),
         // The rider's tip, and "Got a cash tip" (0314).
         if (r.status == RideStatus.completed) DriverTipCard(ride: r),
         if (r.status == RideStatus.completed)

@@ -79,6 +79,15 @@ Deno.serve((req) =>
       const { data, error } = await asUser.rpc("payment_dispatch_link_allowed", { p_request: requestId });
       return !error && data === true;
     },
+    async mayLinkMygig(authorization, requestId) {
+      if (!authorization) return false;
+      const asUser = createClient(url, Deno.env.get("SUPABASE_ANON_KEY") ?? "", {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { Authorization: authorization } },
+      });
+      const { data, error } = await asUser.rpc("payment_mygig_link_allowed", { p_request: requestId });
+      return !error && data === true;
+    },
     canEditGateways: (authorization) => callerCanEditHere(authorization, PAYMENT_GATEWAY_PAGES).catch(() => false),
   })
 );

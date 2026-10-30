@@ -181,6 +181,8 @@ class PartnerTypeRules {
     this.hailAllowed,
     this.hailRegions = const RegionList(),
     this.availability = const RegionList(),
+    this.mygigAllowed = false,
+    this.mygigRegions = const RegionList(),
   });
 
   /// Reads `values.rules` of a partner-type entry.
@@ -191,6 +193,7 @@ class PartnerTypeRules {
     final age = m(raw['vehicleAge']);
     final permit = m(raw['permit']);
     final hail = m(raw['hail']);
+    final mygig = m(raw['mygig']);
     final ageList = _json(age['rules']);
     return PartnerTypeRules(
       ageRequired: _flag(age['required'], false),
@@ -204,6 +207,8 @@ class PartnerTypeRules {
       hailAllowed: hail.containsKey('allowed') ? _flag(hail['allowed'], false) : null,
       hailRegions: RegionList.fromJson(hail),
       availability: RegionList.fromJson(raw['availability']),
+      mygigAllowed: _flag(mygig['allowed'], false),
+      mygigRegions: RegionList.fromJson(mygig),
     );
   }
 
@@ -217,6 +222,11 @@ class PartnerTypeRules {
   final RegionList hailRegions;
   final RegionList availability;
 
+  /// myGiG (0329): a street hail with a price agreed in the app, for a type
+  /// that isn't TEKSI. Off until the admin turns it on; where it is offered.
+  final bool mygigAllowed;
+  final RegionList mygigRegions;
+
   PartnerTypeRules copyWith({
     bool? ageRequired,
     List<AgeRule>? ageRules,
@@ -225,6 +235,8 @@ class PartnerTypeRules {
     bool? hailAllowed,
     RegionList? hailRegions,
     RegionList? availability,
+    bool? mygigAllowed,
+    RegionList? mygigRegions,
   }) =>
       PartnerTypeRules(
         ageRequired: ageRequired ?? this.ageRequired,
@@ -234,6 +246,8 @@ class PartnerTypeRules {
         hailAllowed: hailAllowed ?? this.hailAllowed,
         hailRegions: hailRegions ?? this.hailRegions,
         availability: availability ?? this.availability,
+        mygigAllowed: mygigAllowed ?? this.mygigAllowed,
+        mygigRegions: mygigRegions ?? this.mygigRegions,
       );
 
   Map<String, dynamic> toJson() => {
@@ -241,6 +255,7 @@ class PartnerTypeRules {
         'permit': {'required': permitRequired, ...permitRegions.toJson()},
         'hail': {if (hailAllowed != null) 'allowed': hailAllowed, ...hailRegions.toJson()},
         'availability': availability.toJson(),
+        'mygig': {'allowed': mygigAllowed, ...mygigRegions.toJson()},
       };
 
   /// Why these rules can't be saved, or null. The vehicle rules are only
@@ -266,6 +281,9 @@ class PartnerTypeRules {
     }
     if (!availability.all && availability.regions.isEmpty) {
       return 'Pick the regions where this Partner Service type is offered, or choose All regions.';
+    }
+    if (mygigAllowed && !mygigRegions.all && mygigRegions.regions.isEmpty) {
+      return 'Pick the regions where myGiG is allowed, or choose All regions.';
     }
     return null;
   }
@@ -313,6 +331,13 @@ class EffectiveTypeRules {
   bool get hailOn => vehicleRequired ? (rules.hailAllowed ?? isTeksi) : isTeksi;
 
   bool availableAt(RegionPlace p) => rules.availability.allows(p);
+
+  /// myGiG (0329) is on for this type: as set, never TEKSI (it has the meter).
+  bool get mygigOn => !isTeksi && rules.mygigAllowed;
+
+  /// myGiG at [p]; a place that can't be told is not refused (the server's
+  /// mygig_type_ok).
+  bool mygigAt(RegionPlace p) => mygigOn && (p.country.isEmpty || rules.mygigRegions.allows(p));
 
   bool availableIn(ServiceArea area) => areaPlaces(area).any(availableAt);
 

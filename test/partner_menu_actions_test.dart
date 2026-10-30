@@ -43,6 +43,7 @@ void main() {
   const expected = {
     'teksi-ev': '/ev',
     'dashboard': '/drive',
+    mygigMenuItemId: '/drive',
     'wallet': '/wallet',
     'earnings': '/drive/earnings',
     telematicsMenuItemId: '/drive/telematics',

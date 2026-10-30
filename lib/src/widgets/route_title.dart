@@ -59,6 +59,10 @@ const _titles = {
   '/drive/permits': 'My permit',
   '/drive/services': 'Services',
   '/drive/my-ride': 'My Ride code',
+  '/drive/mygig': 'myGiG',
+  '/drive/mygig/settings': 'myGiG settings',
+  '/drive/mygig/pass': 'myGiG pass',
+  '/mygig/offer/': 'Accept your ride',
   '/drive/onboarding': 'Become a partner',
   '/drive/permit': 'Taxi permit',
   '/drive/scheduled': 'Scheduled rides',
@@ -74,6 +78,7 @@ const _titles = {
   '/meter/destination': 'Destination',
   '/ev': 'TEKSI EV',
   '/share/': 'Shared ride',
+  '/gig/': 'Your trip',
   '/verify/': 'Verify statement',
   '/diagnostics': 'Diagnostics',
 };

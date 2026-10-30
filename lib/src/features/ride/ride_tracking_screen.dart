@@ -70,6 +70,8 @@ import 'city_cancel_parts.dart';
 import 'route_check.dart';
 import 'home_screen.dart' show nearbyDriversProvider, roundedPoint;
 import 'shared_ride_screen.dart' show shareRide;
+import '../mygig/mygig_passenger.dart' show MygigCancelButton, mygigRiderCancel;
+import '../mygig/mygig_trip_parts.dart' show isMygigRide;
 import '../../widgets/offline_ride_banner.dart';
 import '../../widgets/ride_rating_card.dart';
 import '../../widgets/ride_stop_tiles.dart';
@@ -808,6 +810,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   Future<void> _cancel() async {
     final r = widget.ride;
     if (r.status == RideStatus.open) return _cancelSearch();
+    // myGiG (0329): a fee only per what was agreed (and only paying in the app).
+    if (!_isDemo && isMygigRide(r) && r.status != RideStatus.onTrip) return mygigRiderCancel(context, ref, r);
     final note = _isDemo
         ? null
         : cancelFeeNote(ref.read(cancelTermsProvider(r.id)).value, r, ref.read(cityCancelClockProvider)());
@@ -1111,6 +1115,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       );
     }
     final asked = r.cancelRequestedAt != null && r.cancelRequestedBy == 'rider';
+    if ((r.status == RideStatus.accepted || r.status == RideStatus.arrived) && !asked && isMygigRide(r)) {
+      return MygigCancelButton(ride: r, onPressed: _busy ? null : _cancel);
+    }
     if ((r.status == RideStatus.accepted || r.status == RideStatus.arrived) && !asked) {
       // With the city ride rules (0269): "Free to cancel for m:ss", then the
       // fee on the button.

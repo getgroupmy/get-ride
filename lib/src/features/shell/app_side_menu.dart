@@ -1,3 +1,5 @@
+import '../../data/mygig_repository.dart' show mygigAt, mygigConfigProvider;
+import '../mygig/mygig_entry.dart' show mygigButtonShows;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -149,6 +151,7 @@ class PartnerSideMenu extends ConsumerWidget {
             approved: approved,
             servicesPage: ref.watch(servicesPageAvailableProvider),
             cityToCity: ref.watch(c2cServiceActiveProvider).value ?? false,
+            mygig: mygigButtonShows(ref.watch(mygigConfigProvider(mygigAt(null, null))).value),
           )) ...[
             SideMenuTile(
               entry: e,

@@ -195,6 +195,24 @@ class _PartnerTypeRulesEditorState extends State<PartnerTypeRulesEditor> {
             onChanged: (l) => _set(_r.copyWith(hailRegions: l)),
           ),
       ],
+      // myGiG (0329): never TEKSI, which has the meter's street hail.
+      if (!widget.isTeksi) ...[
+        SwitchListTile(
+          key: const ValueKey('rule-mygig-allowed'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Allow myGiG rides'),
+          subtitle: const Text('A passenger waves the driver down; the price is agreed in the app before the trip.'),
+          value: _r.mygigAllowed,
+          onChanged: (v) => _set(_r.copyWith(mygigAllowed: v)),
+        ),
+        if (_r.mygigAllowed)
+          RegionListEditor(
+            keyPrefix: 'mygig',
+            value: _r.mygigRegions,
+            title: 'myGiG allowed in',
+            onChanged: (l) => _set(_r.copyWith(mygigRegions: l)),
+          ),
+      ],
       const SectionLabel('Service availability', hint: 'Where this Partner Service type can be chosen and gets jobs.'),
       RegionListEditor(
         keyPrefix: 'availability',
