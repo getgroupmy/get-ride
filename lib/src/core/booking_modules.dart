@@ -79,8 +79,11 @@ const bookingModules = <BookingModule>[
   // makes the ride_requests row when the passenger accepts (mygig_make_ride),
   // so the ride's Family trigger runs family_attach_trip with module
   // 'mygig'; the passenger sees the Family row where they accept the fare.
+  // 0330: a booking for later or a hire by time from myGiG is a
+  // mygig_bookings row (family_attach_trip from its insert trigger, module
+  // 'mygig'); each day it starts is a ride as above.
   BookingModule('mygig', 'myGiG',
-      tables: ['ride_requests'],
+      tables: ['ride_requests', 'mygig_bookings'],
       repositories: ['lib/src/data/mygig_repository.dart'],
       screens: ['lib/src/features/mygig/mygig_passenger.dart']),
   BookingModule(familyModuleCityToCity, 'City to City',

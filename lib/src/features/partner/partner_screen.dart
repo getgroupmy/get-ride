@@ -35,6 +35,7 @@ import '../../data/partner_type_check.dart';
 import '../../core/partner_type_rules.dart' show PartnerTypeCheck, hailNotOfferedMessage;
 import '../../data/mygig_repository.dart' show mygigAt, mygigConfigProvider;
 import '../mygig/mygig_entry.dart' show MygigTodayLine, mygigButtonShows, openMygig;
+import '../mygig/mygig_scheduled_screen.dart' show mygigScheduledPath;
 import '../../providers.dart';
 import '../../data/driver_presence.dart' show driverPresenceProvider;
 import '../../core/ride_offers.dart';
@@ -1446,6 +1447,22 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     icon: Icons.hail,
                     onPressed: () => openMygig(context, ref, lat: _me?.latitude, lng: _me?.longitude),
                   ),
+                // Scheduled myGiG (0330): later rides and hire by time, with a count.
+                if (partner.value != null && partnerCanDrive(partner.value!))
+                  if (ref.watch(mygigConfigProvider(mygigAt(_me?.latitude, _me?.longitude))).value case final gig?
+                      when mygigButtonShows(gig) || gig.scheduledCount > 0)
+                    BusyFab(
+                      key: const ValueKey('partner-mygig-scheduled'),
+                      tooltip: gig.scheduledCount == 0 ? 'Scheduled myGiG' : 'Scheduled myGiG: ${gig.scheduledCount}',
+                      onPressed: () {
+                        context.push(mygigScheduledPath);
+                      },
+                      child: Badge(
+                        isLabelVisible: gig.scheduledCount > 0,
+                        label: Text('${gig.scheduledCount}'),
+                        child: const Icon(Icons.event_available),
+                      ),
+                    ),
                 if (partner.value != null &&
                     partnerCanDrive(partner.value!) &&
                     (ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false))

@@ -123,6 +123,9 @@ const myPermitMenuItemId = 'my-permit';
 /// The driver menu's myGiG: a street hail for drivers who aren't TEKSI
 /// (0329); shown where the driver's type allows it.
 const mygigMenuItemId = 'mygig';
+/// The driver menu's Scheduled myGiG: later myGiG rides and hire by time
+/// (0330); shown with myGiG.
+const mygigScheduledMenuItemId = 'mygig-scheduled';
 /// The driver menu's Telematics: their km and trips (0255).
 const telematicsMenuItemId = 'telematics';
 /// The driver menu's Services: what the car in use takes (0263).
@@ -132,6 +135,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
   ('dashboard', 'Dashboard'),
   (mygigMenuItemId, 'myGiG'), // this app's own (0329): a street hail for drivers who aren't TEKSI
+  (mygigScheduledMenuItemId, 'Scheduled myGiG'), // this app's own (0330): later myGiG rides and hire by time
   (myRideCodeMenuItemId, 'My Ride code'), // this app's own; the Expo menu skips it
   ('earnings', 'Earnings'),
   (telematicsMenuItemId, 'Telematics'), // this app's own (0255); the Expo menu skips it
@@ -228,6 +232,7 @@ const defaultMenuIconNames = <String, Map<String, String>>{
     'my-qr': 'Tag',
     'dashboard': 'Settings',
     'mygig': 'Car',
+    'mygig-scheduled': 'Clock',
     'my-ride-code': 'Star',
     'earnings': 'Wallet',
     'telematics': 'Clock',

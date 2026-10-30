@@ -375,7 +375,8 @@ void main() {
 
   for (final b in Brightness.values) {
     testWidgets('${b.name}: the admin\'s myGiG settings: Default and a region rule', (tester) async {
-      tester.view.physicalSize = const Size(1000, 4000);
+      // Tall: the Default rule lists every part, hire by time too (0330).
+      tester.view.physicalSize = const Size(1000, 12000);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
       final repo = _FakeRepo();

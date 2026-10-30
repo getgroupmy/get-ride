@@ -15,6 +15,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/mygig.dart';
+import '../../core/mygig_hire.dart';
 import '../../data/geo_service.dart';
 import '../../data/mygig_repository.dart';
 import '../../providers.dart';
@@ -26,6 +27,7 @@ import '../partner/partner_trip_screen.dart' show tripFixProvider;
 import '../ride/place_search.dart';
 import 'mygig_entry.dart';
 import 'mygig_waiting_screen.dart';
+import 'mygig_when.dart';
 
 /// A place on a myGiG trip.
 class MygigStop {
@@ -84,9 +86,29 @@ String? mygigSendProblem({
   required MygigPay pay,
   required MygigWay? way,
   required bool phoneRequired,
+  MygigBookingChoice booking = const MygigBookingChoice(),
+  MygigHireSettings? hire,
+  DateTime? now,
 }) {
   final problem = quote?.problem['message'];
   if (problem is String && problem.isNotEmpty) return problem;
+  // 0330: the package and the time.
+  final kindProblem = quote?.raw['kindProblem'];
+  if (kindProblem is Map && kindProblem['message'] is String) return kindProblem['message'] as String;
+  if (hire != null) {
+    final when = mygigWhenProblem(booking, hire, now ?? DateTime.now());
+    if (when != null) return when;
+  }
+  if ((booking.kind == MygigKind.weekly || booking.kind == MygigKind.monthly) && booking.weekdays.isEmpty) {
+    return 'Choose the working days.';
+  }
+  if (hire != null && booking.isLater && quote != null) {
+    final plan = mygigPlanFor(booking, pay.name, registered: lookup.registered, s: hire, total: quote.total);
+    if (plan.problem != null) return plan.problem;
+    if (plan.payNowByLink && !mygigPhoneComplete(phone)) {
+      return 'Paying by link needs the passenger’s phone: they pay before the booking is confirmed.';
+    }
+  }
   if (lookup.state == MygigLookupState.blocked) return 'You blocked this number.';
   final typed = phone.trim().isNotEmpty;
   final complete = mygigPhoneComplete(phone);
@@ -128,6 +150,9 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
   double _approachKm = 0;
   bool _routing = false;
   String? _quoteError;
+  // 0330: what is sent and when; a hire may have no drop-off ("as directed").
+  MygigBookingChoice _booking = const MygigBookingChoice();
+  bool _directed = false;
   Timer? _lookupTimer;
   Timer? _quoteTimer;
   int _quoteSeq = 0;
@@ -212,9 +237,45 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
   Future<void> _editDrop() async {
     final p = await _search('Where to?');
     if (p == null || !mounted) return;
-    setState(() => _drop = p);
+    setState(() {
+      _drop = p;
+      _directed = false;
+    });
     await _changed();
   }
+
+  /// Hire with no drop-off: the passenger tells the driver where to go.
+  Future<void> _asDirected() async {
+    final pickup = _pickup;
+    if (pickup == null) return;
+    setState(() {
+      _drop = MygigStop(name: 'No drop-off · as directed', at: pickup.at);
+      _directed = true;
+      _stops.clear();
+      _round = false;
+    });
+    await _changed();
+  }
+
+  /// Trip or a hire package: a trip needs a drop-off; days, weeks and
+  /// months start later.
+  Future<void> _kind(MygigKind k) async {
+    setState(() {
+      _booking = _booking.copyWith(kind: k, later: k.multiDay ? true : _booking.later);
+      if (k == MygigKind.trip && _directed) {
+        _drop = null;
+        _directed = false;
+      }
+      if (k.hire) _round = false;
+    });
+    if (k.hire && _drop == null) return _asDirected();
+    _requote();
+  }
+
+  MygigHireSettings _hireSettings(MygigConfig? c) => MygigHireSettings.of(c?.settings.raw ?? const {});
+
+  List<MygigKind> _kinds(MygigConfig? c) =>
+      c == null ? const [MygigKind.trip] : mygigKindsOn(_hireSettings(c), MygigHirePrefs.of(c.prefs.raw));
 
   Future<void> _addStop() async {
     if (_stops.length >= mygigMaxStops) return;
@@ -247,7 +308,9 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
     final geo = ref.read(geoServiceProvider);
     RouteInfo? r;
     try {
-      r = _round
+      r = _directed
+          ? null
+          : _round
           ? await geo.route(pickup.at, pickup.at, via: [for (final s in _stops) s.at, drop.at])
           : await geo.route(pickup.at, drop.at, via: [for (final s in _stops) s.at]);
     } catch (_) {}
@@ -270,7 +333,11 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
     _requote();
   }
 
-  Map<String, dynamic> _trip() => mygigTripJson(
+  Map<String, dynamic> _trip() => _tripOnly()
+    ..addAll({if (_directed) 'directed': true})
+    ..removeWhere((k, _) => _directed && (k == 'drop' || k == 'km' || k == 'min'));
+
+  Map<String, dynamic> _tripOnly() => mygigTripJson(
     pickup: _pickup!,
     drop: _drop!,
     stops: _stops,
@@ -291,7 +358,8 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
     _quoteTimer = Timer(const Duration(milliseconds: 250), () async {
       final seq = ++_quoteSeq;
       try {
-        final q = await ref.read(mygigRepositoryProvider).quote(_trip());
+        final q = await ref.read(mygigRepositoryProvider)
+            .quote({..._trip(), 'booking': _booking.toJson(), 'registered': _lookup.registered});
         if (!mounted || seq != _quoteSeq) return;
         setState(() {
           _quote = q;
@@ -355,6 +423,7 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
       way: way,
       lat: _origin?.latitude,
       lng: _origin?.longitude,
+      booking: _booking.isBooking ? _booking.toJson() : null,
     );
     if (!mounted) return;
     if (way == MygigWay.whatsapp) await openMygigWhatsApp(sent);
@@ -418,6 +487,20 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text('Search, or tap the map where the passenger is going.', style: t.textTheme.bodyLarge),
                 ),
+                // 0330: hire by time, with or without a drop-off.
+                if (_kinds(c).length > 1) ...[
+                  Text('Or hire by time', style: t.textTheme.titleSmall),
+                  const SizedBox(height: 6),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final k in _kinds(c).where((k) => k.hire))
+                      ActionChip(
+                        key: ValueKey('mygig-hire-${k.name}'),
+                        avatar: const Icon(Icons.schedule, size: 18),
+                        label: Text(k.chip),
+                        onPressed: _pickup == null ? null : () => _kind(k),
+                      ),
+                  ]),
+                ],
               ] else
                 ..._details(t, c),
             ],
@@ -444,7 +527,15 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
     final bagsCount = _bags.values.fold<int>(0, (a, b) => a + b);
     final ways = c == null ? const <MygigWay>[] : _waysNow(c);
     final hasPhone = mygigPhoneComplete(_phone.text);
+    final hs = _hireSettings(c);
+    final kinds = _kinds(c);
+    final hire = _booking.kind.hire;
+    final rates = c == null ? hs.rates : mygigHireCard(hs, MygigHirePrefs.of(c.prefs.raw));
     return [
+      if (kinds.length > 1) ...[
+        MygigKindChips(kinds: kinds, selected: _booking.kind, onSelected: _kind),
+        const SizedBox(height: 8),
+      ],
       if (problem != null && problem.isNotEmpty)
         _box(t, Icons.block, problem['end'] == 'pickup' ? 'No myGiG pickups at ${problem['name']}' : 'No myGiG drop-offs at ${problem['name']}',
             '${problem['message']} Change it, or ask the passenger to book in the app.', bad: true),
@@ -469,12 +560,24 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
             ),
           ListTile(
             key: const ValueKey('mygig-drop'),
-            leading: Icon(Icons.location_on, color: t.colorScheme.error),
+            leading: Icon(_directed ? Icons.alt_route : Icons.location_on, color: t.colorScheme.error),
             title: Text(_drop!.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: const Text('Drop-off'),
+            subtitle: Text(_directed ? 'The passenger tells you where to go' : 'Drop-off'),
             trailing: IconButton(tooltip: 'Change drop-off', icon: const Icon(Icons.edit), onPressed: _editDrop),
           ),
-          if (_stops.length < mygigMaxStops)
+          if (hire && !_directed)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const ValueKey('mygig-as-directed'),
+                onPressed: _asDirected,
+                icon: const Icon(Icons.alt_route),
+                label: const Text('No drop-off · as directed'),
+              ),
+            ),
+          if (_directed)
+            const SizedBox.shrink()
+          else if (_stops.length < mygigMaxStops)
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
@@ -486,6 +589,7 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
             )
           else
             const Padding(padding: EdgeInsets.fromLTRB(16, 0, 16, 8), child: Text('Up to $mygigMaxStops stops.')),
+          if (!hire)
           SwitchListTile(
             key: const ValueKey('mygig-round'),
             value: _round,
@@ -498,19 +602,75 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
           ),
         ]),
       ),
+      // 0330: a long round trip may suit hourly hire better.
+      if (!hire && _round && q != null && q.minutes > 60 && kinds.contains(MygigKind.hourly))
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Card(
+            key: const ValueKey('mygig-switch-hourly'),
+            color: t.colorScheme.tertiaryContainer,
+            child: ListTile(
+              leading: Icon(Icons.schedule, color: t.colorScheme.onTertiaryContainer),
+              title: Text('Long round trip: about ${q.minutes} min', style: TextStyle(color: t.colorScheme.onTertiaryContainer)),
+              subtitle: Text('Hourly hire may suit better: the passenger keeps you by the hour.',
+                  style: TextStyle(color: t.colorScheme.onTertiaryContainer)),
+              trailing: TextButton(
+                onPressed: () {
+                  setState(() => _booking = _booking.copyWith(
+                      hours: ((q.minutes / 60).ceil()).clamp(hs.minHours.ceil(), hs.maxHours.floor()).toDouble()));
+                  _kind(MygigKind.hourly);
+                },
+                child: const Text('Switch'),
+              ),
+            ),
+          ),
+        ),
+      if (hire) ...[
+        const SizedBox(height: 12),
+        MygigHireOptions(
+          choice: _booking,
+          settings: hs,
+          rates: rates,
+          kmIncluded: q == null ? null : (q.raw['kmIncluded'] as num?)?.toDouble(),
+          onChanged: (b) {
+            setState(() => _booking = b);
+            _requote();
+          },
+        ),
+      ],
+      if (hs.laterEnabled || _booking.kind.multiDay) ...[
+        const SizedBox(height: 12),
+        MygigWhenPicker(
+          key: ValueKey('mygig-when-${_booking.kind.name}'),
+          choice: _booking,
+          settings: hs,
+          now: DateTime.now(),
+          onChanged: (b) {
+            setState(() => _booking = b);
+            _requote();
+          },
+        ),
+      ],
       const SizedBox(height: 12),
       Row(children: [
         Expanded(
           child: Text(
-            _routing ? 'Finding the route…' : q == null ? 'Working out the price…' : '${q.km.toStringAsFixed(1)} km · ${q.minutes} min',
+            _routing
+                ? 'Finding the route…'
+                : q == null
+                ? 'Working out the price…'
+                : hire
+                ? '${((q.raw['kmIncluded'] as num?) ?? 0).round()} km included · ${_booking.kind == MygigKind.hourly ? '${_booking.hours.round()} h' : '${q.raw['days'] ?? 1} days'}'
+                : '${q.km.toStringAsFixed(1)} km · ${q.minutes} min',
             style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
           ),
         ),
         Text(q == null ? '' : mygigMoney(q.total), key: const ValueKey('mygig-total'), style: t.textTheme.headlineSmall),
       ]),
       if (_quoteError != null) Text(_quoteError!, style: TextStyle(color: t.colorScheme.error)),
-      if (q != null) MygigPriceLines(quote: q, what: 'myGiG', bags: _bags, stops: _stops.length, round: _round),
-      if (q != null && q.guard)
+      if (q != null)
+        MygigPriceLines(quote: q, what: hire ? _booking.whatText : 'myGiG', bags: _bags, stops: _stops.length, round: _round),
+      if (q != null && q.guard && !hire)
         _box(t, Icons.warning_amber, 'Much higher than the app price',
             'The same trip is about ${mygigMoney(q.appPrice)} in the get.ride app. The passenger sees that price too.', warn: true),
       if (q != null && q.approachFull > 0)
@@ -525,7 +685,11 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
             _requote();
           },
         ),
-      Text('A fixed price for the passenger. Tolls and parking are added at the end.', style: t.textTheme.bodySmall),
+      Text(
+          hire
+              ? 'A fixed package price. Overtime and extra km are added at the end of each day; tolls and parking too.'
+              : 'A fixed price for the passenger. Tolls and parking are added at the end.',
+          style: t.textTheme.bodySmall),
       const SizedBox(height: 12),
       _stepper(t, Icons.person_outline, 'Passengers', _pax, 1, 8, (v) => setState(() => _pax = v), key: 'mygig-pax'),
       const SizedBox(height: 8),
@@ -623,9 +787,29 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
       if (_pay == MygigPay.business)
         _box(t, Icons.business_center_outlined, _lookup.businesses.where((b) => b.id == _businessId).firstOrNull?.name ?? 'Business',
             'Charged to the business account, on its own settlement.', ok: true),
-      if (_pay == MygigPay.link)
+      if (_pay == MygigPay.link && !_booking.isLater)
         Text('The passenger pays on their phone by card, FPX or DuitNow when the trip ends. If they don’t, take cash.',
             style: t.textTheme.bodySmall),
+      // 0330: how a booking or hire is paid (no losses: nothing later without in-app payment).
+      if (q != null && (_booking.isLater || hire))
+        Builder(builder: (_) {
+          final plan = mygigPlanFor(_booking, _pay.name, registered: _lookup.registered, s: hs, total: q.total);
+          if (plan.problem != null) {
+            return MygigNote(key: const ValueKey('mygig-plan'), icon: Icons.block, title: 'Not offered', body: plan.problem!, bad: true);
+          }
+          final text = mygigPlanText(_booking, plan, hs,
+              payName: mygigPayName(_pay, familyHost: _lookup.familyHost),
+              business: _lookup.businesses.where((b) => b.id == _businessId).firstOrNull?.name,
+              balanceHow: _pay == MygigPay.cash ? 'in cash' : 'in cash or by link');
+          return MygigNote(
+            key: const ValueKey('mygig-plan'),
+            icon: plan.payNowByLink ? Icons.link : plan.kind == MygigPlanKind.business ? Icons.business_center_outlined : Icons.account_balance_wallet_outlined,
+            title: text.title,
+            body: text.body,
+            ok: !plan.payNowByLink,
+            warn: plan.payNowByLink,
+          );
+        }),
       if (c != null)
         if (mygigFeeNote(_lookup, _pay,
                 cancelFee: c.settings.cancelOn && c.prefs.cancelOn ? c.prefs.cancelAmount : 0,
@@ -750,9 +934,13 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
       pay: _pay,
       way: _way,
       phoneRequired: c.settings.phoneRequired,
+      booking: _booking,
+      hire: _hireSettings(c),
     );
+    final at = _booking.at;
     final label = switch (_way) {
       null => 'Choose how they accept',
+      _ when _booking.isLater && at != null => 'Send booking for ${mygigWhenText(at, DateTime.now())}',
       MygigWay.app => 'Send to ${c.settings.nameMode == 'hide' || _lookup.name == null ? 'their' : '${_lookup.name}’s'} app',
       MygigWay.whatsapp => 'Send WhatsApp link',
       MygigWay.sms => 'Send SMS link',

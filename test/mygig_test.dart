@@ -286,7 +286,7 @@ void main() {
 
     test('the Family module and the ride module', () {
       expect(bookingModule(familyModuleMygig)?.name, 'myGiG');
-      expect(bookingModule(familyModuleMygig)?.tables, ['ride_requests']);
+      expect(bookingModule(familyModuleMygig)?.tables, ['ride_requests', 'mygig_bookings']);
       expect(rideBookingModule(mygig: true, hire: true), 'mygig');
     });
 

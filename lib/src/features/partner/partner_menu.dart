@@ -9,6 +9,7 @@ import '../../admin/screens/meterapp/display_logic.dart'
         myQrMenuItemId,
         myRideCodeMenuItemId,
         mygigMenuItemId,
+        mygigScheduledMenuItemId,
         scheduledRidesMenuItemId,
         servicesMenuItemId,
         standGroupsMenuItemId,
@@ -61,7 +62,7 @@ bool partnerMenuRowShows(
   bool mygig = false,
 }) => switch (id) {
   _ when !approved && partnerRowsAfterApproval.contains(id) => false,
-  mygigMenuItemId => mygig,
+  mygigMenuItemId || mygigScheduledMenuItemId => mygig,
   vehicleInfoMenuItemId => obdLinked,
   servicesMenuItemId => servicesPage,
   myRideCodeMenuItemId => hasMyRideCode,
@@ -79,6 +80,7 @@ const partnerRowsAfterApproval = {
   cityToCityMenuItemId,
   myRideCodeMenuItemId,
   mygigMenuItemId,
+  mygigScheduledMenuItemId,
 };
 
 /// Built-in driver items on this app's screens; false for one with no
@@ -98,6 +100,8 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     servicesMenuItemId: '/drive/services',
     // myGiG (0329): the home opens the myGiG checks and sheet.
     mygigMenuItemId: '/drive?mygig=1',
+    // Scheduled myGiG (0330): later myGiG rides and hire by time.
+    mygigScheduledMenuItemId: '/drive/mygig/scheduled',
     // The trips taken as a partner; the rides booked are on the user side.
     'trip-history': '/drive/history',
     scheduledRidesMenuItemId: '/drive/scheduled',

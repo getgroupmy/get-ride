@@ -69,6 +69,7 @@ import 'features/ride/shared_ride_screen.dart';
 import 'features/mygig/mygig_entry.dart';
 import 'features/mygig/mygig_new_screen.dart';
 import 'features/mygig/mygig_passenger.dart';
+import 'features/mygig/mygig_scheduled_screen.dart';
 import 'features/mygig/mygig_settings_screen.dart';
 import 'features/meter/obd_reader_screen.dart';
 import 'features/meter/printer_screen.dart';
@@ -608,6 +609,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/drive/mygig', builder: (_, _) => const MygigNewScreen()),
           GoRoute(path: '/drive/mygig/settings', builder: (_, _) => const MygigSettingsScreen()),
           GoRoute(path: '/drive/mygig/pass', builder: (_, _) => const MygigPassScreen()),
+          GoRoute(path: '/drive/mygig/scheduled', builder: (_, _) => const MygigScheduledScreen()),
           // The fare a driver sent to the passenger's app (0329).
           GoRoute(path: '/mygig/offer/:id', builder: (_, s) => MygigOfferScreen(offerId: s.pathParameters['id']!)),
           GoRoute(

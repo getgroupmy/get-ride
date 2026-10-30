@@ -13,7 +13,10 @@ import '../../core/multi_day_hire.dart' show HireDaysBooking;
 import '../../data/hourly_hire_repository.dart' show myHireBookingsProvider;
 import 'multi_hire_parts.dart' show HireBookingCard;
 import '../../core/format.dart';
+import '../../core/mygig_hire.dart' show MygigBooking;
 import '../../core/scheduled_rides.dart';
+import '../../data/mygig_repository.dart' show mygigMyBookingsProvider;
+import '../mygig/mygig_scheduled_screen.dart' show MygigPassengerBookingCard;
 import '../../data/scheduled_ride_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -104,8 +107,10 @@ class ScheduledRidesList extends ConsumerWidget {
                 (day: r.hireDayNo!, at: r.pickupAt, status: scheduledStatusLabel(r)),
           ]..sort((a, b) => a.day.compareTo(b.day)),
         );
+        // myGiG (0330): bookings a driver made with the rider.
+        final gigs = ref.watch(mygigMyBookingsProvider).value ?? const <MygigBooking>[];
         // Near the top, as Trips and Wallet history have theirs.
-        if (all.isEmpty && bookings.isEmpty) {
+        if (all.isEmpty && bookings.isEmpty && gigs.isEmpty) {
           return ListView(
             children: const [
               EmptyState(
@@ -122,6 +127,10 @@ class ScheduledRidesList extends ConsumerWidget {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (gigs.isNotEmpty) ...[
+                const _Heading('myGiG'),
+                for (final g in gigs) MygigPassengerBookingCard(booking: g),
+              ],
               if (upcoming.isNotEmpty || bookings.any((b) => b.open)) ...[
                 const _Heading('Upcoming'),
                 for (final b in bookings)
