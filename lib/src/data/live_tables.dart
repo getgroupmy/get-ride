@@ -39,6 +39,9 @@ const liveSettingTables = <String>[
   // myGiG settings by place and its places where it isn't allowed (0329).
   'mygig_rules',
   'mygig_place_rules',
+  // myGiG bookings for later and hire by time, and their days (0330).
+  'mygig_bookings',
+  'mygig_booking_days',
   // Vehicle services, lowest to highest (0249).
   'vehicle_service_order',
   // Whether that order applies to every booking (0250).

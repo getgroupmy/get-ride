@@ -184,6 +184,8 @@ extension MultiHireCalls on HourlyHireRepository {
         .from(hireBookingsTable)
         .select()
         .eq('rider_id', uid)
+        // A myGiG hire (0330) is listed with the passenger's myGiG bookings.
+        .isFilter('mygig_booking_id', null)
         .order('first_at', ascending: false)
         .limit(50);
     return [for (final r in rows) HireDaysBooking.fromRow(r)];

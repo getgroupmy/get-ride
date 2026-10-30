@@ -45,6 +45,7 @@ import 'rate_rider.dart';
 import '../../core/mygig.dart' show mygigMoney;
 import '../../data/mygig_repository.dart';
 import '../mygig/mygig_trip_parts.dart';
+import '../mygig/mygig_scheduled_screen.dart' show MygigHireCard, mygigEndHireLabel;
 import '../ride/city_cancel_parts.dart' show NoShowPanel, DriverCancelRateNote;
 import '../ride/city_extras_parts.dart' show DriverTipCard, WaitingClockCard;
 import '../../widgets/place_type_badge.dart';
@@ -625,6 +626,28 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       kmIncluded: hire?.kmIncluded ?? 0,
     );
     if (km == null || !mounted) return;
+    // myGiG hire (0330): the day's overtime and extra km with tolls and
+    // parking, paid before the day ends (charged in the app, or a link or
+    // cash first).
+    if (isMygigRide(r)) {
+      final charges = await showAppDialog<TripCharges>(id: 'partner-trip.mygig-hire-end',
+        context: context,
+        builder: (_) => _ChargesDialog(fare: r.effectiveFare ?? 0, currency: r.currency),
+      );
+      if (charges == null || !mounted) return;
+      Map<String, dynamic>? done;
+      await _run(() async {
+        unawaited(_checkpoint(r.id, TripCheckpoint.drop));
+        done = await ref.read(mygigRepositoryProvider).hireEnd(r.id,
+            km: km, tolls: charges.tolls, other: charges.other, note: charges.note);
+        if (done?['needsPayment'] != true) _advance(r, RideStatus.completed);
+      });
+      if (mounted && done?['needsPayment'] == true) {
+        showInfo(context, 'Collect ${mygigMoney((done!['owed'] as num).toDouble())} more first (overtime, extra km, tolls or '
+            'parking): send the passenger a payment link, or take it in cash. The day ends once it is paid.');
+      }
+      return;
+    }
     await _run(() async {
       unawaited(_checkpoint(r.id, TripCheckpoint.drop));
       await ref.read(hourlyHireRepositoryProvider).end(r.id, kmUsed: km);
@@ -864,7 +887,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       RideStatus.onTrip when !meeting && r.raw['hire_package'] != null => BusyButton.filled(
         key: const ValueKey('trip-end-hire'),
         onPressed: _busy ? null : () => _endHire(r),
-        child: const Text('End hire'),
+        child: Text(mygigEndHireLabel(r.raw)),
       ),
       RideStatus.onTrip when !meeting => BusyButton.filled(
         key: const ValueKey('trip-complete'),
@@ -917,7 +940,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         // before the trip can start.
         if (r.status == RideStatus.accepted || r.status == RideStatus.arrived) DriverChildCheck(tripId: r.id),
         // Hourly hire (0326): the clock, the km included and Ask to extend.
-        if (r.raw['hire_package'] != null && r.status.isOngoing)
+        // myGiG hire (0330): the time and km used today, and overtime.
+        if (r.raw['hire_package'] != null && r.status.isOngoing && isMygigRide(r))
+          MygigHireCard(row: r.raw)
+        else if (r.raw['hire_package'] != null && r.status.isOngoing)
           DriverHireCard(
             ride: r,
             config: ref.watch(hourlyHireConfigProvider).value ?? HourlyHireConfig.off,

@@ -12,6 +12,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/mygig.dart';
+import '../../core/mygig_hire.dart';
 import '../../data/mygig_repository.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
@@ -259,6 +260,7 @@ class _MygigSettingsScreenState extends ConsumerState<MygigSettingsScreen> {
                   'get a cancellation or no-show fee.'),
             ),
           ),
+          ..._hire(t, c, p),
           _section(t, Icons.block, 'Blocked numbers'),
           if (_blocked!.isEmpty)
             Text('No blocked numbers.', style: small)
@@ -303,6 +305,89 @@ class _MygigSettingsScreenState extends ConsumerState<MygigSettingsScreen> {
         ],
       ),
     );
+  }
+
+  /// 0330: hire by time: the packages the driver offers, and get.ride's
+  /// myGiG hire rates or their own (when the admin allows, within limits).
+  List<Widget> _hire(ThemeData t, MygigConfig c, MygigPrefs p) {
+    final hs = MygigHireSettings.of(c.settings.raw);
+    if (!hs.hireEnabled) return const [];
+    final hp = MygigHirePrefs.of(p.raw);
+    final small = t.textTheme.bodySmall;
+    final r = hp.rates;
+    final lim = hs.ownLimits;
+    void setHire(String key, Object? v, [String? sub]) {
+      final hire = Map<String, dynamic>.from(hp.raw);
+      if (sub == null) {
+        hire[key] = v;
+      } else {
+        hire[key] = {...(hire[key] is Map ? Map<String, dynamic>.from(hire[key] as Map) : <String, dynamic>{}), sub: v};
+      }
+      _set('hire', hire);
+    }
+    String range(String k) {
+      final lo = lim['${k}Min'], hi = lim['${k}Max'];
+      return [if (lo is num && lo > 0) 'from ${mygigMoney(lo.toDouble())}', if (hi is num) 'up to ${mygigMoney(hi.toDouble())}']
+          .join(' ');
+    }
+    return [
+      _section(t, Icons.schedule, 'Hire by time'),
+      Text('What you offer, and your rates. Passengers hire you by the hour, day, week or month.', style: small),
+      const SizedBox(height: 6),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final k in MygigKind.values.where((k) => k.hire && hs.packageOn(k)))
+          FilterChip(
+            key: ValueKey('mygig-offer-${k.name}'),
+            label: Text(k.label),
+            selected: hp.offers(k),
+            onSelected: (v) => setHire('offer', v, k.name),
+          ),
+      ]),
+      if (hs.allowOwnRates) ...[
+        RadioGroup<bool>(
+          groupValue: hp.own,
+          onChanged: (v) => setHire('own', v ?? false),
+          child: Column(children: [
+            RadioListTile<bool>(
+              key: const ValueKey('mygig-hire-getride'),
+              value: false,
+              title: const Text('get.ride hire rates'),
+              subtitle: Text(hs.rates.text),
+            ),
+            RadioListTile<bool>(
+              key: const ValueKey('mygig-hire-own'),
+              value: true,
+              title: const Text('My own hire rates'),
+              subtitle: const Text('Set them below'),
+            ),
+          ]),
+        ),
+        if (hp.own) ...[
+          _grid([
+            _num('Per hour (RM)', r.hour, (v) => setHire('rates', v, 'hour'), key: 'hire-hour'),
+            _num('Per day, 10 h (RM)', r.day, (v) => setHire('rates', v, 'day'), key: 'hire-day'),
+            _num('Per week, 5 days (RM)', r.week, (v) => setHire('rates', v, 'week'), key: 'hire-week'),
+            _num('Per month (RM)', r.month, (v) => setHire('rates', v, 'month'), key: 'hire-month'),
+            _num('Overtime per hour (RM)', r.overtime, (v) => setHire('rates', v, 'overtime'), key: 'hire-overtime'),
+            _num('Overnight allowance (RM)', r.overnight, (v) => setHire('rates', v, 'overnight'), key: 'hire-overnight'),
+          ]),
+          const SizedBox(height: 6),
+          Text(
+            'Allowed by get.ride: an hour ${range('hour')}, a day ${range('day')}, a week ${range('week')}, '
+            'a month ${range('month')}. km included, the extra km price and the limits are set by get.ride.',
+            key: const ValueKey('mygig-hire-limits'),
+            style: small,
+          ),
+        ],
+      ] else
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.lock_outline),
+            title: const Text('get.ride hire rates'),
+            subtitle: Text(hs.rates.text),
+          ),
+        ),
+    ];
   }
 
   Widget _row(String l, double v, {bool bold = false}) => Row(children: [

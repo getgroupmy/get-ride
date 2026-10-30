@@ -294,6 +294,7 @@ class MygigConfig {
     this.taxName,
     this.taxPct = 0,
     this.wholeFare = false,
+    this.scheduledCount = 0,
   });
 
   factory MygigConfig.fromJson(Map<String, dynamic> j) {
@@ -313,6 +314,7 @@ class MygigConfig {
       taxName: _s(pricing['taxName']),
       taxPct: pricing['taxKind'] == 'fixed' ? 0 : _d(pricing['taxValue']),
       wholeFare: _b(pricing['wholeFare']),
+      scheduledCount: _i(j['scheduledCount']),
     );
   }
 
@@ -332,6 +334,9 @@ class MygigConfig {
   final String? taxName;
   final double taxPct;
   final bool wholeFare;
+
+  /// The driver's later bookings and hire in Scheduled myGiG (0330).
+  final int scheduledCount;
 
   /// The myGiG button shows: the driver's type allows it here (a refusal
   /// for any other reason still shows it, to explain).
@@ -626,18 +631,31 @@ class MygigRide {
   Map<String, dynamic> get pendingFinal => _m(raw['pendingFinal']);
   double get refundDue => _d(raw['refundDue']);
 
-  /// What a pay-by-link passenger owes now (the server's mygig_owed before
-  /// the end): the agreed price, or the end total waiting at Complete, less
-  /// what was paid.
+  /// A day of a booking (0330): its booking, its day, what it was given
+  /// from the booking (prepaid) and extras charged in the app (appPaid).
+  String? get bookingId => _s(raw['bookingId']);
+  int get dayNo => _i(raw['dayNo'], 1);
+  int get days => _i(raw['days'], 1);
+  double get prepaid => _d(raw['prepaid']);
+  double get appPaid => _d(raw['appPaid']);
+
+  /// Paid as it goes (the server's mygig_pays_first): pay by link, and a
+  /// booked day but a business account's.
+  bool get paysFirst => pay == MygigPay.link || (bookingId != null && pay != MygigPay.business);
+
+  /// What the passenger owes now (the server's mygig_owed before the end):
+  /// the agreed price, or the end total waiting at Complete, less what was
+  /// paid (by link, in cash, from the booking, in the app).
   double get owed {
-    if (pay != MygigPay.link) return 0;
+    if (!paysFirst) return 0;
     final target = pendingFinal.isNotEmpty ? _d(pendingFinal['due']) : quote.total;
-    final o = target - linkPaid - cashPaid;
+    final o = target - linkPaid - cashPaid - prepaid - appPaid;
     return o > 0.004 ? (o * 100).roundToDouble() / 100 : 0;
   }
 
-  /// A cash passenger pays for coming to the pickup before Start trip.
-  double get approachCashDue => pay == MygigPay.cash && !approachCashTaken ? quote.approach : 0;
+  /// A cash passenger pays for coming to the pickup before Start trip (a
+  /// booked day has it in its price).
+  double get approachCashDue => pay == MygigPay.cash && bookingId == null && !approachCashTaken ? quote.approach : 0;
 
   /// "Following in their app" and so on, on the driver's trip screen.
   String get following => switch (way) {
@@ -692,6 +710,9 @@ const mygigParts = <(String, String, List<String>)>[
   ('waiting', 'Waiting', ['waiting']),
   ('fees', 'Cancellation and no-show', ['cancel', 'noShow']),
   ('limits', 'Limits and the price guard', ['dailyLimit', 'guard', 'maxKm', 'repeatFlag', 'lookupPer10Min']),
+  // 0330: bookings for later and hire by time.
+  ('later', 'Bookings for later', ['later']),
+  ('hire', 'Hire by time for myGiG, lead times and free cancelling', ['hire']),
 ];
 
 enum MygigFieldKind { toggle, number, whole, choice, time }
@@ -762,6 +783,64 @@ const mygigFields = <MygigField>[
   MygigField('limits', 'maxKm', 'Longest myGiG trip (km, 0: no limit)', MygigFieldKind.number),
   MygigField('limits', 'repeatFlag', 'Flag a number after this many rides a week', MygigFieldKind.whole),
   MygigField('limits', 'lookupPer10Min', 'Phone checks per driver in 10 minutes', MygigFieldKind.whole),
+  // 0330: bookings for later.
+  MygigField('later', 'later.enabled', 'Drivers may book for later', MygigFieldKind.toggle),
+  MygigField('later', 'later.aheadDays', 'Book up to (days ahead)', MygigFieldKind.whole),
+  MygigField('later', 'later.remindMin', 'Remind both before (min)', MygigFieldKind.whole),
+  MygigField('later', 'later.startEarlyMin', 'Driver may start before the time (min)', MygigFieldKind.whole),
+  MygigField('later', 'later.payWaitMin', 'Time to pay by link before the booking ends (min)', MygigFieldKind.whole),
+  // 0330: hire by time.
+  MygigField('hire', 'hire.enabled', 'Hire by time for myGiG', MygigFieldKind.toggle),
+  MygigField('hire', 'hire.packages.hourly', 'Hourly hire', MygigFieldKind.toggle),
+  MygigField('hire', 'hire.packages.daily', 'Daily hire', MygigFieldKind.toggle),
+  MygigField('hire', 'hire.packages.weekly', 'Weekly hire', MygigFieldKind.toggle),
+  MygigField('hire', 'hire.packages.monthly', 'Monthly hire', MygigFieldKind.toggle),
+  MygigField('hire', 'hire.leadMin.trip', 'A later ride: book at least (min ahead)', MygigFieldKind.whole),
+  MygigField('hire', 'hire.freeCancelHours.trip', 'A later ride: free to cancel until (hours before)', MygigFieldKind.number),
+  MygigField('hire', 'hire.leadMin.hourly', 'Hourly: book at least (min ahead)', MygigFieldKind.whole),
+  MygigField('hire', 'hire.leadMin.daily', 'Daily: book at least (min ahead)', MygigFieldKind.whole),
+  MygigField('hire', 'hire.leadMin.weekly', 'Weekly: book at least (min ahead)', MygigFieldKind.whole),
+  MygigField('hire', 'hire.leadMin.monthly', 'Monthly: book at least (min ahead)', MygigFieldKind.whole),
+  MygigField('hire', 'hire.minHours', 'Hourly: least hours', MygigFieldKind.number),
+  MygigField('hire', 'hire.maxHours', 'Hourly: most hours', MygigFieldKind.number),
+  MygigField('hire', 'hire.dayHoursMin', 'Least hours a day', MygigFieldKind.number),
+  MygigField('hire', 'hire.dayHoursMax', 'Most hours a day', MygigFieldKind.number),
+  MygigField('hire', 'hire.maxDays', 'Most days (daily)', MygigFieldKind.whole),
+  MygigField('hire', 'hire.maxWeeks', 'Most weeks (weekly)', MygigFieldKind.whole),
+  MygigField('hire', 'hire.maxMonths', 'Most months (monthly)', MygigFieldKind.whole),
+  MygigField('hire', 'hire.depositPct', 'Daily deposit (%)', MygigFieldKind.number),
+  MygigField('hire', 'hire.freeCancelHours.hourly', 'Hourly: free to cancel until (hours before)', MygigFieldKind.number),
+  MygigField('hire', 'hire.freeCancelHours.daily', 'Daily: free to cancel until (hours before)', MygigFieldKind.number),
+  MygigField('hire', 'hire.freeCancelHours.weekly', 'Weekly: free to cancel until (hours before)', MygigFieldKind.number),
+  MygigField('hire', 'hire.freeCancelHours.monthly', 'Monthly: free to cancel until (hours before)', MygigFieldKind.number),
+  MygigField('hire', 'hire.nonApp', 'Daily, weekly and monthly for passengers who can’t pay in the app', MygigFieldKind.choice,
+      choices: [('link', 'Pay by link first'), ('no', 'Not offered')],
+      hint: 'Nothing can be charged later without in-app payment'),
+  MygigField('hire', 'hire.holidays', 'Public holidays in a week or month', MygigFieldKind.choice,
+      choices: [('skip', 'Skipped'), ('work', 'Worked')]),
+  MygigField('hire', 'hire.stepMin', 'Overtime counted every (min)', MygigFieldKind.whole),
+  MygigField('hire', 'hire.rates.hour', 'get.ride rate: per hour (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.rates.kmHour', 'km included an hour', MygigFieldKind.number),
+  MygigField('hire', 'hire.rates.day', 'get.ride rate: per day, 10 h (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.rates.kmDay', 'km included a day', MygigFieldKind.number),
+  MygigField('hire', 'hire.rates.week', 'get.ride rate: per week, 5 days (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.rates.kmWeek', 'km included a week', MygigFieldKind.number),
+  MygigField('hire', 'hire.rates.month', 'get.ride rate: per month, 5 days a week (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.rates.kmMonth', 'km included a month', MygigFieldKind.number),
+  MygigField('hire', 'hire.rates.overtime', 'Overtime per hour (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.rates.extraKm', 'Extra km (RM a km)', MygigFieldKind.number),
+  MygigField('hire', 'hire.rates.overnight', 'Overnight allowance a night (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.allowOwnRates', 'Drivers may set their own hire rates', MygigFieldKind.toggle),
+  MygigField('hire', 'hire.ownLimits.hourMin', 'Own rates: lowest per hour (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.ownLimits.hourMax', 'Own rates: highest per hour (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.ownLimits.dayMin', 'Own rates: lowest per day (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.ownLimits.dayMax', 'Own rates: highest per day (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.ownLimits.weekMin', 'Own rates: lowest per week (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.ownLimits.weekMax', 'Own rates: highest per week (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.ownLimits.monthMin', 'Own rates: lowest per month (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.ownLimits.monthMax', 'Own rates: highest per month (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.ownLimits.overtimeMax', 'Own rates: highest overtime per hour (RM)', MygigFieldKind.number),
+  MygigField('hire', 'hire.ownLimits.overnightMax', 'Own rates: highest overnight allowance (RM)', MygigFieldKind.number),
 ];
 
 /// The value at a dotted [path] of [m].

@@ -62,6 +62,7 @@ const _titles = {
   '/drive/mygig': 'myGiG',
   '/drive/mygig/settings': 'myGiG settings',
   '/drive/mygig/pass': 'myGiG pass',
+  '/drive/mygig/scheduled': 'Scheduled myGiG',
   '/mygig/offer/': 'Accept your ride',
   '/drive/onboarding': 'Become a partner',
   '/drive/permit': 'Taxi permit',

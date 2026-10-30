@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/mygig.dart';
+import '../core/mygig_hire.dart';
 import '../providers.dart';
 import 'live_tables.dart';
 
@@ -127,9 +128,10 @@ class MygigRepository {
     required MygigWay way,
     double? lat,
     double? lng,
+    Map<String, dynamic>? booking,
   }) => _call(() async {
     final v = await _db.rpc('mygig_create', params: {
-      'p': {'trip': trip, 'phone': phone, 'name': name, 'way': way.name},
+      'p': {'trip': trip, 'phone': phone, 'name': name, 'way': way.name, 'booking': ?booking},
       'p_lat': lat,
       'p_lng': lng,
     });
@@ -223,10 +225,41 @@ class MygigRepository {
     return MygigPass.fromJson(await _db.rpc('mygig_buy_pass', params: {'p_from': fromWallet ? 'wallet' : 'credit'}));
   });
 
-  /// The payments function sends the passenger the pay link.
+  /// The payments function sends the passenger the pay link: for a ride,
+  /// or (0330) a booking's id.
   Future<void> sendPayLink(String ride) => _call(() async {
     await _db.functions.invoke('payments/mygig-link', body: {'request_id': ride});
   });
+
+  // ---- Bookings and hire (0330) ------------------------------------------------------------------------
+  /// Scheduled myGiG: the driver's bookings, soonest first.
+  Future<List<MygigBooking>> scheduled() => _call(() async => mygigBookingsFrom(await _db.rpc('mygig_scheduled')));
+
+  /// The passenger's myGiG bookings.
+  Future<List<MygigBooking>> myBookings() => _call(() async => mygigBookingsFrom(await _db.rpc('mygig_my_bookings')));
+
+  /// Start (when due): the next day as a ride; its id.
+  Future<String?> startBooking(String booking) => _call(() async {
+    final v = _map(await _db.rpc('mygig_booking_start', params: {'p_booking': booking}));
+    return v['rideId'] as String?;
+  });
+
+  /// The passenger paid what the booking still needs in cash.
+  Future<double> bookingCash(String booking) => _call(() async {
+    final v = _map(await _db.rpc('mygig_booking_cash', params: {'p_booking': booking}));
+    return v['cash'] is num ? (v['cash'] as num).toDouble() : 0;
+  });
+
+  /// Cancels a booking (the driver's, the passenger's, or by the trip link's [token]).
+  Future<Map<String, dynamic>> cancelBooking({String? booking, String? token, String? reason}) => _call(() async {
+    return _map(await _db.rpc('mygig_booking_cancel', params: {'p_booking': booking, 'p_token': token, 'p_reason': reason}));
+  });
+
+  /// Ends a hire's day: the km driven, tolls and other charges. needsPayment
+  /// when something is left to pay first.
+  Future<Map<String, dynamic>> hireEnd(String ride, {double? km, double? tolls, double? other, String? note}) =>
+      _call(() async => _map(await _db.rpc('mygig_hire_end',
+          params: {'p_ride': ride, 'p_km': km, 'p_tolls': tolls, 'p_other': other, 'p_note': note})));
 
   // ---- Admin ----------------------------------------------------------------------------------------
   Future<Map<String, dynamic>> global() => _call(() async => _map(await _db.rpc('mygig_global')));
@@ -289,6 +322,21 @@ final mygigConfigProvider = FutureProvider.autoDispose.family<MygigConfig, Mygig
 
 /// The table of the admin's myGiG rules (live in both apps).
 const mygigRulesTable = 'mygig_rules';
+
+/// Scheduled myGiG (0330): the driver's bookings, live.
+final mygigScheduledProvider = FutureProvider.autoDispose<List<MygigBooking>>((ref) {
+  ref.watchLive(mygigBookingsTable);
+  return ref.watch(mygigRepositoryProvider).scheduled();
+});
+
+/// The passenger's myGiG bookings (0330), live.
+final mygigMyBookingsProvider = FutureProvider.autoDispose<List<MygigBooking>>((ref) {
+  ref.watchLive(mygigBookingsTable);
+  return ref.watch(mygigRepositoryProvider).myBookings();
+});
+
+/// The table of myGiG bookings (0330).
+const mygigBookingsTable = 'mygig_bookings';
 
 /// The passenger's offers waiting in their app.
 final mygigMyOffersProvider = FutureProvider.autoDispose<List<MygigOffer>>(

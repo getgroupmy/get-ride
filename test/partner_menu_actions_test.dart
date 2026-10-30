@@ -12,7 +12,7 @@ void main() {
     '/ev', '/drive', '/wallet', '/trips', '/drive/vehicles', '/meter/vehicle', '/drive/my-ride', '/drive/onboarding',
     '/account/support', '/account/help', '/account/settings', '/account/my-qr', '/account/notifications',
     '/drive/earnings', '/drive/history', '/drive/scheduled', '/drive/groups', '/drive/permits',
-    '/drive/telematics', '/drive/services', '/drive/city-to-city',
+    '/drive/telematics', '/drive/services', '/drive/city-to-city', '/drive/mygig/scheduled',
   ];
 
   Future<(String, bool?)> tap(WidgetTester tester, String id) async {
@@ -44,6 +44,7 @@ void main() {
     'teksi-ev': '/ev',
     'dashboard': '/drive',
     mygigMenuItemId: '/drive',
+    mygigScheduledMenuItemId: '/drive/mygig/scheduled',
     'wallet': '/wallet',
     'earnings': '/drive/earnings',
     telematicsMenuItemId: '/drive/telematics',

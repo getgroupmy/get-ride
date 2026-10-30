@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/booking_modules.dart' show bookingModule;
 import '../../core/format.dart';
 import '../../core/mygig.dart';
+import '../../core/mygig_hire.dart';
 import '../../data/family_repository.dart' show familyPayOptionProvider;
 import '../../data/models.dart';
 import '../../data/mygig_repository.dart';
@@ -23,6 +24,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
 import 'mygig_new_screen.dart' show MygigPriceLines;
+import 'mygig_when.dart' show MygigBookingTerms;
 
 /// The passenger's own offer, read for the accept screen.
 final mygigOfferProvider = FutureProvider.autoDispose.family<MygigOffer, String>(
@@ -40,6 +42,19 @@ class MygigOfferScreen extends ConsumerWidget {
       if (!context.mounted) return;
       if (accept && ride != null) {
         context.go('/ride/$ride');
+        return;
+      }
+      // 0330: a booking for later or a hire: in their scheduled list.
+      if (accept && o.raw['booking'] is Map) {
+        await showAppNotice(
+          id: 'notice.mygig',
+          context: context,
+          kind: NoticeKind.success,
+          title: 'Booked',
+          message: 'Your myGiG booking is in Scheduled rides, with what you paid and until when it is free to cancel. '
+              'You get a reminder before it starts.',
+        );
+        if (context.mounted) context.go(mygigMyBookingsPath);
         return;
       }
       await showAppNotice(
@@ -123,6 +138,14 @@ class _MygigOfferBody extends ConsumerWidget {
             ),
           ),
           MygigPriceLines(quote: q, what: 'myGiG', bags: o.bags),
+          // 0330: a booking for later or a hire.
+          if (o.raw['booking'] is Map)
+            MygigBookingTerms(
+              booking: Map<String, dynamic>.from(o.raw['booking'] as Map),
+              total: q.total,
+              now: DateTime.now(),
+              kmIncluded: (q.raw['kmIncluded'] as num?)?.toDouble(),
+            ),
           Row(children: [
             Expanded(child: Text(o.kind == 'change' ? 'New fixed price' : 'Fixed price', style: t.textTheme.titleMedium)),
             Text(mygigMoney(q.total), key: const ValueKey('mygig-offer-total'), style: t.textTheme.headlineSmall),
@@ -165,7 +188,7 @@ class _MygigOfferBody extends ConsumerWidget {
           BusyButton.filled(
             key: const ValueKey('mygig-offer-accept'),
             onPressed: () => answer(true),
-            child: Text('Accept fare ${mygigMoney(q.total)}'),
+            child: Text(_acceptLabel(o.raw['booking'], q.total)),
           ),
           const SizedBox(height: 8),
           BusyButton.tonal(
@@ -288,6 +311,32 @@ class _MygigLinkScreenState extends ConsumerState<MygigLinkScreen> {
     }
   }
 
+  /// 0330: cancels the booking from the link.
+  Future<void> _cancelBooking(MygigBooking b) async {
+    final keep = b.cancelFree ? 0.0 : b.keepIfCancelled;
+    final ok = await showAppDialog<bool>(
+      id: 'mygig.link-cancel-booking',
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Cancel this booking?'),
+        content: Text(keep > 0
+            ? '${mygigMoney(keep)} you paid is kept for the driver; the rest is refunded.'
+            : 'It is free to cancel now. What you paid is refunded.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Keep booking')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Cancel booking')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(mygigRepositoryProvider).cancelBooking(token: widget.token);
+      await _load();
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   Future<void> _cancel(double fee) async {
     final ok = await showAppDialog<bool>(
       id: 'mygig.link-cancel',
@@ -376,6 +425,19 @@ class _MygigLinkScreenState extends ConsumerState<MygigLinkScreen> {
           ),
         ),
         MygigPriceLines(quote: q, what: 'myGiG', bags: bags),
+        // 0330: what the passenger is booking, and the booking until it ends.
+        if (status == 'waiting' && v['offerBooking'] is Map)
+          MygigBookingTerms(
+            booking: Map<String, dynamic>.from(v['offerBooking'] as Map),
+            total: q.total,
+            now: DateTime.now(),
+            kmIncluded: (q.raw['kmIncluded'] as num?)?.toDouble(),
+          ),
+        if (v['booking'] is Map)
+          MygigLinkBooking(
+            booking: MygigBooking(Map<String, dynamic>.from(v['booking'] as Map)),
+            onCancel: _cancelBooking,
+          ),
         Row(children: [
           Expanded(child: Text(ride != null && '${ride['status']}' == 'completed' ? 'Total' : 'Fixed price',
               style: t.textTheme.titleMedium)),
@@ -399,7 +461,7 @@ class _MygigLinkScreenState extends ConsumerState<MygigLinkScreen> {
           BusyButton.filled(
             key: const ValueKey('mygig-link-accept'),
             onPressed: () => _answer(true),
-            child: Text(v['kind'] == 'change' ? 'Accept new price ${mygigMoney(q.total)}' : 'Accept fare ${mygigMoney(q.total)}'),
+            child: Text(v['kind'] == 'change' ? 'Accept new price ${mygigMoney(q.total)}' : _acceptLabel(v['offerBooking'], q.total)),
           ),
           const SizedBox(height: 8),
           BusyButton.tonal(
@@ -407,7 +469,9 @@ class _MygigLinkScreenState extends ConsumerState<MygigLinkScreen> {
             onPressed: () => _answer(false),
             child: const Text('Decline'),
           ),
-        ] else if (ride == null)
+        ] else if (ride == null && v['booking'] is Map)
+          const SizedBox.shrink()
+        else if (ride == null)
           Text(
             switch (status) {
               'declined' => 'You declined this trip. Nothing was booked.',
@@ -452,6 +516,70 @@ class _MygigLinkScreenState extends ConsumerState<MygigLinkScreen> {
               style: t.textTheme.bodySmall),
         ],
       ],
+    );
+  }
+}
+
+/// The accept button: the fare, or what a booking takes now.
+String _acceptLabel(Object? booking, double total) {
+  if (booking is! Map) return 'Accept fare ${mygigMoney(total)}';
+  final payNow = booking['payNow'] is num ? (booking['payNow'] as num).toDouble() : 0.0;
+  if (payNow > 0 && booking['payNowBy'] == 'link') return 'Accept, then pay ${mygigMoney(payNow)}';
+  if (payNow > 0) return 'Accept and pay ${mygigMoney(payNow)}';
+  return booking['when'] == 'later' ? 'Accept booking ${mygigMoney(total)}' : 'Accept price ${mygigMoney(total)}';
+}
+
+/// Where the passenger's myGiG bookings are listed in their app.
+const mygigMyBookingsPath = '/trips/scheduled';
+
+/// A booking on the trip link (0330): its state, paying by link, cancelling.
+class MygigLinkBooking extends StatelessWidget {
+  const MygigLinkBooking({super.key, required this.booking, required this.onCancel});
+  final MygigBooking booking;
+  final Future<void> Function(MygigBooking) onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final b = booking;
+    final now = DateTime.now();
+    return Card(
+      key: const ValueKey('mygig-link-booking'),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('${b.title} · ${b.statusText}', style: t.textTheme.titleMedium),
+          Text([b.whenText(now), if (b.dayText != null) b.dayText!].join(' · ')),
+          Text(b.whatText, style: t.textTheme.bodySmall),
+          const SizedBox(height: 6),
+          Text(b.payText, style: t.textTheme.bodyMedium),
+          if (b.linkOwed > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: b.payUrl != null
+                  ? FilledButton.icon(
+                      key: const ValueKey('mygig-link-booking-pay'),
+                      icon: const Icon(Icons.payments_outlined),
+                      onPressed: () => launchUrl(Uri.parse(b.payUrl!), mode: LaunchMode.externalApplication),
+                      label: Text('Pay ${mygigMoney(b.linkOwed)} by card, FPX or DuitNow'),
+                    )
+                  : Text('Your driver sends you a link to pay ${mygigMoney(b.linkOwed)}.', style: t.textTheme.bodySmall),
+            ),
+          if (b.open) Text(b.cancelText(now), style: t.textTheme.bodySmall),
+          if (b.canCancel)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const ValueKey('mygig-link-booking-cancel'),
+                style: TextButton.styleFrom(foregroundColor: t.colorScheme.error),
+                icon: const Icon(Icons.cancel_outlined),
+                onPressed: () => onCancel(b),
+                label: const Text('Cancel booking'),
+              ),
+            ),
+          Text('This link shows your booking until it ends.', style: t.textTheme.bodySmall),
+        ]),
+      ),
     );
   }
 }
