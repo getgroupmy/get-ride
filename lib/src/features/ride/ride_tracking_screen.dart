@@ -71,6 +71,8 @@ import 'route_check.dart';
 import 'home_screen.dart' show nearbyDriversProvider, roundedPoint;
 import 'shared_ride_screen.dart' show shareRide;
 import '../mygig/mygig_passenger.dart' show MygigCancelButton, mygigRiderCancel;
+import '../mygig/mygig_after_trip.dart' show MygigAfterTrip;
+import '../mygig/mygig_reassign.dart' show MygigReassignPrompt;
 import '../mygig/mygig_trip_parts.dart' show isMygigRide;
 import '../../widgets/offline_ride_banner.dart';
 import '../../widgets/ride_rating_card.dart';
@@ -1275,6 +1277,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             MapSheetRestLine(child: RideRatingCard(ride: r, onSkip: () => _summary(r))),
           // The driver asking to hand the trip over (0199), or the new one coming.
           if (!_isDemo) ...[
+            // myGiG (0331): a change of driver to confirm; after the trip,
+            // the e-Invoice, splitting what is owed and booking the driver again.
+            if (isMygigRide(r) && r.status.isOngoing) MygigReassignPrompt(rideId: r.id),
+            if (isMygigRide(r) && r.status == RideStatus.completed) MygigAfterTrip(rideId: r.id),
             RiderHandoverCard(ride: r),
             RiderHandoverPrompt(ride: r, pushes: PushService.instance?.received),
             // The chosen pickup door's guide (0249, 0258).

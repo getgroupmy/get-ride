@@ -126,6 +126,9 @@ const mygigMenuItemId = 'mygig';
 /// The driver menu's Scheduled myGiG: later myGiG rides and hire by time
 /// (0330); shown with myGiG.
 const mygigScheduledMenuItemId = 'mygig-scheduled';
+/// The driver menu's myGiG hotspots: where myGiG passengers wave most, and
+/// when (0331); shown with myGiG.
+const mygigHotspotsMenuItemId = 'mygig-hotspots';
 /// The driver menu's Telematics: their km and trips (0255).
 const telematicsMenuItemId = 'telematics';
 /// The driver menu's Services: what the car in use takes (0263).
@@ -136,6 +139,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   ('dashboard', 'Dashboard'),
   (mygigMenuItemId, 'myGiG'), // this app's own (0329): a street hail for drivers who aren't TEKSI
   (mygigScheduledMenuItemId, 'Scheduled myGiG'), // this app's own (0330): later myGiG rides and hire by time
+  (mygigHotspotsMenuItemId, 'myGiG hotspots'), // this app's own (0331): where myGiG passengers wave most
   (myRideCodeMenuItemId, 'My Ride code'), // this app's own; the Expo menu skips it
   ('earnings', 'Earnings'),
   (telematicsMenuItemId, 'Telematics'), // this app's own (0255); the Expo menu skips it
@@ -233,6 +237,7 @@ const defaultMenuIconNames = <String, Map<String, String>>{
     'dashboard': 'Settings',
     'mygig': 'Car',
     'mygig-scheduled': 'Clock',
+    'mygig-hotspots': 'Star',
     'my-ride-code': 'Star',
     'earnings': 'Wallet',
     'telematics': 'Clock',

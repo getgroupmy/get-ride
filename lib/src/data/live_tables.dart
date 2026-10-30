@@ -42,6 +42,8 @@ const liveSettingTables = <String>[
   // myGiG bookings for later and hire by time, and their days (0330).
   'mygig_bookings',
   'mygig_booking_days',
+  // myGiG reassigns to another driver (0331).
+  'mygig_reassigns',
   // Vehicle services, lowest to highest (0249).
   'vehicle_service_order',
   // Whether that order applies to every booking (0250).

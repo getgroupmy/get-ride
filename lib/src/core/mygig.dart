@@ -713,6 +713,11 @@ const mygigParts = <(String, String, List<String>)>[
   // 0330: bookings for later and hire by time.
   ('later', 'Bookings for later', ['later']),
   ('hire', 'Hire by time for myGiG, lead times and free cancelling', ['hire']),
+  // 0331: reassign, hotspots, the passenger's extras after the trip, quick trips and regulars.
+  ('reassign', 'Reassign to another driver', ['reassign']),
+  ('hotspots', 'Hotspots', ['hotspots']),
+  ('after', 'After the trip (the passenger)', ['after']),
+  ('driverExtras', 'Quick trips and regulars', ['driverExtras']),
 ];
 
 enum MygigFieldKind { toggle, number, whole, choice, time }
@@ -841,6 +846,40 @@ const mygigFields = <MygigField>[
   MygigField('hire', 'hire.ownLimits.monthMax', 'Own rates: highest per month (RM)', MygigFieldKind.number),
   MygigField('hire', 'hire.ownLimits.overtimeMax', 'Own rates: highest overtime per hour (RM)', MygigFieldKind.number),
   MygigField('hire', 'hire.ownLimits.overnightMax', 'Own rates: highest overnight allowance (RM)', MygigFieldKind.number),
+  // 0331: reassign to another driver.
+  MygigField('reassign', 'reassign.enabled', 'Drivers may reassign myGiG orders', MygigFieldKind.toggle,
+      hint: 'The passenger always confirms the new driver'),
+  MygigField('reassign', 'reassign.when', 'When', MygigFieldKind.choice,
+      choices: [('scheduled', 'Scheduled only'), ('before', 'Before pickup'), ('during', 'Also during the trip')],
+      hint: 'During the trip, the first driver gets a share of the trip, as in-app handovers'),
+  MygigField('reassign', 'reassign.answerMin', 'Passenger answers within (min)', MygigFieldKind.whole),
+  MygigField('reassign', 'reassign.driverAnswerMin', 'New driver answers within (min)', MygigFieldKind.whole),
+  MygigField('reassign', 'reassign.noAnswer', 'If the passenger doesn’t answer', MygigFieldKind.choice,
+      choices: [('keep', 'The first driver keeps it'), ('cancel', 'Cancel with no charge')]),
+  MygigField('reassign', 'reassign.sameOrBigger', 'Same or bigger vehicle only', MygigFieldKind.toggle,
+      hint: 'Off: any vehicle that fits the passengers and luggage'),
+  MygigField('reassign', 'reassign.nearKm', 'Nearby drivers within (km)', MygigFieldKind.number),
+  // 0331: hotspots.
+  MygigField('hotspots', 'hotspots.enabled', 'Show drivers myGiG hotspots', MygigFieldKind.toggle,
+      hint: 'Counts per area only, no passenger details'),
+  MygigField('hotspots', 'hotspots.weeks', 'Weeks of rides to count', MygigFieldKind.whole),
+  MygigField('hotspots', 'hotspots.minCount', 'Smallest count before an area shows', MygigFieldKind.whole),
+  MygigField('hotspots', 'hotspots.radiusKm', 'Around the driver (km)', MygigFieldKind.number),
+  // 0331: the passenger's extras after the trip.
+  MygigField('after', 'after.tips', 'Passengers may tip', MygigFieldKind.toggle),
+  MygigField('after', 'after.tipMax', 'Most tip (RM)', MygigFieldKind.number),
+  MygigField('after', 'after.split', 'Passengers may split the fare', MygigFieldKind.toggle,
+      hint: 'Only while something is still to pay; a pay link for each other person'),
+  MygigField('after', 'after.splitMax', 'Split between at most (people)', MygigFieldKind.whole, hint: '2 or 3'),
+  MygigField('after', 'after.einvoice', 'Passengers may ask for an e-Invoice', MygigFieldKind.toggle),
+  MygigField('after', 'after.bookAgain', '"Book the driver again"', MygigFieldKind.toggle),
+  MygigField('after', 'after.appOffer', 'Offer the app to passengers without it', MygigFieldKind.toggle,
+      hint: 'With the driver’s referral code'),
+  // 0331: the driver's quick trips and regulars.
+  MygigField('driverExtras', 'driverExtras.quick', 'Quick trips (the driver’s most used drop-offs)', MygigFieldKind.toggle),
+  MygigField('driverExtras', 'driverExtras.quickCount', 'Quick trips shown', MygigFieldKind.whole),
+  MygigField('driverExtras', 'driverExtras.regulars', 'Regulars (a number’s usual drop-off)', MygigFieldKind.toggle),
+  MygigField('driverExtras', 'driverExtras.regularMin', 'A regular after (rides with the driver)', MygigFieldKind.whole),
 ];
 
 /// The value at a dotted [path] of [m].

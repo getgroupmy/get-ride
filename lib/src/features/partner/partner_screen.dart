@@ -35,6 +35,8 @@ import '../../data/partner_type_check.dart';
 import '../../core/partner_type_rules.dart' show PartnerTypeCheck, hailNotOfferedMessage;
 import '../../data/mygig_repository.dart' show mygigAt, mygigConfigProvider;
 import '../mygig/mygig_entry.dart' show MygigTodayLine, mygigButtonShows, openMygig;
+import '../mygig/mygig_hotspots_screen.dart' show mygigHotspotsOn, mygigHotspotsPath;
+import '../mygig/mygig_reassign.dart' show MygigReassignInbox;
 import '../mygig/mygig_scheduled_screen.dart' show mygigScheduledPath;
 import '../../providers.dart';
 import '../../data/driver_presence.dart' show driverPresenceProvider;
@@ -1277,6 +1279,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     if (partnerCanDrive(p)) MygigTodayLine(lat: _me?.latitude, lng: _me?.longitude),
                     // A driver asking this partner to take over their trip (0199).
                     const HandoverOffersCard(),
+                    // 0331: a myGiG driver asking this one to take over a ride or booking.
+                    if (partnerCanDrive(p)) const MygigReassignInbox(),
                     // At an airport: the waiting queue (0249).
                     if (_online) const AirportQueueCard(),
                     // The next scheduled ride the driver took, under the switch.
@@ -1447,6 +1451,16 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     icon: Icons.hail,
                     onPressed: () => openMygig(context, ref, lat: _me?.latitude, lng: _me?.longitude),
                   ),
+                // myGiG hotspots (0331): where myGiG passengers wave most, and when.
+                if (partner.value != null && partnerCanDrive(partner.value!))
+                  if (ref.watch(mygigConfigProvider(mygigAt(_me?.latitude, _me?.longitude))).value case final gig?
+                      when mygigButtonShows(gig) && mygigHotspotsOn(gig.settings.raw))
+                    _floatingButton(
+                      key: const ValueKey('partner-mygig-hotspots'),
+                      tooltip: 'myGiG hotspots',
+                      icon: Icons.local_fire_department,
+                      onPressed: () => context.push(mygigHotspotsPath),
+                    ),
                 // Scheduled myGiG (0330): later rides and hire by time, with a count.
                 if (partner.value != null && partnerCanDrive(partner.value!))
                   if (ref.watch(mygigConfigProvider(mygigAt(_me?.latitude, _me?.longitude))).value case final gig?

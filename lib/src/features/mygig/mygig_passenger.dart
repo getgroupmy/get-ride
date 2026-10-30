@@ -23,7 +23,10 @@ import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import '../../core/mygig_extras.dart' show MygigReassign;
+import 'mygig_after_trip.dart' show MygigAfterTrip;
 import 'mygig_new_screen.dart' show MygigPriceLines;
+import 'mygig_reassign.dart' show MygigReassignConfirm;
 import 'mygig_when.dart' show MygigBookingTerms;
 
 /// The passenger's own offer, read for the accept screen.
@@ -337,6 +340,27 @@ class _MygigLinkScreenState extends ConsumerState<MygigLinkScreen> {
     }
   }
 
+  /// 0331: the passenger answers a change of driver on the link.
+  Future<void> _reassign(String answer, bool ack) async {
+    try {
+      await ref.read(mygigRepositoryProvider).reassignAnswer(token: widget.token, answer: answer, ack: ack);
+      await _load();
+      if (!mounted) return;
+      await showAppNotice(
+        id: 'notice.mygig',
+        context: context,
+        title: switch (answer) { 'confirm' => 'Driver changed', 'keep' => 'Driver kept', _ => 'Ride cancelled' },
+        message: switch (answer) {
+          'confirm' => 'Your new driver is on the way. Check the plate before you get in.',
+          'keep' => 'Your first driver keeps your ride. Nothing has changed.',
+          _ => 'Your ride is cancelled with no charge. Anything you paid is refunded.',
+        },
+      );
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   Future<void> _cancel(double fee) async {
     final ok = await showAppDialog<bool>(
       id: 'mygig.link-cancel',
@@ -389,6 +413,19 @@ class _MygigLinkScreenState extends ConsumerState<MygigLinkScreen> {
         s: trip['bags'] is Map && (trip['bags'] as Map)[s] is num ? ((trip['bags'] as Map)[s] as num).toInt() : 0,
     };
     final name = '${v['name'] ?? ''}'.trim();
+    // 0331: a change of driver waiting for the passenger comes first.
+    if (v['reassign'] is Map) {
+      return ListView(
+        key: const ValueKey('mygig-link'),
+        padding: const EdgeInsets.all(20),
+        children: [
+          MygigReassignConfirm(
+            reassign: MygigReassign(Map<String, dynamic>.from(v['reassign'] as Map)),
+            onAnswer: _reassign,
+          ),
+        ],
+      );
+    }
     return ListView(
       key: const ValueKey('mygig-link'),
       padding: const EdgeInsets.all(20),
@@ -511,6 +548,8 @@ class _MygigLinkScreenState extends ConsumerState<MygigLinkScreen> {
               onPressed: () => _cancel(ride['cancelFee'] is num ? (ride['cancelFee'] as num).toDouble() : 0),
               label: const Text('Cancel ride'),
             ),
+          // 0331: after the trip (and splitting what is owed before it).
+          if (ride['status'] != 'cancelled') MygigAfterTrip(key: ValueKey('mygig-after-${ride['status']}'), token: widget.token),
           const SizedBox(height: 8),
           Text('This link shows the ride live until it ends, then the receipt.', textAlign: TextAlign.center,
               style: t.textTheme.bodySmall),

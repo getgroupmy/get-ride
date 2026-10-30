@@ -19,6 +19,9 @@
  *        → {url, reference, amount, status, test_mode}: a myGiG ride paid
  *          by link (purpose ride_card), put on the ride and texted to the
  *          passenger; paid, payment_ride_card_paid pays the driver once
+ *   POST /payments/mygig-link {request_id, token}                  the passenger's trip link (0331)
+ *        → the same, signed out: a share of the fare, a tip, or what the
+ *          ride owes, when payment_mygig_link_by_token allows the token
  *   *    /payments/webhook/<provider>/<gateway id>                 the provider
  *   *    /payments/return/<intent id>[?cancel=1]                   the payer's browser
  *   *    /payments/back/<provider>/<gateway id>                    the payer's browser (dashboard-set return)
@@ -469,11 +472,19 @@ const MYGIG_ERRORS = ["no_gateway", "already_paid", "not_pay_link", "order_close
 async function mygigLink(req: Request, deps: Deps): Promise<Response> {
   const auth = req.headers.get("Authorization");
   const user = await deps.user(auth);
-  if (!user) return json({ error: "not_signed_in" }, 401);
   const body = await req.json().catch(() => null) as Record<string, unknown> | null;
   const id = String(body?.request_id ?? "");
+  const token = typeof body?.token === "string" ? body.token : "";
+  // 0331: the passenger's trip link (no sign-in) pays a share, a tip or the ride.
+  if (!user && !token) return json({ error: "not_signed_in" }, 401);
   if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "unknown_order" }, 404);
-  if (!deps.mayLinkMygig || !(await deps.mayLinkMygig(auth, id))) return json({ error: "not_authorized" }, 403);
+  if (user) {
+    if (!deps.mayLinkMygig || !(await deps.mayLinkMygig(auth, id))) return json({ error: "not_authorized" }, 403);
+  } else {
+    if (!/^[0-9A-Za-z]{16,64}$/.test(token)) return json({ error: "not_authorized" }, 403);
+    const ok = await deps.db.rpc("payment_mygig_link_by_token", { p_token: token, p_request: id }).catch(() => false);
+    if (ok !== true) return json({ error: "not_authorized" }, 403);
+  }
   // deno-lint-ignore no-explicit-any
   let a: any;
   try {

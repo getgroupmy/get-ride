@@ -4,7 +4,8 @@
 // who may use myGiG and what drivers are charged (all, selected, nobody; a
 // driver's own access and charge), and the places where myGiG isn't allowed
 // (per fenced place of the place fees list). Changes work in the driver
-// screens straight away (live tables).
+// screens straight away (live tables). 0331: the dashboard and the bookings
+// list (mygig_dashboard.dart).
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,6 +23,7 @@ import '../../admin_providers.dart';
 import '../../admin_registry.dart' show AdminScreenEntry;
 import '../../widgets/admin_widgets.dart';
 import '../../widgets/region_scope_picker.dart' show pickRegionScope;
+import 'mygig_dashboard.dart';
 
 const mygigSettingsAdminPath = '/admin/m/mygig';
 const mygigAccessAdminPath = '/admin/m/mygig-access';
@@ -31,9 +33,28 @@ final mygigAdminRoutes = <RouteBase>[
   GoRoute(path: mygigSettingsAdminPath, builder: (_, _) => const MygigSettingsAdminScreen()),
   GoRoute(path: mygigAccessAdminPath, builder: (_, _) => const MygigAccessAdminScreen()),
   GoRoute(path: mygigPlacesAdminPath, builder: (_, _) => const MygigPlacesAdminScreen()),
+  // 0331: the dashboard and the bookings list.
+  GoRoute(path: mygigDashboardAdminPath, builder: (_, _) => const MygigDashboardAdminScreen()),
+  GoRoute(path: mygigBookingsAdminPath, builder: (_, _) => const MygigBookingsAdminScreen()),
 ];
 
 const mygigAdminEntries = <AdminScreenEntry>[
+  AdminScreenEntry(
+    section: 'Operations',
+    title: 'myGiG dashboard',
+    subtitle: 'Today\'s myGiG rides, takings, how passengers accepted, flagged rides, reassigns and e-Invoice requests',
+    path: mygigDashboardAdminPath,
+    pages: [mygigAdminPage],
+    icon: Icons.insights_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'Operations',
+    title: 'myGiG bookings',
+    subtitle: 'Later trips and hire by time drivers booked with myGiG, with filters',
+    path: mygigBookingsAdminPath,
+    pages: [mygigAdminPage],
+    icon: Icons.event_note_outlined,
+  ),
   AdminScreenEntry(
     section: 'Operations',
     title: 'myGiG settings',

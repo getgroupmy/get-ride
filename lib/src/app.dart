@@ -66,9 +66,12 @@ import 'features/meter/hail_destination_screen.dart';
 import 'features/meter/meter_screen.dart';
 import 'features/ride/scheduled_rides_screen.dart';
 import 'features/ride/shared_ride_screen.dart';
+import 'features/mygig/mygig_after_trip.dart';
 import 'features/mygig/mygig_entry.dart';
+import 'features/mygig/mygig_hotspots_screen.dart';
 import 'features/mygig/mygig_new_screen.dart';
 import 'features/mygig/mygig_passenger.dart';
+import 'features/mygig/mygig_reassign.dart';
 import 'features/mygig/mygig_scheduled_screen.dart';
 import 'features/mygig/mygig_settings_screen.dart';
 import 'features/meter/obd_reader_screen.dart';
@@ -610,6 +613,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/drive/mygig/settings', builder: (_, _) => const MygigSettingsScreen()),
           GoRoute(path: '/drive/mygig/pass', builder: (_, _) => const MygigPassScreen()),
           GoRoute(path: '/drive/mygig/scheduled', builder: (_, _) => const MygigScheduledScreen()),
+          // myGiG part C (0331): reassign a ride or booking (?ride= or
+          // ?booking=), the new driver's page, and the hotspots.
+          GoRoute(
+            path: '/drive/mygig/reassign',
+            builder: (_, s) => MygigReassignScreen(
+                rideId: s.uri.queryParameters['ride'], bookingId: s.uri.queryParameters['booking']),
+          ),
+          GoRoute(path: '/drive/mygig/reassign/:id', builder: (_, s) => MygigReassignOfferScreen(id: s.pathParameters['id']!)),
+          GoRoute(path: '/drive/mygig/hotspots', builder: (_, _) => const MygigHotspotsScreen()),
+          // The passenger confirms a new driver in the app (0331).
+          GoRoute(path: '/mygig/reassign/:id', builder: (_, s) => MygigReassignPassengerScreen(id: s.pathParameters['id']!)),
           // The fare a driver sent to the passenger's app (0329).
           GoRoute(path: '/mygig/offer/:id', builder: (_, s) => MygigOfferScreen(offerId: s.pathParameters['id']!)),
           GoRoute(
@@ -636,6 +650,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/share/:token',
         builder: (_, st) => SharedRideScreen(token: st.pathParameters['token']!),
+      ),
+      // A share of a myGiG fare, texted to another person (0331): no sign-in.
+      GoRoute(
+        path: '/gig/pay/:token',
+        builder: (_, st) => MygigPayPartScreen(token: st.pathParameters['token']!),
       ),
       // A myGiG trip link (0329): accept the fare, then the live ride.
       GoRoute(

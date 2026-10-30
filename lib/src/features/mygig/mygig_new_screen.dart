@@ -15,6 +15,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/mygig.dart';
+import '../../core/mygig_extras.dart' show MygigPlace, MygigRegular, mygigSamePlace;
 import '../../core/mygig_hire.dart';
 import '../../data/geo_service.dart';
 import '../../data/mygig_repository.dart';
@@ -121,6 +122,11 @@ String? mygigSendProblem({
   return null;
 }
 
+/// The driver's quick trips (0331): their most used myGiG drop-offs.
+final mygigQuickTripsProvider = FutureProvider.autoDispose<List<MygigPlace>>(
+  (ref) => ref.watch(mygigRepositoryProvider).quickTrips(),
+);
+
 class MygigNewScreen extends ConsumerStatefulWidget {
   const MygigNewScreen({super.key});
 
@@ -143,6 +149,8 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
   final _phone = TextEditingController();
   final _name = TextEditingController();
   MygigLookup _lookup = const MygigLookup();
+  // 0331: a number that rode with this driver before, and its usual drop-off.
+  MygigRegular? _regular;
   MygigQuote? _quote;
   List<LatLng> _route = const [];
   double? _km;
@@ -375,7 +383,10 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
   void _phoneChanged(String v) {
     _lookupTimer?.cancel();
     if (!mygigPhoneComplete(v)) {
-      setState(() => _lookup = const MygigLookup());
+      setState(() {
+        _lookup = const MygigLookup();
+        _regular = null;
+      });
       _fixPayAndWay();
       return;
     }
@@ -385,6 +396,8 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
         if (!mounted || _phone.text != v) return;
         setState(() => _lookup = l);
         _fixPayAndWay();
+        final regular = await ref.read(mygigRepositoryProvider).regular(v).catchError((_) => null);
+        if (mounted && _phone.text == v) setState(() => _regular = regular);
       } catch (e) {
         if (mounted) showError(context, e);
       }
@@ -487,6 +500,8 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text('Search, or tap the map where the passenger is going.', style: t.textTheme.bodyLarge),
                 ),
+                // 0331: quick trips, the driver's most used drop-offs, one tap.
+                ..._quickTrips(t),
                 // 0330: hire by time, with or without a drop-off.
                 if (_kinds(c).length > 1) ...[
                   Text('Or hire by time', style: t.textTheme.titleSmall),
@@ -750,6 +765,21 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
       ),
       const SizedBox(height: 8),
       ..._lookupLines(t),
+      if (_regular case final reg? when _drop == null || _directed ||
+          !mygigSamePlace(_drop!.at.latitude, _drop!.at.longitude, reg.drop.lat, reg.drop.lng))
+        Card(
+          key: const ValueKey('mygig-regular'),
+          child: ListTile(
+            leading: const Icon(Icons.history),
+            title: Text(reg.title),
+            subtitle: Text(reg.subtitle),
+            trailing: TextButton(
+              key: const ValueKey('mygig-regular-use'),
+              onPressed: () => _useDrop(reg.drop),
+              child: const Text('Use'),
+            ),
+          ),
+        ),
       if (_lookup.needsName)
         TextField(
           key: const ValueKey('mygig-name'),
@@ -845,6 +875,34 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
           child: Text('With no phone, the fare can only be shown on this phone, and no receipt or trip link is sent.',
               style: t.textTheme.bodySmall),
         ),
+    ];
+  }
+
+  /// A quick trip or a regular's usual drop-off becomes the drop-off.
+  Future<void> _useDrop(MygigPlace p) async {
+    setState(() {
+      _drop = MygigStop(name: p.name, address: p.address, at: LatLng(p.lat, p.lng));
+      _directed = false;
+    });
+    await _changed();
+  }
+
+  List<Widget> _quickTrips(ThemeData t) {
+    final places = ref.watch(mygigQuickTripsProvider).value ?? const <MygigPlace>[];
+    if (places.isEmpty) return const [];
+    return [
+      Text('Quick trips', style: t.textTheme.titleSmall),
+      const SizedBox(height: 6),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        for (final p in places)
+          ActionChip(
+            key: ValueKey('mygig-quick-${p.name}'),
+            avatar: const Icon(Icons.bolt, size: 18),
+            label: Text(p.name),
+            onPressed: _pickup == null ? null : () => _useDrop(p),
+          ),
+      ]),
+      const SizedBox(height: 12),
     ];
   }
 

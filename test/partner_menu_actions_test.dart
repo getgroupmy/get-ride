@@ -12,7 +12,7 @@ void main() {
     '/ev', '/drive', '/wallet', '/trips', '/drive/vehicles', '/meter/vehicle', '/drive/my-ride', '/drive/onboarding',
     '/account/support', '/account/help', '/account/settings', '/account/my-qr', '/account/notifications',
     '/drive/earnings', '/drive/history', '/drive/scheduled', '/drive/groups', '/drive/permits',
-    '/drive/telematics', '/drive/services', '/drive/city-to-city', '/drive/mygig/scheduled',
+    '/drive/telematics', '/drive/services', '/drive/city-to-city', '/drive/mygig/scheduled', '/drive/mygig/hotspots',
   ];
 
   Future<(String, bool?)> tap(WidgetTester tester, String id) async {
@@ -45,6 +45,7 @@ void main() {
     'dashboard': '/drive',
     mygigMenuItemId: '/drive',
     mygigScheduledMenuItemId: '/drive/mygig/scheduled',
+    mygigHotspotsMenuItemId: '/drive/mygig/hotspots',
     'wallet': '/wallet',
     'earnings': '/drive/earnings',
     telematicsMenuItemId: '/drive/telematics',
