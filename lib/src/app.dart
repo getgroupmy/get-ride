@@ -67,6 +67,9 @@ import 'features/meter/meter_screen.dart';
 import 'features/ride/scheduled_rides_screen.dart';
 import 'features/ride/shared_ride_screen.dart';
 import 'features/mygig/mygig_after_trip.dart';
+import 'features/mygig/mygig_delivery_link.dart';
+import 'features/mygig/mygig_delivery_new.dart';
+import 'features/mygig/mygig_delivery_settings.dart';
 import 'features/mygig/mygig_entry.dart';
 import 'features/mygig/mygig_hotspots_screen.dart';
 import 'features/mygig/mygig_new_screen.dart';
@@ -622,6 +625,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(path: '/drive/mygig/reassign/:id', builder: (_, s) => MygigReassignOfferScreen(id: s.pathParameters['id']!)),
           GoRoute(path: '/drive/mygig/hotspots', builder: (_, _) => const MygigHotspotsScreen()),
+          // myGiG Delivery (0332): enter a delivery, the driver's Delivery settings.
+          GoRoute(path: mygigDeliveryNewPath, builder: (_, _) => const MygigDeliveryNewScreen()),
+          GoRoute(path: mygigDeliverySettingsPath, builder: (_, _) => const MygigDeliverySettingsScreen()),
+          // The sender (or a registered recipient) follows a delivery in the app (0332).
+          GoRoute(path: '/mygig/delivery/:ride', builder: (_, s) => MygigDeliveryMineScreen(ride: s.pathParameters['ride']!)),
           // The passenger confirms a new driver in the app (0331).
           GoRoute(path: '/mygig/reassign/:id', builder: (_, s) => MygigReassignPassengerScreen(id: s.pathParameters['id']!)),
           // The fare a driver sent to the passenger's app (0329).
@@ -655,6 +663,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/gig/pay/:token',
         builder: (_, st) => MygigPayPartScreen(token: st.pathParameters['token']!),
+      ),
+      // A myGiG delivery's link (0332): the sender accepts and follows it; a
+      // recipient tracks it, gets their code, pays, sends it back. No sign-in.
+      GoRoute(
+        path: '/gig/d/:token',
+        builder: (_, st) => MygigDeliveryLinkScreen(token: st.pathParameters['token']!),
       ),
       // A myGiG trip link (0329): accept the fare, then the live ride.
       GoRoute(

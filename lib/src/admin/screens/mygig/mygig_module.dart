@@ -58,7 +58,7 @@ const mygigAdminEntries = <AdminScreenEntry>[
   AdminScreenEntry(
     section: 'Operations',
     title: 'myGiG settings',
-    subtitle: 'Street hail for drivers who aren\'t TEKSI: fare, luggage, waiting, fees, limits and the price guard by region',
+    subtitle: 'Street hail for drivers who aren\'t TEKSI: fare, luggage, waiting, fees, limits, the price guard and myGiG Delivery by region',
     path: mygigSettingsAdminPath,
     pages: [mygigAdminPage],
     icon: Icons.hail,
@@ -341,6 +341,18 @@ class _FieldRow extends StatelessWidget {
             ),
           ]),
         );
+      // 0332: item types and prohibited items, one per line.
+      case MygigFieldKind.list:
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: _ListField(
+            label: f.label,
+            hint: f.hint,
+            items: [if (value case final List<Object?> l) for (final x in l) '$x'],
+            enabled: enabled,
+            onChanged: onChanged,
+          ),
+        );
       case MygigFieldKind.number || MygigFieldKind.whole || MygigFieldKind.time:
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
@@ -355,6 +367,38 @@ class _FieldRow extends StatelessWidget {
         );
     }
   }
+}
+
+class _ListField extends StatefulWidget {
+  const _ListField({required this.label, required this.items, required this.enabled, required this.onChanged, this.hint});
+  final String label;
+  final String? hint;
+  final List<String> items;
+  final bool enabled;
+  final ValueChanged<Object?> onChanged;
+
+  @override
+  State<_ListField> createState() => _ListFieldState();
+}
+
+class _ListFieldState extends State<_ListField> {
+  late final _c = TextEditingController(text: widget.items.join('\n'));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => TextField(
+    controller: _c,
+    enabled: widget.enabled,
+    minLines: 3,
+    maxLines: 10,
+    decoration: InputDecoration(labelText: widget.label, helperText: widget.hint, alignLabelWithHint: true),
+    onChanged: (v) => widget.onChanged([for (final l in v.split('\n')) if (l.trim().isNotEmpty) l.trim()]),
+  );
 }
 
 class _ValueField extends StatefulWidget {

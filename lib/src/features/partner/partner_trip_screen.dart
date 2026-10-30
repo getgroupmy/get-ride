@@ -44,6 +44,7 @@ import '../../providers.dart';
 import 'rate_rider.dart';
 import '../../core/mygig.dart' show mygigMoney;
 import '../../data/mygig_repository.dart';
+import '../mygig/mygig_delivery_trip.dart' show MygigDeliveryTripPanel, isMygigDelivery;
 import '../mygig/mygig_trip_parts.dart';
 import '../mygig/mygig_scheduled_screen.dart' show MygigHireCard, mygigEndHireLabel;
 import '../ride/city_cancel_parts.dart' show NoShowPanel, DriverCancelRateNote;
@@ -873,6 +874,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   /// The step's one main button, or null when the step has none (or the
   /// ride was handed over).
   Widget? _primaryAction(RideRequest r) {
+    // A myGiG delivery (0332) moves with its own buttons (its panel).
+    if (isMygigDelivery(r)) return null;
     final handover = ref.watch(rideHandoverProvider(r.id));
     if (tripHandedAway(handover)) return null;
     final meeting = tripHandoverMeeting(r, handover);
@@ -1151,11 +1154,14 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         if (WaitingClockCard.shows(r)) WaitingClockCard(ride: r),
         // myGiG (0329): how the passenger follows, "Passenger didn't come",
         // waiting at a stop, change destination and add a stop.
-        if (isMygigRide(r) && r.status.isOngoing) MygigTripCard(ride: r, onEnded: () => context.go('/drive')),
+        if (isMygigRide(r) && r.status.isOngoing && !isMygigDelivery(r)) MygigTripCard(ride: r, onEnded: () => context.go('/drive')),
+        // myGiG Delivery (0332): the pickup, each drop-off and returns.
+        if (isMygigDelivery(r) && (r.status.isOngoing || r.status == RideStatus.completed))
+          MygigDeliveryTripPanel(ride: r, onEnded: () => context.go('/drive')),
         // At the pickup: the waiting timer and "Rider didn't come" (0269).
         if (r.status == RideStatus.arrived && !isMygigRide(r)) NoShowPanel(ride: r),
         if (!primaryInFooter) ?_primaryAction(r),
-        if (driverMayCancel(r.status))
+        if (driverMayCancel(r.status) && !isMygigDelivery(r))
           restLine(restAt == _RestAt.cancel, BusyButton.text(
             key: const ValueKey('trip-cancel'),
             onPressed: _busy ? null : () => _cancel(r),
@@ -1164,7 +1170,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
         // Their cancel rate, and the pause it brings over the limit (0269).
         if (driverMayCancel(r.status)) const DriverCancelRateNote(),
         if (r.status == RideStatus.completed) _CollectCard(ride: r),
-        if (r.status == RideStatus.completed && isMygigRide(r)) MygigCollectCard(ride: r),
+        if (r.status == RideStatus.completed && isMygigRide(r) && !isMygigDelivery(r)) MygigCollectCard(ride: r),
         // The rider's tip, and "Got a cash tip" (0314).
         if (r.status == RideStatus.completed) DriverTipCard(ride: r),
         if (r.status == RideStatus.completed)

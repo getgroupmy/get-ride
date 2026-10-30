@@ -15,6 +15,7 @@ import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import 'mygig_delivery_link.dart' show MygigDeliveryAgreeScreen;
 import 'mygig_new_screen.dart' show MygigPriceLines, openMygigWhatsApp;
 import 'mygig_scheduled_screen.dart' show mygigScheduledPath;
 import 'mygig_when.dart' show MygigBookingTerms;
@@ -108,7 +109,8 @@ class _MygigWaitingScreenState extends ConsumerState<MygigWaitingScreen> {
     if (ride == null) return;
     // No losses (owner's rule): a pay-by-link price is paid before the
     // trip; the link goes to the passenger at once.
-    if (_offer?.pay == MygigPay.link) unawaited(ref.read(mygigRepositoryProvider).sendPayLink(ride).catchError((_) {}));
+    // A delivery (0332) is paid on its own parts (the sender's link page).
+    if (_offer?.pay == MygigPay.link && _offer?.raw['delivery'] == null) unawaited(ref.read(mygigRepositoryProvider).sendPayLink(ride).catchError((_) {}));
     context.go('/drive/trip/$ride');
   }
 
@@ -198,11 +200,17 @@ class _MygigWaitingScreenState extends ConsumerState<MygigWaitingScreen> {
     }
     final o = _offer ?? await ref.read(mygigRepositoryProvider).offer(_sent.offerId);
     if (!mounted) return;
-    final ride = await Navigator.of(context).push<String>(AppPageRoute<String>(
-      id: 'mygig.agree',
-      fullscreenDialog: true,
-      builder: (_) => MygigAgreeScreen(offer: o),
-    ));
+    final ride = o.raw['delivery'] is Map
+        ? await Navigator.of(context).push<String>(AppPageRoute<String>(
+            id: 'mygig.delivery-agree',
+            fullscreenDialog: true,
+            builder: (_) => MygigDeliveryAgreeScreen(offer: o),
+          ))
+        : await Navigator.of(context).push<String>(AppPageRoute<String>(
+            id: 'mygig.agree',
+            fullscreenDialog: true,
+            builder: (_) => MygigAgreeScreen(offer: o),
+          ));
     if (!mounted) return;
     if (ride != null) {
       _done = true;

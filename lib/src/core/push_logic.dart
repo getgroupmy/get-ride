@@ -226,6 +226,12 @@ String? pushRouteFor(Map<String, dynamic> data) {
       final booking = data['booking_id'];
       if (booking is String && booking.isNotEmpty) return '/drive/mygig/reassign?booking=${Uri.encodeComponent(booking)}';
       return '/drive/mygig/scheduled';
+    case 'mygig_delivery':
+      // A myGiG delivery (0332): the driver's trip, the sender's (or a
+      // registered recipient's) delivery page.
+      final id = data['request_id'];
+      if (id is! String || id.isEmpty) return data['role'] == 'partner' ? '/drive' : '/';
+      return data['role'] == 'partner' ? '/drive/trip/${Uri.encodeComponent(id)}' : '/mygig/delivery/${Uri.encodeComponent(id)}';
     case 'mygig_answer' when data['request_id'] is! String && data['booking_id'] is String:
       return '/drive/mygig/scheduled';
     case 'mygig_answer':
