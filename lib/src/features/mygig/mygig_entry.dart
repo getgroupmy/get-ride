@@ -1,5 +1,6 @@
 // myGiG on the driver's home (migration 0329): the button, the side-menu
-// row and the line on the online card lead here. The button explains when
+// row and the line on the online card lead here. 0332: "A delivery" and
+// "Delivery settings" where the driver's vehicle may carry deliveries. The button explains when
 // myGiG is off for the driver or at the daily limit, asks for a pass when
 // get.ride charges by the period, else opens the myGiG sheet: show the
 // booking QR (GET.now), enter the trip, or the myGiG settings.
@@ -8,11 +9,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/mygig.dart';
+import '../../core/mygig_delivery.dart';
 import '../../data/mygig_repository.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import 'mygig_delivery_new.dart' show mygigDeliveryNewPath;
+import 'mygig_delivery_settings.dart' show mygigDeliverySettingsPath;
 
 /// Where myGiG lives in the driver app.
 const mygigNewPath = '/drive/mygig';
@@ -48,11 +52,17 @@ Future<void> openMygig(BuildContext context, WidgetRef ref, {double? lat, double
     await context.push(mygigPassPath);
     return;
   }
-  await showMygigSheet(context, c);
+  // 0332: "A delivery", where the driver's vehicle may carry deliveries.
+  MygigDeliveryConfig? delivery;
+  try {
+    delivery = await ref.read(mygigRepositoryProvider).deliveryConfig(lat: lat, lng: lng);
+  } catch (_) {}
+  if (!context.mounted) return;
+  await showMygigSheet(context, c, delivery: delivery);
 }
 
 /// The myGiG sheet: does the passenger have the app with them?
-Future<void> showMygigSheet(BuildContext context, MygigConfig c) => showAppSheet<void>(
+Future<void> showMygigSheet(BuildContext context, MygigConfig c, {MygigDeliveryConfig? delivery}) => showAppSheet<void>(
   id: 'mygig.start',
   context: context,
   showDragHandle: true,
@@ -106,6 +116,33 @@ Future<void> showMygigSheet(BuildContext context, MygigConfig c) => showAppSheet
               router.push(mygigNewPath);
             },
           ),
+          // 0332: someone asks for something to be delivered.
+          if (delivery != null && delivery.shows) ...[
+            ListTile(
+              key: const ValueKey('mygig-sheet-delivery'),
+              leading: const Icon(Icons.local_shipping_outlined),
+              title: const Text('A delivery'),
+              subtitle: const Text('Take a parcel to one or more people'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                final router = GoRouter.of(sheet);
+                Navigator.pop(sheet);
+                router.push(mygigDeliveryNewPath);
+              },
+            ),
+            ListTile(
+              key: const ValueKey('mygig-sheet-delivery-settings'),
+              leading: const Icon(Icons.tune),
+              title: const Text('Delivery settings'),
+              subtitle: const Text('Your rates, what you carry, waiting, returns'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                final router = GoRouter.of(sheet);
+                Navigator.pop(sheet);
+                router.push(mygigDeliverySettingsPath);
+              },
+            ),
+          ],
           ListTile(
             key: const ValueKey('mygig-sheet-settings'),
             leading: const Icon(Icons.tune),

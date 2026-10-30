@@ -25,6 +25,8 @@ import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
 import '../../core/mygig_extras.dart' show MygigReassign;
 import 'mygig_after_trip.dart' show MygigAfterTrip;
+import 'mygig_delivery_link.dart' show MygigDeliveryAgree, mygigDeliveryMinePath;
+import 'mygig_delivery_new.dart' show openMygigDeliveryPay;
 import 'mygig_new_screen.dart' show MygigPriceLines;
 import 'mygig_reassign.dart' show MygigReassignConfirm;
 import 'mygig_when.dart' show MygigBookingTerms;
@@ -75,6 +77,27 @@ class MygigOfferScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _answerDelivery(BuildContext context, WidgetRef ref, MygigOffer o, bool accept) async {
+    try {
+      final r = await ref.read(mygigRepositoryProvider).deliveryAnswer(offer: o.id, accept: accept, ack: accept);
+      if (!context.mounted) return;
+      final ride = r['rideId'] as String?;
+      final req = r['payRequest'] as String?;
+      if (accept && req != null && ((r['payNow'] as num?) ?? 0) > 0) await openMygigDeliveryPay(context, ref, req);
+      if (!context.mounted) return;
+      if (accept && ride != null) {
+        context.go(mygigDeliveryMinePath(ride));
+        return;
+      }
+      await showAppNotice(id: 'notice.mygig', context: context, title: 'Declined',
+          message: 'The delivery wasn’t booked. Nothing was charged.');
+      if (context.mounted) context.go('/');
+    } catch (e) {
+      if (context.mounted) showError(context, e);
+      ref.invalidate(mygigOfferProvider(offerId));
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(mygigOfferProvider(offerId));
@@ -83,7 +106,10 @@ class MygigOfferScreen extends ConsumerWidget {
       body: AsyncView(
         value: async,
         onRetry: () => ref.invalidate(mygigOfferProvider(offerId)),
-        data: (o) => _MygigOfferBody(offer: o, answer: (yes) => _answer(context, ref, o, yes)),
+        data: (o) => o.raw['delivery'] is Map
+            // 0332: a delivery, with the sender's tick and the Family row.
+            ? MygigDeliveryAgree(offer: o.raw, onAnswer: (yes) => _answerDelivery(context, ref, o, yes))
+            : _MygigOfferBody(offer: o, answer: (yes) => _answer(context, ref, o, yes)),
       ),
     );
   }

@@ -5,6 +5,7 @@
 // reassign history; e-Invoice requests to send (no e-Invoice connection to
 // LHDN MyInvois exists yet); and every myGiG booking (later trips and hire by
 // time) with filters, which part B left visible only to driver and passenger.
+// 0332: myGiG Delivery (mygig_delivery_admin.dart).
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -18,6 +19,7 @@ import '../../../widgets/search_select.dart';
 import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
+import 'mygig_delivery_admin.dart';
 
 const mygigDashboardAdminPath = '/admin/m/mygig-dashboard';
 const mygigBookingsAdminPath = '/admin/m/mygig-bookings';
@@ -78,6 +80,9 @@ class _MygigDashboardAdminScreenState extends ConsumerState<MygigDashboardAdminS
               canEdit: canEdit,
               onChanged: () => ref.invalidate(_dashboardProvider(_day)),
             ),
+            // 0332: myGiG Delivery, with the Money safety panel.
+            const SizedBox(height: 24),
+            MygigDeliveryAdminSection(day: _day, canEdit: canEdit),
           ],
         ),
       ),

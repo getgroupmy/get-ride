@@ -718,9 +718,16 @@ const mygigParts = <(String, String, List<String>)>[
   ('hotspots', 'Hotspots', ['hotspots']),
   ('after', 'After the trip (the passenger)', ['after']),
   ('driverExtras', 'Quick trips and regulars', ['driverExtras']),
+  // 0332: myGiG Delivery (the whole part is set here or left to the place above).
+  ('delivery', 'myGiG Delivery', ['delivery']),
 ];
 
-enum MygigFieldKind { toggle, number, whole, choice, time }
+enum MygigFieldKind {
+  toggle, number, whole, choice, time,
+
+  /// A list of words, one per line (0332: item types, prohibited items).
+  list,
+}
 
 class MygigField {
   const MygigField(this.part, this.path, this.label, this.kind, {this.choices = const [], this.hint});
@@ -734,7 +741,7 @@ class MygigField {
   final String? hint;
 }
 
-const mygigFields = <MygigField>[
+final mygigFields = <MygigField>[
   MygigField('access', 'enabled', 'myGiG on here', MygigFieldKind.toggle),
   MygigField('access', 'qrChoice', 'Offer "Yes, show my booking QR"', MygigFieldKind.toggle),
   MygigField('access', 'phoneRequired', 'Passenger phone required', MygigFieldKind.toggle),
@@ -880,6 +887,62 @@ const mygigFields = <MygigField>[
   MygigField('driverExtras', 'driverExtras.quickCount', 'Quick trips shown', MygigFieldKind.whole),
   MygigField('driverExtras', 'driverExtras.regulars', 'Regulars (a number’s usual drop-off)', MygigFieldKind.toggle),
   MygigField('driverExtras', 'driverExtras.regularMin', 'A regular after (rides with the driver)', MygigFieldKind.whole),
+  // 0332: myGiG Delivery.
+  MygigField('delivery', 'delivery.enabled', 'myGiG deliveries on here', MygigFieldKind.toggle,
+      hint: 'Same myGiG access, passes and charges to drivers as myGiG rides'),
+  for (final (v, name) in const [('bike', 'Motorbikes'), ('car', 'Cars'), ('van', 'Vans and trucks')]) ...[
+    MygigField('delivery', 'delivery.vehicles.$v.on', '$name may do deliveries', MygigFieldKind.toggle),
+    MygigField('delivery', 'delivery.vehicles.$v.base', '$name: base (RM)', MygigFieldKind.number),
+    MygigField('delivery', 'delivery.vehicles.$v.perKm', '$name: per km (RM)', MygigFieldKind.number),
+    MygigField('delivery', 'delivery.vehicles.$v.min', '$name: minimum (RM)', MygigFieldKind.number),
+    MygigField('delivery', 'delivery.vehicles.$v.maxKg', '$name: most kg', MygigFieldKind.number),
+  ],
+  for (final (k, name) in const [('small', 'Small'), ('medium', 'Medium'), ('large', 'Large'), ('bulky', 'Bulky')])
+    for (final (v, vn) in const [('bike', 'a motorbike'), ('car', 'a car'), ('van', 'a van')])
+      MygigField('delivery', 'delivery.sizes.$k.$v', '$name fits $vn', MygigFieldKind.toggle),
+  MygigField('delivery', 'delivery.extras.medium', 'Extra for Medium (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.extras.large', 'Extra for Large (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.extras.bulky', 'Extra for Bulky (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.extras.freeKg', 'Free weight (kg)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.extras.perKg', 'Then per kg (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.extras.fragile', 'Fragile (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.extras.extraDrop', 'Each extra drop-off (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.itemTypes', 'Item types (one per line)', MygigFieldKind.list),
+  MygigField('delivery', 'delivery.prohibited', 'Prohibited items (one per line)', MygigFieldKind.list,
+      hint: 'The sender confirms none of these; the driver can refuse'),
+  MygigField('delivery', 'delivery.maxDrops', 'Most drop-offs (1 to 5)', MygigFieldKind.whole),
+  MygigField('delivery', 'delivery.senderPhone', 'The sender’s phone', MygigFieldKind.choice,
+      choices: [('required', 'Required'), ('optional', 'Optional')],
+      hint: 'A sender without in-app payment always needs one: the deposit is paid by link'),
+  MygigField('delivery', 'delivery.maxValue', 'Highest declared value (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.protection.fee', 'Cover fee on every delivery (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.protection.free', 'Covered free up to (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.protection.pct', 'Above that, cover (% of the value)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.guaranteeFee', 'Deposit guarantee fee (RM, not refunded)', MygigFieldKind.number,
+      hint: 'Pays the gateway when a deposit is refunded'),
+  MygigField('delivery', 'delivery.waiting.freeMin', 'Free waiting (min)', MygigFieldKind.whole),
+  MygigField('delivery', 'delivery.waiting.perMin', 'Then per minute (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.waiting.allowanceMin', 'Waiting the deposit covers (min)', MygigFieldKind.whole,
+      hint: 'When it is used up, the driver is told to start the return'),
+  MygigField('delivery', 'delivery.returnPct', 'Failed-return charge (% of the return fare)', MygigFieldKind.whole),
+  MygigField('delivery', 'delivery.returnPctMax', 'Highest return % a driver may set', MygigFieldKind.whole),
+  MygigField('delivery', 'delivery.ackMin', 'The sender answers a return within (min)', MygigFieldKind.whole,
+      hint: 'No answer: support is told and decides'),
+  MygigField('delivery', 'delivery.recipientPays', 'Recipient pays (always guaranteed by the sender)', MygigFieldKind.toggle),
+  MygigField('delivery', 'delivery.cod.on', 'Cash on delivery (registered senders only)', MygigFieldKind.toggle),
+  MygigField('delivery', 'delivery.cod.feePct', 'COD fee (%)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.cod.max', 'Highest COD (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.proof', 'Proof of delivery', MygigFieldKind.choice,
+      choices: [('code', 'Code only'), ('codeOrPhoto', 'Code, or a photo with a name'), ('photo', 'Photo only')]),
+  MygigField('delivery', 'delivery.pickupPhotos', 'Photos at pickup (at least)', MygigFieldKind.whole),
+  MygigField('delivery', 'delivery.allowOwnRates', 'Drivers may set their own delivery rates', MygigFieldKind.toggle),
+  MygigField('delivery', 'delivery.allowOwnWait', 'Drivers may set their own waiting charge', MygigFieldKind.toggle),
+  MygigField('delivery', 'delivery.ownLimits.base', 'Own rates: highest base (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.ownLimits.perKmMin', 'Own rates: lowest per km (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.ownLimits.perKmMax', 'Own rates: highest per km (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.ownLimits.minMax', 'Own rates: highest minimum (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.ownLimits.extraMax', 'Own rates: highest extra (RM)', MygigFieldKind.number),
+  MygigField('delivery', 'delivery.ownLimits.waitMax', 'Own waiting: most per minute (RM)', MygigFieldKind.number),
 ];
 
 /// The value at a dotted [path] of [m].

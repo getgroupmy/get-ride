@@ -36,7 +36,8 @@ String adminRideSubtitle(RideRequest r) => [
 
 /// "myGiG · accepted in the app · flagged".
 String adminMygigLabel(Map<String, dynamic> g) => [
-      'myGiG',
+      // 0332: a myGiG delivery.
+      g['kind'] == 'delivery' ? 'myGiG delivery' : 'myGiG',
       switch (g['via']) {
         'app' => 'accepted in the app',
         'link' => 'accepted on the link',

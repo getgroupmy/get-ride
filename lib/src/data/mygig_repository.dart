@@ -6,10 +6,15 @@
 // link page (no sign-in). The ride itself is a ride_requests row the
 // server makes when the passenger accepts (mygig_make_ride), so booking
 // is here: this is the myGiG module's repository (booking_modules.dart).
+// 0332: myGiG Delivery (a myGiG ride of kind 'delivery', made when the
+// sender accepts): the driver's Delivery settings, the price, sending,
+// the sender's answer, the pickup, each drop-off, returns, the sender's and
+// recipients' link page, and the admin's numbers.
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/mygig.dart';
+import '../core/mygig_delivery.dart';
 import '../core/mygig_extras.dart';
 import '../core/mygig_hire.dart';
 import '../providers.dart';
@@ -412,6 +417,114 @@ class MygigRepository {
   });
 
   Future<void> deleteRule(String id) => _call(() => _db.from('mygig_rules').delete().eq('id', id));
+
+  // ---- myGiG Delivery (0332) ---------------------------------------------------------------------------
+  Future<MygigDeliveryConfig> deliveryConfig({double? lat, double? lng}) => _call(() async =>
+      MygigDeliveryConfig(_map(await _db.rpc('mygig_delivery_config', params: {'p_lat': lat, 'p_lng': lng}))));
+
+  Future<MygigDeliveryPrefs> saveDeliveryPrefs(MygigDeliveryPrefs p, {double? lat, double? lng}) => _call(() async =>
+      MygigDeliveryPrefs(_map(await _db.rpc('mygig_delivery_save_prefs', params: {'p_prefs': p.raw, 'p_lat': lat, 'p_lng': lng}))));
+
+  Future<MygigDeliveryQuote> deliveryQuote(Map<String, dynamic> delivery, {double? lat, double? lng}) => _call(() async =>
+      MygigDeliveryQuote(_map(await _db.rpc('mygig_delivery_quote', params: {'p': delivery, 'p_lat': lat, 'p_lng': lng}))));
+
+  /// Sends the delivery to the sender (checked and priced by the server).
+  Future<MygigSent> deliveryCreate(Map<String, dynamic> delivery, {double? lat, double? lng}) => _call(() async =>
+      MygigSent.fromJson(_map(await _db.rpc('mygig_delivery_create', params: {'p': delivery, 'p_lat': lat, 'p_lng': lng}))));
+
+  /// The sender answers: in the app or on the driver's phone ([offer]), or
+  /// on their link ([token]). Accepting needs their tick [ack].
+  Future<Map<String, dynamic>> deliveryAnswer({String? offer, String? token, required bool accept, bool ack = false}) =>
+      _call(() async => _map(await _db.rpc('mygig_delivery_answer',
+          params: {'p_offer': offer, 'p_token': token, 'p_accept': accept, 'p_ack': ack})));
+
+  Future<MygigDelivery> deliveryView(String ride) =>
+      _call(() async => MygigDelivery(_map(await _db.rpc('mygig_delivery_view', params: {'p_ride': ride}))));
+
+  /// The sender (or a registered recipient) in the app.
+  Future<MygigDelivery> deliveryMine(String ride) =>
+      _call(() async => MygigDelivery(_map(await _db.rpc('mygig_delivery_mine', params: {'p_ride': ride}))));
+
+  /// The sender's or a recipient's link page (no sign-in).
+  Future<Map<String, dynamic>> deliveryLinkView(String token) =>
+      _call(() async => _map(await _db.rpc('mygig_delivery_link_view', params: {'p_token': token})));
+
+  Future<void> deliveryArrivedPickup(String ride) =>
+      _call(() => _db.rpc('mygig_delivery_arrived_pickup', params: {'p_ride': ride}));
+
+  Future<MygigDelivery> deliveryPickup(String ride, {List<String>? photos, bool? matches, bool? sealed}) => _call(() async =>
+      MygigDelivery(_map(await _db.rpc('mygig_delivery_pickup',
+          params: {'p_ride': ride, 'p_photos': photos, 'p_matches': matches, 'p_sealed': sealed}))));
+
+  Future<void> deliverySenderCash(String ride) => _call(() => _db.rpc('mygig_delivery_sender_cash', params: {'p_ride': ride}));
+
+  Future<Map<String, dynamic>> deliveryRefuse(String ride, {String? reason}) =>
+      _call(() async => _map(await _db.rpc('mygig_delivery_refuse', params: {'p_ride': ride, 'p_reason': reason})));
+
+  Future<Map<String, dynamic>> deliveryCancel({String? ride, String? token}) =>
+      _call(() async => _map(await _db.rpc('mygig_delivery_cancel', params: {'p_ride': ride, 'p_token': token})));
+
+  /// Start delivery: the recipients' links and messages (for WhatsApp).
+  Future<Map<String, dynamic>> deliveryStart(String ride) =>
+      _call(() async => _map(await _db.rpc('mygig_delivery_start', params: {'p_ride': ride})));
+
+  Future<void> deliveryArrived(String ride, int n) =>
+      _call(() => _db.rpc('mygig_delivery_arrived', params: {'p_ride': ride, 'p_n': n}));
+
+  Future<void> deliveryDoorCash(String ride, int n) =>
+      _call(() => _db.rpc('mygig_delivery_door_cash', params: {'p_ride': ride, 'p_n': n}));
+
+  /// A pay link for what is due at the door: the part to pay.
+  Future<String?> deliveryDoorLink(String ride, int n) => _call(() async =>
+      _map(await _db.rpc('mygig_delivery_door_link', params: {'p_ride': ride, 'p_n': n}))['requestId'] as String?);
+
+  Future<Map<String, dynamic>> deliveryHandover(String ride, int n, {String? code, String? name, String? photo}) =>
+      _call(() async => _map(await _db.rpc('mygig_delivery_handover',
+          params: {'p_ride': ride, 'p_n': n, 'p_code': code, 'p_name': name, 'p_photo': photo})));
+
+  Future<Map<String, dynamic>> deliveryReturnFailed(String ride, int n, {String? reason}) => _call(() async =>
+      _map(await _db.rpc('mygig_delivery_return_failed', params: {'p_ride': ride, 'p_n': n, 'p_reason': reason})));
+
+  /// The recipient sends it back: on their link ([token]) or on the driver's phone ([ride], [n]).
+  Future<Map<String, dynamic>> deliveryReturnAsk({String? token, String? ride, int? n, required String reason,
+      String method = 'link', bool ack = false}) => _call(() async => _map(await _db.rpc('mygig_delivery_return_ask', params: {
+        'p_token': token, 'p_ride': ride, 'p_n': n, 'p_reason': reason, 'p_method': method, 'p_ack': ack})));
+
+  Future<void> deliveryReturnCash(String ride, String ret) =>
+      _call(() => _db.rpc('mygig_delivery_return_cash', params: {'p_ride': ride, 'p_return': ret}));
+
+  Future<void> deliveryReturnCashAck(String token) =>
+      _call(() => _db.rpc('mygig_delivery_return_cash_ack', params: {'p_token': token}));
+
+  Future<void> deliveryReturnPhoto(String ride, String ret, String photo) =>
+      _call(() => _db.rpc('mygig_delivery_return_photo', params: {'p_ride': ride, 'p_return': ret, 'p_photo': photo}));
+
+  /// The original sender acknowledges a return (app: [ret]; link: [token]).
+  Future<Map<String, dynamic>> deliveryReturnAck({String? ret, String? token, required bool tick}) => _call(() async =>
+      _map(await _db.rpc('mygig_delivery_return_ack', params: {'p_return': ret, 'p_token': token, 'p_tick': tick})));
+
+  Future<void> deliveryReturnStart(String ride, String ret) =>
+      _call(() => _db.rpc('mygig_delivery_return_start', params: {'p_ride': ride, 'p_return': ret}));
+
+  Future<Map<String, dynamic>> deliveryReturnDone(String ride, String ret, String code) => _call(() async =>
+      _map(await _db.rpc('mygig_delivery_return_done', params: {'p_ride': ride, 'p_return': ret, 'p_code': code})));
+
+  /// The link page asks for something to pay: {requestId, amount}.
+  Future<Map<String, dynamic>> deliveryPayRequest(String token, {String? what}) => _call(() async =>
+      _map(await _db.rpc('mygig_delivery_pay_request', params: {'p_token': token, 'p_what': what})));
+
+  Future<Map<String, dynamic>> adminDeliveryStats({DateTime? day}) => _call(() async => _map(await _db.rpc(
+      'mygig_admin_delivery_stats',
+      params: {'p_day': day == null ? null : '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-'
+          '${day.day.toString().padLeft(2, '0')}'})));
+
+  Future<List<MygigDelivery>> adminDeliveries({String filter = 'open'}) => _call(() async {
+    final v = await _db.rpc('mygig_admin_deliveries', params: {'p_filter': filter, 'p_limit': 100});
+    return [for (final r in (v is List ? v : const [])) if (r is Map) MygigDelivery(Map<String, dynamic>.from(r))];
+  });
+
+  Future<void> adminDeliveryDecide(String ret, String note) =>
+      _call(() => _db.rpc('mygig_admin_delivery_decide', params: {'p_return': ret, 'p_note': note}));
 }
 
 final mygigRepositoryProvider = Provider((ref) => MygigRepository(ref.watch(supabaseProvider)));
@@ -467,4 +580,11 @@ final mygigReassignsMineProvider = FutureProvider.autoDispose<List<MygigReassign
 final mygigReassignProvider = FutureProvider.autoDispose.family<MygigReassign, String>((ref, id) {
   ref.watchLive(mygigReassignsTable);
   return ref.watch(mygigRepositoryProvider).reassignView(id);
+});
+
+/// The driver's delivery state where they are (0332), live with the admin's settings.
+final mygigDeliveryConfigProvider = FutureProvider.autoDispose.family<MygigDeliveryConfig, MygigAt>((ref, at) {
+  ref.watchLive('app_settings');
+  ref.watchLive(mygigRulesTable);
+  return ref.watch(mygigRepositoryProvider).deliveryConfig(lat: at.lat, lng: at.lng);
 });

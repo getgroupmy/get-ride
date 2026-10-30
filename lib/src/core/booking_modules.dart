@@ -82,10 +82,12 @@ const bookingModules = <BookingModule>[
   // 0330: a booking for later or a hire by time from myGiG is a
   // mygig_bookings row (family_attach_trip from its insert trigger, module
   // 'mygig'); each day it starts is a ride as above.
+  // 0332: a myGiG delivery is a myGiG ride too (mygig.kind 'delivery'); the
+  // sender accepts it with the Family row on mygig_delivery_link.dart.
   BookingModule('mygig', 'myGiG',
       tables: ['ride_requests', 'mygig_bookings'],
       repositories: ['lib/src/data/mygig_repository.dart'],
-      screens: ['lib/src/features/mygig/mygig_passenger.dart']),
+      screens: ['lib/src/features/mygig/mygig_passenger.dart', 'lib/src/features/mygig/mygig_delivery_link.dart']),
   BookingModule(familyModuleCityToCity, 'City to City',
       tables: ['c2c_bookings'],
       repositories: ['lib/src/data/city_to_city_repository.dart'],
