@@ -15,6 +15,10 @@
  *   POST /payments/dispatch-link {request_id}                      the stand's operator (0251)
  *        → {url, reference, amount, status, test_mode}: a stand order's
  *          payment link, put on the order and texted to the customer
+ *   POST /payments/mygig-link {request_id}                         the ride's driver (0329)
+ *        → {url, reference, amount, status, test_mode}: a myGiG ride paid
+ *          by link (purpose ride_card), put on the ride and texted to the
+ *          passenger; paid, payment_ride_card_paid pays the driver once
  *   *    /payments/webhook/<provider>/<gateway id>                 the provider
  *   *    /payments/return/<intent id>[?cancel=1]                   the payer's browser
  *   *    /payments/back/<provider>/<gateway id>                    the payer's browser (dashboard-set return)
@@ -73,6 +77,8 @@ export interface Deps {
   user(authorization: string | null): Promise<{ id: string } | null>;
   /** May the caller ask for this stand order's payment link (payment_dispatch_link_allowed, as them). */
   mayLinkOrder(authorization: string | null, requestId: string): Promise<boolean>;
+  /** May the caller ask for this myGiG ride's payment link (payment_mygig_link_allowed, as them; 0329). */
+  mayLinkMygig?(authorization: string | null, requestId: string): Promise<boolean>;
   /** Edit access to Admin → Payment Gateways (null: not signed in). */
   canEditGateways(authorization: string | null): Promise<boolean | null>;
   log?(message: string): void;
@@ -457,6 +463,58 @@ async function dispatchLink(req: Request, deps: Deps): Promise<Response> {
   return json({ url, reference: intent.reference, amount: amountOf(intent), status: intent.status, test_mode: intent.test_mode });
 }
 
+/** Refusals of payment_mygig_intent the driver's app shows in words. */
+const MYGIG_ERRORS = ["no_gateway", "already_paid", "not_pay_link", "order_closed"];
+
+async function mygigLink(req: Request, deps: Deps): Promise<Response> {
+  const auth = req.headers.get("Authorization");
+  const user = await deps.user(auth);
+  if (!user) return json({ error: "not_signed_in" }, 401);
+  const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+  const id = String(body?.request_id ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return json({ error: "unknown_order" }, 404);
+  if (!deps.mayLinkMygig || !(await deps.mayLinkMygig(auth, id))) return json({ error: "not_authorized" }, 403);
+  // deno-lint-ignore no-explicit-any
+  let a: any;
+  try {
+    a = await deps.db.rpc("payment_mygig_intent", { p_request: id });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    const code = MYGIG_ERRORS.find((c) => msg.includes(c));
+    if (code) return json({ error: code }, 409);
+    throw e;
+  }
+  const intent = a as IntentRow;
+  let url = intent.checkout_url;
+  if (!url) {
+    const account = await accountFor(deps, intent.gateway_id);
+    const adapter = ADAPTERS[intent.provider];
+    if (!account || !account.active || !adapter?.ready) return json({ error: "gateway_not_ready" }, 409);
+    let c: Checkout;
+    try {
+      c = await openCheckout(deps, adapter, account, intent, req, {
+        customer: {
+          name: String(a.customer?.name ?? ""),
+          phone: String(a.customer?.phone ?? ""),
+          email: String(a.customer?.email ?? ""),
+        },
+        description: `GET.ride myGiG ride ${intent.reference}`,
+      });
+    } catch (e) {
+      if (e instanceof PaymentError) {
+        deps.log?.(`payments: mygig link ${intent.reference}: ${e.message}`);
+        return json({ error: e.code }, e.status === 400 ? 502 : e.status);
+      }
+      throw e;
+    }
+    if (!("url" in c)) return json({ error: "gateway_needs_form" }, 409);
+    await deps.db.rpc("payment_intent_set_checkout", { p_id: intent.id, p_provider_ref: c.providerRef ?? null, p_url: c.url });
+    url = c.url;
+  }
+  await deps.db.rpc("payment_mygig_link_set", { p_request: id, p_url: url });
+  return json({ url, reference: intent.reference, amount: amountOf(intent), status: intent.status, test_mode: intent.test_mode });
+}
+
 async function webhook(req: Request, url: URL, deps: Deps, provider: string, gatewayId: string, page: boolean) {
   const adapter = ADAPTERS[provider];
   const account = /^[0-9a-f-]{36}$/i.test(gatewayId) ? await accountFor(deps, gatewayId) : null;
@@ -544,6 +602,8 @@ export async function handle(req: Request, deps: Deps): Promise<Response> {
         return req.method === "POST" ? await test(req, deps) : json({ error: "method_not_allowed" }, 405);
       case "dispatch-link":
         return req.method === "POST" ? await dispatchLink(req, deps) : json({ error: "method_not_allowed" }, 405);
+      case "mygig-link":
+        return req.method === "POST" ? await mygigLink(req, deps) : json({ error: "method_not_allowed" }, 405);
       case "providers": {
         const can = await deps.canEditGateways(req.headers.get("Authorization"));
         if (can === null) return json({ error: "not_signed_in" }, 401);

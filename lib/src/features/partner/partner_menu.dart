@@ -8,6 +8,7 @@ import '../../admin/screens/meterapp/display_logic.dart'
         myPermitMenuItemId,
         myQrMenuItemId,
         myRideCodeMenuItemId,
+        mygigMenuItemId,
         scheduledRidesMenuItemId,
         servicesMenuItemId,
         standGroupsMenuItemId,
@@ -18,6 +19,7 @@ import '../../data/city_to_city_repository.dart' show c2cServiceActiveProvider;
 import '../../data/app_display_repository.dart';
 import '../../data/driver_services_repository.dart' show servicesPageAvailableProvider;
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
+import '../../data/mygig_repository.dart' show mygigAt, mygigConfigProvider;
 import '../../data/obd/obd_session.dart';
 import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
 import '../../providers.dart';
@@ -25,6 +27,7 @@ import '../../widgets/common.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../meter/meter_session_toggle.dart';
 import 'driver_online.dart';
+import '../mygig/mygig_entry.dart' show mygigButtonShows;
 import '../../widgets/page_style_host.dart';
 
 /// The driver menu (Expo `PartnerSideSheet`), arranged by Admin → Display
@@ -55,8 +58,10 @@ bool partnerMenuRowShows(
   bool approved = true,
   bool servicesPage = false,
   bool cityToCity = false,
+  bool mygig = false,
 }) => switch (id) {
   _ when !approved && partnerRowsAfterApproval.contains(id) => false,
+  mygigMenuItemId => mygig,
   vehicleInfoMenuItemId => obdLinked,
   servicesMenuItemId => servicesPage,
   myRideCodeMenuItemId => hasMyRideCode,
@@ -73,6 +78,7 @@ const partnerRowsAfterApproval = {
   scheduledRidesMenuItemId,
   cityToCityMenuItemId,
   myRideCodeMenuItemId,
+  mygigMenuItemId,
 };
 
 /// Built-in driver items on this app's screens; false for one with no
@@ -90,6 +96,8 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     standGroupsMenuItemId: '/drive/groups',
     myPermitMenuItemId: '/drive/permits',
     servicesMenuItemId: '/drive/services',
+    // myGiG (0329): the home opens the myGiG checks and sheet.
+    mygigMenuItemId: '/drive?mygig=1',
     // The trips taken as a partner; the rides booked are on the user side.
     'trip-history': '/drive/history',
     scheduledRidesMenuItemId: '/drive/scheduled',
@@ -148,6 +156,7 @@ class PartnerMenuSheet extends ConsumerWidget {
     final approved = ref.watch(partnerProvider).value?.approved ?? true;
     final services = ref.watch(servicesPageAvailableProvider);
     final c2c = ref.watch(c2cServiceActiveProvider).value ?? false;
+    final mygig = mygigButtonShows(ref.watch(mygigConfigProvider(mygigAt(null, null))).value);
     final menu = [
       for (final e in resolveSideMenu(blob, 'partner'))
         if (partnerMenuRowShows(
@@ -158,6 +167,7 @@ class PartnerMenuSheet extends ConsumerWidget {
           approved: approved,
           servicesPage: services,
           cityToCity: c2c,
+          mygig: mygig,
         ))
           e,
     ];

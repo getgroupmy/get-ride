@@ -66,6 +66,10 @@ import 'features/meter/hail_destination_screen.dart';
 import 'features/meter/meter_screen.dart';
 import 'features/ride/scheduled_rides_screen.dart';
 import 'features/ride/shared_ride_screen.dart';
+import 'features/mygig/mygig_entry.dart';
+import 'features/mygig/mygig_new_screen.dart';
+import 'features/mygig/mygig_passenger.dart';
+import 'features/mygig/mygig_settings_screen.dart';
 import 'features/meter/obd_reader_screen.dart';
 import 'features/meter/printer_screen.dart';
 import 'features/meter/vehicle_info_screen.dart';
@@ -282,6 +286,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loc == '/diagnostics') return null;
       // A shared ride is for whoever was sent the link, account or not.
       if (loc.startsWith('/share/')) return null;
+      // So is a myGiG trip link: the passenger may have no app (0329).
+      if (loc.startsWith('/gig/')) return null;
       // So is confirming a new number support set: the link in the SMS (0282).
       if (loc.startsWith('/number/')) return null;
       // So is checking a statement's QR code: whoever was handed the statement.
@@ -416,7 +422,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                   GoRoute(
                     path: '/drive',
                     // ?remote=<id>: support's request the driver confirmed (0286).
-                    builder: (_, s) => PartnerScreen(remoteActionId: s.uri.queryParameters['remote']),
+                    builder: (_, s) => PartnerScreen(
+                      remoteActionId: s.uri.queryParameters['remote'],
+                      // ?mygig=1: the side menu's myGiG row (0329).
+                      openMygigNow: s.uri.queryParameters['mygig'] == '1',
+                    ),
                     // The driver's own pages, in the same shell as the
                     // rider's /account, /wallet and /trips: the navigation
                     // rail beside them on a wide screen.
@@ -594,6 +604,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/drive/permits', builder: (_, _) => const MyPermitsScreen()),
           // Side menu > Services (0263): what the car in use takes.
           GoRoute(path: '/drive/services', builder: (_, _) => const DriverServicesScreen()),
+          // myGiG (0329): enter a street-hail trip, the driver's own settings, a pass.
+          GoRoute(path: '/drive/mygig', builder: (_, _) => const MygigNewScreen()),
+          GoRoute(path: '/drive/mygig/settings', builder: (_, _) => const MygigSettingsScreen()),
+          GoRoute(path: '/drive/mygig/pass', builder: (_, _) => const MygigPassScreen()),
+          // The fare a driver sent to the passenger's app (0329).
+          GoRoute(path: '/mygig/offer/:id', builder: (_, s) => MygigOfferScreen(offerId: s.pathParameters['id']!)),
           GoRoute(
             path: '/drive/trip/:id',
             // Demo jobs play out on /drive/demo, never as a real trip.
@@ -618,6 +634,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/share/:token',
         builder: (_, st) => SharedRideScreen(token: st.pathParameters['token']!),
+      ),
+      // A myGiG trip link (0329): accept the fare, then the live ride.
+      GoRoute(
+        path: '/gig/:token',
+        builder: (_, st) => MygigLinkScreen(token: st.pathParameters['token']!),
       ),
       GoRoute(
         path: '/number/:token',

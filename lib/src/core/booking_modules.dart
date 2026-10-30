@@ -56,6 +56,7 @@ const familyModuleTips = 'tips';
 const familyModuleSeatTrip = 'seat_trip';
 const familyModuleGetPlus = 'get_plus';
 const familyModuleHire = 'hire';
+// myGiG (0329): its key is familyModuleMygig in core/mygig.dart.
 
 const bookingModules = <BookingModule>[
   BookingModule(familyModuleRide, 'Ride',
@@ -74,6 +75,14 @@ const bookingModules = <BookingModule>[
       tables: ['ride_requests', 'hire_bookings'],
       repositories: ['lib/src/data/ride_repository.dart', 'lib/src/data/hourly_hire_repository.dart'],
       screens: ['lib/src/features/ride/home_screen.dart']),
+  // myGiG (0329): a street hail for drivers who aren't TEKSI. The server
+  // makes the ride_requests row when the passenger accepts (mygig_make_ride),
+  // so the ride's Family trigger runs family_attach_trip with module
+  // 'mygig'; the passenger sees the Family row where they accept the fare.
+  BookingModule('mygig', 'myGiG',
+      tables: ['ride_requests'],
+      repositories: ['lib/src/data/mygig_repository.dart'],
+      screens: ['lib/src/features/mygig/mygig_passenger.dart']),
   BookingModule(familyModuleCityToCity, 'City to City',
       tables: ['c2c_bookings'],
       repositories: ['lib/src/data/city_to_city_repository.dart'],
@@ -121,9 +130,11 @@ const bookingModules = <BookingModule>[
 ];
 
 /// The module a ride request books, as the server reads it
-/// (family_ride_module, 0317 and 0326): an hourly hire, Courier, Freight, a
-/// scheduled ride, else Ride.
-String rideBookingModule({bool scheduled = false, bool freight = false, bool courier = false, bool hire = false}) {
+/// (family_ride_module, 0317, 0326 and 0329): myGiG, an hourly hire,
+/// Courier, Freight, a scheduled ride, else Ride.
+String rideBookingModule(
+    {bool scheduled = false, bool freight = false, bool courier = false, bool hire = false, bool mygig = false}) {
+  if (mygig) return 'mygig';
   if (hire) return familyModuleHire;
   if (courier) return familyModuleCourier;
   if (freight) return familyModuleFreight;

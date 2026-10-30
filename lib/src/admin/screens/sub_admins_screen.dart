@@ -21,6 +21,7 @@ import '../../core/city_ride_extras.dart' show cityRideExtrasPage;
 import '../../core/rider_audio.dart' show riderAudioPage;
 import '../../core/premium_plus.dart' show premiumPlusPage;
 import '../../core/family.dart' show familyAdminPage;
+import '../../core/mygig.dart' show mygigAdminPage;
 import '../../core/office_nas.dart' show officeNasPage;
 import '../../core/rider_live_map.dart' show riderLiveMapPage;
 import 'geo/place_types_screen.dart' show placeTypesPage;
@@ -60,6 +61,7 @@ final grantablePages = <String, String>{
   riderAudioPage: 'Settings · Rider audio protection',
   premiumPlusPage: 'Settings · Premium and GET.Plus',
   familyAdminPage: 'People · Family',
+  mygigAdminPage: 'Operations · myGiG',
   officeNasPage: 'Settings · Office NAS',
   riderLiveMapPage: 'Settings · Rider live map',
 };

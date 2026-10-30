@@ -266,9 +266,11 @@ class AdminRepository {
 
   // ---- Rides ---------------------------------------------------------------
 
-  Future<List<Map<String, dynamic>>> rides({List<String>? statuses, int limit = 200}) async {
+  Future<List<Map<String, dynamic>>> rides({List<String>? statuses, int limit = 200, bool mygigOnly = false}) async {
     var q = _db.from('ride_requests').select();
     if (statuses != null && statuses.isNotEmpty) q = q.inFilter('status', statuses);
+    // myGiG rides only (0329).
+    if (mygigOnly) q = q.not('mygig', 'is', null);
     return _withPrivate(List<Map<String, dynamic>>.from(await q.order('created_at', ascending: false).limit(limit)));
   }
 

@@ -33,6 +33,8 @@ import '../../data/my_ride_repository.dart' show favouriteRiderIdsProvider, serv
 import '../../data/partner_doc_check.dart';
 import '../../data/partner_type_check.dart';
 import '../../core/partner_type_rules.dart' show PartnerTypeCheck, hailNotOfferedMessage;
+import '../../data/mygig_repository.dart' show mygigAt, mygigConfigProvider;
+import '../mygig/mygig_entry.dart' show MygigTodayLine, mygigButtonShows, openMygig;
 import '../../providers.dart';
 import '../../data/driver_presence.dart' show driverPresenceProvider;
 import '../../core/ride_offers.dart';
@@ -124,7 +126,10 @@ const wideDriverPanelScrollBelow = 640.0;
 /// Driver mode: go online, see open requests live, accept one.
 
 class PartnerScreen extends ConsumerStatefulWidget {
-  const PartnerScreen({super.key, this.remoteActionId});
+  const PartnerScreen({super.key, this.remoteActionId, this.openMygigNow = false});
+
+  /// The side menu's myGiG row: the myGiG checks and sheet open once up.
+  final bool openMygigNow;
 
   /// Support's request (Edit Partner › Change status, 0286) the driver
   /// tapped to confirm: run through this screen's own switch once it is up.
@@ -351,6 +356,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       if (!mounted) return;
       _remoteSlot.set(_remote);
       _runRemote(widget.remoteActionId);
+      if (widget.openMygigNow) _openMygigFromMenu();
     });
     _resume();
     _locate();
@@ -371,10 +377,24 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     _fixes = ref.read(driverPositionStreamProvider)().listen(_onFix, onError: (_) {});
   }
 
+  /// The side menu's myGiG row (`/drive?mygig=1`): the checks and the
+  /// sheet, then the address goes back to plain `/drive`.
+  void _openMygigFromMenu() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Plain /drive first, so a page the sheet opens stays on top.
+      GoRouter.of(context).go('/drive');
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(openMygig(context, ref, lat: _me?.latitude, lng: _me?.longitude));
+      });
+    });
+  }
+
   @override
   void didUpdateWidget(PartnerScreen old) {
     super.didUpdateWidget(old);
     if (widget.remoteActionId != old.remoteActionId) _runRemote(widget.remoteActionId);
+    if (widget.openMygigNow && !old.openMygigNow) _openMygigFromMenu();
   }
 
   /// Support's request [id], tapped to confirm: this screen is up, so it
@@ -1252,6 +1272,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                         ),
                       ),
                     ),
+                    // myGiG today against the daily limit, and the pass (0329).
+                    if (partnerCanDrive(p)) MygigTodayLine(lat: _me?.latitude, lng: _me?.longitude),
                     // A driver asking this partner to take over their trip (0199).
                     const HandoverOffersCard(),
                     // At an airport: the waiting queue (0249).
@@ -1412,6 +1434,17 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                     tooltip: 'Meter Digital',
                     icon: Icons.speed,
                     onPressed: () => _openMeter(partner.value!),
+                  ),
+                // myGiG (0329): where the driver's type allows it and there
+                // is no active trip (the home shows none).
+                if (partner.value != null &&
+                    partnerCanDrive(partner.value!) &&
+                    mygigButtonShows(ref.watch(mygigConfigProvider(mygigAt(_me?.latitude, _me?.longitude))).value))
+                  _floatingButton(
+                    key: const ValueKey('partner-mygig'),
+                    tooltip: 'myGiG',
+                    icon: Icons.hail,
+                    onPressed: () => openMygig(context, ref, lat: _me?.latitude, lng: _me?.longitude),
                   ),
                 if (partner.value != null &&
                     partnerCanDrive(partner.value!) &&

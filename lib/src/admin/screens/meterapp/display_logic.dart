@@ -120,6 +120,9 @@ const standGroupsMenuItemId = 'stand-groups';
 
 /// The driver's permits, any time (0254).
 const myPermitMenuItemId = 'my-permit';
+/// The driver menu's myGiG: a street hail for drivers who aren't TEKSI
+/// (0329); shown where the driver's type allows it.
+const mygigMenuItemId = 'mygig';
 /// The driver menu's Telematics: their km and trips (0255).
 const telematicsMenuItemId = 'telematics';
 /// The driver menu's Services: what the car in use takes (0263).
@@ -128,6 +131,7 @@ const servicesMenuItemId = 'services';
 const defaultPartnerMenuItems = <(String, String)>[
   ('teksi-ev', 'Book TEKSI EV'),
   ('dashboard', 'Dashboard'),
+  (mygigMenuItemId, 'myGiG'), // this app's own (0329): a street hail for drivers who aren't TEKSI
   (myRideCodeMenuItemId, 'My Ride code'), // this app's own; the Expo menu skips it
   ('earnings', 'Earnings'),
   (telematicsMenuItemId, 'Telematics'), // this app's own (0255); the Expo menu skips it
@@ -223,6 +227,7 @@ const defaultMenuIconNames = <String, Map<String, String>>{
     'vehicle-information': 'Car',
     'my-qr': 'Tag',
     'dashboard': 'Settings',
+    'mygig': 'Car',
     'my-ride-code': 'Star',
     'earnings': 'Wallet',
     'telematics': 'Clock',

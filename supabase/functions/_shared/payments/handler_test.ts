@@ -65,6 +65,7 @@ function world(opts: { whsec?: boolean; admin?: boolean } = {}): World {
     now: () => 1700000000_000,
     user: (auth) => Promise.resolve(auth === "Bearer user" ? { id: USER } : auth === "Bearer admin" ? { id: OTHER } : null),
     mayLinkOrder: (auth, id) => Promise.resolve(auth === "Bearer admin" && id === ORDER),
+    mayLinkMygig: (auth, id) => Promise.resolve(auth === "Bearer user" && id === ORDER),
     canEditGateways: (auth) => Promise.resolve(auth ? auth === "Bearer admin" || opts.admin === true : null),
     db: {
       rpc(fn, a: any) {
@@ -127,6 +128,33 @@ function world(opts: { whsec?: boolean; admin?: boolean } = {}): World {
               stand_name: "Link Mall",
             });
           }
+          case "payment_mygig_intent": {
+            let row: any = intents.find((i) => i.purpose_ref === a.p_request && i.status === "pending");
+            if (!row) {
+              row = {
+                id: `00000000-0000-0000-0000-${String(++n).padStart(12, "0")}`,
+                reference: `GR26103000000000${n}`,
+                user_id: null,
+                purpose: "ride_card",
+                purpose_ref: a.p_request,
+                gateway_id: GW,
+                provider: "stripe",
+                test_mode: false,
+                amount: 18,
+                currency: "MYR",
+                status: "pending",
+                provider_ref: null,
+                checkout_url: null,
+                applied: null,
+                failure: null,
+              };
+              intents.push(row);
+            }
+            return Promise.resolve({ ...row, customer: { name: "Ben", phone: "+60100329099", email: "" } });
+          }
+          case "payment_mygig_link_set":
+            links.push({ request: a.p_request, url: a.p_url, actor: "driver" });
+            return Promise.resolve(null);
           case "payment_dispatch_link_set":
             links.push({ request: a.p_request, url: a.p_url, actor: a.p_actor });
             return Promise.resolve(null);
@@ -362,4 +390,16 @@ Deno.test("dispatch link: refusals", async () => {
   const m = await handle(post("dispatch-link", { request_id: ORDER }, "Bearer admin"), w.deps);
   assertEquals((await m.json()).error, "fare_unknown");
   assertEquals(w.links, []);
+});
+
+Deno.test("myGiG link: the ride's driver gets the pay link, put on the ride and texted; nobody else", async () => {
+  const w = world();
+  assertEquals((await handle(post("mygig-link", { request_id: ORDER }), w.deps)).status, 401);
+  assertEquals((await handle(post("mygig-link", { request_id: ORDER }, "Bearer admin"), w.deps)).status, 403);
+  w.answers.push([200, { id: "cs_m", url: "https://checkout.stripe.com/c/pay/cs_m" }]);
+  const r = await handle(post("mygig-link", { request_id: ORDER }, "Bearer user"), w.deps);
+  const body = JSON.parse(await noSecrets(r));
+  assertEquals([r.status, body.url, body.amount], [200, "https://checkout.stripe.com/c/pay/cs_m", 18]);
+  assertEquals(w.links, [{ request: ORDER, url: "https://checkout.stripe.com/c/pay/cs_m", actor: "driver" }]);
+  assertEquals(w.intents[0].purpose, "ride_card");
 });
