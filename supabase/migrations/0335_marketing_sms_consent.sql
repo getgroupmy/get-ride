@@ -586,4 +586,9 @@ $$;
 revoke execute on function public.mygig_link_view(text) from public;
 grant execute on function public.mygig_link_view(text) to anon, authenticated;
 
+-- ---- 7. The help assistant's VoiceProtection answer says the passenger is told ------------------------
+update public.help_articles
+   set answer = 'VoiceProtection is a switch in Settings and Safety. With it on, the driver''s phone records trip audio from Start trip to the end of the ride. The recording stays on that phone, is never played back in the app and is deleted after 24 hours. It only reaches our team if a ride is reported and a support agent asks for it. While it records, the passenger sees "Your driver is recording audio for safety" on their trip screen. Phones only.'
+ where id = '68656c70-0000-4000-8000-000000000030';
+
 notify pgrst, 'reload schema';
