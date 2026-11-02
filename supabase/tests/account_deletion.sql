@@ -238,9 +238,9 @@ select pg_temp.refused($q$select public.admin_final_delete_account('00000000-000
 select pg_temp.as_user('00000000-0000-0000-0000-0000000194c1');
 select pg_temp.check((select count(*) from public.accounts_due_final_deletion()) = 1, 'one account due');
 select pg_temp.check(jsonb_array_length(public.admin_final_delete_account('00000000-0000-0000-0000-0000000194a1')
-                       -> 'folders') = 3, 'the folders to empty');
+                       -> 'folders') = 4, 'the folders to empty (voice-protection too: 0334)');
 select pg_temp.check(jsonb_array_length(public.admin_final_delete_account('00000000-0000-0000-0000-0000000194a1')
-                       -> 'folders') = 3, 'safe to run again');
+                       -> 'folders') = 4, 'safe to run again');
 reset role;
 select pg_temp.check((select name = 'Deleted user' and ic is null and pin_hash is null and deleted_phone is null
                              and final_deleted_at is not null

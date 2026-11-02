@@ -37,7 +37,8 @@ List<String> accountDeletionEffects(AccountDeletionCheck c) => [
   'Your rides and receipts are kept on record, as the law requires.',
   'Your phone number is free: signing up with it again makes a new account. '
       'Support can move your old history to it if you ask.',
-  'After ${c.retentionDays} days your personal details are wiped for good.',
+  'After ${c.retentionDays} days your personal details are wiped from your account. Copies in support '
+      'records and backups are kept securely and are not used for anything else.',
 ];
 
 /// The server's answer, as a sentence; null when it was deleted.
@@ -88,10 +89,19 @@ class AccountEvent {
 
   /// "Deleted by the user", "Linked: Trips and receipts, Ratings", ….
   String get summary => switch (kind) {
+    'deleted' when raw['detail'] is Map && (raw['detail'] as Map)['method'] == 'phone_code' =>
+      'Deleted after a request on the web',
     'deleted' => 'Deleted by the user',
     'linked' =>
       'Linked to a new account: ${categories.map((c) => AccountLinkCategory.byKey(c)?.label ?? c).join(', ')}',
     'final_deleted' => 'Personal data wiped (final deletion)',
+    // The web page (0334).
+    'deletion_requested' => 'Asked to delete on the web, by phone code',
+    'deletion_cancelled' => switch (raw['detail'] is Map ? (raw['detail'] as Map)['why'] : null) {
+      'signed_in' => 'Deletion request cancelled: the user signed in',
+      'admin' => 'Deletion request cancelled by an admin',
+      _ => 'Deletion request cancelled',
+    },
     _ => kind,
   };
 }

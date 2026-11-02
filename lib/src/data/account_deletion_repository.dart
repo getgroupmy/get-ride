@@ -1,9 +1,10 @@
 // Deleting your own account, and the admin's linking and final deletion
-// (migration 0194).
+// (migration 0194); the web page's requests (0334).
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/account_deletion.dart';
+import '../core/account_deletion_web.dart';
 import '../providers.dart';
 import 'live_tables.dart';
 import 'meter_session_store.dart';
@@ -28,6 +29,26 @@ class AccountDeletionRepository {
     } catch (_) {}
   }
 
+  // ---- The web page (0334) --------------------------------------------------------------------
+
+  /// The retention and grace days, for anyone.
+  Future<AccountDeletionInfo> publicInfo() async =>
+      AccountDeletionInfo.fromJson(await _db.rpc('account_deletion_public_info'));
+
+  /// Texts a code to [phone] when it has an account. Answers the same either way.
+  Future<void> requestCode(String phone) async {
+    await _db.rpc('request_account_deletion_code', params: {'p_phone': phone});
+  }
+
+  /// The texted code: the server's answer (`{ok, graceDays, deleteAfter}` or `{error}`).
+  Future<Object?> confirmRequest(String phone, String code, {String? reason}) =>
+      _db.rpc('confirm_account_deletion_request', params: {'p_phone': phone, 'p_code': code, 'p_reason': reason});
+
+  /// Sign in and delete: the signed-in account, confirmed by the SMS sign-in
+  /// just done. Null when deleted, else why not.
+  Future<String?> deleteFromWeb({String? reason}) async =>
+      deleteAccountProblem(await _db.rpc('delete_my_account_web', params: {'p_reason': reason}));
+
   // ---- Admin ----------------------------------------------------------------------------------
 
   Future<int> retentionDays() async {
@@ -43,6 +64,36 @@ class AccountDeletionRepository {
       },
     );
     return r is Map && r['retentionDays'] is num ? (r['retentionDays'] as num).toInt() : days;
+  }
+
+  Future<int> graceDays() async {
+    final r = await _db.rpc('account_deletion_web_config');
+    return r is Map && r['graceDays'] is num ? (r['graceDays'] as num).toInt() : 7;
+  }
+
+  Future<int> saveGraceDays(int days) async {
+    final r = await _db.rpc(
+      'set_account_deletion_web_config',
+      params: {
+        'p_config': {'graceDays': days},
+      },
+    );
+    return r is Map && r['graceDays'] is num ? (r['graceDays'] as num).toInt() : days;
+  }
+
+  /// Requests from the web page, newest first: one account's, or all.
+  Future<List<AccountDeletionRequest>> requests({String? profileId, String? status}) async => [
+    for (final r
+        in await _db.rpc(
+              'admin_account_deletion_requests',
+              params: {'p_profile': profileId, 'p_status': status},
+            )
+            as List)
+      AccountDeletionRequest(Map<String, dynamic>.from(r as Map)),
+  ];
+
+  Future<void> cancelRequest(String id) async {
+    await _db.rpc('admin_cancel_account_deletion_request', params: {'p_id': id});
   }
 
   Future<List<AccountEvent>> events(String profileId) async => [
@@ -134,5 +185,38 @@ final accountRetentionDaysProvider = FutureProvider.autoDispose<int>((ref) async
     return await ref.watch(accountDeletionRepositoryProvider).retentionDays();
   } catch (_) {
     return 365;
+  }
+});
+
+/// The admin's grace days for a request by phone (0334).
+final accountDeletionGraceDaysProvider = FutureProvider.autoDispose<int>((ref) async {
+  ref.watchAdminLive('profiles');
+  try {
+    return await ref.watch(accountDeletionRepositoryProvider).graceDays();
+  } catch (_) {
+    return 7;
+  }
+});
+
+/// One account's requests from the web page (0334); none when they can't be read.
+final accountDeletionRequestsProvider = FutureProvider.autoDispose.family<List<AccountDeletionRequest>, String>((
+  ref,
+  profileId,
+) async {
+  ref.watchAdminLive('profiles');
+  try {
+    return await ref.watch(accountDeletionRepositoryProvider).requests(profileId: profileId);
+  } catch (_) {
+    return const [];
+  }
+});
+
+/// The accounts with a request in its grace days, for the Users filter.
+final accountDeletionRequestedIdsProvider = FutureProvider.autoDispose<Set<String>>((ref) async {
+  ref.watchAdminLive('profiles');
+  try {
+    return deletionRequestedIds(await ref.watch(accountDeletionRepositoryProvider).requests(status: 'in_grace'));
+  } catch (_) {
+    return const {};
   }
 });
