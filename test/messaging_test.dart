@@ -11,6 +11,7 @@ import 'package:get_ride/src/core/messaging.dart';
 import 'package:get_ride/src/core/session_access.dart';
 import 'package:get_ride/src/data/messaging_repository.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:get_ride/src/widgets/search_select.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // No token refresh: its timer would outlive the test.
@@ -47,6 +48,16 @@ class _FakeRepo extends MessagingRepository {
   Future<List<Map<String, dynamic>>> recentInbox({int limit = 20}) async => const [];
   @override
   Future<List<SessionKey>> sessionKeys() async => const [];
+  @override
+  Future<MarketingReach> marketingReach() async => (optedIn: 12, withPhone: 40);
+
+  final marketingSent = <(List<String>, String)>[];
+  MarketingSmsResult marketingAnswer = const MarketingSmsResult(queued: 1, notOptedIn: 2, noAccount: 1);
+  @override
+  Future<MarketingSmsResult> queueMarketingSms({required List<String> to, required String body}) async {
+    marketingSent.add((to, body));
+    return marketingAnswer;
+  }
 }
 
 void main() {
@@ -334,6 +345,75 @@ void main() {
         expect(find.byKey(const ValueKey('messaging-outage')), findsOneWidget);
         expect(find.textContaining('Gateway offline since'), findsOneWidget);
         expect(find.textContaining('Sign-in codes can\'t be sent'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pump(const Duration(minutes: 1));
+      });
+    }
+  });
+
+  group('marketing SMS only to people who opted in (0335)', () {
+    test('several numbers are read; what is not a number is kept for the server to count', () {
+      expect(parseSmsNumbers('+60 12-345 6789, 0198765432\n\n;call me'), ['+60123456789', '0198765432', 'call me']);
+      expect(parseSmsNumbers('  '), isEmpty);
+    });
+
+    test('the answer says how many were queued and how many were left out, and why', () {
+      final r = MarketingSmsResult.fromJson({'queued': 3, 'notOptedIn': 2, 'noAccount': '1', 'invalid': 1});
+      expect((r.queued, r.leftOut), (3, 4));
+      final text = marketingSmsSummary(r);
+      expect(text, startsWith('Queued 3 numbers.'));
+      expect(text, contains("Left out 4 numbers: 2 numbers haven't turned on News and offers, 1 number has no GET.ride account, "
+          "1 entry isn't a phone number."));
+      expect(text, isNot(contains('→')));
+      expect(marketingSmsSummary(const MarketingSmsResult(queued: 1)), isNot(contains('Left out')));
+      expect(marketingSmsSummary(const MarketingSmsResult(noAccount: 2)), startsWith('Nothing was queued.'));
+      expect(MarketingSmsResult.fromJson(null).leftOut, 0);
+      expect(marketingReachFrom({'optedIn': 5, 'withPhone': 9}), (optedIn: 5, withPhone: 9));
+      expect(MessagingChannel.marketing.description, contains('News and offers'));
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('the admin sends to many and is told who was left out (${b.name})', (tester) async {
+        tester.view.physicalSize = const Size(900, 9000);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final repo = _FakeRepo([_device('g1', ago: const Duration(seconds: 5))]);
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              supabaseProvider.overrideWithValue(_db),
+              adminAccessProvider.overrideWith((_) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+              messagingRepositoryProvider.overrideWithValue(repo),
+              messagingClockProvider.overrideWithValue(() => _now),
+            ],
+            child: MaterialApp(
+              theme: ThemeData(brightness: b),
+              home: const AdminMessagingScreen(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('messaging-marketing-consent')), findsNothing, reason: 'support is picked');
+
+        // Pick Marketing blast in the Channel box.
+        tester
+            .widget<SearchableDropdownFormField<MessagingChannel>>(
+              find.byWidgetPredicate((w) => w is SearchableDropdownFormField<MessagingChannel>),
+            )
+            .onChanged!(MessagingChannel.marketing);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('messaging-marketing-consent')), findsOneWidget);
+        expect(find.textContaining('only go to people who turned on News and offers'), findsOneWidget);
+        expect(find.textContaining('12 of 40 accounts with a phone have it on'), findsOneWidget);
+
+        await tester.enterText(find.byKey(const ValueKey('messaging-test-to')), '+60123456789, 0198765432');
+        await tester.ensureVisible(find.byKey(const ValueKey('messaging-test-send')));
+        await tester.tap(find.byKey(const ValueKey('messaging-test-send')));
+        await tester.pumpAndSettle();
+        expect(repo.marketingSent.single.$1, ['+60123456789', '0198765432']);
+        expect(find.textContaining('Queued 1 number.'), findsOneWidget, reason: 'a modal, not a bar');
+        expect(find.textContaining('Left out 3 numbers'), findsOneWidget);
+        expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
         await tester.pump(const Duration(minutes: 1));
       });

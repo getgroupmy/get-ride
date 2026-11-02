@@ -94,13 +94,17 @@ Permissions, and why:
   Settings (off by default). A full explanation is shown before the system
   asks, with Continue and Not now.
 - Notifications: driver offers, trip updates, ride requests for drivers,
-  chat messages, calls, payments, safety. News and offers only if the user
-  ticks "Send me news and offers" (off by default).
+  chat messages, calls, payments, safety. News and offers (promotion pushes
+  and promotion SMS) only if the user ticks "Send me news and offers" (off
+  by default); a STOP reply to a promotion SMS turns it off.
 - Camera: documents, the live selfie check, parcel photos, chat photos, QR
   codes.
-- Microphone: in-app calls and voice notes, and optional Audio protection
-  that records trip audio on the phone, encrypted, deleted after 24 hours
-  unless a reported problem needs it.
+- Microphone: in-app calls (not recorded) and voice notes, and optional trip
+  audio recording: a passenger's Audio protection (the driver is told) or a
+  driver's VoiceProtection (shown on the driver's screen; the passenger is not
+  told in the app, which the privacy policy states plainly). The recording
+  stays on the phone, encrypted, deleted after 24 hours unless a reported
+  problem needs it.
 - Bluetooth (nearby devices): confirms the passenger and the car are together
   at pickup (a one-time code, no name or number), and drivers' OBD-II reader
   and receipt printer. Never used to find where you are.

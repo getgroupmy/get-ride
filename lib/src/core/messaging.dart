@@ -8,7 +8,7 @@
 
 enum MessagingChannel {
   otp('otp', 'OTP', 'Sign-in codes'),
-  marketing('marketing', 'Marketing blast', 'Promotions sent to many users'),
+  marketing('marketing', 'Marketing blast', 'Promotions, only to people who turned on News and offers'),
   supportCall('support_call', 'Support call', 'In-app VoIP calls with support'),
   supportMessage('support_message', 'Support message', 'Text conversations with support'),
   opsAlert('ops_alert', 'Ops alert', 'SOS alerts texted to the safety team (migration 0193)');
@@ -273,4 +273,64 @@ GatewayOutage? gatewayOutage(List<MessagingRoute> routes, List<MessagingDevice> 
   }
   if (channels.isEmpty) return null;
   return (channels: channels, signIn: signIn, since: since);
+}
+
+// ---- Marketing SMS go only to people who opted in (migration 0335) ----------
+
+/// The numbers in [raw] (separated by commas, semicolons or new lines), each
+/// as [normalizeSmsNumber] takes it; anything that isn't a number is kept as
+/// typed, so the server counts it as "not a phone number".
+List<String> parseSmsNumbers(String raw) => [
+  for (final part in raw.split(RegExp(r'[,;\n]+')))
+    if (part.trim().isNotEmpty) normalizeSmsNumber(part) ?? part.trim(),
+];
+
+/// What admin_queue_marketing_sms answered: how many were queued and how many
+/// were left out, and why.
+class MarketingSmsResult {
+  const MarketingSmsResult({this.queued = 0, this.notOptedIn = 0, this.noAccount = 0, this.invalid = 0});
+
+  factory MarketingSmsResult.fromJson(Object? json) {
+    final m = json is Map ? json : const {};
+    int n(Object? v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}') ?? 0;
+    return MarketingSmsResult(
+      queued: n(m['queued']),
+      notOptedIn: n(m['notOptedIn']),
+      noAccount: n(m['noAccount']),
+      invalid: n(m['invalid']),
+    );
+  }
+
+  final int queued;
+  final int notOptedIn;
+  final int noAccount;
+  final int invalid;
+
+  int get leftOut => notOptedIn + noAccount + invalid;
+}
+
+String _people(int n) => n == 1 ? '1 number' : '$n numbers';
+
+/// The admin's message after a marketing send, in plain words.
+String marketingSmsSummary(MarketingSmsResult r) {
+  final queued = r.queued == 0
+      ? 'Nothing was queued.'
+      : 'Queued ${_people(r.queued)}. The gateway phone routed to Marketing blast sends them.';
+  if (r.leftOut == 0) return queued;
+  final why = [
+    if (r.notOptedIn > 0) "${_people(r.notOptedIn)} ${r.notOptedIn == 1 ? "hasn't" : "haven't"} turned on News and offers",
+    if (r.noAccount > 0) '${_people(r.noAccount)} ${r.noAccount == 1 ? 'has' : 'have'} no GET.ride account',
+    if (r.invalid > 0) r.invalid == 1 ? "1 entry isn't a phone number" : "${r.invalid} entries aren't phone numbers",
+  ];
+  return '$queued\n\nLeft out ${_people(r.leftOut)}: ${why.join(', ')}. Marketing SMS only go to people who '
+      'turned on News and offers.';
+}
+
+/// How many live accounts with a phone have News and offers on.
+typedef MarketingReach = ({int optedIn, int withPhone});
+
+MarketingReach marketingReachFrom(Object? json) {
+  final m = json is Map ? json : const {};
+  int n(Object? v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}') ?? 0;
+  return (optedIn: n(m['optedIn']), withPhone: n(m['withPhone']));
 }

@@ -95,6 +95,7 @@ void main() {
       expect(mic, allOf(contains('Audio protection'), contains('24 hours'), contains('support')));
       final notif = permissionNoticeItems.firstWhere((i) => i.id == 'notifications').why;
       expect(notif, contains('Settings > Notifications > News and offers'));
+      expect(notif, allOf(contains('as SMS to your number'), contains('reply STOP')), reason: '0335: SMS too');
     });
 
     test('the manifest and Info.plist ask for what the notice explains', () {
@@ -137,6 +138,7 @@ void main() {
         // The background disclosure is open; News and offers starts unticked.
         expect(find.textContaining('even when the app is closed or not in use'), findsWidgets);
         expect(tester.widget<CheckboxListTile>(find.byKey(const ValueKey('permissions-notice-news'))).value, isFalse);
+        expect(find.textContaining('by notification and by SMS'), findsOneWidget, reason: '0335: SMS too');
         expect(permissionBlockAction(PermissionBlock.notAllTheTime), 'Continue');
         expect(find.byKey(const ValueKey('permissions-notice-photos')), findsNothing);
         expect(find.text('OK'), findsOneWidget);
@@ -383,6 +385,9 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('News and offers'), findsOneWidget);
         expect(find.textContaining('Trip, safety, payment and account messages always come'), findsOneWidget);
+        // 0335: the one switch covers marketing SMS as well as pushes.
+        expect(find.textContaining('by notification and by SMS'), findsOneWidget);
+        expect(find.textContaining('Reply STOP'), findsOneWidget);
         expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('news-offers-switch'))).value, isFalse);
         await tester.tap(find.byKey(const ValueKey('news-offers-switch')));
         await tester.pumpAndSettle();

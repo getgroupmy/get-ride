@@ -104,8 +104,8 @@ class _PermissionsNoticeDialogState extends State<PermissionsNoticeDialog> {
             value: _news,
             onChanged: (v) => setState(() => _news = v ?? false),
             title: const Text(newsOffersChoice),
-            subtitle: const Text('Occasional announcements and promotions. Change it any time in Settings > '
-                'Notifications > News and offers.'),
+            subtitle: const Text('Occasional announcements and promotions, by notification and by SMS. Change it '
+                'any time in Settings > Notifications > News and offers, or reply STOP to a promotion SMS.'),
           ),
         ],
       ),
