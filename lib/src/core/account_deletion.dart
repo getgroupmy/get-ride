@@ -37,7 +37,8 @@ List<String> accountDeletionEffects(AccountDeletionCheck c) => [
   'Your rides and receipts are kept on record, as the law requires.',
   'Your phone number is free: signing up with it again makes a new account. '
       'Support can move your old history to it if you ask.',
-  'After ${c.retentionDays} days your personal details are wiped for good.',
+  'After ${c.retentionDays} days your personal details are wiped from your account. Copies in support '
+      'records and backups are kept securely and are not used for anything else.',
 ];
 
 /// The server's answer, as a sentence; null when it was deleted.

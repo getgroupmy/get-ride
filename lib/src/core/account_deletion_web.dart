@@ -46,8 +46,9 @@ List<String> deletionRetentionStatement(AccountDeletionInfo i) => [
       'conversations, with the personal details that go with them.',
   'We keep them because the law requires us to keep tax and financial records, because we must be able to '
       'look into safety reports and fraud, and so we can settle disputes about trips and payments.',
-  'After ${dayCount(i.retentionDays)} your personal details are wiped for good. Trip and payment records '
-      'are then kept only without your name and phone number.',
+  'After ${dayCount(i.retentionDays)} your personal details are wiped from your account. Trip and payment '
+      'records are then kept only without your name and phone number. Copies in support records and backups '
+      'are kept securely and are not used for anything else.',
 ];
 
 /// Every placeholder on the page, for the owner's checklist.

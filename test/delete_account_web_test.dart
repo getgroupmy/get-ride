@@ -117,7 +117,7 @@ void main() {
       expect(all, contains('safety reports'));
       expect(all, contains('fraud'));
       expect(all, contains('disputes'));
-      expect(all, contains('After 365 days your personal details are wiped for good'));
+      expect(all, contains('After 365 days your personal details are wiped from your account'));
       expect(deletionPageInAppPath, '/account/settings/delete');
     });
 
