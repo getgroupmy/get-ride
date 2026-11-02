@@ -75,6 +75,7 @@ class RideService {
     this.seats, {
     this.id,
     this.image,
+    this.mapIcon,
     this.serviceTypes = const [],
     this.parentIds = const [],
     this.rates,
@@ -91,6 +92,11 @@ class RideService {
 
   /// The catalogue's picture of the vehicle (hero image, else icon).
   final String? image;
+
+  /// The catalogue's Map Icon (`mapIconUri`): the vehicle drawn on the map,
+  /// a Media Gallery upload, single or multi-angle (0336); null for the
+  /// built-in marker.
+  final String? mapIcon;
 
   /// The admin Vehicle Services entry this came from, when it did.
   final String? id;

@@ -36,6 +36,7 @@ List<RideService> rideServicesFromCatalogue(List<CatalogueEntry> entries, Map<St
         seats != null && seats > 0 ? seats : 4,
         id: e.id,
         image: _image(v['heroImageUri']) ?? _image(v['iconUri']),
+        mapIcon: _image(v['mapIconUri']),
         serviceTypes: types,
         parentIds: serviceParentIds(v),
         rates: ServiceRates.fromValues(v),

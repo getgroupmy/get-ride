@@ -17,6 +17,7 @@ import '../../widgets/common.dart' show inkOn, mutedTextColor;
 import '../../core/media_assets.dart' show isMediaRef;
 import '../../widgets/media_image.dart';
 import '../../widgets/net_image.dart';
+import '../../widgets/map_vehicle_icon.dart';
 import '../../widgets/scroll_fade.dart';
 import '../../core/page_styles.dart' show homeSurface;
 import '../../core/smart_address.dart' show placeSubtitle;
@@ -966,20 +967,28 @@ class PickupPill extends StatelessWidget {
 /// Colours of the simulated cars, by the selected service's position.
 const _carColors = [Color(0xFF111111), Color(0xFF0F4C81), Color(0xFF1F7A3A), Color(0xFF8B5A00)];
 
-Marker demoCarMarker(DemoCar c, int serviceIndex) => Marker(
+/// A free car: the selected service's Map Icon when it has one ([icon],
+/// a multi-angle icon showing the frame for the car's heading, upright),
+/// else the coloured dot with an arrow turned to the heading.
+Marker demoCarMarker(DemoCar c, int serviceIndex, {String? icon}) => Marker(
   point: LatLng(c.lat, c.lng),
   width: 30,
   height: 30,
-  child: Container(
-    decoration: BoxDecoration(
-      color: _carColors[serviceIndex % _carColors.length],
-      shape: BoxShape.circle,
-      border: Border.all(color: Colors.white, width: 2),
-      boxShadow: const [BoxShadow(blurRadius: 3, color: Colors.black26)],
-    ),
-    child: Transform.rotate(
-      angle: c.heading * 3.141592653589793 / 180,
-      child: const Icon(Icons.navigation, size: 16, color: Colors.white),
+  child: MapVehicleIcon(
+    icon: icon,
+    heading: c.heading,
+    size: 30,
+    fallback: Container(
+      decoration: BoxDecoration(
+        color: _carColors[serviceIndex % _carColors.length],
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: const [BoxShadow(blurRadius: 3, color: Colors.black26)],
+      ),
+      child: Transform.rotate(
+        angle: c.heading * 3.141592653589793 / 180,
+        child: const Icon(Icons.navigation, size: 16, color: Colors.white),
+      ),
     ),
   ),
 );

@@ -1,7 +1,8 @@
 // Media Gallery → Upload: an icon, an image or a logo (light and dark
 // versions), with the background taken off on this device when asked
 // (core/background_removal.dart), a before/after preview on a checkerboard,
-// and "Follow the theme colour" for a one-colour icon.
+// and "Follow the theme colour" for a one-colour icon. A map icon is a single
+// picture or multi-angle (map_icon_angles_editor.dart, migration 0336).
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
@@ -11,9 +12,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 
 import '../../../core/background_removal.dart';
+import '../../../core/map_icon_angles.dart' show mapIconMinFrames;
 import '../../../core/media_assets.dart';
 import '../../../data/media_repository.dart';
 import '../../../widgets/page_style_host.dart';
+import 'map_icon_angles_editor.dart';
 
 /// One chosen file.
 typedef MediaFile = ({Uint8List bytes, String name});
@@ -84,6 +87,10 @@ class _MediaUploadDialogState extends ConsumerState<MediaUploadDialog> {
   double _strength = removalStrengthDefault;
   bool _tint = false;
   _Pick? _light, _dark;
+
+  /// A map icon drawn from several angles rather than one picture.
+  bool _multi = false;
+  List<AngleFrame> _frames = const [];
   final _name = TextEditingController();
   String? _error;
   bool _saving = false;
@@ -101,6 +108,7 @@ class _MediaUploadDialogState extends ConsumerState<MediaUploadDialog> {
     _remove = k.removeBackgroundByDefault;
     if (k != MediaKind.icon) _tint = false;
     if (k != MediaKind.logo) _dark = null;
+    if (k != MediaKind.mapIcon) _multi = false;
     _error = null;
     _refreshPreviews();
   });
@@ -170,8 +178,32 @@ class _MediaUploadDialogState extends ConsumerState<MediaUploadDialog> {
     }
   }
 
+  bool get _isMulti => _kind == MediaKind.mapIcon && _multi;
+
   bool get _canSave =>
-      !_saving && (_light != null || _dark != null) && mediaNameProblem(_name.text) == null;
+      !_saving &&
+      (_isMulti ? _frames.length >= mapIconMinFrames : (_light != null || _dark != null)) &&
+      mediaNameProblem(_name.text) == null;
+
+  /// Each angle made into a 256 × 256 PNG, all at one scale (not cut to
+  /// each one's shape), then the frames and the record saved.
+  Future<MediaAsset> _saveMulti() async {
+    final process = ref.read(mediaProcessorProvider);
+    final out = <({int deg, ProcessedMedia media})>[];
+    for (final f in _frames) {
+      final media = await process(MediaJob(
+        bytes: f.bytes,
+        mime: f.mime,
+        kind: MediaKind.mapIcon,
+        removeBackground: _remove,
+        strength: _strength,
+        trim: false,
+      ));
+      if (media.mime == 'image/svg+xml') throw const FormatException('Use PNG, JPG or WebP pictures for the angles.');
+      out.add((deg: f.deg, media: media));
+    }
+    return ref.read(mediaRepositoryProvider).saveMultiAngle(name: _name.text, frames: out);
+  }
 
   Future<void> _save() async {
     final problem = mediaNameProblem(_name.text);
@@ -181,6 +213,11 @@ class _MediaUploadDialogState extends ConsumerState<MediaUploadDialog> {
       _error = null;
     });
     try {
+      if (_isMulti) {
+        final asset = await _saveMulti();
+        if (mounted) Navigator.of(context).pop(asset);
+        return;
+      }
       final process = ref.read(mediaProcessorProvider);
       Future<ProcessedMedia?> run(_Pick? p) async => p == null
           ? null
@@ -214,6 +251,9 @@ class _MediaUploadDialogState extends ConsumerState<MediaUploadDialog> {
   String get _hint => switch (_kind) {
     MediaKind.icon => 'PNG, JPG, WebP or SVG, up to 2 MB. Saved as a 256 × 256 transparent PNG; an SVG is kept as it is.',
     MediaKind.image => 'PNG, JPG or WebP, up to 5 MB. Saved at most 1600 px wide as WebP, its shape kept.',
+    MediaKind.mapIcon when _multi => 'One vehicle drawn from several directions: the map shows the picture '
+        "nearest the car's heading, without turning it. PNG, JPG or WebP, up to 2 MB per angle. "
+        'Each saved as a 256 × 256 transparent PNG.',
     MediaKind.mapIcon => 'A marker shown on the map, e.g. a car seen from above. PNG, JPG, WebP or SVG, up to 2 MB. '
         'Saved as a 256 × 256 transparent PNG; an SVG is kept as it is.',
     MediaKind.logo => 'A light and a dark version, either one optional. PNG, JPG, WebP or SVG, up to 2 MB each. '
@@ -291,7 +331,7 @@ class _MediaUploadDialogState extends ConsumerState<MediaUploadDialog> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final onlySvg = [?_light, ?_dark].isNotEmpty && [?_light, ?_dark].every((p) => p.svg);
+    final onlySvg = !_isMulti && [?_light, ?_dark].isNotEmpty && [?_light, ?_dark].every((p) => p.svg);
     return AlertDialog(
       title: const Text('Upload'),
       content: SizedBox(
@@ -308,16 +348,46 @@ class _MediaUploadDialogState extends ConsumerState<MediaUploadDialog> {
                 selected: {_kind},
                 onSelectionChanged: _saving ? null : (s) => _setKind(s.first),
               ),
+            if (_kind == MediaKind.mapIcon) ...[
+              const SizedBox(height: 8),
+              SegmentedButton<bool>(
+                key: const ValueKey('media-map-mode'),
+                segments: const [
+                  ButtonSegment(value: false, label: Text('Single picture', key: ValueKey('media-map-single'))),
+                  ButtonSegment(value: true, label: Text('Multi-angle', key: ValueKey('media-map-multi'))),
+                ],
+                selected: {_multi},
+                onSelectionChanged: _saving ? null : (s) => setState(() {
+                  _multi = s.first;
+                  _error = null;
+                }),
+              ),
+            ],
             const SizedBox(height: 8),
             Text(_hint, style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
             const SizedBox(height: 12),
-            if (_isLogo) ...[
-              _fileRow('Light version', _light),
-              _fileRow('Dark version', _dark, dark: true),
-            ] else
-              _fileRow('Choose file', _light),
-            const SizedBox(height: 12),
-            _preview(_light, caption: _isLogo ? 'Light version' : null),
+            if (_isMulti)
+              MapIconAnglesEditor(
+                key: const ValueKey('media-map-angles'),
+                remove: _remove,
+                strength: _strength,
+                enabled: !_saving,
+                onChanged: (f) => setState(() => _frames = f),
+                onZipName: (zip) {
+                  if (_name.text.trim().isNotEmpty) return;
+                  final base = zip.replaceFirst(RegExp(r'\.[A-Za-z0-9]+$'), '').replaceAll(RegExp(r'[_-]+'), ' ').trim();
+                  setState(() => _name.text = base.length > mediaNameMax ? base.substring(0, mediaNameMax) : base);
+                },
+              )
+            else ...[
+              if (_isLogo) ...[
+                _fileRow('Light version', _light),
+                _fileRow('Dark version', _dark, dark: true),
+              ] else
+                _fileRow('Choose file', _light),
+              const SizedBox(height: 12),
+              _preview(_light, caption: _isLogo ? 'Light version' : null),
+            ],
             if (_isLogo) ...[const SizedBox(height: 12), _preview(_dark, caption: 'Dark version', dark: true)],
             const SizedBox(height: 8),
             SwitchListTile(

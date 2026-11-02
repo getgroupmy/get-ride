@@ -19,6 +19,7 @@ import '../../widgets/map_recenter.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/radar_pulse.dart';
+import '../../widgets/map_vehicle_icon.dart';
 import '../../widgets/ride_map.dart';
 import '../../widgets/road_info_layers.dart';
 
@@ -328,6 +329,9 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
           stops: [for (final s in r.stops) s.point],
           driver: _driver,
           driverHeading: widget.driverAt != null ? widget.driverHeading : r.partnerLiveHeading,
+          // The service's Map Icon, a multi-angle one showing the frame
+          // for the car's heading.
+          driverIcon: ref.watch(serviceMapIconProvider(r.service)),
           route: ahead?.points ?? route?.points ?? const [],
           satellite: ref.watch(mapSatelliteProvider),
           // With a car on the map the camera follows it instead; while a
