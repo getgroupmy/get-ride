@@ -15,6 +15,11 @@
 -- ============================================================================
 begin;
 
+-- 0333: a passenger's closed-app reports are kept only with the admin's
+-- switch on and their own opt-in; this test's accounts have both.
+update public.app_settings set value = '{"passengers": true}' where key = 'location_checkins';
+alter table public.profiles alter column location_checkins set default true;
+
 do $$
 begin
   if not has_function_privilege('authenticated', 'public.god_view_ping(uuid)', 'execute')

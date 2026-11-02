@@ -78,6 +78,11 @@ void main() {
       pushReachText({'recipients': 0, 'unlocated': 1}, kl),
       'Nobody in Kuala Lumpur, Malaysia would get this. 1 device has no known location yet and is left out.',
     );
+    // News and offers is opt-in (0333): who has not opted in is counted out.
+    expect(
+      pushReachText({'recipients': 3, 'accounts': 2, 'newsOff': 40}, const PushArea.everywhere()),
+      'Reaches 2 people on 3 devices. 40 people have not opted in to News and offers and are left out.',
+    );
   });
 
   group('where a phone says it is', () {

@@ -10,6 +10,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
+import '../../providers.dart' show storeReviewProvider;
+import '../store_review/demo_wallet.dart' show demoWalletProvider, showDemoTopUp;
 import '../../data/payments_repository.dart';
 import '../../widgets/in_app_page.dart';
 import '../../widgets/page_style_host.dart';
@@ -24,7 +26,16 @@ Future<void> _openCheckout(BuildContext context, PaymentCheckout c) =>
 const walletTopUpPresets = <double>[20, 50, 100, 200];
 
 /// Shows the top-up sheet. True when the wallet was credited.
-Future<bool?> showWalletTopUp(BuildContext context, {PaymentPageOpener? open}) => showAppSheet<bool>(
+Future<bool?> showWalletTopUp(BuildContext context, {PaymentPageOpener? open}) {
+  // The store review account tops up its demo wallet (0333): no checkout.
+  final container = ProviderScope.containerOf(context, listen: false);
+  if (container.read(storeReviewProvider)) {
+    return showDemoTopUp(context, credit: container.read(demoWalletProvider.notifier).topUp);
+  }
+  return _showWalletTopUp(context, open: open);
+}
+
+Future<bool?> _showWalletTopUp(BuildContext context, {PaymentPageOpener? open}) => showAppSheet<bool>(
       id: 'wallet.top-up',
       context: context,
       isScrollControlled: true,

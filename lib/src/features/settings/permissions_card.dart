@@ -2,12 +2,15 @@
 // where each stands, with the way to change it.
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_permissions.dart';
 import '../../core/permission_ask.dart';
+import '../../core/store_review.dart' show noticePlatformOf;
+import '../../providers.dart' show profileProvider, supabaseProvider;
+import '../../widgets/permissions_notice.dart';
 import '../../data/permission_probe.dart';
 import '../permissions/permission_actions.dart';
 
@@ -65,6 +68,16 @@ class _PermissionsCardState extends ConsumerState<PermissionsCard> {
     if (mounted) ref.invalidate(permissionStatusesProvider);
   }
 
+  Future<void> _why() async {
+    final news = await showPermissionsNotice(context, platform: noticePlatformOf(defaultTargetPlatform));
+    if (news) {
+      try {
+        await ref.read(supabaseProvider).rpc('set_news_offers', params: {'p_on': true});
+        ref.invalidate(profileProvider);
+      } catch (_) {}
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -85,6 +98,19 @@ class _PermissionsCardState extends ConsumerState<PermissionsCard> {
               child: Text(
                 'What GET.ride needs to work fully. Tap one to change it.',
                 style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+              ),
+            ),
+            // The full story of each one: the permissions notice (0333).
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const ValueKey('permissions-why'),
+                  icon: const Icon(Icons.info_outline),
+                  label: const Text('What each one is for, in full'),
+                  onPressed: () => unawaited(_why()),
+                ),
               ),
             ),
             switch (statuses) {

@@ -160,6 +160,9 @@ final driverPresenceReporterFactoryProvider = Provider<DriverPresenceReporter Fu
   (ref) =>
       () => DriverPresenceReporter(
         report: (online, lat, lng) async {
+          // The store review account's driving is simulated: never reported
+          // (the server refuses it too, 0333).
+          if (ref.read(storeReviewProvider)) return;
           await ref
               .read(supabaseProvider)
               .rpc('set_driver_presence', params: {'p_online': online, 'p_lat': lat, 'p_lng': lng});

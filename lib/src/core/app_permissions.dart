@@ -154,26 +154,57 @@ class PermissionRules {
   };
 }
 
+/// The background-location disclosure (migration 0333): the permissions
+/// notice's "Location all the time" row and the page shown before the
+/// phone's own "Allow all the time" / "Always" question, word for word. It
+/// says all that the app collects in the background (a trip, online, the
+/// meter, and the check-ins of BackgroundLocation, 0272), and matches
+/// ios/Runner/Info.plist's NSLocationAlwaysAndWhenInUseUsageDescription.
+const backgroundLocationDisclosure =
+    'GET.ride collects location data to enable trip tracking, safety and ride requests, even when the app is closed '
+    'or not in use.\n\n'
+    'When it is collected in the background:\n'
+    '• During a trip, for passengers and drivers: so your driver or passenger, and our safety team, can see where '
+    'the car is, and SOS can share your exact position.\n'
+    '• While you are online as a driver: to send you ride requests near you, match you with the closest passenger, '
+    'and record the trip route and distance for the fare, the receipt and your statements.\n'
+    '• While Meter Digital is running (taxi drivers): to measure the trip for the meter fare.\n'
+    '• Drivers who choose "Allow all the time" (Always on iPhone): approximate location about every 15 minutes, or '
+    'when you move about 200 m, even when the app is closed, so our safety and support team can see where you last '
+    'were if you need help.\n'
+    '• Passengers: only during your own trip, from pickup to drop-off. Where GET.ride offers it, you can also turn '
+    'on "Share my last location with GET.ride safety when the app is closed" in Settings: then the same check-ins '
+    'run for you too, until you turn it off. Off unless you turn it on.\n\n'
+    'Who can see it: your driver or passenger, only during your trip, and the GET.ride safety and support team (on '
+    'its live map). It is never sold.\n\n'
+    'Your choice: you can change it any time in your phone settings. With "While using the app", the 15-minute '
+    'check-ins never run, and location is collected only while GET.ride is open or shows that you are online, on a '
+    'trip or running the meter. Drivers may need "Always" to go online on some phones.';
+
+/// What a passenger is held to (0333): never "Always" / "All the time".
+/// A trip's background location works with "While using the app" (the
+/// foreground service on Android, the location background mode on
+/// iPhone), and the closed-app check-ins are the passenger's own opt-in in
+/// Settings, asked there after the disclosure.
+PermissionChecks riderChecks(PermissionChecks user) => user.copyWith(locationAlways: false, locationAlwaysAndroid: false);
+
+/// Whether the closed app's check-ins may run for this account (0333):
+/// a driver as before, a passenger only with the admin's switch on and their
+/// own opt-in. The server keeps the same rule (background_checkin_allowed).
+bool backgroundCheckinsAllowed({required bool isPartner, required bool switchOn, required bool optedIn}) =>
+    isPartner || (switchOn && optedIn);
+
 /// What must change before going on: one entry for each check that holds
 /// someone up.
 enum PermissionBlock {
   serviceOff('Turn on Location', 'Location is switched off on this phone.'),
   locationNotAsked('Allow location', 'GET.ride needs your location to find your pickup and the drivers near you.'),
   locationOff('Allow location in Settings', 'Location is off for GET.ride. Turn it on in Settings.'),
-  notAlways(
-    'Set location to Always',
-    'GET.ride needs your location all the time while you are online, so riders keep finding you and trips stay on '
-        'track while you use other apps or the screen is off.',
-  ),
-  // Google Play's prominent disclosure for background location: what is
-  // collected, when, and what for, shown before Android is asked.
-  notAllTheTime(
-    'Allow location all the time',
-    'GET.ride collects your location in the background, even when the app is closed or not in use, while you are '
-        'online and during trips. Riders see you on the way to them and during the trip, and it is kept for safety. '
-        'While you are offline, your approximate location is collected about every 15 minutes, or when you move '
-        'about 200 m, so our safety and support team can see where you last were.',
-  ),
+  // The prominent disclosure for background location (Google Play, and
+  // Apple's "Always"): what is collected, when, what for and who sees it,
+  // shown to riders and drivers alike before the phone is asked.
+  notAlways('Location all the time', backgroundLocationDisclosure),
+  notAllTheTime('Location all the time', backgroundLocationDisclosure),
   notificationsNotAsked(
     'Allow notifications',
     'So you hear ride requests, calls and trip updates when GET.ride is not on screen.',

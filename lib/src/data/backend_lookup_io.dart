@@ -16,33 +16,54 @@ Future<bool> hostResolves(String host, Duration timeout) async {
   }
 }
 
-/// [host]'s IPv4 addresses from the first of [resolvers] that answers with
-/// any (DNS-over-HTTPS, JSON API); empty when none does within [timeout]
-/// each. The resolvers are addressed by IP, so asking them needs no DNS.
+/// [host]'s addresses (A and AAAA) from the first of [resolvers] that
+/// answers with any (DNS-over-HTTPS, JSON API); empty when none does within
+/// [timeout] each. The resolvers are addressed by IP (v4 or v6), so asking
+/// them needs no DNS; one this phone cannot reach just fails, and the next
+/// is asked.
 Future<List<String>> dohLookup(String host, List<String> resolvers, Duration timeout) async {
   final client = HttpClient()
     ..connectionTimeout = timeout
     ..findProxy = ((_) => 'DIRECT');
   try {
     for (final r in resolvers) {
-      try {
-        final req = await client.getUrl(dohQuery(r, host)).timeout(timeout);
-        req.headers.set(HttpHeaders.acceptHeader, 'application/dns-json');
-        final res = await req.close().timeout(timeout);
-        if (res.statusCode != 200) {
-          await res.drain<void>();
-          continue;
+      final ips = <String>[];
+      for (final type in const ['A', 'AAAA']) {
+        try {
+          final req = await client.getUrl(dohQuery(r, host, type: type)).timeout(timeout);
+          req.headers.set(HttpHeaders.acceptHeader, 'application/dns-json');
+          final res = await req.close().timeout(timeout);
+          if (res.statusCode != 200) {
+            await res.drain<void>();
+            continue;
+          }
+          final body = await res.transform(utf8.decoder).join().timeout(timeout);
+          for (final ip in parseDohAnswer(jsonDecode(body))) {
+            if (!ips.contains(ip)) ips.add(ip);
+          }
+        } catch (_) {
+          // The other type, then the next resolver.
         }
-        final body = await res.transform(utf8.decoder).join().timeout(timeout);
-        final ips = parseDohAnswer(jsonDecode(body));
-        if (ips.isNotEmpty) return ips;
-      } catch (_) {
-        // The next resolver.
       }
+      if (ips.isNotEmpty) return ips;
     }
     return const [];
   } finally {
     client.close(force: true);
+  }
+}
+
+/// Which address families this phone has a non-loopback address of.
+Future<({bool v4, bool v6})> deviceAddressFamilies() async {
+  try {
+    final all = await NetworkInterface.list(type: InternetAddressType.any);
+    final addrs = all.expand((n) => n.addresses).where((a) => !a.isLoopback && !a.isLinkLocal);
+    return (
+      v4: addrs.any((a) => a.type == InternetAddressType.IPv4),
+      v6: addrs.any((a) => a.type == InternetAddressType.IPv6),
+    );
+  } catch (_) {
+    return (v4: false, v6: false);
   }
 }
 

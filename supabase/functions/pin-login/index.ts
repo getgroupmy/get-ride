@@ -20,11 +20,20 @@
 //           429 { error: "rate_limited", retry_after }
 //           503 { error: "unavailable" }
 //
+// Store review login (migration 0333, _shared/store_review.ts):
+// Request:  POST { action: "review", phone: "+60608080", platform?, device?, app_version? }
+// Response: 200 { session }  for the one sealed demo account, when Admin ›
+//               App Settings › Store review login is on and the number is its
+//           403 { error: "review_off" }   (off, or another number)
+//           429 { error: "rate_limited", retry_after }
+//           400 / 503 as above
+//
 // Deploy (there is no session yet, so the gateway must not ask for one):
 //   supabase functions deploy pin-login --no-verify-jwt
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { accountPassword, clientIp, handlePinLogin } from "../_shared/pin_login.ts";
+import { accountPassword, clientIp, handlePinLogin, type PinLoginSession } from "../_shared/pin_login.ts";
+import { handleStoreReviewLogin, isStoreReviewBody } from "../_shared/store_review.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -61,39 +70,67 @@ Deno.serve(async (req) => {
   }
 
   const admin = createClient(url, serviceKey, noSession);
+  const authPhone = async (userId: string) => {
+    const { data, error } = await admin.auth.admin.getUserById(userId);
+    if (error) {
+      if (/not.?found/i.test(error.message)) return null;
+      throw error;
+    }
+    const phone = data.user?.phone;
+    return phone ? (phone.startsWith("+") ? phone : `+${phone}`) : null;
+  };
+  const setPassword = async (userId: string, password: string) => {
+    const { error } = await admin.auth.admin.updateUserById(userId, { password });
+    if (error) throw error;
+  };
+  const signIn = async (phone: string, password: string): Promise<PinLoginSession | null> => {
+    // A fresh client each time: the session is handed to the phone, never kept.
+    const anon = createClient(url, anonKey, noSession);
+    const { data, error } = await anon.auth.signInWithPassword({ phone, password });
+    if (error || !data.session) return null;
+    const s = data.session;
+    return {
+      access_token: s.access_token,
+      refresh_token: s.refresh_token,
+      expires_in: s.expires_in,
+      expires_at: s.expires_at,
+      token_type: s.token_type,
+    };
+  };
+
+  // The store review login (0333): the database checks the switch, the
+  // number and the rate limits, and logs the try.
+  if (isStoreReviewBody(body)) {
+    const review = await handleStoreReviewLogin(body, clientIp(req.headers), req.headers.get("user-agent"), {
+      async check(r, ip, userAgent) {
+        const { data, error } = await admin.rpc("store_review_sign_in", {
+          p_phone: r.phone,
+          p_ip: ip,
+          p_platform: r.platform,
+          p_device: r.device,
+          p_app_version: r.appVersion,
+          p_user_agent: userAgent?.slice(0, 200) ?? null,
+        });
+        if (error) throw new Error(error.message);
+        return data;
+      },
+      authPhone,
+      setPassword,
+      signIn,
+      accountPassword: (userId) => accountPassword(passwordKey, userId),
+    });
+    return json(review.body, review.status);
+  }
+
   const result = await handlePinLogin(body, clientIp(req.headers), {
     async check(phone, pin, ip) {
       const { data, error } = await admin.rpc("pin_login_check", { p_phone: phone, p_pin: pin, p_ip: ip });
       if (error) throw new Error(error.message);
       return typeof data === "string" && data ? data : null;
     },
-    async authPhone(userId) {
-      const { data, error } = await admin.auth.admin.getUserById(userId);
-      if (error) {
-        if (/not.?found/i.test(error.message)) return null;
-        throw error;
-      }
-      const phone = data.user?.phone;
-      return phone ? (phone.startsWith("+") ? phone : `+${phone}`) : null;
-    },
-    async setPassword(userId, password) {
-      const { error } = await admin.auth.admin.updateUserById(userId, { password });
-      if (error) throw error;
-    },
-    async signIn(phone, password) {
-      // A fresh client each time: the session is handed to the phone, never kept.
-      const anon = createClient(url, anonKey, noSession);
-      const { data, error } = await anon.auth.signInWithPassword({ phone, password });
-      if (error || !data.session) return null;
-      const s = data.session;
-      return {
-        access_token: s.access_token,
-        refresh_token: s.refresh_token,
-        expires_in: s.expires_in,
-        expires_at: s.expires_at,
-        token_type: s.token_type,
-      };
-    },
+    authPhone,
+    setPassword,
+    signIn,
     async attemptsLeft(phone) {
       const { data, error } = await admin.rpc("pin_attempts_left", { p_phone: phone });
       if (error) return null;

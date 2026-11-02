@@ -365,6 +365,9 @@ void main() {
 
   testWidgets('deletes a saved notification after confirming', (tester) async {
     final admin = await _pump(tester, const AdminPushScreen());
+    // The compose card is taller since the News and offers line (0333).
+    await tester.ensureVisible(find.byKey(const ValueKey('saved-push-delete-old')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('saved-push-delete-old')));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Delete'));

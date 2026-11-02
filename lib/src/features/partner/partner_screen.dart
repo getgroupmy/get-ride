@@ -122,6 +122,10 @@ bool partnerCanDrive(Partner p) {
   return s == 'approved' || s.startsWith('permit-');
 }
 
+/// The wide driver panel's width on a screen [width] wide: 520, but never
+/// more than 55% of the screen (an iPad in portrait keeps a map beside it).
+double driverPanelWidth(double width) => width * 0.55 < 520 ? width * 0.55 : 520;
+
 /// Below this height the wide driver panel scrolls as a whole instead of
 /// holding its settings fixed over the queue.
 const wideDriverPanelScrollBelow = 640.0;
@@ -535,6 +539,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         return _refusal ?? 'Location or notifications are not set up to go online.';
       }
       if (!mounted) return gone;
+      // The store review account (0333) drives a made-up car on demo
+      // requests: the server's checks below are not its to pass.
+      if (ref.read(storeReviewProvider)) return _goOnlineDemo();
       final partner = ref.read(partnerProvider).value;
       if (partner != null && !await _documentsCleared(partner, teksi: false)) {
         return _refusal ?? 'Required documents need updating before going online.';
@@ -578,6 +585,18 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     // Online, calls may come: ask for the microphone now, on screen, if it
     // was never asked (a call answered from the phone's call screen can't).
     if (v) unawaited(primeMicForCalls(ref).catchError((_) {}));
+    return null;
+  }
+
+  /// Online for the store review account: demo requests only, nothing
+  /// sent to the server.
+  String? _goOnlineDemo() {
+    setState(() {
+      _online = true;
+      _demoShowing = false;
+    });
+    _onlineState.set(true);
+    unawaited(_locate());
     return null;
   }
 
@@ -1232,11 +1251,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   parseStringList(p.raw['partner_types']),
                   ref.watch(partnerTypeEntriesProvider).value ?? const [],
                 );
-                final wide = MediaQuery.sizeOf(context).width >= 900;
+                final wide = wideLayoutAt(MediaQuery.sizeOf(context));
                 // Admin → Partner Type → Service availability (0245): where
                 // none of the driver's types is offered, no requests show
                 // (the server stops pushing them and refuses bids there).
-                final here = _online
+                final here = _online && !ref.watch(storeReviewProvider)
                     ? ref.watch(partnerTypeCheckProvider(partnerTypeCheckKey(_me?.latitude, _me?.longitude, teksi: false))).value
                     : null;
                 _notHere = here != null && !here.ok;
@@ -1369,7 +1388,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                           ),
                   );
                   return Row(children: [
-                    SizedBox(width: 520, child: panel),
+                    // 520 on a desktop; narrower from 720 (an iPad in
+                    // portrait), so the map keeps room beside it.
+                    SizedBox(width: driverPanelWidth(MediaQuery.sizeOf(context).width), child: panel),
                     const VerticalDivider(width: 1),
                     Expanded(
                       child: Stack(children: [
@@ -1532,7 +1553,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           ),
         // A new request on a phone: inDrive's sheet up from the bottom, over
         // everything (the desktop has it over the map instead).
-        if (partner.value case final p? when _online && MediaQuery.sizeOf(context).width < 900)
+        if (partner.value case final p? when _online && !wideLayoutAt(MediaQuery.sizeOf(context)))
           Positioned.fill(child: _requestSheet(p)),
       ]),
     );

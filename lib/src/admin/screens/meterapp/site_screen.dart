@@ -20,6 +20,8 @@ import '../../widgets/admin_widgets.dart';
 import '../safety/sos_ops_card.dart';
 import '../security/pin_policy_card.dart';
 import '../security/sign_in_security_card.dart';
+import '../security/location_checkins_admin_card.dart';
+import '../security/store_review_card.dart';
 import '../hourly_hire_card.dart';
 import '../multi_hire_card.dart';
 import '../public_holidays_card.dart';
@@ -523,6 +525,12 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                 AppIconCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 SignInSecurityCard(canEdit: canEdit),
+                const SizedBox(height: 8),
+                // Store review login (0333).
+                StoreReviewCard(canEdit: canEdit),
+                const SizedBox(height: 8),
+                // Passenger location check-ins when the app is closed (0333).
+                LocationCheckinsAdminCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 PinPolicyCard(canEdit: canEdit),
                 const SizedBox(height: 8),

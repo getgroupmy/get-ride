@@ -625,6 +625,13 @@ class _AdminPushScreenState extends ConsumerState<AdminPushScreen> {
               style: t.textTheme.bodySmall?.copyWith(color: muted)),
           const SizedBox(height: 16),
           Text('Send to', style: t.textTheme.labelLarge),
+          const SizedBox(height: 2),
+          Text(
+            'Broadcasts from here reach only people who opted in to News and offers (Settings > Notifications). '
+            'Trip, safety, payment and account messages are not affected.',
+            key: const ValueKey('push-news-offers-note'),
+            style: t.textTheme.bodySmall?.copyWith(color: muted),
+          ),
           const SizedBox(height: 8),
           // Full width, no tick, one line each: no "Every-one".
           SegmentedButton<String>(

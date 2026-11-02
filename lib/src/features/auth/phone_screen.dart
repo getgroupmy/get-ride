@@ -77,6 +77,13 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
         showInfo(context, 'This account has been deleted. Contact support to restore it.');
         return;
       }
+      // The store review number while the admin has it on (0333): the
+      // sealed demo account, with no SMS code and no PIN.
+      if (lookup.isStoreReview) {
+        final problem = await auth.signInStoreReview(phone);
+        if (problem != null && mounted) showInfo(context, problem);
+        return;
+      }
       if (!lookup.hasProfile) {
         final display = await ref.read(appDisplayProvider.future);
         if (!mounted) return;

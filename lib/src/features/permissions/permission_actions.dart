@@ -14,8 +14,8 @@ import '../../widgets/page_style_host.dart';
 String permissionBlockAction(PermissionBlock block) => switch (block) {
   PermissionBlock.serviceOff => 'Open Location settings',
   PermissionBlock.locationNotAsked => 'Allow location',
-  PermissionBlock.notAlways => 'Allow Always',
-  PermissionBlock.notAllTheTime => 'Allow all the time',
+  // After the background-location disclosure: Continue, not "Allow" (Apple).
+  PermissionBlock.notAlways || PermissionBlock.notAllTheTime => 'Continue',
   PermissionBlock.notificationsNotAsked => 'Allow notifications',
   PermissionBlock.locationOff || PermissionBlock.notificationsOff => kIsWeb ? 'How to allow' : 'Open settings',
 };

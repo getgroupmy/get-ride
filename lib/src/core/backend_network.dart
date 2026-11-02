@@ -24,9 +24,15 @@ import 'backend_route.dart';
 const backendAllowedDomain = 'getride.my';
 
 /// The resolvers asked when none is configured. Addressed by IP so that
-/// asking them needs no DNS (both certificates cover the IP address), and
-/// both answer the JSON API (`?name=…&type=A`).
-const defaultDohResolvers = ['https://1.1.1.1/dns-query', 'https://8.8.8.8/resolve'];
+/// asking them needs no DNS (the certificates cover the IP addresses), and
+/// all answer the JSON API (`?name=…&type=A` / `AAAA`). The IPv6 ones serve
+/// a phone on an IPv6-only network (0333).
+const defaultDohResolvers = [
+  'https://1.1.1.1/dns-query',
+  'https://8.8.8.8/resolve',
+  'https://[2606:4700:4700::1111]/dns-query',
+  'https://[2001:4860:4860::8888]/resolve',
+];
 
 /// How many entries each list keeps; a launch tries each in turn.
 const backendNetworkMaxEntries = 5;
@@ -201,29 +207,61 @@ List<String> backendCandidates(String direct, BackendNetwork network) {
   return out.isEmpty ? [direct] : out;
 }
 
-/// The JSON-API query for [host]'s IPv4 addresses at [resolver]. Pure.
-Uri dohQuery(String resolver, String host) {
+/// The JSON-API query for [host]'s addresses of [type] (`A` or `AAAA`) at
+/// [resolver]. Pure.
+Uri dohQuery(String resolver, String host, {String type = 'A'}) {
   final r = Uri.parse(resolver);
-  return r.replace(queryParameters: {...r.queryParameters, 'name': host, 'type': 'A'});
+  return r.replace(queryParameters: {...r.queryParameters, 'name': host, 'type': type});
 }
 
-/// The IPv4 addresses in a DNS-over-HTTPS JSON answer
-/// (`{"Status":0,"Answer":[{"type":1,"data":"104.18.1.1"},…]}`); empty for
-/// an error status or no A records. CNAME steps are skipped. Pure.
+/// The addresses in a DNS-over-HTTPS JSON answer
+/// (`{"Status":0,"Answer":[{"type":1,"data":"104.18.1.1"},…]}`): A records
+/// (type 1, IPv4) and AAAA records (type 28, IPv6); empty for an error
+/// status or none. CNAME steps are skipped. Pure.
 List<String> parseDohAnswer(Object? json) {
   if (json is! Map || (json['Status'] ?? 0) != 0) return const [];
   final answers = json['Answer'];
   if (answers is! List) return const [];
   final out = <String>[];
   for (final a in answers) {
-    if (a is! Map || a['type'] != 1) continue;
-    final ip = '${a['data'] ?? ''}'.trim();
-    if (_ipv4.hasMatch(ip) && !out.contains(ip)) out.add(ip);
+    if (a is! Map) continue;
+    final ip = '${a['data'] ?? ''}'.trim().toLowerCase();
+    final ok = (a['type'] == 1 && isIpv4(ip)) || (a['type'] == 28 && isIpv6(ip));
+    if (ok && !out.contains(ip)) out.add(ip);
   }
   return out;
 }
 
 final _ipv4 = RegExp(r'^((25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(25[0-5]|2[0-4]\d|1?\d?\d)$');
+
+bool isIpv4(String ip) => _ipv4.hasMatch(ip);
+
+/// A plain IPv6 address (no zone, no brackets): hex groups and at most one
+/// `::`, optionally ending in an IPv4 part. Pure.
+bool isIpv6(String ip) {
+  if (!ip.contains(':') || ip.contains('%') || ip.contains(':::')) return false;
+  if ('::'.allMatches(ip).length > 1) return false;
+  var groups = ip.split(':');
+  var need = 8;
+  if (groups.isNotEmpty && groups.last.contains('.')) {
+    if (!isIpv4(groups.last)) return false;
+    groups = groups.sublist(0, groups.length - 1);
+    need = 6;
+  }
+  final hex = RegExp(r'^[0-9a-f]{1,4}$');
+  final filled = groups.where((g) => g.isNotEmpty).toList();
+  if (filled.any((g) => !hex.hasMatch(g))) return false;
+  return ip.contains('::') ? filled.length < need : filled.length == need;
+}
+
+/// [ips] with the addresses of a family this phone has ([hasV4], [hasV6])
+/// first, in their order: an IPv6-only network is pinned to an IPv6
+/// address, an IPv4-only one to IPv4. Knowing neither, as found. Pure.
+List<String> preferAddressFamily(List<String> ips, {required bool hasV4, required bool hasV6}) {
+  if (hasV4 == hasV6) return ips;
+  bool usable(String ip) => hasV6 ? isIpv6(ip) : isIpv4(ip);
+  return [...ips.where(usable), ...ips.where((ip) => !usable(ip))];
+}
 
 /// How the app reaches the backend this launch.
 class BackendChoice {

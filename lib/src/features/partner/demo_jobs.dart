@@ -15,6 +15,7 @@ import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 import '../ride/demo_ride.dart';
+import '../store_review/demo_wallet.dart' show demoWalletProvider;
 
 /// While a driver is online with Admin → Demo → mock incoming requests on:
 /// a demo request every 6–14 s, each waiting 30–45 s for an answer (Expo
@@ -270,7 +271,17 @@ class _DemoJobScreenState extends ConsumerState<DemoJobScreen> {
               Text('A demo job: there is no passenger and nothing is paid.', style: t.textTheme.bodySmall),
               const SizedBox(height: 12),
               if (action != null)
-                FilledButton(key: const ValueKey('demo-job-next'), onPressed: () => _go(next), child: Text(action)),
+                FilledButton(
+                  key: const ValueKey('demo-job-next'),
+                  onPressed: () {
+                    // The store review account's fare goes to its demo GET.credit (0333).
+                    if (next == _JobPhase.done && ref.read(storeReviewProvider)) {
+                      ref.read(demoWalletProvider.notifier).earn(j.fare, 'Demo job: ${j.pickupName} to ${j.dropName}');
+                    }
+                    _go(next);
+                  },
+                  child: Text(action),
+                ),
               if (_phase == _JobPhase.done)
                 FilledButton(onPressed: () => context.pop(), child: const Text('Back to Drive')),
             ],

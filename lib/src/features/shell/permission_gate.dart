@@ -87,7 +87,7 @@ class _PermissionGateState extends ConsumerState<PermissionGate> {
           } catch (_) {
             rules = PermissionRules.defaults;
           }
-          blocks = await currentPermissionBlocks(ref.read(permissionProbeProvider), rules.user);
+          blocks = await currentPermissionBlocks(ref.read(permissionProbeProvider), riderChecks(rules.user));
         }
         if (!mounted) return;
         if (!listEquals(blocks, _blocks)) setState(() => _blocks = blocks);

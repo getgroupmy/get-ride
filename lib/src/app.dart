@@ -12,6 +12,9 @@ import 'admin/admin_routes.dart';
 import 'config.dart';
 import 'admin/screens/meterapp/always_on_screen.dart' show alwaysOnStoreProvider, defaultAlwaysOnRoutes;
 import 'core/always_on.dart';
+import 'core/store_review.dart' show iosStoreBuild;
+import 'core/app_permissions.dart' show backgroundCheckinsAllowed;
+import 'features/settings/location_checkins_card.dart' show locationCheckinsConfigProvider;
 import 'core/app_branding.dart';
 import 'core/date_order.dart' show setProfileDateCountry;
 import 'core/dial_countries.dart' show setDialCountries;
@@ -141,6 +144,7 @@ import 'features/notifications/push_message_screen.dart';
 import 'features/shell/permission_gate.dart';
 import 'features/shell/update_gate.dart';
 import 'features/shell/web_build_gate.dart';
+import 'features/store_review/store_review_host.dart' show StoreReviewHost;
 import 'features/safety/voice_protection_controller.dart';
 import 'features/support/help_assistant_screen.dart';
 import 'features/support/support_chat_screen.dart';
@@ -300,7 +304,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       // So is checking a statement's QR code: whoever was handed the statement.
       if (loc.startsWith('/verify/')) return null;
       // So is installing a test build: the tester has no account yet.
-      if (loc.startsWith('/install/')) return null;
+      // Not in the iPhone store build (0333): no Android or install links there.
+      if (loc.startsWith('/install/')) return iosStoreBuild() ? '/' : null;
       // A personal QR link (My QR) works signed out too: a referral code is
       // carried into sign-up, a driver's code asks to sign in first. Both
       // /q/<kind>/<token> and the app-link form /<kind>/<token>.
@@ -1079,7 +1084,20 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
   /// The closed app's reporter on while location is set to always (and the
   /// server holds this install's key), off otherwise.
   Future<void> _syncBackground(PushService push, {required bool always, String? key}) async {
+    // 0333: passengers only with the admin's switch on and their own opt-in.
+    bool allowed;
+    try {
+      const wait = Duration(seconds: 8);
+      allowed = backgroundCheckinsAllowed(
+        isPartner: await ref.read(partnerProvider.future).timeout(wait) != null,
+        switchOn: await ref.read(locationCheckinsConfigProvider.future).timeout(wait),
+        optedIn: (await ref.read(profileProvider.future).timeout(wait))?.raw['location_checkins'] == true,
+      );
+    } catch (_) {
+      allowed = ref.read(partnerProvider).value != null;
+    }
     final want = key != null &&
+        allowed &&
         backgroundReportingWanted(
           signedIn: ref.read(currentUserIdProvider) != null,
           locationAlways: always,
@@ -1271,7 +1289,13 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
               // the admin requires to update goes straight to its notice.
               ready: _updateChecked,
               child: UpdateGate(
-                child: PermissionGate(
+                // The permissions notice, and the store review account's
+                // mode choice, tour and demo label (0333).
+                child: StoreReviewHost(
+                  location: () => router.routerDelegate.currentConfiguration.uri.path,
+                  listenable: router.routerDelegate,
+                  router: router,
+                  child: PermissionGate(
                   location: () => router.routerDelegate.currentConfiguration.uri.path,
                   listenable: router.routerDelegate,
                   child: WebBuildGate(
@@ -1302,6 +1326,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
                       ),
                     ),
                   ),
+                ),
                 ),
               ),
             ),
