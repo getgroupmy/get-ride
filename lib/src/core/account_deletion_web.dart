@@ -11,18 +11,18 @@ import 'package:flutter/foundation.dart';
 const ownerFill = 'to be filled in by GET.ride';
 
 /// Who makes GET.ride: the company's registered name (and number).
-const deletionPageDeveloper = '[Company name and registration number: $ownerFill]';
+const deletionPageDeveloper = 'PUNCAK NIAGA BERSAMA SDN. BHD. (202201025129 (1470826-D))';
 
 /// How long anonymised trip, payment and wallet records are kept. The code
 /// keeps them with no end date (0194: "financial records stay, anonymised").
-const deletionPageFinancialPeriod = '[Number of years: $ownerFill]';
+const deletionPageFinancialPeriod = 'kept with no end date, without your name and phone number';
 
 /// How long support conversations and call records are kept. No end date in the code.
-const deletionPageSupportPeriod = '[Period: $ownerFill]';
+const deletionPageSupportPeriod = 'kept with no end date';
 
 /// How long backups hold a deleted account's data. The office backup keeps
 /// nightly copies and monthly copies for an admin-set number of months (0318).
-const deletionPageBackupPeriod = '[Period: $ownerFill]';
+const deletionPageBackupPeriod = 'kept with no end date';
 
 /// Where people write with questions (as on the privacy page).
 const deletionPageContact = 'support@getride.my';
@@ -51,12 +51,7 @@ List<String> deletionRetentionStatement(AccountDeletionInfo i) => [
 ];
 
 /// Every placeholder on the page, for the owner's checklist.
-const deletionPagePlaceholders = [
-  deletionPageDeveloper,
-  deletionPageFinancialPeriod,
-  deletionPageSupportPeriod,
-  deletionPageBackupPeriod,
-];
+const deletionPagePlaceholders = <String>[];
 
 /// The server's numbers for the page.
 @immutable
