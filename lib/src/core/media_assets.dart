@@ -9,13 +9,19 @@
 library;
 
 import 'icon_pack.dart';
+import 'map_icon_angles.dart';
+
+export 'map_icon_angles.dart' show MediaAngle;
 
 /// What an upload is for: an icon (a 256 × 256 transparent PNG, or an SVG),
 /// an image (at most 1600 px wide), or a logo (light and dark versions).
 enum MediaKind {
   icon('Icon', 'Icons'),
   image('Image', 'Images'),
-  logo('Logo', 'Logos');
+  logo('Logo', 'Logos'),
+
+  /// A marker drawn on the map, e.g. a vehicle service's car on the map.
+  mapIcon('Map Icon', 'Map Icons');
 
   const MediaKind(this.label, this.plural);
 
@@ -25,8 +31,8 @@ enum MediaKind {
   /// The gallery's tab: "Icons", "Images", "Logos".
   final String plural;
 
-  /// The stored value (`media_assets.kind`).
-  String get id => name;
+  /// The stored value (`media_assets.kind`): icon, image, logo, map_icon.
+  String get id => this == MediaKind.mapIcon ? 'map_icon' : name;
 
   static MediaKind? byId(Object? v) {
     for (final k in values) {
@@ -130,6 +136,7 @@ class MediaAsset {
     this.height,
     this.bytes,
     this.tint = false,
+    this.angles = const [],
     this.createdAt,
   });
 
@@ -148,7 +155,23 @@ class MediaAsset {
   /// "Follow the theme colour": a one-colour icon drawn in the theme's icon
   /// colour instead of its own.
   final bool tint;
+
+  /// A multi-angle map icon's frames (0336), sorted by heading; empty for
+  /// a single picture.
+  final List<MediaAngle> angles;
   final DateTime? createdAt;
+
+  /// One vehicle drawn from several directions: the map shows the frame
+  /// nearest the car's heading ([frameFor]) rather than turning a picture.
+  bool get isMultiAngle => angles.length >= mapIconMinFrames;
+
+  /// The frame of a multi-angle icon for a car heading [heading]; null for
+  /// a single picture.
+  MediaAngle? frameFor(double heading) => isMultiAngle ? nearestAngle(angles, heading) : null;
+
+  /// Every file of the upload in the bucket: the main file, a logo's dark
+  /// version and every frame (what Delete removes).
+  List<String> get files => {?path, ?darkPath, for (final a in angles) a.path}.toList();
 
   /// The stored reference: `media:<id>`.
   String get ref => mediaRef(id);
@@ -157,7 +180,9 @@ class MediaAsset {
 
   /// The file for [dark] mode: a logo's dark version in dark mode when it has
   /// one, else whichever it has.
-  String? pathFor({required bool dark}) => dark ? (darkPath ?? path) : (path ?? darkPath);
+  /// A multi-angle icon with no main file shows its first frame.
+  String? pathFor({required bool dark}) =>
+      (dark ? (darkPath ?? path) : (path ?? darkPath)) ?? angles.firstOrNull?.path;
 
   static MediaAsset? fromRow(Map<String, dynamic> r) {
     final kind = MediaKind.byId(r['kind']);
@@ -166,7 +191,8 @@ class MediaAsset {
     String? s(Object? v) => v is String && v.trim().isNotEmpty ? v.trim() : null;
     int? n(Object? v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}');
     final path = s(r['path']), dark = s(r['dark_path']);
-    if (path == null && dark == null) return null;
+    final angles = kind == MediaKind.mapIcon ? MediaAngle.listFrom(r['angles']) : const <MediaAngle>[];
+    if (path == null && dark == null && angles.isEmpty) return null;
     return MediaAsset(
       id: id,
       kind: kind,
@@ -178,6 +204,7 @@ class MediaAsset {
       height: n(r['height']),
       bytes: n(r['bytes']),
       tint: r['tint'] == true,
+      angles: angles,
       createdAt: DateTime.tryParse('${r['created_at'] ?? ''}'),
     );
   }
@@ -193,6 +220,8 @@ class MediaAsset {
     'height': height,
     'bytes': bytes,
     'tint': tint,
+    // Only a multi-angle icon writes the column (0336).
+    if (angles.isNotEmpty) 'angles': [for (final a in angles) a.toJson()],
   };
 }
 

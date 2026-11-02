@@ -19,10 +19,23 @@ import 'package:image/image.dart' as img;
 
 const _used = '11111111-1111-1111-1111-111111111111';
 const _free = '33333333-3333-3333-3333-333333333333';
+const _car = '44444444-4444-4444-4444-444444444444';
+const _taxi = '55555555-5555-5555-5555-555555555555';
 
 final _assets = [
   MediaAsset(id: _used, kind: MediaKind.icon, name: 'Durian', path: 'icon/$_used.png', createdAt: DateTime(2026, 10, 1)),
   MediaAsset(id: _free, kind: MediaKind.icon, name: 'Old cart', path: 'icon/$_free.png', createdAt: DateTime(2026, 10, 3)),
+  MediaAsset(id: _car, kind: MediaKind.mapIcon, name: 'Blue car', path: 'map_icon/$_car.png', createdAt: DateTime(2026, 11, 2)),
+  MediaAsset(
+    id: _taxi,
+    kind: MediaKind.mapIcon,
+    name: 'Spinning taxi',
+    path: 'map_icon/$_taxi/000.png',
+    angles: [
+      for (var d = 0; d < 360; d += 45) MediaAngle(d, 'map_icon/$_taxi/${d.toString().padLeft(3, '0')}.png'),
+    ],
+    createdAt: DateTime(2026, 11, 2),
+  ),
 ];
 
 final _data = MediaGalleryData(
@@ -85,6 +98,38 @@ void main() {
         await tester.pumpAndSettle();
         expect(_key('media-tile-logo:wordmark'), findsOneWidget);
         expect(_key('media-tile-icon:Truck'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('Map Icons: its own tab with only map icons', (tester) async {
+        await _pump(tester, b: b);
+        expect(find.text('Map Icons'), findsOneWidget);
+        expect(_key('media-tile-media:$_car'), findsNothing, reason: 'not on the Icons tab');
+        await tester.tap(_key('media-tab-map_icon'));
+        await tester.pumpAndSettle();
+        expect(_key('media-tile-media:$_car'), findsOneWidget);
+        expect(_key('media-tile-media:$_used'), findsNothing);
+        expect(_key('media-tile-icon:Truck'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('Map Icons: a multi-angle icon has a badge, its frames and the spin preview', (tester) async {
+        await _pump(tester, b: b);
+        await tester.tap(_key('media-tab-map_icon'));
+        await tester.pumpAndSettle();
+        expect(find.descendant(of: _key('media-tile-angles-media:$_taxi'), matching: find.text('8 angles')), findsOneWidget);
+        expect(_key('media-tile-angles-media:$_car'), findsNothing, reason: 'a single picture has no badge');
+        await tester.tap(_key('media-tile-media:$_taxi'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('Multi-angle, 8 angles'), findsOneWidget);
+        expect(_key('media-details-frames'), findsOneWidget);
+        expect(_key('media-details-frame-0'), findsOneWidget);
+        expect(_key('media-details-frame-45'), findsOneWidget);
+        expect(_key('map-icon-spin'), findsOneWidget);
+        tester.widget<Slider>(_key('map-icon-spin-heading')).onChanged!(100);
+        await tester.pumpAndSettle();
+        expect(tester.widget<Text>(_key('map-icon-spin-label')).data, 'Heading 100° shows the 90° picture');
+        expect(tester.widget<Text>(_key('media-details-uses')).data, 'Not used anywhere.');
         expect(tester.takeException(), isNull);
       });
 

@@ -220,6 +220,7 @@ class MediaJob {
     required this.kind,
     this.removeBackground = false,
     this.strength = removalStrengthDefault,
+    this.trim = true,
   });
 
   final Uint8List bytes;
@@ -229,6 +230,11 @@ class MediaJob {
   final MediaKind kind;
   final bool removeBackground;
   final double strength;
+
+  /// Whether an icon is cut to its shape before it is fitted in the square.
+  /// Off for a multi-angle map icon's frames, so every angle keeps the
+  /// same scale and the car doesn't grow or shrink as it turns.
+  final bool trim;
 }
 
 /// An upload's file as it is kept.
@@ -272,7 +278,8 @@ ProcessedMedia processMediaJob(MediaJob job) {
   if (job.removeBackground) image = removeEdgeBackground(image, strength: job.strength);
   switch (job.kind) {
     case MediaKind.icon:
-      if (job.removeBackground) image = trimTransparent(image);
+    case MediaKind.mapIcon:
+      if (job.removeBackground && job.trim) image = trimTransparent(image);
       final out = fitInSquare(image, iconSide);
       return ProcessedMedia(bytes: img.encodePng(out), mime: 'image/png', width: iconSide, height: iconSide);
     case MediaKind.logo:

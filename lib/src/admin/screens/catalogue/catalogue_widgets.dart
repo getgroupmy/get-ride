@@ -67,6 +67,8 @@ class DataUrlImageField extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.aspect = 1,
+    this.kind = MediaKind.image,
+    this.alsoKinds = const {MediaKind.icon, MediaKind.logo},
     this.enabled = true,
   });
   final String label;
@@ -75,11 +77,15 @@ class DataUrlImageField extends StatelessWidget {
   final double aspect;
   final bool enabled;
 
+  /// Which Media Gallery tab the picker opens on, and the others it offers.
+  final MediaKind kind;
+  final Set<MediaKind> alsoKinds;
+
   Future<void> _pick(BuildContext context) async {
     final v = await showMediaPicker(
       context,
-      kind: MediaKind.image,
-      alsoKinds: const {MediaKind.icon, MediaKind.logo},
+      kind: kind,
+      alsoKinds: alsoKinds,
       current: value,
       title: label,
       offerDefault: false,

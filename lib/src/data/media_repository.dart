@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../core/background_removal.dart' show ProcessedMedia;
+import '../core/map_icon_angles.dart';
 import '../core/media_assets.dart';
 import '../core/media_usage.dart' show MediaUsageInput;
 import '../providers.dart';
@@ -74,11 +75,62 @@ class MediaRepository {
     }
   }
 
+  /// Uploads a multi-angle map icon's [frames] (one per heading, as
+  /// `map_icon/<id>/<ddd>.png`) and records them as a new upload called
+  /// [name], its main file the first frame (0336). Frames already sent are
+  /// taken back when one fails or the record is refused.
+  Future<MediaAsset> saveMultiAngle({
+    required String name,
+    required List<({int deg, ProcessedMedia media})> frames,
+  }) async {
+    final sorted = [...frames]..sort((a, b) => a.deg.compareTo(b.deg));
+    if (sorted.length < mapIconMinFrames || sorted.length > mapIconMaxFrames) {
+      throw FormatException('A multi-angle icon takes $mapIconMinFrames to $mapIconMaxFrames angles.');
+    }
+    if (sorted.map((f) => f.deg).toSet().length != sorted.length) {
+      throw const FormatException('Two pictures have the same angle.');
+    }
+    final id = const Uuid().v4();
+    final bucket = _db.storage.from(mediaBucket);
+    final sent = <String>[];
+    try {
+      final angles = <MediaAngle>[];
+      for (final f in sorted) {
+        final path = mapIconFramePath(id, f.deg, f.media.mime);
+        await bucket.uploadBinary(path, f.media.bytes, fileOptions: FileOptions(contentType: f.media.mime, upsert: false));
+        sent.add(path);
+        angles.add(MediaAngle(f.deg, path));
+      }
+      final first = sorted.first.media;
+      final asset = MediaAsset(
+        id: id,
+        kind: MediaKind.mapIcon,
+        name: name.trim(),
+        path: angles.first.path,
+        mime: first.mime,
+        width: first.width,
+        height: first.height,
+        bytes: first.bytes.length,
+        angles: angles,
+      );
+      final row = await _db.from(mediaAssetsTable).insert(asset.toRow()).select().single();
+      return MediaAsset.fromRow(row) ?? asset;
+    } catch (_) {
+      if (sent.isNotEmpty) {
+        try {
+          await bucket.remove(sent);
+        } catch (_) {}
+      }
+      rethrow;
+    }
+  }
+
   /// Deletes [asset]: the server refuses while a setting still points at it
-  /// (media_asset_delete), then its files go.
+  /// (media_asset_delete), then its files go, every frame of a multi-angle
+  /// icon included.
   Future<void> delete(MediaAsset asset) async {
     await _db.rpc('media_asset_delete', params: {'p_id': asset.id});
-    final files = [?asset.path, ?asset.darkPath];
+    final files = asset.files;
     if (files.isEmpty) return;
     try {
       await _db.storage.from(mediaBucket).remove(files);

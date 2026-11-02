@@ -1883,7 +1883,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       selectedId: _pickupDoor?.id,
       required: g.required,
       guides: g.guides,
-      cars: [for (final c in _cars) demoCarMarker(c, serviceIndex)],
+      cars: [for (final c in _cars) demoCarMarker(c, serviceIndex, icon: _service.mapIcon)],
       typeIcon: PlaceTypeIcon(type: _areaType(g.area), size: 32),
       linkedPlaces: linked != null,
     );
@@ -3490,7 +3490,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 if (liveCarsOn && liveCars.on)
                   ...carMarkers(liveCars)
                 else
-                  for (final c in _cars) demoCarMarker(c, serviceIndex),
+                  for (final c in _cars) demoCarMarker(c, serviceIndex, icon: _service.mapIcon),
                 ...personMarkers(livePeople.items, team: false, picked: _livePicked,
                     onTap: (p) => _openLivePerson(p, team: false)),
                 ...personMarkers(liveTeam.items, team: true, picked: _livePicked,

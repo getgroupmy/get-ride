@@ -45,7 +45,13 @@ Future<String?> showMediaPicker(
     child: MediaPickerSheet(
       kind: kind,
       current: current,
-      title: title ?? 'Choose ${kind == MediaKind.icon ? 'an icon' : 'a${kind == MediaKind.image ? 'n image' : ' logo'}'}',
+      title: title ??
+          switch (kind) {
+            MediaKind.icon => 'Choose an icon',
+            MediaKind.image => 'Choose an image',
+            MediaKind.logo => 'Choose a logo',
+            MediaKind.mapIcon => 'Choose a map icon',
+          },
       offerDefault: offerDefault,
       defaultLabel: defaultLabel,
       builtIns: builtIns && kind == MediaKind.icon,

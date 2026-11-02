@@ -10,6 +10,7 @@ import 'map_sheet_layout.dart';
 import 'map_credit.dart';
 import 'map_tiles.dart';
 import 'road_info_layers.dart';
+import 'map_vehicle_icon.dart';
 
 /// Where a map of [points] (and [route]) opens, laid out at [size]: framing
 /// them all when there are two or more, else on the one point (or
@@ -157,6 +158,7 @@ class RideMap extends StatefulWidget {
     this.stops = const [],
     this.driver,
     this.driverHeading,
+    this.driverIcon,
     this.me,
     this.route = const [],
     this.onTap,
@@ -190,6 +192,11 @@ class RideMap extends StatefulWidget {
   /// Compass heading of the driver's car in degrees (0 = north), turning
   /// the car marker to face where it is going.
   final double? driverHeading;
+
+  /// The ride service's Map Icon (`media:<id>`, [MapVehicleIcon]): a
+  /// multi-angle icon shows the frame for [driverHeading], upright; null
+  /// keeps the built-in car.
+  final String? driverIcon;
   final LatLng? me;
   final List<LatLng> route;
   final void Function(LatLng)? onTap;
@@ -532,15 +539,21 @@ class _RideMapState extends State<RideMap> {
                 rotate: false,
                 width: 40,
                 height: 40,
-                child: CircleAvatar(
-                  backgroundColor: Colors.black,
-                  child: w.driverHeading == null
-                      ? const Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22)
-                      : Transform.rotate(
-                          key: const ValueKey('driver-heading'),
-                          angle: w.driverHeading! * math.pi / 180,
-                          child: const Icon(Icons.navigation, color: Color(0xFFFFD400), size: 22),
-                        ),
+                child: MapVehicleIcon(
+                  key: const ValueKey('driver-car'),
+                  icon: w.driverIcon,
+                  heading: w.driverHeading,
+                  size: 40,
+                  fallback: CircleAvatar(
+                    backgroundColor: Colors.black,
+                    child: w.driverHeading == null
+                        ? const Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22)
+                        : Transform.rotate(
+                            key: const ValueKey('driver-heading'),
+                            angle: w.driverHeading! * math.pi / 180,
+                            child: const Icon(Icons.navigation, color: Color(0xFFFFD400), size: 22),
+                          ),
+                  ),
                 ),
               ),
           ],

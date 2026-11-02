@@ -24,6 +24,7 @@ import '../../admin_access.dart';
 import '../../admin_providers.dart';
 import '../../widgets/admin_widgets.dart';
 import 'display_screen.dart' show displayPage, lucide, lucideIcons;
+import 'map_icon_angles_editor.dart' show MapIconSpin;
 import 'media_branding_tabs.dart';
 import 'media_upload_dialog.dart';
 
@@ -304,7 +305,7 @@ class MediaTile extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
             child: Column(children: [
-              Expanded(child: Center(child: MediaPreview(item: item, size: item.kind == MediaKind.icon ? 32 : 48))),
+              Expanded(child: Center(child: MediaPreview(item: item, size: item.kind == MediaKind.icon || item.kind == MediaKind.mapIcon ? 32 : 48))),
               const SizedBox(height: 6),
               Text(
                 item.name,
@@ -322,6 +323,20 @@ class MediaTile extends StatelessWidget {
               ),
             ]),
           ),
+          if (item.asset?.isMultiAngle ?? false)
+            Positioned(
+              top: 5,
+              left: 6,
+              child: Container(
+                key: ValueKey('media-tile-angles-${item.key}'),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(color: cs.secondaryContainer, borderRadius: BorderRadius.circular(6)),
+                child: Text(
+                  '${item.asset!.angles.length} angles',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: cs.onSecondaryContainer),
+                ),
+              ),
+            ),
           Positioned(
             top: 5,
             right: 6,
@@ -362,7 +377,7 @@ class MediaPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final isDark = dark ?? t.brightness == Brightness.dark;
-    final wide = item.kind == MediaKind.icon ? size : size * 1.6;
+    final wide = item.kind == MediaKind.icon || item.kind == MediaKind.mapIcon ? size : size * 1.6;
     Widget fallback() => Icon(Icons.broken_image_outlined, size: size * 0.8, color: t.colorScheme.outline);
     if (item.iconName != null) return Icon(lucide(item.iconName), size: size);
     if (item.key == wordmarkKey) {
@@ -493,6 +508,7 @@ class MediaDetails extends ConsumerWidget {
       if (a?.bytes != null) _size(a!.bytes!),
       if (a?.isSvg ?? false) 'SVG, kept as it is',
       if (a?.tint ?? false) 'Follows the theme colour',
+      if (a?.isMultiAngle ?? false) 'Multi-angle, ${a!.angles.length} angles',
     ];
 
     return Column(
@@ -500,6 +516,7 @@ class MediaDetails extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _bigPreview(context),
+        if (a != null && a.isMultiAngle) ...[const SizedBox(height: 12), _angles(context, a)],
         const SizedBox(height: 12),
         Text(item.name, key: const ValueKey('media-details-name'), style: t.textTheme.titleMedium),
         const SizedBox(height: 2),
@@ -582,6 +599,34 @@ class MediaDetails extends ConsumerWidget {
         },
       ],
     );
+  }
+
+  /// A multi-angle icon's frames in a strip, each with its heading, and
+  /// the spin preview.
+  Widget _angles(BuildContext context, MediaAsset a) {
+    final t = Theme.of(context);
+    final byDeg = {for (final f in a.angles) f.deg: f.path};
+    Widget frame(String path, double size) =>
+        NetImage(mediaFileUrl(path), width: size, height: size, fit: BoxFit.contain, fallback: SizedBox.square(dimension: size));
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('Angles', style: t.textTheme.labelLarge),
+      const SizedBox(height: 4),
+      SizedBox(
+        height: 64,
+        child: ListView.separated(
+          key: const ValueKey('media-details-frames'),
+          scrollDirection: Axis.horizontal,
+          itemCount: a.angles.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 6),
+          itemBuilder: (_, i) => Column(key: ValueKey('media-details-frame-${a.angles[i].deg}'), children: [
+            frame(a.angles[i].path, 44),
+            Text('${a.angles[i].deg}°', style: t.textTheme.labelSmall),
+          ]),
+        ),
+      ),
+      const SizedBox(height: 8),
+      MapIconSpin(degrees: [for (final f in a.angles) f.deg], frame: (deg, size) => frame(byDeg[deg]!, size)),
+    ]);
   }
 
   Widget _bigPreview(BuildContext context) {

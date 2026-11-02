@@ -19,6 +19,7 @@ import '../../../core/premium_plus.dart' show premiumServiceKey;
 import '../../../core/service_tree.dart' show serviceParentIds;
 import '../../../widgets/search_select.dart';
 import 'safe_rename.dart';
+import '../../../core/media_assets.dart' show MediaKind;
 
 /// Shared list for the two `displayPriority`-ordered service categories.
 class _PriorityList extends ConsumerStatefulWidget {
@@ -572,6 +573,8 @@ class _VehicleServiceEditorState extends ConsumerState<_VehicleServiceEditor> {
             onChanged: (u) => setState(() => _images['heroImageUri'] = u)),
         DataUrlImageField(
             label: 'Map Icon',
+            kind: MediaKind.mapIcon,
+            alsoKinds: const {MediaKind.icon, MediaKind.image},
             value: _images['mapIconUri']!,
             onChanged: (u) => setState(() => _images['mapIconUri'] = u)),
         const SectionLabel('Colour Palette', hint: 'Pick a colour from the palette or upload a custom icon shown on the map.'),
