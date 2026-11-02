@@ -214,6 +214,8 @@ class _MediaUploadDialogState extends ConsumerState<MediaUploadDialog> {
   String get _hint => switch (_kind) {
     MediaKind.icon => 'PNG, JPG, WebP or SVG, up to 2 MB. Saved as a 256 × 256 transparent PNG; an SVG is kept as it is.',
     MediaKind.image => 'PNG, JPG or WebP, up to 5 MB. Saved at most 1600 px wide as WebP, its shape kept.',
+    MediaKind.mapIcon => 'A marker shown on the map, e.g. a car seen from above. PNG, JPG, WebP or SVG, up to 2 MB. '
+        'Saved as a 256 × 256 transparent PNG; an SVG is kept as it is.',
     MediaKind.logo => 'A light and a dark version, either one optional. PNG, JPG, WebP or SVG, up to 2 MB each. '
         'Saved as a transparent PNG; an SVG is kept as it is.',
   };

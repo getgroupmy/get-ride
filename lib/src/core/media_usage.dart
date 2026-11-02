@@ -302,7 +302,7 @@ const _categoryPages = <String, (String, String)>{
 const _vehicleServiceImages = {
   'iconUri': ('Vehicle icon', MediaKind.icon),
   'heroImageUri': ('Hero image', MediaKind.image),
-  'mapIconUri': ('Map icon', MediaKind.icon),
+  'mapIconUri': ('Map icon', MediaKind.mapIcon),
 };
 
 String _categoryTitle(String category) {

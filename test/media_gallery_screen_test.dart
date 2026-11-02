@@ -19,10 +19,12 @@ import 'package:image/image.dart' as img;
 
 const _used = '11111111-1111-1111-1111-111111111111';
 const _free = '33333333-3333-3333-3333-333333333333';
+const _car = '44444444-4444-4444-4444-444444444444';
 
 final _assets = [
   MediaAsset(id: _used, kind: MediaKind.icon, name: 'Durian', path: 'icon/$_used.png', createdAt: DateTime(2026, 10, 1)),
   MediaAsset(id: _free, kind: MediaKind.icon, name: 'Old cart', path: 'icon/$_free.png', createdAt: DateTime(2026, 10, 3)),
+  MediaAsset(id: _car, kind: MediaKind.mapIcon, name: 'Blue car', path: 'map_icon/$_car.png', createdAt: DateTime(2026, 11, 2)),
 ];
 
 final _data = MediaGalleryData(
@@ -84,6 +86,18 @@ void main() {
         await tester.tap(_key('media-tab-logo'));
         await tester.pumpAndSettle();
         expect(_key('media-tile-logo:wordmark'), findsOneWidget);
+        expect(_key('media-tile-icon:Truck'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('Map Icons: its own tab with only map icons', (tester) async {
+        await _pump(tester, b: b);
+        expect(find.text('Map Icons'), findsOneWidget);
+        expect(_key('media-tile-media:$_car'), findsNothing, reason: 'not on the Icons tab');
+        await tester.tap(_key('media-tab-map_icon'));
+        await tester.pumpAndSettle();
+        expect(_key('media-tile-media:$_car'), findsOneWidget);
+        expect(_key('media-tile-media:$_used'), findsNothing);
         expect(_key('media-tile-icon:Truck'), findsNothing);
         expect(tester.takeException(), isNull);
       });

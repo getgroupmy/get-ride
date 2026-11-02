@@ -304,7 +304,7 @@ class MediaTile extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(6, 14, 6, 8),
             child: Column(children: [
-              Expanded(child: Center(child: MediaPreview(item: item, size: item.kind == MediaKind.icon ? 32 : 48))),
+              Expanded(child: Center(child: MediaPreview(item: item, size: item.kind == MediaKind.icon || item.kind == MediaKind.mapIcon ? 32 : 48))),
               const SizedBox(height: 6),
               Text(
                 item.name,
@@ -362,7 +362,7 @@ class MediaPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final isDark = dark ?? t.brightness == Brightness.dark;
-    final wide = item.kind == MediaKind.icon ? size : size * 1.6;
+    final wide = item.kind == MediaKind.icon || item.kind == MediaKind.mapIcon ? size : size * 1.6;
     Widget fallback() => Icon(Icons.broken_image_outlined, size: size * 0.8, color: t.colorScheme.outline);
     if (item.iconName != null) return Icon(lucide(item.iconName), size: size);
     if (item.key == wordmarkKey) {

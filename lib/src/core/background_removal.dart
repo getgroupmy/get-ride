@@ -272,6 +272,7 @@ ProcessedMedia processMediaJob(MediaJob job) {
   if (job.removeBackground) image = removeEdgeBackground(image, strength: job.strength);
   switch (job.kind) {
     case MediaKind.icon:
+    case MediaKind.mapIcon:
       if (job.removeBackground) image = trimTransparent(image);
       final out = fitInSquare(image, iconSide);
       return ProcessedMedia(bytes: img.encodePng(out), mime: 'image/png', width: iconSide, height: iconSide);

@@ -15,7 +15,10 @@ import 'icon_pack.dart';
 enum MediaKind {
   icon('Icon', 'Icons'),
   image('Image', 'Images'),
-  logo('Logo', 'Logos');
+  logo('Logo', 'Logos'),
+
+  /// A marker drawn on the map, e.g. a vehicle service's car on the map.
+  mapIcon('Map Icon', 'Map Icons');
 
   const MediaKind(this.label, this.plural);
 
@@ -25,8 +28,8 @@ enum MediaKind {
   /// The gallery's tab: "Icons", "Images", "Logos".
   final String plural;
 
-  /// The stored value (`media_assets.kind`).
-  String get id => name;
+  /// The stored value (`media_assets.kind`): icon, image, logo, map_icon.
+  String get id => this == MediaKind.mapIcon ? 'map_icon' : name;
 
   static MediaKind? byId(Object? v) {
     for (final k in values) {
