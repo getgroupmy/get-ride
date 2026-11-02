@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers.dart';
+import 'demo/demo_repositories.dart' show DemoCreditRechargeRepository, DemoWalletPayRepository;
 import 'wallet_once.dart';
 
 /// What `wallet_pay` settled.
@@ -47,7 +48,10 @@ class WalletPayRepository {
   }
 }
 
-final walletPayRepositoryProvider = Provider((ref) => WalletPayRepository(ref.watch(supabaseProvider)));
+// The store review account (0333): the demo GET.wallet.
+final walletPayRepositoryProvider = Provider<WalletPayRepository>((ref) => ref.watch(storeReviewProvider)
+    ? DemoWalletPayRepository(ref.watch(supabaseProvider), ref)
+    : WalletPayRepository(ref.watch(supabaseProvider)));
 
 /// GET.wallet → GET.credit for partners (Expo `rechargeCredit`), through the
 /// owner-scoped `wallet_recharge_credit` RPC. Throws with the RPC's error on
@@ -63,4 +67,6 @@ class CreditRechargeRepository {
   }
 }
 
-final creditRechargeRepositoryProvider = Provider((ref) => CreditRechargeRepository(ref.watch(supabaseProvider)));
+final creditRechargeRepositoryProvider = Provider<CreditRechargeRepository>((ref) => ref.watch(storeReviewProvider)
+    ? DemoCreditRechargeRepository(ref.watch(supabaseProvider), ref)
+    : CreditRechargeRepository(ref.watch(supabaseProvider)));

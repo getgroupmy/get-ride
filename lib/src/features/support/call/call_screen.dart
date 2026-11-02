@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/support_call.dart';
 import '../../../data/support_call_repository.dart';
 import '../../../providers.dart';
+import '../../store_review/demo_contact.dart' show openDemoCall;
 import '../../../widgets/app_notice.dart';
 import 'call_session.dart';
 import 'mic_gate.dart';
@@ -257,6 +258,8 @@ class _RoundKey extends StatelessWidget {
 /// Rings support from [ticketId] and opens the call. A failure (signed out,
 /// an older database) is reported where the button was.
 Future<void> callSupport(BuildContext context, WidgetRef ref, {String? ticketId, String? name}) async {
+  // The store review account (0333): a demo agent answers; no real call.
+  if (ref.read(storeReviewProvider)) return openDemoCall(context, name: 'GET.ride support', role: 'Support');
   if (!await ensureMicForCall(context, ref) || !context.mounted) return;
   try {
     // The relay credentials come while the call rings, not after.

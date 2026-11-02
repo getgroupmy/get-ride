@@ -80,6 +80,7 @@ import '../../widgets/ride_stop_tiles.dart';
 import '../safety/ride_sos.dart';
 import '../wallet/wallet_screen.dart';
 import '../../core/demo_mode.dart';
+import '../../core/demo/demo_script.dart' show demoModuleOf;
 import 'auto_accept.dart';
 import '../my_ride/my_ride_parts.dart' show MyRideSearchBanner;
 import 'pickup_guide_card.dart';
@@ -806,6 +807,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
           dropName: r.dropLabel,
           offer: o,
           currency: r.currency,
+          module: demoModuleOf(r.raw),
         ));
   }
 

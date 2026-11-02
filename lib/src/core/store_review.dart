@@ -319,26 +319,48 @@ const passengerTour = <TourStep>[
   TourStep(
     title: 'Hire by time and City to City',
     route: '/',
-    body: 'On the booking panel, "Hire by time" books a driver and car by the hour or day, and City to City books '
-        'a long trip between cities.',
+    body: 'On the booking panel, "Hire by time" books a driver and car by the hour, day, week or month, and City to '
+        'City books a long trip between cities. Demo drivers answer both.',
+  ),
+  TourStep(
+    title: 'Courier and Freight',
+    route: '/',
+    body: 'On the home page, Courier sends a parcel and Freight moves goods by van or lorry. Demo couriers and '
+        'drivers send offers and deliver.',
+  ),
+  TourStep(
+    title: 'Chat and call',
+    route: '/',
+    body: 'On a demo trip, Chat and Call reach the demo driver: the chat answers and the call connects, with no '
+        'real message or call.',
   ),
   TourStep(
     title: 'Family',
     route: '/account/family',
     body: 'Family lets a host book and pay rides for family members, with limits, a pickup code for children and '
-        'trip sharing that every member can see.',
+        'trip sharing that every member can see. Here you host a demo family with two members.',
   ),
   TourStep(
     title: 'Wallet',
     route: '/wallet',
-    body: 'GET.wallet pays for rides and tips. Top-up, transfers and withdrawals are switched off for this demo '
-        'account.',
+    body: 'GET.wallet pays for rides and tips. Top up and pay from the demo balance, and pay a shop by QR from '
+        'How it works > Try every feature. No real money moves.',
   ),
   TourStep(
     title: 'Safety and SOS',
     route: '/account/safety',
     body: 'Emergency contacts, trip sharing and the SOS button live here. In a real trip SOS alerts our safety '
-        'team; it is switched off for this account.',
+        'team. Tap Emergency SOS to see every step: in this demo nothing is sent to anyone.',
+  ),
+  TourStep(
+    title: 'Help and support',
+    route: '/account/support',
+    body: 'Chat with us opens a demo support chat that answers. Nothing is sent to our team.',
+  ),
+  TourStep(
+    title: 'Try every feature',
+    route: '/',
+    body: 'Menu > How it works > Try every feature lists every feature with how to try it and a button to open it.',
   ),
 ];
 
@@ -353,6 +375,11 @@ const driverTour = <TourStep>[
     title: 'A request arrives',
     route: '/drive',
     body: 'While online, simulated ride requests come in with the pickup, drop-off, distance and fare. Accept one.',
+  ),
+  TourStep(
+    title: 'Offer your own fare',
+    route: '/drive',
+    body: 'On a request, Offer a fare sends your own price. The demo passenger takes it (up to 30% more) or says no.',
   ),
   TourStep(
     title: 'Navigate to the pickup',
@@ -372,7 +399,8 @@ const driverTour = <TourStep>[
   TourStep(
     title: 'Earnings',
     route: '/drive/earnings',
-    body: 'Earnings shows what you made by day and week (empty for this demo account).',
+    body: 'Earnings shows what you made by day and week (empty for this demo account: demo fares go to the demo '
+        'GET.credit in Wallet).',
   ),
   TourStep(
     title: 'Statements',
@@ -382,7 +410,8 @@ const driverTour = <TourStep>[
   TourStep(
     title: 'GET.credit',
     route: '/wallet',
-    body: 'GET.credit is the driver\'s balance that commission and fees come from. Top-up is switched off here.',
+    body: 'GET.credit is the driver\'s balance that commission and fees come from. Move demo GET.wallet money into '
+        'it with Recharge; demo fares arrive here too.',
   ),
   TourStep(
     title: 'Documents and permits',
@@ -392,7 +421,13 @@ const driverTour = <TourStep>[
   TourStep(
     title: 'myGiG',
     route: '/drive/mygig',
-    body: 'myGiG lets a driver take a passenger who stops them on the street, priced by the app.',
+    body: 'myGiG lets a driver take a passenger who stops them on the street, priced by the app. Enter where they '
+        'are going and send: the demo passenger accepts and the trip starts.',
+  ),
+  TourStep(
+    title: 'Scheduled jobs',
+    route: '/drive/scheduled',
+    body: 'Bookings for later that a driver can take: accept a demo booking, or give it back.',
   ),
   TourStep(
     title: 'Preferences',

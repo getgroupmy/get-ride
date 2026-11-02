@@ -31,7 +31,8 @@ import '../../core/family.dart' show FamilyPick, possessive;
 import '../../data/city_to_city_repository.dart';
 import '../../data/family_repository.dart' show familyPayOptionProvider;
 import '../../data/geo_service.dart' show Place;
-import '../../providers.dart' show profileProvider;
+import '../../providers.dart' show profileProvider, storeReviewProvider;
+import '../store_review/demo_flows.dart' show playDemoBooking;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show EmptyState, showError, showInfo;
 import '../../widgets/date_boxes.dart';
@@ -462,6 +463,22 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
       );
       ref.invalidate(c2cMyTripsProvider);
       if (!mounted) return;
+      // The store review account (0333): the demo trip plays out on the phone.
+      if (ref.read(storeReviewProvider)) {
+        final m = x.meetingPoints.isEmpty ? null : x.meetingPoints[_pick < 0 ? 0 : _pick.clamp(0, x.meetingPoints.length - 1)];
+        playDemoBooking(context, ref, {
+          'pickup_name': door?.name ?? m?.name ?? x.fromName,
+          'pickup_lat': door?.lat ?? m?.lat,
+          'pickup_lng': door?.lng ?? m?.lng,
+          'drop_name': x.toName,
+          'fare': c2cRound2(_total),
+          'currency': x.currency,
+          'offer_me': false,
+          'demo_booking_id': r.id,
+          'demo_driver': x.driverName,
+        }, module: familyModuleSeatTrip);
+        return;
+      }
       showInfo(
         context,
         r.status == 'booked'

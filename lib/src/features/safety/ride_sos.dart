@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/sos.dart';
+import '../../providers.dart' show storeReviewProvider;
+import '../store_review/demo_contact.dart' show showDemoSos;
 import '../../data/models.dart';
 import '../../data/safety_incident_repository.dart';
 import '../../widgets/common.dart';
@@ -25,6 +27,8 @@ import '../../widgets/page_style_host.dart';
 /// alerts GET.ride's safety team about [rideId]; the other person on the
 /// ride is not told.
 Future<void> showRideSos(BuildContext context, WidgetRef ref, {String? driver, String? plate, String? rideId}) async {
+  // The store review account (0333): every step, nothing sent.
+  if (ref.read(storeReviewProvider)) return showDemoSos(context, ref, rideId: rideId);
   final choice = await showAppSheet<String>(id: 'ride-sos.show-ride-sos',
     context: context,
     builder: (c) => SafeArea(

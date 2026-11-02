@@ -47,6 +47,14 @@ import '../core/scheduled_rides.dart' show ScheduledRide;
 /// What "Find a driver" made: a ride now, or a booking for later.
 typedef Booked = ({RideRequest? now, ScheduledRide? later});
 
+/// Where the store review account's bookings go instead of the server
+/// (0333): a ride now on the phone alone, a booking for later in the demo
+/// store (data/demo/demo_repositories.dart).
+abstract class RideDemoSink {
+  RideRequest now(Map<String, dynamic> row);
+  Future<ScheduledRide> later(Map<String, dynamic> row, DateTime at);
+}
+
 /// Whether [row] is a request still `open` past [AppConfig.requestExpiry]:
 /// expired in all but its status. Pure.
 bool isStaleOpenRow(Map<String, dynamic> row, DateTime now) {
@@ -68,6 +76,10 @@ class RideRepository {
   /// Admin → Reliability: whether the copy kept on the phone is shown when
   /// the server can't be reached.
   bool useOfflineCopy = true;
+
+  /// Set while the store review account is signed in (0333): its bookings
+  /// stay on the phone and nothing reaches the server.
+  RideDemoSink? demo;
   static const _table = 'ride_requests';
 
   String? get _uid => _db.auth.currentUser?.id;
@@ -255,6 +267,16 @@ class RideRepository {
       // 0315; without it the phone turns it on when the trip starts.
       'rider_audio',
     };
+    // The store review account: on the phone alone. A hire for several
+    // days goes on to bookHireDays, whose repository is the demo one too.
+    final demo = this.demo;
+    if (demo != null && bookHireDays == null) {
+      for (final k in ['target_driver_ids', 'my_ride_max_km', 'direct_qr_token']) {
+        row.remove(k);
+      }
+      if (scheduleAt != null) return (now: null, later: await demo.later(row, scheduleAt));
+      return (now: demo.now(row), later: null);
+    }
     if (bookHireDays != null) {
       // The server writes the booking and a row a day from it (hire_book).
       for (final k in ['target_driver_ids', 'my_ride_max_km', 'direct_qr_token', 'auto_accept_fare', 'hire_package',

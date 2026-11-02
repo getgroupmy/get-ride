@@ -20,6 +20,10 @@ import '../../core/mygig_hire.dart';
 import '../../data/geo_service.dart';
 import '../../data/mygig_repository.dart';
 import '../../providers.dart';
+import '../../config.dart' show AppConfig;
+import '../../core/demo_mode.dart' show DemoJob;
+import '../../core/format.dart' show formatMoney;
+import '../../widgets/app_notice.dart' show showAppNotice;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
@@ -429,6 +433,9 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
     final c = _config;
     final way = _way;
     if (c == null || way == null) return;
+    // The store review account (0333): the demo passenger accepts at once
+    // and the trip plays out on the phone; nothing is sent or texted.
+    if (ref.read(storeReviewProvider)) return _sendDemo();
     final sent = await ref.read(mygigRepositoryProvider).create(
       trip: _trip(),
       phone: mygigPhoneComplete(_phone.text) ? '+${mygigPhoneDigits(_phone.text)}' : null,
@@ -445,6 +452,38 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
       id: 'mygig.waiting',
       builder: (_) => MygigWaitingScreen(sent: sent),
     ));
+  }
+
+  Future<void> _sendDemo() async {
+    final a = _pickup, b = _drop;
+    if (a == null || b == null) return;
+    final fare = _quote?.total ?? 0;
+    final job = DemoJob(
+      id: 'demo-mygig-${DateTime.now().millisecondsSinceEpoch}',
+      passenger: _name.text.trim().isEmpty ? 'myGiG passenger' : _name.text.trim(),
+      rating: 4.8,
+      pickupName: a.name,
+      pickupAddress: a.address ?? a.name,
+      pickup: a.at,
+      dropName: b.name,
+      dropAddress: b.address ?? b.name,
+      drop: b.at == a.at ? LatLng(a.at.latitude + 0.02, a.at.longitude + 0.015) : b.at,
+      km: _km ?? 0,
+      minutes: (_min ?? 0).round(),
+      fare: fare > 0 ? fare : 15,
+      payment: 'Cash',
+      pax: _pax,
+      luggage: _bags.values.fold(0, (s, n) => s + n),
+      timeout: const Duration(seconds: 30),
+    );
+    await showAppNotice(
+      id: 'notice.mygig-demo',
+      context: context,
+      title: 'Accepted (demo)',
+      message: '${job.passenger} accepted ${formatMoney(job.fare, AppConfig.currency)}. In the demo nothing is sent '
+          'or texted; the trip now plays out on this phone.',
+    );
+    if (mounted) await context.push('/drive/demo', extra: job);
   }
 
   @override

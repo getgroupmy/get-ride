@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/sos.dart';
+import '../../providers.dart' show storeReviewProvider;
+import '../store_review/demo_contact.dart' show showDemoSos;
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../widgets/busy.dart';
@@ -157,8 +159,11 @@ class SafetyScreen extends ConsumerWidget {
                           foregroundColor: t.colorScheme.onError,
                         ),
                   icon: const Icon(Icons.sos),
-                  onPressed: contacts.isLoading
+                  onPressed: contacts.isLoading && !ref.watch(storeReviewProvider)
                       ? null
+                      // The store review account (0333): every step, nothing sent.
+                      : ref.watch(storeReviewProvider)
+                      ? () => showDemoSos(context, ref)
                       : () => sendSos(context, contacts.value ?? const [], launch: launch, locate: locate),
                   child: const Text('Emergency SOS'),
                 ),

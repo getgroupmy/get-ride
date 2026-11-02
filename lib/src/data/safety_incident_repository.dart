@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers.dart';
+import 'demo/demo_repositories.dart' show DemoSafetyIncidentRepository;
 import 'live_tables.dart';
 
 /// Admin → App Settings → SOS alerts.
@@ -157,7 +158,10 @@ class SafetyIncidentRepository {
   }
 }
 
-final safetyIncidentRepositoryProvider = Provider((ref) => SafetyIncidentRepository(ref.watch(supabaseProvider)));
+// The store review account (0333): an SOS that reaches nobody.
+final safetyIncidentRepositoryProvider = Provider<SafetyIncidentRepository>((ref) => ref.watch(storeReviewProvider)
+    ? DemoSafetyIncidentRepository(ref.watch(supabaseProvider), ref)
+    : SafetyIncidentRepository(ref.watch(supabaseProvider)));
 
 /// Open and acknowledged incidents, newest first, kept live for admins.
 final activeIncidentsProvider = FutureProvider.autoDispose<List<SafetyIncident>>((ref) async {

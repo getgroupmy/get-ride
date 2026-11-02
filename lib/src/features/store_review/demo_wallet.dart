@@ -77,6 +77,25 @@ class DemoWallet extends Notifier<DemoWalletState> {
     return true;
   }
 
+  /// GET.wallet to GET.credit (a driver's recharge); false when the demo
+  /// wallet is short.
+  bool recharge(double amount) {
+    if (amount <= 0) return true;
+    if (state.wallet < amount) return false;
+    final wallet = state.wallet - amount, credit = state.credit + amount;
+    state = DemoWalletState(
+      wallet: wallet,
+      coin: state.coin,
+      credit: credit,
+      history: [
+        _line('get_credit', 'recharge', amount, credit, 'Demo recharge from GET.wallet'),
+        _line('get_wallet', 'recharge', -amount, wallet, 'Demo recharge to GET.credit'),
+        ...state.history,
+      ],
+    );
+    return true;
+  }
+
   /// A demo driver's fare, into GET.credit.
   void earn(double amount, String note) {
     if (amount <= 0) return;

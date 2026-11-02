@@ -13,6 +13,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../store_review/demo_flows.dart' show openDemoRequest;
+
 import '../../config.dart';
 import '../../core/booking_modules.dart' show familyModuleCourier;
 import '../../core/family.dart' show withFamilyPayment;
@@ -431,7 +433,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
         if (ready == null || !mounted) return;
         businessNote = ready.note;
       }
-      await ref.read(rideRepositoryProvider).createRequest(
+      final booked = await ref.read(rideRepositoryProvider).createRequest(
         service: v!.name,
         pickupName: a!.name,
         pickupAddress: a.address,
@@ -479,6 +481,8 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
       });
       // Sent: nothing left to offer again.
       _saver.forget(_saved());
+      // The store review account (0333): demo couriers answer on the phone.
+      if (openDemoRequest(context, booked.now)) return;
       _tabs.animateTo(1);
       showInfo(context, 'Request sent. Couriers will send you their offers.');
     } on DuplicateRideRequest catch (e) {
