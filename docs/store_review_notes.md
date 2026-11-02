@@ -101,8 +101,9 @@ Permissions, and why:
   codes.
 - Microphone: in-app calls (not recorded) and voice notes, and optional trip
   audio recording: a passenger's Audio protection (the driver is told) or a
-  driver's VoiceProtection (shown on the driver's screen; the passenger is not
-  told in the app, which the privacy policy states plainly). The recording
+  driver's VoiceProtection (shown on the driver's screen, and the passenger
+  sees "Your driver is recording audio for safety" on their trip screen
+  while it records, with Learn more opening the privacy policy). The recording
   stays on the phone, encrypted, deleted after 24 hours unless a reported
   problem needs it.
 - Bluetooth (nearby devices): confirms the passenger and the car are together

@@ -172,7 +172,7 @@ const userGuide = <GuideSection>[
         body:
             'When switched on, trip audio is recorded on your phone once a ride starts and kept '
             'there for 24 hours. It is only sent to our team if a ride is reported and an agent asks '
-            'for it.',
+            'for it. While it records, your passenger sees a notice on their trip screen.',
       ),
     ],
   ),

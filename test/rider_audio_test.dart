@@ -177,6 +177,9 @@ class _AudioRepo extends RiderAudioRepository {
 
 class _VoiceRepo implements VoiceProtectionRepository {
   final inserted = <Map<String, dynamic>>[];
+
+  @override
+  Future<void> setDriverAudio(String rideId, bool on) async {}
   final unavailable = <String>[];
   final uploaded = <(String, String)>[];
   final requested = <String>[];

@@ -135,6 +135,12 @@ class VoiceProtectionRepository {
 
   Future<void> insert(Map<String, dynamic> row) => _db.from(_table).insert(row);
 
+  /// Tells the ride its driver's phone is recording ([on]) or has stopped,
+  /// so the passenger's trip screen says so (migration 0335). The server
+  /// turns it off by itself when the trip ends or changes driver.
+  Future<void> setDriverAudio(String rideId, bool on) =>
+      _db.rpc('ride_set_driver_audio', params: {'p_ride': rideId, 'p_on': on});
+
   /// Rows of [profileId] past their retention window.
   Future<Set<String>> expiredIds(String profileId, DateTime now) async {
     final rows = await _db

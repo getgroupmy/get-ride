@@ -90,6 +90,7 @@ import 'promo_parts.dart' show ridePromoLine;
 import '../../core/promo_codes.dart' show promoPayLine;
 import 'freight_parts.dart' show FreightSenderPanel;
 import 'live_map_overlays.dart' show CompanyTripChip;
+import '../safety/driver_recording_notice.dart';
 
 final rideStreamProvider = StreamProvider.autoDispose.family<RideRequest, String>((ref, id) {
   // A demo rider's request lives on the phone alone: it is never asked of
@@ -1253,6 +1254,8 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                 ),
               ]),
             ),
+          // 0335: while the driver's VoiceProtection records the trip.
+          DriverRecordingNotice(recording: r.driverRecordingNow),
           // Family (0317): "Shared with family" and who can see, "Paid with
           // Family", and a child's pickup code for the parent who booked.
           if (!_isDemo) FamilyTripStrip(tripId: r.id, host: true),

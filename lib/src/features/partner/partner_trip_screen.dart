@@ -1205,6 +1205,10 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   }
 }
 
+/// The driver's line while their phone records the trip.
+@visibleForTesting
+const voiceRecordingDriverLine = 'VoiceProtection recording. Your passenger sees that it is on.';
+
 /// Shown while VoiceProtection is recording the trip (or says why it isn't).
 class _VoiceProtectionPill extends ConsumerWidget {
   const _VoiceProtectionPill();
@@ -1222,7 +1226,8 @@ class _VoiceProtectionPill extends ConsumerWidget {
         const SizedBox(width: 6),
         Expanded(
           child: Text(
-            v.recording ? 'VoiceProtection recording' : v.error!,
+            // 0335: the passenger's trip screen says so while it records.
+            v.recording ? voiceRecordingDriverLine : v.error!,
             style: t.textTheme.bodySmall,
           ),
         ),

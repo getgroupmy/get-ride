@@ -129,9 +129,9 @@ const permissionNoticeItems = <PermissionNoticeItem>[
         'end. The recording stays encrypted on that phone; it cannot be played on the phone and is not uploaded. It '
         'is deleted automatically after 24 hours (for passengers, the time set for your area, up to 7 days, as the '
         'app shows). If a problem with that trip is reported, our support team can ask the phone to send it, and '
-        'only authorised support staff can listen to it. When a passenger records, the driver is told. A driver\'s '
-        'recording is shown on the driver\'s trip screen; the passenger is not told in the app, and our Privacy '
-        'Policy says so.\n\n'
+        'only authorised support staff can listen to it. When a passenger records, the driver is told. While a '
+        'driver\'s phone records, the driver\'s trip screen shows it and the passenger sees "Your driver is '
+        'recording audio for safety" on their trip screen, with a link to our Privacy Policy.\n\n'
         'When it stops: when the call ends, when you send or cancel the voice note, or when the trip ends.\n\n'
         'Your choice: if you say no, you can still chat by text and use the app, but you cannot make in-app calls, '
         'send voice notes or use audio protection.',

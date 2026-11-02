@@ -731,13 +731,16 @@ List<String> whoCanSeeLines(FamilyTripStatus s) => [
 /// One member the host may see now (family_live).
 class FamilyLiveItem {
   const FamilyLiveItem({required this.memberId, required this.name, this.kind = 'member', this.trip, this.status,
-      this.pickup, this.drop, this.driver, this.plate, this.lat, this.lng, this.at, this.area});
+      this.pickup, this.drop, this.driver, this.plate, this.lat, this.lng, this.at, this.area, this.driverAudio = false});
   final String memberId;
   final String name;
   final String kind;
   final String? trip, status, pickup, drop, driver, plate, area;
   final double? lat, lng;
   final DateTime? at;
+
+  /// The driver's VoiceProtection is recording the member's trip now (0335).
+  final bool driverAudio;
 
   factory FamilyLiveItem.fromJson(Map<String, dynamic> m) => FamilyLiveItem(
     memberId: '${m['memberId']}',
@@ -753,6 +756,7 @@ class FamilyLiveItem {
     lng: _d(m['lng']),
     at: _t(m['at']),
     area: _s(m['area']),
+    driverAudio: m['driverAudio'] == true,
   );
 
   String get line {

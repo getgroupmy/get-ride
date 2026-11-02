@@ -3,6 +3,7 @@
 // family" state, the child's pickup code (host and driver), and Admin ›
 // People › Family. Everything goes through the family_* functions: nobody
 // reads the family tables directly.
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -298,12 +299,23 @@ final familyInvitesProvider = FutureProvider.autoDispose<List<FamilyInvite>>((re
 });
 
 final familyLiveProvider = FutureProvider.autoDispose<List<FamilyLiveItem>>((ref) async {
+  List<FamilyLiveItem> items;
   try {
-    return await ref.watch(familyRepositoryProvider).live();
+    items = await ref.watch(familyRepositoryProvider).live();
   } catch (_) {
-    return const [];
+    items = const [];
   }
+  // A member on a trip: asked again while it lasts, so what it shows (the
+  // driver recording, 0335) goes when it stops.
+  if (items.any((i) => i.trip != null)) {
+    final again = Timer(familyLivePoll, ref.invalidateSelf);
+    ref.onDispose(again.cancel);
+  }
+  return items;
 });
+
+/// How often the host's "Shared with you now" is asked again during a trip.
+const familyLivePoll = Duration(seconds: 20);
 
 final familyViewLogProvider = FutureProvider.autoDispose<List<FamilyViewLogEntry>>((ref) {
   return ref.watch(familyRepositoryProvider).myViewLog();

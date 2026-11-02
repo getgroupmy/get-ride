@@ -422,6 +422,13 @@ class RideRequest {
   /// trip; the driver is told ("Audio protection on (rider)").
   bool get riderAudio => raw['rider_audio'] == true;
 
+  /// The driver's VoiceProtection is recording this trip (migration 0335):
+  /// set by the driver's phone, and only while the trip is under way.
+  bool get driverAudio => raw['driver_audio'] == true;
+
+  /// What the passenger is shown: recording, on a trip under way.
+  bool get driverRecordingNow => driverAudio && status == RideStatus.onTrip;
+
   /// Courier (migration 0268): a parcel delivery, built on Freight's parts
   /// (so [isFreight] holds too): its size ('S', 'M', 'L'), whether the
   /// recipient pays in cash on delivery, and when the courier entered the
