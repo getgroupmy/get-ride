@@ -127,5 +127,10 @@ List<MenuEntry> resolveSideMenu(Map<String, dynamic> settings, String menu) {
   return (label: label, comingSoon: (cfg['comingSoon'] as List).contains(id));
 }
 
+/// The mode button, or null where "coming soon" items are hidden (store
+/// builds and the store review account, 0333) and it is one.
+({String label, bool comingSoon})? hideSoon(({String label, bool comingSoon})? mode, bool hide) =>
+    mode != null && hide && mode.comingSoon ? null : mode;
+
 const comingSoonTitle = 'Coming Soon';
 const comingSoonBody = "This feature isn't available yet.";

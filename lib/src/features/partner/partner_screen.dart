@@ -535,6 +535,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         return _refusal ?? 'Location or notifications are not set up to go online.';
       }
       if (!mounted) return gone;
+      // The store review account (0333) drives a made-up car on demo
+      // requests: the server's checks below are not its to pass.
+      if (ref.read(storeReviewProvider)) return _goOnlineDemo();
       final partner = ref.read(partnerProvider).value;
       if (partner != null && !await _documentsCleared(partner, teksi: false)) {
         return _refusal ?? 'Required documents need updating before going online.';
@@ -578,6 +581,18 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     // Online, calls may come: ask for the microphone now, on screen, if it
     // was never asked (a call answered from the phone's call screen can't).
     if (v) unawaited(primeMicForCalls(ref).catchError((_) {}));
+    return null;
+  }
+
+  /// Online for the store review account: demo requests only, nothing
+  /// sent to the server.
+  String? _goOnlineDemo() {
+    setState(() {
+      _online = true;
+      _demoShowing = false;
+    });
+    _onlineState.set(true);
+    unawaited(_locate());
     return null;
   }
 
@@ -1236,7 +1251,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                 // Admin → Partner Type → Service availability (0245): where
                 // none of the driver's types is offered, no requests show
                 // (the server stops pushing them and refuses bids there).
-                final here = _online
+                final here = _online && !ref.watch(storeReviewProvider)
                     ? ref.watch(partnerTypeCheckProvider(partnerTypeCheckKey(_me?.latitude, _me?.longitude, teksi: false))).value
                     : null;
                 _notHere = here != null && !here.ok;

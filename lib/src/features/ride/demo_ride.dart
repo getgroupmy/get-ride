@@ -12,9 +12,16 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
+import '../store_review/demo_wallet.dart' show DemoTripFinish;
 
 /// The admin's demo switches (Admin → Display Settings → Demo / Mockup Data).
+/// The store review account (0333) has every demo part on for itself,
+/// whatever the switches say: it runs the app on simulated data only.
 final demoSettingsProvider = Provider<DemoSettings>((ref) {
+  if (ref.watch(storeReviewProvider)) {
+    final uid = ref.watch(currentUserIdProvider);
+    return storeReviewDemoSettings(uid);
+  }
   final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
   return DemoSettings.fromSettings(blob);
 });
@@ -246,6 +253,12 @@ class _DemoTripScreenState extends ConsumerState<DemoTripScreen> {
               ),
               Text('This is a demo trip: no driver is coming and nothing is charged.', style: t.textTheme.bodySmall),
               if (now.phase == DemoPhase.completed) ...[
+                // The store review account (0333) pays its demo wallet,
+                // rates and gets a receipt, as a rider would.
+                if (ref.watch(storeReviewProvider)) ...[
+                  const SizedBox(height: 12),
+                  DemoTripFinish(fare: o.price, driver: o.name, route: '${a.pickupName} to ${a.dropName}'),
+                ],
                 const SizedBox(height: 12),
                 FilledButton(onPressed: () => context.go('/'), child: const Text('Done')),
               ],

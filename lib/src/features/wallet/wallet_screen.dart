@@ -14,10 +14,13 @@ import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/offline_strip.dart';
+import '../store_review/demo_wallet.dart' show demoWalletProvider;
 import 'c2c_owed_card.dart';
 import 'wallet_topup.dart';
 
 final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>((ref) {
+  // The store review account's demo wallet (0333): on this phone alone.
+  if (ref.watch(storeReviewProvider)) return ref.watch(demoWalletProvider).balances;
   ref.watchLive('wallets');
   return ref.watch(accountRepositoryProvider).walletBalances();
 });
@@ -25,6 +28,7 @@ final walletBalancesProvider = FutureProvider.autoDispose<List<WalletBalance>>((
 // Every transaction moves a balance (trg_wallet_tx_apply), so a change to
 // the account's wallets is also when the history has a new line.
 final walletTxProvider = FutureProvider.autoDispose<List<WalletTransaction>>((ref) {
+  if (ref.watch(storeReviewProvider)) return ref.watch(demoWalletProvider).history;
   ref.watchLive('wallets');
   return ref.watch(accountRepositoryProvider).walletTransactions();
 });

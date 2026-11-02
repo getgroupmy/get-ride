@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../data/mygig_repository.dart' show mygigAt, mygigConfigProvider;
 import '../mygig/mygig_entry.dart' show mygigButtonShows;
 import 'package:flutter/material.dart';
@@ -19,6 +21,7 @@ import '../../widgets/side_menu_host.dart';
 import '../../widgets/side_menu_style.dart';
 import '../../widgets/side_menu_tiles.dart';
 import '../partner/driver_online.dart';
+import '../store_review/store_review_host.dart' show showHowItWorks;
 import '../../data/driver_services_repository.dart' show servicesPageAvailableProvider;
 import '../partner/partner_menu.dart' show partnerMenuAction, partnerMenuRowShows;
 import '../meter/meter_session_toggle.dart';
@@ -81,17 +84,18 @@ class RiderSideMenu extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final close = SideMenuHost.of(context)?.close;
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
-    final mode = sideMenuModeButton(blob, 'user');
+    final hide = ref.watch(hideComingSoonProvider);
+    final mode = hideSoon(sideMenuModeButton(blob, 'user'), hide);
     final profile = sideMenuProfile(blob, 'user');
     final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
 
     return SideMenuPanel(
       key: const ValueKey('rider-side-menu'),
       showProfile: profile.show,
-      onProfile: profile.comingSoon ? showComingSoon : SideMenuPanel.editProfile,
+      onProfile: profile.comingSoon ? (hide ? null : showComingSoon) : SideMenuPanel.editProfile,
       rows: [
         for (final e in resolveSideMenu(blob, 'user'))
-          if (riderMenuRowShows(e.id, scheduledRides: scheduled)) ...[
+          if (riderMenuRowShows(e.id, scheduledRides: scheduled) && !(hide && e.comingSoon)) ...[
             // Log out set apart from the pages above it.
             SideMenuTile(
               entry: e,
@@ -128,13 +132,14 @@ class PartnerSideMenu extends ConsumerWidget {
     final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
     // Pages for an approved driver wait for the approval.
     final approved = ref.watch(partnerProvider).value?.approved ?? true;
-    final mode = sideMenuModeButton(blob, 'partner');
+    final hide = ref.watch(hideComingSoonProvider);
+    final mode = hideSoon(sideMenuModeButton(blob, 'partner'), hide);
     final profile = sideMenuProfile(blob, 'partner');
     final meterRouter = GoRouter.maybeOf(context);
     return SideMenuPanel(
       key: const ValueKey('partner-side-menu'),
       showProfile: profile.show,
-      onProfile: profile.comingSoon ? showComingSoon : SideMenuPanel.editProfile,
+      onProfile: profile.comingSoon ? (hide ? null : showComingSoon) : SideMenuPanel.editProfile,
       rows: [
         MeterSessionToggle(
           onTurnedOn: () {
@@ -143,7 +148,7 @@ class PartnerSideMenu extends ConsumerWidget {
           },
         ),
         for (final e in resolveSideMenu(blob, 'partner'))
-          if (partnerMenuRowShows(
+          if (!(hide && e.comingSoon) && partnerMenuRowShows(
             e.id,
             obdLinked: linked,
             hasMyRideCode: hasCode,
@@ -242,6 +247,26 @@ class SideMenuPanel extends ConsumerWidget {
       buttonKey: modeKey,
       onButton: onMode,
       footer: [
+        // The store review demo account (0333): its tour, mode and notice.
+        if (ref.watch(storeReviewProvider))
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: OutlinedButton.icon(
+              key: const ValueKey('menu-how-it-works'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(46),
+                foregroundColor: outline,
+                side: BorderSide(color: outline),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.tour_outlined),
+              label: const Text('How it works'),
+              onPressed: () {
+                SideMenuHost.of(context)?.close();
+                unawaited(showHowItWorks(context, ref));
+              },
+            ),
+          ),
         if (dispatch)
           Padding(
             padding: const EdgeInsets.only(top: 10),

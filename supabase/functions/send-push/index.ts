@@ -114,6 +114,7 @@ import {
 } from "../_shared/push.ts";
 import { livePushAuthDeps } from "../_shared/push_auth.ts";
 import { handleSendPush, json, type SendBody, type SendCaller } from "../_shared/send_push_handler.ts";
+import { isNewsBroadcast, newsLeftOut, newsRecipients } from "../_shared/news_offers.ts";
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
@@ -291,6 +292,20 @@ async function dispatch(payload: SendBody, caller: SendCaller = "admin"): Promis
   // Only the phones in the mode this notification belongs to (a driver
   // browsing as a passenger is not sent ride offers, and the other way round).
   const mode = notificationMode(audience, payload.data, profileId !== "");
+  // News and offers (0333): a broadcast from the panel or a schedule reaches
+  // only the accounts that opted in. Trip, money, safety and account pushes
+  // (a type in data, or one person) are never held back.
+  let newsOff = 0;
+  if (isNewsBroadcast(payload, caller)) {
+    const { data: onRows, error: onErr } = await supabase.rpc("news_offers_on_ids");
+    if (onErr) {
+      return json({ error: `Failed to read News and offers: ${onErr.message}` }, 500);
+    }
+    const optedIn = new Set<string>(((onRows ?? []) as unknown[]).map((r) => String(r)));
+    const all = pickRecipients(tokenRows ?? [], only, exclude);
+    newsOff = newsLeftOut(all, optedIn);
+    tokenRows = newsRecipients(tokenRows ?? [], optedIn);
+  }
   const audienceRows = pickRecipients(tokenRows, only, exclude);
   const now = new Date();
   const recipientRows = area ? audienceRows.filter((r) => inArea(r as LocatedRow, area, now)) : audienceRows;
@@ -306,6 +321,8 @@ async function dispatch(payload: SendBody, caller: SendCaller = "admin"): Promis
       unlocated: area ? audienceRows.filter((r) => !(r as LocatedRow).located_at).length : 0,
       // Partners in the audience, each once (with or without a phone).
       ...(only !== null && !profileId ? { partners: only.size } : {}),
+      // Accounts left out for not opting in to News and offers (0333).
+      newsOff,
     });
   }
 

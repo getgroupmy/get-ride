@@ -16,6 +16,8 @@ import 'app_icon_screen.dart';
 import 'blocked_drivers_screen.dart';
 import 'change_pin_screen.dart';
 import 'map_settings_card.dart';
+import 'location_checkins_card.dart';
+import 'news_offers_card.dart';
 import 'navigation_app_card.dart';
 import 'passkeys_screen.dart';
 import 'permissions_card.dart';
@@ -64,6 +66,10 @@ class SettingsScreen extends ConsumerWidget {
             const AppIconTile(),
             // Admin → App Settings → Permissions can hide it (0196).
             if (ref.watch(permissionRulesProvider).value?.showPermissionsCard ?? true) const PermissionsCard(),
+            // Notifications › News and offers (0333).
+            const NewsOffersCard(),
+            // Passengers' closed-app check-ins, when the admin offers them (0333).
+            const LocationCheckinsCard(),
             // The switch alone here; the whole story is on the Safety page.
             const VoiceProtectionCard(compact: true),
             const NavigationAppCard(),

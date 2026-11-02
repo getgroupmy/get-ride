@@ -113,6 +113,26 @@ PinLoginOutcome pinLoginOutcome(int status, Object? body) {
   }
 }
 
+/// The refresh token in pin-login's review answer, or null. Pure.
+String? storeReviewRefreshToken(Object? body) {
+  final map = body is Map ? body : const {};
+  final session = map['session'];
+  final token = session is Map ? session['refresh_token'] : null;
+  return token is String && token.isNotEmpty ? token : null;
+}
+
+/// What the phone screen says when the store review sign-in (0333) did not
+/// sign in. Pure.
+String storeReviewSignInMessage(int status, Object? body) {
+  final map = body is Map ? body : const {};
+  final wait = map['retry_after'] is num ? (map['retry_after'] as num).toInt() : null;
+  return switch (status) {
+    403 => 'The store review sign-in is switched off. Sign in with your own number.',
+    429 => rateLimitMessage(wait ?? 60),
+    _ => "Couldn't reach sign-in. Check your connection and try again.",
+  };
+}
+
 /// The admin's PIN policy (Admin → App Settings → PIN sign-in, migration
 /// 0192): wrong PINs before the lock, and how long it lasts.
 class PinPolicy {

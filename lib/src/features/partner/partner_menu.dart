@@ -167,7 +167,7 @@ class PartnerMenuSheet extends ConsumerWidget {
     final mygig = mygigButtonShows(ref.watch(mygigConfigProvider(mygigAt(null, null))).value);
     final menu = [
       for (final e in resolveSideMenu(blob, 'partner'))
-        if (partnerMenuRowShows(
+        if (!(ref.watch(hideComingSoonProvider) && e.comingSoon) && partnerMenuRowShows(
           e.id,
           obdLinked: linked,
           hasMyRideCode: hasCode,
@@ -179,7 +179,7 @@ class PartnerMenuSheet extends ConsumerWidget {
         ))
           e,
     ];
-    final mode = sideMenuModeButton(blob, 'partner');
+    final mode = hideSoon(sideMenuModeButton(blob, 'partner'), ref.watch(hideComingSoonProvider));
     final nav = GoRouter.of(context);
     final sheet = Navigator.of(context);
     return SafeArea(

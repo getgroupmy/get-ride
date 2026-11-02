@@ -122,9 +122,9 @@ class RiderMenu extends ConsumerWidget {
     final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
     final menu = [
       for (final e in resolveSideMenu(blob, 'user'))
-        if (riderMenuRowShows(e.id, scheduledRides: scheduled)) e,
+        if (riderMenuRowShows(e.id, scheduledRides: scheduled) && !(ref.watch(hideComingSoonProvider) && e.comingSoon)) e,
     ];
-    final mode = sideMenuModeButton(blob, 'user');
+    final mode = hideSoon(sideMenuModeButton(blob, 'user'), ref.watch(hideComingSoonProvider));
     void go(String route) {
       final router = GoRouter.of(context);
       beforeOpen?.call();

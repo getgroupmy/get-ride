@@ -3057,7 +3057,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             courierAvailable: ref.watch(courierAvailableProvider),
             // And the City to City box once its Vehicle Service is on (0307).
             cityToCityAvailable: ref.watch(c2cServiceActiveProvider).value ?? false,
-          )
+          ).where((b) => b.route != null || !ref.watch(hideComingSoonProvider)).toList()
         : const <ServiceBoxView>[];
     void comingSoon(String body) => showAppDialog<void>(id: 'home.coming-soon',
           context: context,

@@ -38,6 +38,8 @@ export interface SendBody {
   partnerTypes?: string[];
   /** The push_schedules row this send is for; taken from the database only. */
   scheduleId?: string;
+  /** A News and offers broadcast (0333): skips people who turned it off. */
+  news?: boolean;
 }
 
 /** Who is asking (authorizePush): a schedule id counts from the database only. */

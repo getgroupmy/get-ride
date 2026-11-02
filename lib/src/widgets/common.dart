@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/store_review.dart' show isStoreReviewRefusal, storeReviewRefusal;
 import 'app_notice.dart';
 import 'loading_skeleton.dart';
 import 'page_style_host.dart';
@@ -183,6 +184,8 @@ String? errorDetails(Object e) {
 }
 
 String _errorText(Object e) => switch (e) {
+      // The store review account's seal (0333): said plainly.
+      _ when isStoreReviewRefusal(e) => storeReviewRefusal,
       AuthException(:final message) => message,
       // Two registrations at the same moment: the index (0303), not the trigger.
       _ when isIdNumberTaken(e) => idNumberTakenMessage,

@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>GET.ride uses Bluetooth to confirm you're getting into the right car at pickup (your phone and your driver's find each other), to connect to a Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer, and to print fares on a Bluetooth receipt printer.</string>
+	<string>GET.ride uses Bluetooth (where turned on) to confirm you're getting into the right car at pickup and are still together during the trip (your phone and your driver's find each other, never to find where you are), to connect to a Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer, and to print fares on a Bluetooth receipt printer.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>GET.ride uses Bluetooth to confirm you're getting into the right car at pickup (your phone and your driver's find each other), to connect to a Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer, and to print fares on a Bluetooth receipt printer.</string>
+	<string>GET.ride uses Bluetooth (where turned on) to confirm you're getting into the right car at pickup and are still together during the trip (your phone and your driver's find each other, never to find where you are), to connect to a Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer, and to print fares on a Bluetooth receipt printer.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>GET.ride uses the camera to scan payment and wallet QR codes, to take a live selfie for your profile and sign-in checks, to photograph your ID, documents and vehicle, and to take photos to send in chats.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -13,9 +13,9 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>GET.ride uses the microphone for voice calls, for voice notes you send in chats and, with VoiceProtection or Audio protection on, to record trip audio during your rides. Trip recordings stay on your phone for a limited time (usually 24 hours) and are only sent to support if a ride is reported.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>GET.ride keeps sharing your location while a trip is in progress, while you are online as a driver, and while Meter Digital is running, even when the app is in the background. With Always, GET.ride also shares your approximate location about every 15 minutes, or when you move about 200 m, even when the app is closed, so our safety and support team can see where you last were.</string>
+	<string>GET.ride collects location data to enable trip tracking, safety and ride requests, even when the app is closed or not in use: during a trip (passengers and drivers), while you are online as a driver, and while Meter Digital is running. Drivers who allow Always, and passengers only if they turn on "Share my last location with GET.ride safety when the app is closed" in Settings, also share their approximate location about every 15 minutes, or when they move about 200 m, even when the app is closed, so our safety and support team can see where they last were. Your driver or passenger sees it only during your trip; it is never sold.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>GET.ride uses your location to set your pickup point and to share your position with your driver or passenger during a trip.</string>
+	<string>GET.ride uses your location while the app is open to set your pickup point, show cars and prices near you, share your position with your driver or passenger during a trip, and check in every few minutes so our support team can see you on its live map.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>GET.ride connects to your Wi-Fi OBD-II reader and Wi-Fi receipt printer on the local network, to read the vehicle's speed and odometer and to print fares.</string>
 	<key>LSApplicationQueriesSchemes</key>

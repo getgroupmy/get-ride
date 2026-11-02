@@ -70,6 +70,17 @@ class DemoSettings {
   }
 }
 
+/// The store review account's demo (migration 0333): offers, requests and
+/// both simulated drives on, for [uid] alone.
+DemoSettings storeReviewDemoSettings(String? uid) => DemoSettings(
+  riderOffers: true,
+  riderTripSim: true,
+  partnerRequests: true,
+  partnerDriveSim: true,
+  riders: {?uid},
+  drivers: {?uid},
+);
+
 /// A stored demo list as profile ids: strings only, trimmed, no blanks and
 /// no repeats, in the order they were added. Pure.
 List<String> demoAccountIds(Object? raw) {

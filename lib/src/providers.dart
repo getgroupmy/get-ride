@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'config.dart';
 import 'core/navigation_app.dart';
 import 'data/account_repository.dart';
 import 'data/auth_repository.dart';
@@ -12,6 +13,7 @@ import 'data/models.dart';
 import 'data/reliability_repository.dart';
 import 'data/ride_repository.dart';
 import 'data/map_profile_repository.dart' show geoProxyProvider;
+import 'core/store_review.dart' show isStoreReviewAccount, storeReviewDemoPartner;
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
 
@@ -47,8 +49,32 @@ final profileProvider = FutureProvider<Profile?>((ref) async {
   return ref.watch(accountRepositoryProvider).profile();
 });
 
+/// Whether the signed-in account is the sealed store review account
+/// (migration 0333): it runs the app on simulated data only.
+final storeReviewProvider = Provider<bool>((ref) {
+  // Never in the way: no client (a test, before start-up) is no reviewer.
+  try {
+    ref.watch(authStateProvider);
+    final user = ref.watch(supabaseProvider).auth.currentUser;
+    return user != null && isStoreReviewAccount(userId: user.id, appMetadata: user.appMetadata);
+  } catch (_) {
+    return false;
+  }
+});
+
+/// "Coming soon" items are not shown at all (0333): in store builds, and
+/// to the store review account. The admin's flags stay as they are; normal
+/// builds show them as before.
+final hideComingSoonProvider = Provider<bool>((ref) => AppConfig.storeBuild || ref.watch(storeReviewProvider));
+
 final partnerProvider = FutureProvider<Partner?>((ref) async {
-  if (ref.watch(currentUserIdProvider) == null) return null;
+  final uid = ref.watch(currentUserIdProvider);
+  if (uid == null) return null;
+  // The store review account drives as a made-up approved driver on this
+  // phone alone; the server never gives it a partner row.
+  if (ref.watch(storeReviewProvider)) {
+    return Partner(storeReviewDemoPartner(uid, name: (await ref.watch(profileProvider.future))?.name));
+  }
   // An admin approving, rejecting or blocking the partner shows at once.
   ref.watchLive('partners');
   try {

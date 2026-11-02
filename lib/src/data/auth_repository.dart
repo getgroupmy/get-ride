@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 
 import '../core/auth_utils.dart';
 import '../core/app_display.dart' show isRegistrationClosed, registrationClosedPinMessage;
+import '../core/installed_app.dart';
 import '../core/phone_rules.dart';
 import '../features/auth/passkey/passkey.dart' as pk;
 import 'meter_session_store.dart';
@@ -15,10 +16,19 @@ import 'function_region.dart';
 
 /// What the server knows about a phone number (`profile_phone_lookup`).
 class PhoneLookup {
-  const PhoneLookup({required this.hasProfile, required this.hasPin, required this.isDeleted});
+  const PhoneLookup({
+    required this.hasProfile,
+    required this.hasPin,
+    required this.isDeleted,
+    this.isStoreReview = false,
+  });
   final bool hasProfile;
   final bool hasPin;
   final bool isDeleted;
+
+  /// The store review number while Admin › App Settings › Store review
+  /// login is on (0333): signed in without SMS code or PIN.
+  final bool isStoreReview;
 }
 
 /// Outcome of a PIN sign-in attempt.
@@ -102,6 +112,7 @@ class AuthRepository {
         hasProfile: r['has_profile'] == true,
         hasPin: r['has_pin'] == true,
         isDeleted: r['is_deleted'] == true,
+        isStoreReview: r['store_review'] == true,
       );
     } on PostgrestException catch (e) {
       final wait = parseRateLimitSeconds(e.message);
@@ -174,6 +185,40 @@ class AuthRepository {
         return const PinSignInError("Couldn't reach sign-in. Check your connection, or sign in with an SMS code.");
     }
   }
+
+  /// Signs in to the sealed store review account (0333) through
+  /// pin-login's review action: the server checks the switch and the
+  /// number. Null when signed in, else what to tell the reviewer.
+  Future<String?> signInStoreReview(String phone) async {
+    int status;
+    Object? body;
+    try {
+      final res = await _db.functions.invokeNearDb('pin-login', body: {
+        'action': 'review',
+        'phone': normalizeE164(phone),
+        'platform': thisDevicePlatform(),
+        'device': thisDeviceLabel(),
+        'app_version': InstalledApp.version,
+      });
+      status = res.status;
+      body = res.data;
+    } on FunctionException catch (e) {
+      status = e.status;
+      body = e.details;
+    } catch (_) {
+      return storeReviewSignInMessage(503, null);
+    }
+    final token = status == 200 ? storeReviewRefreshToken(body) : null;
+    if (token == null) return storeReviewSignInMessage(status, body);
+    await _db.auth.setSession(token);
+    await guard.claim();
+    storeReviewSignedIn = true;
+    return null;
+  }
+
+  /// Set by a store review sign-in: the app shows the permissions notice
+  /// and the demo tour's mode choice once it is in.
+  static bool storeReviewSignedIn = false;
 
   Future<PinLoginOutcome> _pinLogin(String phone, String pin) async {
     try {

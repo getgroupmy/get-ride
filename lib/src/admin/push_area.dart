@@ -155,7 +155,11 @@ String pushReachText(Map<String, dynamic> r, PushArea area) {
   final partners = r['partners'] is num
       ? ' ${v('partners')} ${v('partners') == 1 ? 'partner matches' : 'partners match'}, each counted once.'
       : '';
-  if (area.kind == PushAreaKind.everywhere || unlocated == 0) return '$head.$partners';
+  // People who have not opted in to News and offers (0333) get no broadcast.
+  final off = v('newsOff');
+  final news = off == 0 ? '' : ' $off ${off == 1 ? 'person has' : 'people have'} not opted in to News and offers '
+      'and ${off == 1 ? 'is' : 'are'} left out.';
+  if (area.kind == PushAreaKind.everywhere || unlocated == 0) return '$head.$partners$news';
   return '$head. $unlocated ${unlocated == 1 ? 'device has' : 'devices have'} no known location yet and '
-      '${unlocated == 1 ? 'is' : 'are'} left out.$partners';
+      '${unlocated == 1 ? 'is' : 'are'} left out.$partners$news';
 }
