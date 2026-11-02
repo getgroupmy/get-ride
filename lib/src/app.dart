@@ -132,6 +132,7 @@ import 'features/settings/confirm_number_screen.dart';
 import 'features/settings/auth_diagnostics_screen.dart';
 import 'features/settings/change_pin_screen.dart';
 import 'features/settings/delete_account_screen.dart';
+import 'features/settings/delete_account_web_screen.dart';
 import 'features/settings/passkeys_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/settings/show_location_screen.dart';
@@ -306,6 +307,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // So is installing a test build: the tester has no account yet.
       // Not in the iPhone store build (0333): no Android or install links there.
       if (loc.startsWith('/install/')) return iosStoreBuild() ? '/' : null;
+      // So is asking for an account to be deleted (0334): Google Play's link,
+      // for people without the app; it signs in on the page itself.
+      if (loc == '/delete-account') return null;
       // A personal QR link (My QR) works signed out too: a referral code is
       // carried into sign-up, a driver's code asks to sign in first. Both
       // /q/<kind>/<token> and the app-link form /<kind>/<token>.
@@ -660,6 +664,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, s) => SignupPhotoScreen(next: signupPhotoNext(s.uri.queryParameters['next'])),
       ),
       GoRoute(path: '/diagnostics', builder: (_, _) => const AuthDiagnosticsScreen()),
+      // Delete your account, without the app (0334). No sign-in.
+      GoRoute(path: '/delete-account', builder: (_, _) => const DeleteAccountWebScreen()),
       GoRoute(
         path: '/share/:token',
         builder: (_, st) => SharedRideScreen(token: st.pathParameters['token']!),

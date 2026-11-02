@@ -4,6 +4,7 @@ import 'page_surfaces.dart';
 
 const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:account-deletion-section.account-deletion-section', SurfaceKind.modal, 'Account deletion section · Account deletion section', 'lib/src/admin/screens/people/account_deletion_section.dart'),
+  SurfaceEntry('modal:account-deletion-section.edit-grace', SurfaceKind.modal, 'Account deletion section · Edit grace', 'lib/src/admin/screens/people/account_deletion_section.dart'),
   SurfaceEntry('modal:account-deletion-section.edit-retention', SurfaceKind.modal, 'Account deletion section · Edit retention', 'lib/src/admin/screens/people/account_deletion_section.dart'),
   SurfaceEntry('modal:account.confirm-sign-out', SurfaceKind.modal, 'Account · Confirm sign out', 'lib/src/features/profile/account_screen.dart'),
   SurfaceEntry('modal:admin-dispatch.account-checks', SurfaceKind.modal, 'Admin dispatch · Account checks', 'lib/src/admin/screens/dispatch/signin_checks_fields.dart'),
@@ -505,6 +506,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('route:/call/:id', SurfaceKind.page, 'Call', 'lib/src/app.dart', path: '/call/:id'),
   SurfaceEntry('route:/city-to-city', SurfaceKind.page, 'City to city', 'lib/src/app.dart', path: '/city-to-city'),
   SurfaceEntry('route:/city-to-city/:id/chat', SurfaceKind.page, 'Chat', 'lib/src/app.dart', path: '/city-to-city/:id/chat'),
+  SurfaceEntry('route:/delete-account', SurfaceKind.page, 'Delete account web', 'lib/src/app.dart', path: '/delete-account'),
   SurfaceEntry('route:/diagnostics', SurfaceKind.page, 'Auth diagnostics', 'lib/src/app.dart', path: '/diagnostics'),
   SurfaceEntry('route:/dispatch', SurfaceKind.page, 'Dispatch', 'lib/src/app.dart', path: '/dispatch'),
   SurfaceEntry('route:/drive', SurfaceKind.page, 'Partner', 'lib/src/app.dart', path: '/drive'),

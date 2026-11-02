@@ -88,10 +88,19 @@ class AccountEvent {
 
   /// "Deleted by the user", "Linked: Trips and receipts, Ratings", ….
   String get summary => switch (kind) {
+    'deleted' when raw['detail'] is Map && (raw['detail'] as Map)['method'] == 'phone_code' =>
+      'Deleted after a request on the web',
     'deleted' => 'Deleted by the user',
     'linked' =>
       'Linked to a new account: ${categories.map((c) => AccountLinkCategory.byKey(c)?.label ?? c).join(', ')}',
     'final_deleted' => 'Personal data wiped (final deletion)',
+    // The web page (0334).
+    'deletion_requested' => 'Asked to delete on the web, by phone code',
+    'deletion_cancelled' => switch (raw['detail'] is Map ? (raw['detail'] as Map)['why'] : null) {
+      'signed_in' => 'Deletion request cancelled: the user signed in',
+      'admin' => 'Deletion request cancelled by an admin',
+      _ => 'Deletion request cancelled',
+    },
     _ => kind,
   };
 }

@@ -90,6 +90,7 @@ const _titles = {
   '/gig/': 'Your trip',
   '/verify/': 'Verify statement',
   '/diagnostics': 'Diagnostics',
+  '/delete-account': 'Delete your account',
 };
 
 /// Keeps the browser tab's title on the page shown: re-read from

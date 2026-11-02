@@ -507,6 +507,7 @@ class AdminUsersScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final canEdit = ref.watch(moduleAccessProvider('users')) == AccessLevel.edit;
     final keepDays = ref.watch(accountRetentionDaysProvider).value ?? 365;
+    final requested = ref.watch(accountDeletionRequestedIdsProvider).value ?? const <String>{};
     final page = adminPeoplePageSizeFor(MediaQuery.sizeOf(context).width);
     return _RecordList(
         title: 'Users',
@@ -517,7 +518,11 @@ class AdminUsersScreen extends ConsumerWidget {
         onServerSearch: (r, q) => r.read(adminUsersRequestProvider(page).notifier).search(q),
         filters: userFilters,
         initialFilter: initialFilter,
-        matches: (u, f) => f == 'final-delete' ? dueForFinalDeletion(u, keepDays, DateTime.now()) : userMatches(u, f),
+        matches: (u, f) => switch (f) {
+          'final-delete' => dueForFinalDeletion(u, keepDays, DateTime.now()),
+          'deletion-requested' => requested.contains('${u['id']}'),
+          _ => userMatches(u, f),
+        },
         searchColumns: userSearchColumns,
         onOpen: (u) => _open(context, ref, u),
         tile: (u) => _RecordCard(

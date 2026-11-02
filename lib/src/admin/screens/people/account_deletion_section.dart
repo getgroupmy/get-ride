@@ -1,10 +1,12 @@
-// Admin → Users, a user's sheet (migration 0194): a deleted account's story
-// and its final deletion, or linking a deleted account into this one.
+// Admin › Users, a user's sheet (migration 0194): a deleted account's story
+// and its final deletion, or linking a deleted account into this one; the
+// requests from getride.my/delete-account (0334), with their status.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
 import '../../../core/account_deletion.dart';
+import '../../../core/account_deletion_web.dart';
 import '../../../data/account_deletion_repository.dart';
 import '../../../widgets/common.dart';
 import '../../widgets/admin_widgets.dart';
@@ -35,6 +37,8 @@ class AccountDeletionSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final t = Theme.of(context);
     final events = ref.watch(accountEventsProvider(_id)).value ?? const <AccountEvent>[];
+    final requests = ref.watch(accountDeletionRequestsProvider(_id)).value ?? const <AccountDeletionRequest>[];
+    final graceDays = ref.watch(accountDeletionGraceDaysProvider).value ?? 7;
     final days = ref.watch(accountRetentionDaysProvider).value ?? 365;
     final wiped = user['final_deleted_at'] != null;
     final due = finalDeletionDueAt(user, days);
@@ -71,6 +75,7 @@ class AccountDeletionSection extends ConsumerWidget {
               ),
             ),
           ),
+        for (final r in requests) _requestTile(context, ref, t, r),
         for (final e in events)
           ListTile(
             dense: true,
@@ -102,6 +107,11 @@ class AccountDeletionSection extends ConsumerWidget {
                   onPressed: () => _editRetention(context, ref, days),
                   child: Text('Keep deleted accounts $days days'),
                 ),
+                TextButton(
+                  key: const ValueKey('grace-days'),
+                  onPressed: () => _editGrace(context, ref, graceDays),
+                  child: Text('Phone requests wait ${dayCount(graceDays)}'),
+                ),
               ],
             ),
           ),
@@ -120,6 +130,96 @@ class AccountDeletionSection extends ConsumerWidget {
           ),
       ],
     );
+  }
+
+  /// A request from the web page: its status, and Cancel while in grace.
+  Widget _requestTile(BuildContext context, WidgetRef ref, ThemeData t, AccountDeletionRequest r) {
+    final when = switch (r.status) {
+      'in_grace' when r.graceUntil != null => 'deletes on ${dateText(r.graceUntil!.toUtc().toIso8601String())}',
+      'deleted' when r.deletedAt != null => 'on ${dateText(r.deletedAt!.toUtc().toIso8601String())}',
+      'cancelled' => r.cancelLabel,
+      _ when r.createdAt != null => dateText(r.createdAt!.toUtc().toIso8601String()),
+      _ => null,
+    };
+    return ListTile(
+      key: ValueKey('deletion-request-${r.id}'),
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(
+        r.open ? Icons.hourglass_top : Icons.web_outlined,
+        size: 18,
+        color: r.open ? t.colorScheme.error : null,
+      ),
+      title: Text('Deletion request: ${r.statusLabel}'),
+      subtitle: Text(
+        [
+          r.methodLabel,
+          ?when,
+          if (r.reason != null) 'Reason: ${r.reason}',
+          if (r.open && r.lastError == 'active_ride') 'Waiting for a ride to end',
+        ].join(' · '),
+      ),
+      trailing: r.open && canEdit
+          ? TextButton(
+              key: const ValueKey('cancel-deletion-request'),
+              onPressed: () => _cancelRequest(context, ref, r),
+              child: const Text('Cancel'),
+            )
+          : null,
+    );
+  }
+
+  Future<void> _cancelRequest(BuildContext context, WidgetRef ref, AccountDeletionRequest r) async {
+    if (!await confirm(
+      context,
+      'Cancel this deletion request?',
+      'The account is kept and the user is told. They can ask again on the web.',
+      ok: 'Cancel request',
+    )) {
+      return;
+    }
+    if (!context.mounted) return;
+    final ok = await runAdminAction(
+      context,
+      () => _friendly(() => ref.read(accountDeletionRepositoryProvider).cancelRequest(r.id)),
+      success: 'Request cancelled',
+    );
+    if (ok) {
+      ref.invalidate(accountDeletionRequestsProvider(_id));
+      ref.invalidate(accountDeletionRequestedIdsProvider);
+      ref.invalidate(accountEventsProvider(_id));
+    }
+  }
+
+  Future<void> _editGrace(BuildContext context, WidgetRef ref, int current) async {
+    final c = TextEditingController(text: '$current');
+    final v = await showAppDialog<int>(id: 'account-deletion-section.edit-grace',
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Requests by phone'),
+        content: TextField(
+          controller: c,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Days before the account is deleted',
+            helperText: '0 to 30. Signing in during these days cancels the request.',
+            helperMaxLines: 2,
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, int.tryParse(c.text.trim())), child: const Text('Save')),
+        ],
+      ),
+    );
+    c.dispose();
+    if (v == null || !context.mounted) return;
+    final ok = await runAdminAction(
+      context,
+      () => _friendly(() => ref.read(accountDeletionRepositoryProvider).saveGraceDays(v)),
+      success: 'Saved',
+    );
+    if (ok) ref.invalidate(accountDeletionGraceDaysProvider);
   }
 
   Future<void> _finalDelete(BuildContext context, WidgetRef ref) async {

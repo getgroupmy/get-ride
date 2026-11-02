@@ -94,6 +94,8 @@ const userFilters = {
   'rejected': 'Rejected',
   'deleted': 'Deleted',
   'final-delete': 'Due for final deletion',
+  // A request from getride.my/delete-account in its grace days (0334).
+  'deletion-requested': 'Deletion requested',
   'old-app': 'App before 1.4.6',
 };
 
