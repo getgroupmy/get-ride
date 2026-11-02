@@ -51,6 +51,11 @@ Permissions, and why:
   and receipt printer. Never used to find where you are.
 - Calls in the background (Android): keeps an in-app call connected and rings
   incoming calls like a phone call.
+- iPhone background modes: voip (an incoming ride call arrives as a PushKit
+  VoIP push and is reported to CallKit at once), audio (a call, and Audio
+  protection if turned on, keep their audio
+  going with the screen off), location (trip tracking, see above),
+  remote-notification (notifications).
 - Photos (iPhone): attach a photo you pick; only that photo is seen.
 - Local network (iPhone, drivers): a Wi-Fi OBD-II reader or receipt printer.
 

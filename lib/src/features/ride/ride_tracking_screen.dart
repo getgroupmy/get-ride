@@ -212,7 +212,7 @@ class RideTrackingScreen extends ConsumerWidget {
             ride: r,
             cardAction: cardAction,
             map: _TrackingMap(ride: r),
-            wide: MediaQuery.sizeOf(context).width >= 900,
+            wide: wideLayoutAt(MediaQuery.sizeOf(context)),
           );
           if (!r.fromCache) return panel;
           return Column(

@@ -830,7 +830,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                 child: RideSosFab(onPressed: () => showRideSos(context, ref, plate: r.partnerPlate, rideId: r.id)),
               ),
           ]);
-          final wide = MediaQuery.sizeOf(context).width >= 900;
+          final wide = wideLayoutAt(MediaQuery.sizeOf(context));
           // On a phone the step's main button (arrived / start / complete) is
           // pinned under the sheet, so it is in view however far down the
           // sheet sits; on a wide screen it stays in the panel.

@@ -3246,7 +3246,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ]);
       });
     }
-    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final wide = wideLayoutAt(MediaQuery.sizeOf(context));
     final display = ref.watch(appDisplayProvider).value;
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final sections = HomeSections.fromSettings(blob);

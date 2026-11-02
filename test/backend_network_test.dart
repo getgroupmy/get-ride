@@ -136,6 +136,42 @@ void main() {
       expect(parseDohAnswer('nonsense'), isEmpty);
     });
 
+    test('IPv6: AAAA answers, resolvers by IPv6 address, the family the phone has first (0333)', () {
+      expect(
+        dohQuery('https://[2606:4700:4700::1111]/dns-query', 'api.getride.my', type: 'AAAA').toString(),
+        'https://[2606:4700:4700::1111]/dns-query?name=api.getride.my&type=AAAA',
+      );
+      expect(defaultDohResolvers, containsAll(['https://[2606:4700:4700::1111]/dns-query', 'https://[2001:4860:4860::8888]/resolve']));
+      for (final r in defaultDohResolvers) {
+        expect(normalizeDohUrl(r), r);
+      }
+      final mixed = {
+        'Status': 0,
+        'Answer': [
+          {'type': 1, 'data': '104.18.1.1'},
+          {'type': 28, 'data': '2606:4700::6812:101'},
+          {'type': 28, 'data': '2606:4700::6812:101'},
+          {'type': 28, 'data': 'fe80::1%en0'},
+          {'type': 28, 'data': '104.18.2.2'},
+          {'type': 1, 'data': '2606:4700::1'},
+        ],
+      };
+      expect(parseDohAnswer(mixed), ['104.18.1.1', '2606:4700::6812:101']);
+      expect(isIpv6('2001:db8::1'), isTrue);
+      expect(isIpv6('::ffff:192.0.2.1'), isTrue);
+      expect(isIpv6('2001:db8:0:0:0:0:0:1'), isTrue);
+      expect(isIpv6('2001:db8::1::2'), isFalse);
+      expect(isIpv6('12345::'), isFalse);
+      expect(isIpv6('104.18.1.1'), isFalse);
+      const ips = ['104.18.1.1', '2606:4700::6812:101', '104.18.2.2'];
+      expect(preferAddressFamily(ips, hasV4: false, hasV6: true).first, '2606:4700::6812:101');
+      expect(preferAddressFamily(ips, hasV4: true, hasV6: false).first, '104.18.1.1');
+      expect(preferAddressFamily(ips, hasV4: true, hasV6: true), ips);
+      expect(chooseBackend(['https://a.getride.my'], resolves: (_) => false,
+          dohIps: {'https://a.getride.my': preferAddressFamily(ips, hasV4: false, hasV6: true)}).pinnedIp,
+          '2606:4700::6812:101');
+    });
+
     test('resolver addresses: https with a path, no query', () {
       expect(normalizeDohUrl('https://1.1.1.1/dns-query'), 'https://1.1.1.1/dns-query');
       expect(normalizeDohUrl('http://1.1.1.1/dns-query'), isNull);

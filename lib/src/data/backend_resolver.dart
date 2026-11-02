@@ -22,10 +22,12 @@ Future<BackendChoice> pickBackend(String direct, BackendNetwork network) async {
   }
   if (resolved != null) return BackendChoice(resolved);
   final dohIps = <String, List<String>>{};
+  // Pinned to an address of a family this phone has (an IPv6-only network).
+  final families = await deviceAddressFamilies();
   for (final c in candidates) {
     final ips = await dohLookup(Uri.parse(c).host, network.resolvers, backendLookupTimeout);
     if (ips.isNotEmpty) {
-      dohIps[c] = ips;
+      dohIps[c] = preferAddressFamily(ips, hasV4: families.v4, hasV6: families.v6);
       break;
     }
   }

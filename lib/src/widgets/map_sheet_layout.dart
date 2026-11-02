@@ -118,6 +118,18 @@ const mapSheetDragDevices = {
 /// for the map's buttons (SOS, recenter) over it: a phone on its side.
 const mapShortStrip = 110.0;
 
+/// From this width the booking, offers, trip and driver pages put their
+/// panel beside the map instead of under it: the width from which the app
+/// has the rail instead of the side menu (AppSideMenuHost.appliesAt), so an
+/// iPad in portrait (768 or 820 wide) gets the side panel (0333).
+const wideLayoutMinWidth = 720.0;
+
+/// Whether a screen of [size] lays out wide: 900 or wider as before (a
+/// laptop, a large phone on its side), and from [wideLayoutMinWidth] when it
+/// is also 500 high, as AppSideMenuHost.appliesAt (an iPad in portrait); a
+/// smaller phone on its side (844 × 390) keeps the phone layout.
+bool wideLayoutAt(Size size) => size.width >= 900 || (size.width >= wideLayoutMinWidth && size.height >= 500);
+
 /// The sheet's width when the buttons stand beside it, and the room kept
 /// for them each side (past the notch), on a screen at least
 /// [besideMinWidth] wide; never narrower than [besideMinSheetWidth].

@@ -122,6 +122,10 @@ bool partnerCanDrive(Partner p) {
   return s == 'approved' || s.startsWith('permit-');
 }
 
+/// The wide driver panel's width on a screen [width] wide: 520, but never
+/// more than 55% of the screen (an iPad in portrait keeps a map beside it).
+double driverPanelWidth(double width) => width * 0.55 < 520 ? width * 0.55 : 520;
+
 /// Below this height the wide driver panel scrolls as a whole instead of
 /// holding its settings fixed over the queue.
 const wideDriverPanelScrollBelow = 640.0;
@@ -1247,7 +1251,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   parseStringList(p.raw['partner_types']),
                   ref.watch(partnerTypeEntriesProvider).value ?? const [],
                 );
-                final wide = MediaQuery.sizeOf(context).width >= 900;
+                final wide = wideLayoutAt(MediaQuery.sizeOf(context));
                 // Admin → Partner Type → Service availability (0245): where
                 // none of the driver's types is offered, no requests show
                 // (the server stops pushing them and refuses bids there).
@@ -1384,7 +1388,9 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                           ),
                   );
                   return Row(children: [
-                    SizedBox(width: 520, child: panel),
+                    // 520 on a desktop; narrower from 720 (an iPad in
+                    // portrait), so the map keeps room beside it.
+                    SizedBox(width: driverPanelWidth(MediaQuery.sizeOf(context).width), child: panel),
                     const VerticalDivider(width: 1),
                     Expanded(
                       child: Stack(children: [
@@ -1547,7 +1553,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           ),
         // A new request on a phone: inDrive's sheet up from the bottom, over
         // everything (the desktop has it over the map instead).
-        if (partner.value case final p? when _online && MediaQuery.sizeOf(context).width < 900)
+        if (partner.value case final p? when _online && !wideLayoutAt(MediaQuery.sizeOf(context)))
           Positioned.fill(child: _requestSheet(p)),
       ]),
     );

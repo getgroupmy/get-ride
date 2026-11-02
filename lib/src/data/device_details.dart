@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show InternetAddressType, NetworkInterface;
+import 'dart:io' show InternetAddress, InternetAddressType, NetworkInterface;
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -163,11 +163,15 @@ class DeviceDetailsReader {
   /// one `ip-lookup` gives.
   Future<String?> _localIp() async {
     if (kIsWeb) return null;
-    final all = await NetworkInterface.list(type: InternetAddressType.IPv4);
+    // IPv4 and IPv6 (an IPv6-only network has only the latter); IPv4 first,
+    // and a link-local IPv6 address only when there is nothing else.
+    final all = await NetworkInterface.list(type: InternetAddressType.any);
     if (all.isEmpty) return null;
     final wifi = all.where((n) => n.name.startsWith('wlan') || n.name.startsWith('en'));
-    final pick = (wifi.isNotEmpty ? wifi : all).expand((n) => n.addresses).where((a) => !a.isLoopback);
-    return pick.isEmpty ? null : pick.first.address;
+    final addrs = (wifi.isNotEmpty ? wifi : all).expand((n) => n.addresses).where((a) => !a.isLoopback).toList();
+    int rank(InternetAddress a) => a.type == InternetAddressType.IPv4 ? 0 : (a.isLinkLocal ? 2 : 1);
+    addrs.sort((a, b) => rank(a).compareTo(rank(b)));
+    return addrs.isEmpty ? null : addrs.first.address;
   }
 }
 
