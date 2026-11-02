@@ -86,7 +86,8 @@ class VoiceProtectionCard extends ConsumerWidget {
                   Text(
                     'When on, trip audio is recorded with your phone\'s microphone once a ride starts. Recordings stay '
                     'privately on your phone for 24 hours and are never accessible to you. They are only sent to our '
-                    'team if a ride is reported to support and an agent asks for them.',
+                    'team if a ride is reported to support and an agent asks for them. While it records, your '
+                    'passenger sees "Your driver is recording audio for safety" on their trip screen.',
                     style: t.textTheme.bodySmall,
                   ),
                   const SizedBox(height: 8),

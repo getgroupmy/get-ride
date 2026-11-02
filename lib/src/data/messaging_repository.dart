@@ -62,6 +62,16 @@ class MessagingRepository {
   Future<void> queueSms({required MessagingChannel channel, required String to, required String body}) =>
       _db.from('sms_outbox').insert({'channel': channel.id, 'to_phone': to, 'body': body});
 
+  /// A marketing SMS to [to] (migration 0335): queued only for the numbers
+  /// whose account turned on News and offers; the answer counts the rest.
+  Future<MarketingSmsResult> queueMarketingSms({required List<String> to, required String body}) async =>
+      MarketingSmsResult.fromJson(
+        await _db.rpc('admin_queue_marketing_sms', params: {'p_phones': to, 'p_body': body}),
+      );
+
+  /// How many accounts with a phone have News and offers on (0335).
+  Future<MarketingReach> marketingReach() async => marketingReachFrom(await _db.rpc('admin_marketing_sms_reach'));
+
   /// The newest queued SMS. A sign-in code's text is masked on the queue row
   /// (migration 0183); a full admin gets the real text back from
   /// sms_otp_secret (0187), a sub-admin gets nothing and keeps the mask.

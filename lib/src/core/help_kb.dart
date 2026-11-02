@@ -359,7 +359,7 @@ const helpKnowledgeBase = <HelpArticle>[
     id: '68656c70-0000-4000-8000-000000000030',
     title: 'What is VoiceProtection?',
     questionVariants: ['Trip audio recording', 'Is my ride recorded?', 'Rakaman suara'],
-    answer: 'VoiceProtection is a switch in Settings and Safety. With it on, the driver\'s phone records trip audio from Start trip to the end of the ride. The recording stays on that phone, is never played back in the app and is deleted after 24 hours. It only reaches our team if a ride is reported and a support agent asks for it. Phones only.',
+    answer: 'VoiceProtection is a switch in Settings and Safety. With it on, the driver\'s phone records trip audio from Start trip to the end of the ride. The recording stays on that phone, is never played back in the app and is deleted after 24 hours. It only reaches our team if a ride is reported and a support agent asks for it. While it records, the passenger sees "Your driver is recording audio for safety" on their trip screen. Phones only.',
     keywords: ['voice', 'recording', 'audio', 'record', 'privacy', 'voiceprotection', 'rakaman', 'suara'],
     audience: 'all',
     category: 'Safety',

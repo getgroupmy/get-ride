@@ -14,6 +14,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
+import '../safety/driver_recording_notice.dart';
 import '../store_review/demo_contact.dart' show openDemoCall, openDemoChat, showDemoSos;
 import '../store_review/demo_wallet.dart' show DemoTripFinish;
 
@@ -269,6 +270,9 @@ class _DemoTripScreenState extends ConsumerState<DemoTripScreen> {
             children: [
               Text(title, key: const ValueKey('demo-trip-phase'), style: t.textTheme.headlineSmall),
               Text(detail, style: t.textTheme.bodyMedium),
+              // 0335: the demo driver records the trip, as a real one with
+              // VoiceProtection would, so the notice can be seen (simulated).
+              DriverRecordingNotice(recording: now.phase == DemoPhase.onTrip),
               const SizedBox(height: 12),
               Card(
                 child: ListTile(

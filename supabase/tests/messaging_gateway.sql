@@ -63,6 +63,9 @@ reset role;
 insert into public.messaging_routes (channel, direction, transport, device_ids)
 values ('otp', 'outbound', 'sms', array[(select id from ids where name = 'gateway')]),
        ('support_message', 'inbound', 'sms', array[(select id from ids where name = 'gateway')]);
+-- A marketing SMS needs a number whose account turned News and offers on (0335).
+update public.profiles set phone = '+60123456789', news_offers = true
+ where id = '00000000-0000-0000-0000-0000000120a2';
 insert into public.sms_outbox (channel, to_phone, body) values
   ('otp', '+60123456789', 'Your code is 1234'),
   ('marketing', '+60123456789', 'Not routed to this gateway');

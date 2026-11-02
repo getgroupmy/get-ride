@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../safety/driver_recording_notice.dart';
 import '../../core/booking_modules.dart' show bookingModule;
 import '../../core/format.dart';
 import '../../core/mygig.dart';
@@ -468,6 +469,8 @@ class _MygigLinkScreenState extends ConsumerState<MygigLinkScreen> {
               : name.isEmpty ? 'Here is your trip' : 'Hi $name, here is your trip',
           style: t.textTheme.headlineSmall,
         ),
+        // 0335: while the driver's VoiceProtection records the trip.
+        DriverRecordingNotice(recording: ride != null && ride['driverAudio'] == true && '${ride['status']}' == 'on_trip'),
         const SizedBox(height: 12),
         Card(
           child: ListTile(

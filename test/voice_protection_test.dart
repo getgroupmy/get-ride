@@ -105,6 +105,11 @@ class _FakeRepo implements VoiceProtectionRepository {
   @override
   Future<void> insert(Map<String, dynamic> row) async => inserted.add(row);
 
+  final told = <(String, bool)>[];
+
+  @override
+  Future<void> setDriverAudio(String rideId, bool on) async => told.add((rideId, on));
+
   @override
   Future<Set<String>> expiredIds(String profileId, DateTime now) async => expired;
 
@@ -299,6 +304,26 @@ void main() {
       await noMic.read(voiceProtectionProvider.notifier).startTrip(rideId: 'r');
       expect(noMic.read(voiceProtectionProvider).recording, isFalse);
       expect(noMic.read(voiceProtectionProvider).error, contains('Microphone'));
+      expect(repo.told, isEmpty, reason: 'nothing recorded, so the passenger is told nothing');
+    });
+
+    test('tells the ride when recording starts and stops, for the passenger (0335)', () async {
+      final c = make();
+      await settle();
+      final voice = c.read(voiceProtectionProvider.notifier);
+      await voice.startTrip(rideId: 'ride-1', label: 'A to B');
+      await voice.startTrip(rideId: 'ride-1', label: 'A to B');
+      await settle();
+      expect(repo.told, [('ride-1', true)], reason: 'once, when the recorder has started');
+      await voice.stopTrip();
+      await settle();
+      expect(repo.told, [('ride-1', true), ('ride-1', false)]);
+
+      final off = make(enabled: false);
+      await settle();
+      await off.read(voiceProtectionProvider.notifier).startTrip(rideId: 'ride-2');
+      await settle();
+      expect(repo.told, isEmpty, reason: 'switched off: not recording, nothing to tell');
     });
 
     test('answers upload requests for the recordings this phone holds', () async {

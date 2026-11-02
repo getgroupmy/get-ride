@@ -129,8 +129,9 @@ const permissionNoticeItems = <PermissionNoticeItem>[
         'end. The recording stays encrypted on that phone; it cannot be played on the phone and is not uploaded. It '
         'is deleted automatically after 24 hours (for passengers, the time set for your area, up to 7 days, as the '
         'app shows). If a problem with that trip is reported, our support team can ask the phone to send it, and '
-        'only authorised support staff can listen to it. When a passenger records, the driver is told. A driver\'s '
-        'recording is shown on the driver\'s trip screen.\n\n'
+        'only authorised support staff can listen to it. When a passenger records, the driver is told. While a '
+        'driver\'s phone records, the driver\'s trip screen shows it and the passenger sees "Your driver is '
+        'recording audio for safety" on their trip screen, with a link to our Privacy Policy.\n\n'
         'When it stops: when the call ends, when you send or cancel the voice note, or when the trip ends.\n\n'
         'Your choice: if you say no, you can still chat by text and use the app, but you cannot make in-app calls, '
         'send voice notes or use audio protection.',
@@ -150,9 +151,10 @@ const permissionNoticeItems = <PermissionNoticeItem>[
         'from your driver or passenger can ring over the lock screen like a normal call.\n\n'
         'Money: payments, tips, wallet transfers, receipts and statements.\n\n'
         'Safety: trip safety checks and updates from our safety team.\n\n'
-        'News and offers from GET.ride: occasional announcements and promotions, sometimes for your area only. Off '
-        'unless you choose "Send me news and offers" below; turn them on or off any time in Settings > '
-        'Notifications > News and offers. Trip, safety, payment and account messages always come.\n\n'
+        'News and offers from GET.ride: occasional announcements and promotions, sometimes for your area only, as '
+        'notifications and as SMS to your number. Off unless you choose "Send me news and offers" below; turn them '
+        'on or off any time in Settings > Notifications > News and offers, or reply STOP to a promotion SMS. Trip, '
+        'safety, payment and account messages always come.\n\n'
         'Your choice: you can turn notifications off in your phone settings at any time. If you do, you may miss '
         'driver offers, your driver arriving, and new requests as a driver.',
   ),

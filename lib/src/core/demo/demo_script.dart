@@ -416,6 +416,8 @@ Map<String, dynamic> demoFamilyLiveJson(DateTime now) => {
   'lng': (demoPlaces[1].$4 + demoPlaces[0].$4) / 2,
   'at': now.toUtc().toIso8601String(),
   'area': 'Kuala Lumpur',
+  // 0335: the demo driver's VoiceProtection is recording (simulated).
+  'driverAudio': true,
 };
 
 // ---- Scheduled jobs for a demo driver ----------------------------------------------------------------

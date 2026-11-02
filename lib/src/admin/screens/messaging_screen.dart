@@ -58,6 +58,8 @@ final _inboxProvider = FutureProvider.autoDispose((ref) {
   ref.watchLive('sms_inbox');
   return ref.watch(messagingRepositoryProvider).recentInbox();
 });
+/// How many accounts a marketing SMS can reach (News and offers on, 0335).
+final _reachProvider = FutureProvider.autoDispose((ref) => ref.watch(messagingRepositoryProvider).marketingReach());
 
 /// The clock, for "online" and "seen … ago"; a provider so tests can fix it.
 final messagingClockProvider = Provider<DateTime Function()>((_) => DateTime.now);
@@ -598,7 +600,10 @@ class _QueueCardState extends ConsumerState<_QueueCard> {
     super.dispose();
   }
 
+  bool get _marketing => _channel == MessagingChannel.marketing;
+
   Future<void> _send() async {
+    if (_marketing) return _sendMarketing();
     final to = normalizeSmsNumber(_to.text);
     if (to == null) return showInfo(context, 'Enter the phone number with its country code, e.g. +60123456789.');
     if (_body.text.trim().isEmpty) return showInfo(context, 'Write the message.');
@@ -607,6 +612,21 @@ class _QueueCardState extends ConsumerState<_QueueCard> {
       () => ref.read(messagingRepositoryProvider).queueSms(channel: _channel, to: to, body: _body.text.trim()),
       success: 'Queued. The gateway phone routed to ${_channel.label} sends it.',
     );
+  }
+
+  /// Marketing (0335): to one or many numbers; the server queues only those
+  /// who turned on News and offers and says how many it left out.
+  Future<void> _sendMarketing() async {
+    final to = parseSmsNumbers(_to.text);
+    if (to.isEmpty) return showInfo(context, 'Enter one or more phone numbers with their country code, e.g. +60123456789.');
+    if (_body.text.trim().isEmpty) return showInfo(context, 'Write the message.');
+    MarketingSmsResult? result;
+    final ok = await runAdminAction(
+      context,
+      () async =>
+          result = await ref.read(messagingRepositoryProvider).queueMarketingSms(to: to, body: _body.text.trim()),
+    );
+    if (ok && result != null && mounted) showInfo(context, marketingSmsSummary(result!));
   }
 
   @override
@@ -637,12 +657,22 @@ class _QueueCardState extends ConsumerState<_QueueCard> {
                 ],
                 onChanged: (v) => setState(() => _channel = v ?? _channel),
               ),
+              if (_marketing) ...[
+                const SizedBox(height: 8),
+                _MarketingReachNote(reach: ref.watch(_reachProvider).value),
+              ],
               const SizedBox(height: 8),
               TextField(
                 key: const ValueKey('messaging-test-to'),
                 controller: _to,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'To', hintText: '+60123456789', isDense: true),
+                keyboardType: _marketing ? TextInputType.multiline : TextInputType.phone,
+                minLines: 1,
+                maxLines: _marketing ? 4 : 1,
+                decoration: InputDecoration(
+                  labelText: _marketing ? 'To (one or more numbers)' : 'To',
+                  hintText: _marketing ? '+60123456789, +60198765432' : '+60123456789',
+                  isDense: true,
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -656,7 +686,7 @@ class _QueueCardState extends ConsumerState<_QueueCard> {
                   key: const ValueKey('messaging-test-send'),
                   icon: const Icon(Icons.send),
                   onPressed: _send,
-                  child: const Text('Send test SMS'),
+                  child: Text(_marketing ? 'Send marketing SMS' : 'Send test SMS'),
                 ),
               ),
             ],
@@ -710,6 +740,45 @@ class _QueueCardState extends ConsumerState<_QueueCard> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Who a marketing SMS reaches (0335): only accounts with News and offers
+/// on; every other number is left out by the server.
+class _MarketingReachNote extends StatelessWidget {
+  const _MarketingReachNote({required this.reach});
+  final MarketingReach? reach;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final r = reach;
+    final count = r == null
+        ? ''
+        : ' ${r.optedIn} of ${r.withPhone} ${r.withPhone == 1 ? 'account' : 'accounts'} with a phone '
+              '${r.optedIn == 1 ? 'has' : 'have'} it on.';
+    return Container(
+      key: const ValueKey('messaging-marketing-consent'),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: t.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.campaign_outlined, size: 20, color: t.colorScheme.onSecondaryContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Marketing SMS only go to people who turned on News and offers. Other numbers, and numbers with '
+              'no GET.ride account, are left out, and you are told how many.$count A reply of STOP turns it off.',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSecondaryContainer),
+            ),
+          ),
+        ],
       ),
     );
   }

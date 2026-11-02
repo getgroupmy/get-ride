@@ -23,6 +23,12 @@ insert into public.admin_access (profile_id, page, access_level) values
   ('00000000-0000-0000-0000-0000000223a2', 'admin-settings-messaging', 'edit')
 on conflict do nothing;
 
+-- The test number's account has News and offers on, so the session's
+-- marketing SMS may go to it (0335).
+insert into auth.users (id) values ('00000000-0000-0000-0000-0000000223a3') on conflict do nothing;
+insert into public.profiles (id, phone, news_offers) values ('00000000-0000-0000-0000-0000000223a3', '+60123456789', true)
+on conflict (id) do update set phone = excluded.phone, news_offers = true;
+
 -- A paired gateway phone (0190), seen just now.
 insert into public.messaging_devices (id, user_id, device_id, label, platform, kind, capabilities, sim_number)
 values ('00000000-0000-0000-0000-0000002230d1', '00000000-0000-0000-0000-0000000223a1', 'phone-223', 'Office gateway',

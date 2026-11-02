@@ -83,6 +83,8 @@ class VoiceProtectionController extends Notifier<VoiceProtectionState> {
       _startedAt = DateTime.now();
       _ride = (rideId: rideId, label: label);
       state = state.copyWith(recording: true);
+      // The passenger's trip screen says so while it records (0335).
+      if (rideId != null) unawaited(_tellRide(rideId, true));
     } catch (_) {
       _recordingId = null;
       state = state.copyWith(recording: false, error: 'Trip recording could not start.');
@@ -106,6 +108,8 @@ class VoiceProtectionController extends Notifier<VoiceProtectionState> {
       return;
     }
     state = state.copyWith(recording: false);
+    final rideId = ride?.rideId;
+    if (rideId != null) unawaited(_tellRide(rideId, false));
     final device = ref.read(voiceDeviceStoreProvider);
     String? file;
     try {
@@ -143,6 +147,14 @@ class VoiceProtectionController extends Notifier<VoiceProtectionState> {
     } catch (_) {
       // Without its row no agent can ask for it; the purge still deletes it.
     }
+  }
+
+  /// Tells the ride whether this phone is recording it, for the passenger's
+  /// notice. A failure is left: the server turns it off when the trip ends.
+  Future<void> _tellRide(String rideId, bool on) async {
+    try {
+      await ref.read(voiceProtectionRepositoryProvider).setDriverAudio(rideId, on);
+    } catch (_) {}
   }
 
   /// Deletes recordings past the 24-hour window and tells agents they are gone.

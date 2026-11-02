@@ -11,7 +11,10 @@ enum PermState { granted, limited, denied, notAsked, unknown }
 enum AppPermission {
   notifications('Notifications', 'Ride requests, calls and trip updates while GET.ride is closed.'),
   location('Location', 'Finding pickups, and sharing where you are while online or on a trip.'),
-  microphone('Microphone', 'Calls with your driver, passenger or support, and voice notes.'),
+  microphone(
+    'Microphone',
+    'Calls with your driver, passenger or support, voice notes, and trip audio recording if you turn it on.',
+  ),
   camera('Camera', 'Scanning QR codes and photographing your documents.'),
   bluetooth('Bluetooth', 'OBD-II readers and receipt printers for Meter Digital.'),
   fullScreenCalls('Full-screen calls', 'Ringing calls over the lock screen.');

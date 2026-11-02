@@ -1,11 +1,17 @@
 // Settings › Notifications › News and offers (migration 0333): whether
 // Admin › Push Notification's broadcasts (announcements and promotions)
-// reach this account. Trip, safety, payment and account messages always do.
+// reach this account, and (0335) the admin's marketing SMS to its number.
+// Trip, safety, payment and account messages always do.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';
 import '../../widgets/common.dart';
+
+/// What the switch covers (0335): push notifications and SMS alike.
+const newsOffersCardText =
+    'Announcements and promotions from GET.ride, by notification and by SMS. Off unless you turn it on. '
+    'Reply STOP to a promotion SMS to turn it off. Trip, safety, payment and account messages always come.';
 
 /// The account's switch: profiles.news_offers, off until chosen (opt-in).
 bool newsOffersOn(Map<String, dynamic>? profile) => profile?['news_offers'] == true;
@@ -64,9 +70,7 @@ class _NewsOffersCardState extends ConsumerState<NewsOffersCard> {
             onChanged: _saving ? null : _set,
             secondary: const Icon(Icons.campaign_outlined),
             title: const Text('News and offers'),
-            subtitle: const Text(
-              'Announcements and promotions from GET.ride. Trip, safety, payment and account messages always come.',
-            ),
+            subtitle: const Text(newsOffersCardText),
           ),
         ],
       ),

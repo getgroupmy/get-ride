@@ -14,6 +14,7 @@ import '../../data/family_repository.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import '../safety/driver_recording_notice.dart';
 import 'family_forms.dart';
 import 'family_trip_parts.dart';
 
@@ -142,7 +143,7 @@ class _HostView extends ConsumerWidget {
       if (live.isNotEmpty) ...[
         const SizedBox(height: 12),
         Text('Shared with you now', style: t.textTheme.titleSmall),
-        for (final l in live)
+        for (final l in live) ...[
           ListTile(
             key: ValueKey('family-live-${l.memberId}'),
             contentPadding: EdgeInsets.zero,
@@ -150,6 +151,14 @@ class _HostView extends ConsumerWidget {
             title: Text(l.name),
             subtitle: Text([l.line, if (l.driver != null) '${l.driver}${l.plate == null ? '' : ' · ${l.plate}'}'].join('\n')),
           ),
+          // 0335: while the member's driver is recording their trip.
+          DriverRecordingNotice(
+            key: ValueKey('family-live-recording-${l.memberId}'),
+            recording: l.driverAudio && l.status == 'on_trip',
+            text: driverRecordingNoticeOtherText,
+            padding: const EdgeInsets.only(bottom: 8),
+          ),
+        ],
       ],
       const SizedBox(height: 16),
       if (view.capRequest?.status == 'pending')
