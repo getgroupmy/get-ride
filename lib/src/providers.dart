@@ -7,6 +7,7 @@ import 'config.dart';
 import 'core/navigation_app.dart';
 import 'data/account_repository.dart';
 import 'data/auth_repository.dart';
+import 'data/demo/demo_repositories.dart' show DemoRideSink;
 import 'data/geo_service.dart';
 import 'data/live_tables.dart';
 import 'data/models.dart';
@@ -22,6 +23,8 @@ final rideRepositoryProvider = Provider((ref) {
   final repo = RideRepository(ref.watch(supabaseProvider));
   // Admin → Reliability, applied live.
   ref.listen(reliabilityProvider, (_, s) => repo.useOfflineCopy = s.rideCache, fireImmediately: true);
+  // The store review account (0333): its bookings stay on the phone.
+  ref.listen(storeReviewProvider, (_, on) => repo.demo = on ? DemoRideSink(ref) : null, fireImmediately: true);
   // An admin's change to a region drops the kept regions on every screen,
   // so they can be kept for minutes rather than re-read every few seconds.
   ref.listen(liveTablesProvider.select((r) => liveStamp(r, liveRegionTables)), (_, _) => repo.forgetRegions());

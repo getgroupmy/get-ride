@@ -11,6 +11,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../store_review/demo_flows.dart' show openDemoRequest;
 import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
@@ -748,6 +750,8 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
         if (mounted) GoRouter.maybeOf(context)?.push('/trips/scheduled');
         return;
       }
+      // The store review account (0333): demo drivers answer on the phone.
+      if (openDemoRequest(context, booked.now)) return;
       _tabs.animateTo(1);
       showInfo(context, 'Request sent. Drivers will send you their offers.');
     } on DuplicateRideRequest catch (e) {

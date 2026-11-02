@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/booking_modules.dart' show familyModuleCourier, familyModuleRide;
+import '../../core/demo/demo_script.dart';
 import '../../core/demo_mode.dart';
 import '../../core/format.dart';
 import '../../data/app_display_repository.dart';
@@ -12,6 +14,7 @@ import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
+import '../store_review/demo_contact.dart' show openDemoCall, openDemoChat, showDemoSos;
 import '../store_review/demo_wallet.dart' show DemoTripFinish;
 
 /// The admin's demo switches (Admin → Display Settings → Demo / Mockup Data).
@@ -158,6 +161,7 @@ class DemoTripArgs {
     required this.dropName,
     required this.offer,
     required this.currency,
+    this.module = familyModuleRide,
   });
 
   final LatLng pickup;
@@ -166,6 +170,10 @@ class DemoTripArgs {
   final String dropName;
   final DemoOffer offer;
   final String currency;
+
+  /// The module it was booked in (core/booking_modules.dart): what the
+  /// trip says at each phase (a parcel, goods, a hire).
+  final String module;
 }
 
 /// A demo trip: nothing is written anywhere. With Admin → Demo → simulated
@@ -223,15 +231,34 @@ class _DemoTripScreenState extends ConsumerState<DemoTripScreen> {
       DemoPhase.onTrip => alongRoute(_trip, now.progress),
       DemoPhase.completed => a.drop,
     };
+    final words = demoTripWords(a.module, driver: o.name, pickup: a.pickupName, drop: a.dropName);
     final (title, detail) = switch (now.phase) {
-      DemoPhase.arriving => ('Driver is on the way', '${o.name} is heading to ${a.pickupName}'),
-      DemoPhase.arrived => ('Driver has arrived', '${o.name} is waiting at ${a.pickupName}'),
-      DemoPhase.onTrip => ('On the way', 'Heading to ${a.dropName}'),
-      DemoPhase.completed => ('Trip complete', 'You arrived at ${a.dropName}'),
+      DemoPhase.arriving => ('Driver is on the way', words.arriving),
+      DemoPhase.arrived => ('Driver has arrived', words.arrived),
+      DemoPhase.onTrip => ('On the way', words.onTrip),
+      DemoPhase.completed => (words.done, words.doneDetail),
     };
+    // The store review account (0333) tries chat, calls and SOS here too,
+    // all simulated on the phone.
+    final review = ref.watch(storeReviewProvider);
+    final courier = a.module == familyModuleCourier;
     return Scaffold(
       appBar: AppBar(
-        title: const Row(mainAxisSize: MainAxisSize.min, children: [Text('Your ride'), SizedBox(width: 8), DemoChip()]),
+        title: Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(child: Text(words.title, overflow: TextOverflow.ellipsis)),
+          const SizedBox(width: 8),
+          const DemoChip(),
+        ]),
+        actions: [
+          if (review)
+            IconButton(
+              key: const ValueKey('demo-trip-sos'),
+              tooltip: 'SOS · Emergency',
+              color: const Color(0xFFE53935),
+              icon: const Icon(Icons.sos),
+              onPressed: () => showDemoSos(context, ref),
+            ),
+        ],
       ),
       body: MapSheetLayout(
         map: RideMap(pickup: a.pickup, drop: a.drop, route: _trip, driver: car),
@@ -251,6 +278,27 @@ class _DemoTripScreenState extends ConsumerState<DemoTripScreen> {
                   trailing: Text(formatMoney(o.price, a.currency), style: t.textTheme.titleMedium),
                 ),
               ),
+              if (review && now.phase != DemoPhase.completed)
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('demo-trip-chat'),
+                      onPressed: () =>
+                          openDemoChat(context, peer: courier ? DemoPeer.courier : DemoPeer.driver, name: o.name),
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      label: const Text('Chat'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('demo-trip-call'),
+                      onPressed: () => openDemoCall(context, name: o.name, role: courier ? 'Courier' : 'Driver'),
+                      icon: const Icon(Icons.call_outlined),
+                      label: const Text('Call'),
+                    ),
+                  ),
+                ]),
               Text('This is a demo trip: no driver is coming and nothing is charged.', style: t.textTheme.bodySmall),
               if (now.phase == DemoPhase.completed) ...[
                 // The store review account (0333) pays its demo wallet,

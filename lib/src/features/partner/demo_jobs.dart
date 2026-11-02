@@ -15,6 +15,9 @@ import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_map.dart';
 import '../ride/demo_ride.dart';
+import '../../core/demo/demo_script.dart';
+import '../../widgets/page_style_host.dart';
+import '../store_review/demo_contact.dart' show openDemoCall, openDemoChat, showDemoSos;
 import '../store_review/demo_wallet.dart' show demoWalletProvider;
 
 /// While a driver is online with Admin → Demo → mock incoming requests on:
@@ -42,10 +45,58 @@ class _DemoJobFeedState extends State<DemoJobFeed> {
   DateTime? _shownAt;
   int _count = 0;
 
+  /// The driver's own fare on the request on screen, while the demo
+  /// passenger thinks; and their "no".
+  double? _offered;
+  bool _declined = false;
+  Timer? _answer;
+
   @override
   void initState() {
     super.initState();
     _schedule(demoJobGap(_rnd));
+  }
+
+  /// Offer a fare (the driver's counter-offer): the demo passenger takes it
+  /// up to 30% over the fare, after a moment; otherwise says no.
+  Future<void> _counter(DemoJob job) async {
+    final amount = await showAppSheet<double>(
+      id: 'partner.demo-counter',
+      context: context,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          ListTile(
+            title: const Text('Offer your fare'),
+            subtitle: Text('${job.passenger} asked ${formatMoney(job.fare, AppConfig.currency)}. Demo: nothing is sent.'),
+          ),
+          for (final a in demoCounterAmounts(job.fare))
+            ListTile(
+              key: ValueKey('demo-counter-${a.round()}'),
+              leading: const Icon(Icons.sell_outlined),
+              title: Text(formatMoney(a, AppConfig.currency)),
+              onTap: () => Navigator.pop(c, a),
+            ),
+        ]),
+      ),
+    );
+    if (amount == null || !mounted || _job?.id != job.id) return;
+    _tick?.cancel();
+    setState(() {
+      _offered = amount;
+      _declined = false;
+    });
+    _answer?.cancel();
+    _answer = Timer(demoCounterAnswerAfter, () {
+      if (!mounted || _job?.id != job.id) return;
+      if (demoPassengerTakes(amount, job.fare)) {
+        _accept(job.withFare(amount));
+      } else {
+        setState(() => _declined = true);
+        _answer = Timer(const Duration(seconds: 2), () {
+          if (mounted && _job?.id == job.id) _dismiss();
+        });
+      }
+    });
   }
 
   void _schedule(Duration after) {
@@ -72,14 +123,24 @@ class _DemoJobFeedState extends State<DemoJobFeed> {
 
   void _dismiss() {
     _tick?.cancel();
-    setState(() => _job = null);
+    _answer?.cancel();
+    setState(() {
+      _job = null;
+      _offered = null;
+      _declined = false;
+    });
     widget.onShowing?.call(false);
     _schedule(const Duration(milliseconds: 400));
   }
 
   Future<void> _accept(DemoJob job) async {
     _tick?.cancel();
-    setState(() => _job = null);
+    _answer?.cancel();
+    setState(() {
+      _job = null;
+      _offered = null;
+      _declined = false;
+    });
     widget.onShowing?.call(false);
     await context.push('/drive/demo', extra: job);
     if (mounted) _schedule(demoJobGap(_rnd));
@@ -89,6 +150,7 @@ class _DemoJobFeedState extends State<DemoJobFeed> {
   void dispose() {
     _next?.cancel();
     _tick?.cancel();
+    _answer?.cancel();
     super.dispose();
   }
 
@@ -128,6 +190,27 @@ class _DemoJobFeedState extends State<DemoJobFeed> {
             const SizedBox(height: 8),
             LinearProgressIndicator(value: left.clamp(0.0, 1.0)),
             const SizedBox(height: 8),
+            if (_offered case final o?)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  _declined
+                      ? '${job.passenger} declined ${formatMoney(o, AppConfig.currency)} (demo).'
+                      : 'You offered ${formatMoney(o, AppConfig.currency)}. Waiting for ${job.passenger}…',
+                  key: const ValueKey('demo-counter-status'),
+                  style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+            if (_offered == null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  key: const ValueKey('demo-job-counter'),
+                  onPressed: () => _counter(job),
+                  icon: const Icon(Icons.sell_outlined),
+                  label: const Text('Offer a fare'),
+                ),
+              ),
             Row(
               children: [
                 Expanded(
@@ -269,6 +352,37 @@ class _DemoJobScreenState extends ConsumerState<DemoJobScreen> {
                 style: t.textTheme.bodyMedium,
               ),
               Text('A demo job: there is no passenger and nothing is paid.', style: t.textTheme.bodySmall),
+              // The store review account (0333): chat, call and SOS, simulated.
+              if (ref.watch(storeReviewProvider) && _phase != _JobPhase.done) ...[
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('demo-job-chat'),
+                      onPressed: () => openDemoChat(context, peer: DemoPeer.passenger, name: j.passenger),
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      label: const Text('Chat'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const ValueKey('demo-job-call'),
+                      onPressed: () => openDemoCall(context, name: j.passenger, role: 'Passenger'),
+                      icon: const Icon(Icons.call_outlined),
+                      label: const Text('Call'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    key: const ValueKey('demo-job-sos'),
+                    tooltip: 'SOS · Emergency',
+                    style: IconButton.styleFrom(backgroundColor: const Color(0xFFE53935), foregroundColor: Colors.white),
+                    onPressed: () => showDemoSos(context, ref),
+                    icon: const Icon(Icons.sos),
+                  ),
+                ]),
+              ],
               const SizedBox(height: 12),
               if (action != null)
                 FilledButton(

@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/commission.dart' show Geo;
 import '../core/family.dart';
 import '../providers.dart';
+import 'demo/demo_repositories.dart' show DemoFamilyRepository;
 import 'live_tables.dart';
 
 Map<String, dynamic> _place(Geo? g) => {
@@ -277,7 +278,10 @@ class FamilyRepository {
   });
 }
 
-final familyRepositoryProvider = Provider((ref) => FamilyRepository(ref.watch(supabaseProvider)));
+// The store review account (0333): a demo family on the phone.
+final familyRepositoryProvider = Provider<FamilyRepository>((ref) => ref.watch(storeReviewProvider)
+    ? DemoFamilyRepository(ref.watch(supabaseProvider), ref)
+    : FamilyRepository(ref.watch(supabaseProvider)));
 
 final familyMineProvider = FutureProvider.autoDispose<FamilyView>((ref) {
   ref.watchLive('family_places');

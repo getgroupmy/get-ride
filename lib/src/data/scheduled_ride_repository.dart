@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/scheduled_rides.dart';
 import '../providers.dart';
+import 'demo/demo_repositories.dart' show DemoScheduledRideRepository;
 import 'live_tables.dart';
 
 /// A refusal from the server, as one sentence for the rider or driver.
@@ -168,7 +169,10 @@ class ScheduledRideRepository {
   }
 }
 
-final scheduledRideRepositoryProvider = Provider((ref) => ScheduledRideRepository(ref.watch(supabaseProvider)));
+// The store review account (0333): its own bookings and jobs on the phone.
+final scheduledRideRepositoryProvider = Provider<ScheduledRideRepository>((ref) => ref.watch(storeReviewProvider)
+    ? DemoScheduledRideRepository(ref.watch(supabaseProvider), ref)
+    : ScheduledRideRepository(ref.watch(supabaseProvider)));
 
 /// The admin's settings; off when they can't be read (an older database).
 final scheduledRidesConfigProvider = FutureProvider<ScheduledRidesConfig>((ref) async {

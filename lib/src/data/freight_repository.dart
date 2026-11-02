@@ -190,7 +190,11 @@ final freightAvailableProvider = Provider<bool>(
 /// Uploads a picked cargo photo (bytes, file name); its storage path.
 /// Overridden in tests.
 final freightCargoPhotoUploadProvider = Provider<Future<String> Function(Uint8List bytes, String name)>(
-  (ref) => ref.watch(freightRepositoryProvider).uploadCargoPhoto,
+  // The store review account (0333) uploads nothing: the photo stays on the
+  // phone with its demo request.
+  (ref) => ref.watch(storeReviewProvider)
+      ? (bytes, name) async => 'demo/${DateTime.now().millisecondsSinceEpoch}-$name'
+      : ref.watch(freightRepositoryProvider).uploadCargoPhoto,
 );
 
 /// The signed link to a cargo photo, renewed before it runs out.

@@ -551,6 +551,8 @@ final mygigScheduledProvider = FutureProvider.autoDispose<List<MygigBooking>>((r
 
 /// The passenger's myGiG bookings (0330), live.
 final mygigMyBookingsProvider = FutureProvider.autoDispose<List<MygigBooking>>((ref) {
+  // The store review account (0333) has no myGiG bookings: none is asked.
+  if (ref.watch(storeReviewProvider)) return Future.value(const <MygigBooking>[]);
   ref.watchLive(mygigBookingsTable);
   return ref.watch(mygigRepositoryProvider).myBookings();
 });

@@ -15,6 +15,7 @@ import '../../data/auth_repository.dart';
 import '../../providers.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/permissions_notice.dart';
+import 'demo_flows.dart' show openDemoFeatures;
 
 /// Where the tour is: its mode and step, or null when it is not running.
 class TourState {
@@ -160,6 +161,13 @@ Future<void> showHowItWorks(BuildContext context, WidgetRef ref) async {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const ListTile(title: Text('How it works'), subtitle: Text('Store review demo account: simulated data only.')),
         ListTile(
+          key: const ValueKey('how-features'),
+          leading: const Icon(Icons.apps_outlined),
+          title: const Text('Try every feature'),
+          subtitle: const Text('Each feature, how to try it, and a button to open it'),
+          onTap: () => Navigator.pop(c, 'features'),
+        ),
+        ListTile(
           key: const ValueKey('how-tour-passenger'),
           leading: const Icon(Icons.hail),
           title: const Text('Passenger tour'),
@@ -200,6 +208,8 @@ Future<void> showHowItWorks(BuildContext context, WidgetRef ref) async {
       final mode = pick == 'driver' ? TourMode.driver : TourMode.passenger;
       GoRouter.maybeOf(context)?.go(reviewModeHome(mode));
       tour.start(mode);
+    case 'features':
+      await openDemoFeatures(context);
     case 'mode':
       await chooseReviewMode(context, ref);
     case 'permissions':

@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/format.dart';
 import '../../data/models.dart';
 import '../../providers.dart';
+import '../../core/demo/demo_script.dart' show DemoPeer;
+import '../store_review/demo_contact.dart' show openDemoChat;
 import '../../widgets/common.dart';
 import '../../widgets/side_menu_host.dart';
 
@@ -73,6 +75,10 @@ class SupportScreen extends ConsumerWidget {
   /// The open ticket's chat, or a new chat whose ticket is only made with its
   /// first message ([newSupportTicketId]): a tap and back makes no empty ticket.
   Future<void> _open(BuildContext context, WidgetRef ref) async {
+    // The store review account (0333): a demo agent answers on the phone.
+    if (ref.read(storeReviewProvider)) {
+      return openDemoChat(context, peer: DemoPeer.support, name: 'GET.ride support');
+    }
     try {
       final ticket = await ref.read(accountRepositoryProvider).currentTicket();
       if (context.mounted) context.go('/account/support/${ticket?.id ?? newSupportTicketId}');

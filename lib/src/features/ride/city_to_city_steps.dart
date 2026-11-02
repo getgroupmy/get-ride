@@ -20,6 +20,7 @@ import '../../core/commission.dart' show Geo;
 import '../../data/city_to_city_repository.dart';
 import '../../data/geo_service.dart' show Place;
 import '../../providers.dart';
+import '../store_review/demo_flows.dart' show playDemoBooking;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show showError;
 import '../../widgets/date_boxes.dart';
@@ -235,6 +236,21 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
       ));
       if (!mounted) return;
       ref.invalidate(c2cMyTripsProvider);
+      // The store review account (0333): demo drivers answer on the phone.
+      if (ref.read(storeReviewProvider)) {
+        playDemoBooking(context, ref, {
+          'pickup_name': _pickup!.name,
+          'pickup_lat': _pickup!.lat,
+          'pickup_lng': _pickup!.lng,
+          'drop_name': _drop!.name,
+          'drop_lat': _drop!.lat,
+          'drop_lng': _drop!.lng,
+          'fare': fare,
+          'currency': b.currency,
+          'demo_booking_id': b.id,
+        }, module: familyModuleCityToCity);
+        return;
+      }
       await openC2cTrip(context, b.id, replace: true);
     } catch (e) {
       if (mounted) showError(context, e);

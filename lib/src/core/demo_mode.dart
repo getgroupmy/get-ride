@@ -277,6 +277,27 @@ class DemoJob {
 
   /// How long the card waits for an answer (30–45 s).
   final Duration timeout;
+
+  /// The same request at the driver's own fare (a demo counter-offer the
+  /// demo passenger took).
+  DemoJob withFare(double to) => DemoJob(
+    id: id,
+    passenger: passenger,
+    rating: rating,
+    pickupName: pickupName,
+    pickupAddress: pickupAddress,
+    pickup: pickup,
+    dropName: dropName,
+    dropAddress: dropAddress,
+    drop: drop,
+    km: km,
+    minutes: minutes,
+    fare: to,
+    payment: payment,
+    pax: pax,
+    luggage: luggage,
+    timeout: timeout,
+  );
 }
 
 /// One demo request between two different [demoPlaces]: distance as the

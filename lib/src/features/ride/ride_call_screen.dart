@@ -15,6 +15,7 @@ import '../../data/models.dart';
 import '../../data/push_service.dart';
 import '../../data/ride_call_repository.dart';
 import '../../providers.dart';
+import '../store_review/demo_contact.dart' show openDemoCall;
 import '../../widgets/app_notice.dart';
 import '../support/call/call_session.dart';
 import 'ride_tracking_screen.dart' show rideStreamProvider;
@@ -636,6 +637,13 @@ Future<void> callRidePeer(BuildContext context, WidgetRef ref, RideRequest ride,
 /// same moment, their call is opened instead. A failure is reported where
 /// the button was, offering the phone call when [phone] is known.
 Future<void> startRideCall(BuildContext context, WidgetRef ref, RideRequest ride, {String? phone}) async {
+  // The store review account (0333): a demo call; nothing rings anywhere.
+  if (ref.read(storeReviewProvider)) {
+    final me = ref.read(currentUserIdProvider);
+    final driver = me != null && me == ride.partnerId;
+    return openDemoCall(context, name: driver ? (ride.riderName ?? 'Passenger') : 'Your driver',
+        role: driver ? 'Passenger' : 'Driver');
+  }
   // The other phone only rings once this one can be heard.
   if (!await ensureMicForCall(context, ref) || !context.mounted) return;
   final repo = ref.read(rideCallRepositoryProvider);

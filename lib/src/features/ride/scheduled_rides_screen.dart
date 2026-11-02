@@ -8,7 +8,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/demo_mode.dart' show isDemoRideId;
 import '../../core/hourly_hire.dart' show hireSpanText;
+import '../store_review/demo_flows.dart' show runDemoScheduled;
 import '../../core/multi_day_hire.dart' show HireDaysBooking;
 import '../../data/hourly_hire_repository.dart' show myHireBookingsProvider;
 import 'multi_hire_parts.dart' show HireBookingCard;
@@ -340,6 +342,15 @@ class _BookingCard extends ConsumerWidget {
                       onPressed: () => _chooseDriver(context, ref),
                       icon: const Icon(Icons.person_search_outlined),
                       label: const Text('Choose a driver'),
+                    ),
+                  // The store review account (0333): its demo booking plays
+                  // out now, on the phone.
+                  if (isDemoRideId(ride.id) && ride.status == ScheduledStatus.scheduled)
+                    FilledButton.icon(
+                      key: ValueKey('scheduled-demo-run-${ride.id}'),
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Run it now (demo)'),
+                      onPressed: () => runDemoScheduled(context, ref, ride),
                     ),
                   if (ride.status == ScheduledStatus.released && rideId != null)
                     FilledButton.tonalIcon(

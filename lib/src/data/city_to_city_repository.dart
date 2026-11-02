@@ -17,6 +17,7 @@ import '../core/family.dart' show FamilyPassenger, FamilyPick, familyBookingColu
 import '../core/fare.dart' show ServiceRates;
 import '../core/fare_tariff.dart';
 import '../providers.dart';
+import 'demo/demo_repositories.dart' show DemoCityToCityRepository;
 import 'family_repository.dart' show familyPassengersProvider;
 import 'live_tables.dart';
 
@@ -532,7 +533,10 @@ class CityToCityRepository {
 }
 
 
-final cityToCityRepositoryProvider = Provider((ref) => CityToCityRepository(ref.watch(supabaseProvider)));
+// The store review account (0333): its City to City bookings on the phone.
+final cityToCityRepositoryProvider = Provider<CityToCityRepository>((ref) => ref.watch(storeReviewProvider)
+    ? DemoCityToCityRepository(ref.watch(supabaseProvider), ref)
+    : CityToCityRepository(ref.watch(supabaseProvider)));
 
 final c2cSettingsProvider = FutureProvider.autoDispose<C2cSettings>((ref) {
   ref.watchLive('city_to_city_settings');

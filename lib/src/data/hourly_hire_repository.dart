@@ -12,6 +12,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/hourly_hire.dart';
 import '../core/multi_day_hire.dart';
 import '../providers.dart';
+import 'demo/demo_repositories.dart' show DemoHourlyHireRepository;
 import 'driver_extras_repository.dart' show driverRideExtrasTable;
 import 'live_tables.dart';
 
@@ -114,6 +115,81 @@ class HourlyHireRepository {
     if (uid == null) return;
     await _db.from(driverRideExtrasTable).upsert({'driver_id': uid, 'takes_hire': on}, onConflict: 'driver_id');
   });
+
+  // A hire for several days (0327): its booking, its days, a cancel. In the
+  // class (not MultiHireCalls) so the store review account's demo repository
+  // can keep them on the phone.
+  /// Books [booking] ({package, first_at, days, hours, overnight,
+  /// same_driver, payment_plan}) with the ride [row] the app would send for
+  /// day 1: the booking and its days, the deposit taken.
+  Future<HireDaysBooking> book(Map<String, dynamic> row, Map<String, dynamic> booking) => _call(() async {
+    final v = await _db.rpc('hire_book', params: {'p_request': row, 'p_booking': booking});
+    return HireDaysBooking.fromRow(Map<String, dynamic>.from(v as Map));
+  });
+
+  /// The signed-in rider's bookings, newest first.
+  Future<List<HireDaysBooking>> myBookings() async {
+    final uid = _db.auth.currentUser?.id;
+    if (uid == null) return const [];
+    final rows = await _db
+        .from(hireBookingsTable)
+        .select()
+        .eq('rider_id', uid)
+        // A myGiG hire (0330) is listed with the passenger's myGiG bookings.
+        .isFilter('mygig_booking_id', null)
+        .order('first_at', ascending: false)
+        .limit(50);
+    return [for (final r in rows) HireDaysBooking.fromRow(r)];
+  }
+
+  /// One booking (the rider's, its driver's, or an admin's view).
+  Future<HireDaysBooking?> booking(String id) async {
+    final r = await _db.from(hireBookingsTable).select().eq('id', id).maybeSingle();
+    return r == null ? null : HireDaysBooking.fromRow(r);
+  }
+
+  /// What cancelling now costs.
+  Future<({bool free, double fee, double refund, DateTime? freeUntil, bool started})> cancelQuote(String id) =>
+      _call(() async {
+        final v = Map<String, dynamic>.from(
+          await _db.rpc('hire_booking_cancel_quote', params: {'p_booking': id}) as Map,
+        );
+        double n(Object? x) => x is num ? x.toDouble() : double.tryParse('$x') ?? 0;
+        return (
+          free: v['free'] == true,
+          fee: n(v['fee']),
+          refund: n(v['refund']),
+          freeUntil: DateTime.tryParse('${v['freeUntil']}')?.toLocal(),
+          started: v['started'] == true,
+        );
+      });
+
+  Future<void> cancelBooking(String id, {String? reason}) => _call(() async {
+    await _db.rpc('hire_booking_cancel', params: {'p_booking': id, 'p_reason': reason});
+  });
+
+  /// A booking's days (its rider's, its drivers' or an admin's view): the
+  /// day, the pickup, the status, the driver and the ride once released.
+  Future<List<({String id, int day, DateTime at, String status, String? partnerId, String? rideId})>> bookingDays(
+    String id,
+  ) async {
+    final rows = await _db
+        .from('scheduled_rides')
+        .select('id, hire_day_no, pickup_at, status, partner_id, ride_id')
+        .eq('hire_booking_id', id)
+        .order('hire_day_no', ascending: true);
+    return [
+      for (final r in rows)
+        (
+          id: '${r['id']}',
+          day: (r['hire_day_no'] as num?)?.toInt() ?? 0,
+          at: DateTime.tryParse('${r['pickup_at']}')?.toLocal() ?? DateTime.now(),
+          status: '${r['status']}',
+          partnerId: r['partner_id'] as String?,
+          rideId: r['ride_id'] as String?,
+        ),
+    ];
+  }
 }
 
 extension MultiHireCalls on HourlyHireRepository {
@@ -168,77 +244,6 @@ extension MultiHireCalls on HourlyHireRepository {
     return MultiHireQuote.fromJson(v is Map ? Map<String, dynamic>.from(v) : const {});
   });
 
-  /// Books [booking] ({package, first_at, days, hours, overnight,
-  /// same_driver, payment_plan}) with the ride [row] the app would send for
-  /// day 1: the booking and its days, the deposit taken.
-  Future<HireDaysBooking> book(Map<String, dynamic> row, Map<String, dynamic> booking) => _call(() async {
-    final v = await _client.rpc('hire_book', params: {'p_request': row, 'p_booking': booking});
-    return HireDaysBooking.fromRow(Map<String, dynamic>.from(v as Map));
-  });
-
-  /// The signed-in rider's bookings, newest first.
-  Future<List<HireDaysBooking>> myBookings() async {
-    final uid = _client.auth.currentUser?.id;
-    if (uid == null) return const [];
-    final rows = await _client
-        .from(hireBookingsTable)
-        .select()
-        .eq('rider_id', uid)
-        // A myGiG hire (0330) is listed with the passenger's myGiG bookings.
-        .isFilter('mygig_booking_id', null)
-        .order('first_at', ascending: false)
-        .limit(50);
-    return [for (final r in rows) HireDaysBooking.fromRow(r)];
-  }
-
-  /// One booking (the rider's, its driver's, or an admin's view).
-  Future<HireDaysBooking?> booking(String id) async {
-    final r = await _client.from(hireBookingsTable).select().eq('id', id).maybeSingle();
-    return r == null ? null : HireDaysBooking.fromRow(r);
-  }
-
-  /// What cancelling now costs.
-  Future<({bool free, double fee, double refund, DateTime? freeUntil, bool started})> cancelQuote(String id) =>
-      _call(() async {
-        final v = Map<String, dynamic>.from(
-          await _client.rpc('hire_booking_cancel_quote', params: {'p_booking': id}) as Map,
-        );
-        double n(Object? x) => x is num ? x.toDouble() : double.tryParse('$x') ?? 0;
-        return (
-          free: v['free'] == true,
-          fee: n(v['fee']),
-          refund: n(v['refund']),
-          freeUntil: DateTime.tryParse('${v['freeUntil']}')?.toLocal(),
-          started: v['started'] == true,
-        );
-      });
-
-  Future<void> cancelBooking(String id, {String? reason}) => _call(() async {
-    await _client.rpc('hire_booking_cancel', params: {'p_booking': id, 'p_reason': reason});
-  });
-
-  /// A booking's days (its rider's, its drivers' or an admin's view): the
-  /// day, the pickup, the status, the driver and the ride once released.
-  Future<List<({String id, int day, DateTime at, String status, String? partnerId, String? rideId})>> bookingDays(
-    String id,
-  ) async {
-    final rows = await _client
-        .from('scheduled_rides')
-        .select('id, hire_day_no, pickup_at, status, partner_id, ride_id')
-        .eq('hire_booking_id', id)
-        .order('hire_day_no', ascending: true);
-    return [
-      for (final r in rows)
-        (
-          id: '${r['id']}',
-          day: (r['hire_day_no'] as num?)?.toInt() ?? 0,
-          at: DateTime.tryParse('${r['pickup_at']}')?.toLocal() ?? DateTime.now(),
-          status: '${r['status']}',
-          partnerId: r['partner_id'] as String?,
-          rideId: r['ride_id'] as String?,
-        ),
-    ];
-  }
 
   /// Admin (0328): approved drivers who take hire, free on every day of
   /// [bookingId] still to come (or on its day [day]) first.
@@ -331,7 +336,10 @@ extension MultiHireCalls on HourlyHireRepository {
 const hireBookingsTable = 'hire_bookings';
 const publicHolidaysTable = 'public_holidays';
 
-final hourlyHireRepositoryProvider = Provider((ref) => HourlyHireRepository(ref.watch(supabaseProvider)));
+// The store review account (0333): its hires on the phone.
+final hourlyHireRepositoryProvider = Provider<HourlyHireRepository>((ref) => ref.watch(storeReviewProvider)
+    ? DemoHourlyHireRepository(ref.watch(supabaseProvider), ref)
+    : HourlyHireRepository(ref.watch(supabaseProvider)));
 
 /// The settings, kept live; off when they can't be read.
 final hourlyHireConfigProvider = FutureProvider<HourlyHireConfig>((ref) async {
