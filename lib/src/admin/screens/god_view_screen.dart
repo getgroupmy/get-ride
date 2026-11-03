@@ -1842,40 +1842,38 @@ class _PhoneGodView extends StatelessWidget {
             child: const ColoredBox(color: Color(0x4D000000)),
           ),
         ),
-      _PhoneSheet(open: peopleOpen, frac: peopleFrac, radius: radius, color: color, child: people),
-      _PhoneSheet(open: detailsOpen, frac: detailsFrac, radius: radius, color: color, child: details),
+      // Only the open sheet is mounted, so there is never an off-screen
+      // render/semantics subtree over the map.
+      if (peopleOpen)
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: _PhoneSheet(frac: peopleFrac, radius: radius, color: color, child: people),
+        ),
+      if (detailsOpen)
+        Align(
+          alignment: Alignment.bottomCenter,
+          child: _PhoneSheet(frac: detailsFrac, radius: radius, color: color, child: details),
+        ),
     ]);
   }
 }
 
-/// A bottom-anchored sheet that slides up over the map to [frac] of the height.
+/// A bottom-anchored sheet sized to [frac] of the available height.
 class _PhoneSheet extends StatelessWidget {
-  const _PhoneSheet({required this.open, required this.frac, required this.radius, required this.color, required this.child});
-  final bool open;
+  const _PhoneSheet({required this.frac, required this.radius, required this.color, required this.child});
   final double frac, radius;
   final Color color;
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.bottomCenter,
-    child: IgnorePointer(
-      ignoring: !open,
-      child: AnimatedSlide(
-        duration: const Duration(milliseconds: 300),
-        curve: open ? Curves.easeOutCubic : Curves.easeInCubic,
-        offset: open ? Offset.zero : const Offset(0, 1),
-        child: FractionallySizedBox(
-          heightFactor: frac.clamp(0.2, 1.0).toDouble(),
-          child: Material(
-            color: color,
-            elevation: 12,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(radius))),
-            clipBehavior: Clip.antiAlias,
-            child: child,
-          ),
-        ),
-      ),
+  Widget build(BuildContext context) => FractionallySizedBox(
+    heightFactor: frac.clamp(0.2, 1.0).toDouble(),
+    child: Material(
+      color: color,
+      elevation: 12,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(radius))),
+      clipBehavior: Clip.antiAlias,
+      child: child,
     ),
   );
 }
