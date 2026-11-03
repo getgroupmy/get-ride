@@ -43,6 +43,7 @@ import '../widgets/admin_widgets.dart';
 import '../widgets/phone_card.dart';
 import 'god_view_live_panel.dart';
 import 'god_view_movement.dart';
+import 'god_view_safety.dart';
 import 'people/partner_live_card.dart' show PartnerLivePill;
 import 'people/partner_screens.dart' show partnerLiveProvider;
 import 'people_screens.dart' show adminDialerProvider;
@@ -1094,7 +1095,14 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           if (p.rideCode != null) ('Ride', [p.rideCode!, if (p.etaMin != null) 'ETA ${p.etaMin} min'].join(' · ')),
           if (other != null) (p.isPartner ? 'Passenger' : 'Driver', other),
         ]),
-        const SizedBox(height: 6),
+        const SizedBox(height: 10),
+        // Which of the person's logged-in devices to centre on (0337).
+        GodViewDevicePanel(
+          profileId: p.id,
+          onCentre: (lat, lng) {
+            if (_mapReady) _map.move(LatLng(lat, lng), math.max(_map.camera.zoom, 15));
+          },
+        ),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(width: 80, child: Text('Address', style: TextStyle(color: t.colorScheme.onSurfaceVariant))),
           Expanded(
@@ -1190,6 +1198,13 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           onMinutes: (m) => setState(() => _liveMinutes = m),
           onStart: () => _startLive(p),
           onStop: _stopLive,
+        ),
+        const SizedBox(height: 10),
+        // Safety location case (0337): admin-opened background location, always
+        // disclosed; shows whether the user has been shown the indicator yet.
+        GodViewSafetyCasePanel(
+          profileId: p.id,
+          canEdit: ref.watch(pageAccessProvider('admin-god-view')) == AccessLevel.edit,
         ),
         const SizedBox(height: 10),
         OutlinedButton.icon(
