@@ -148,7 +148,19 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   final _phoneChangeAt = <String, DateTime>{};
   bool _mapReady = false, _fitted = false, _inFlight = false, _again = false, _resumed = true;
 
+  /// The current layout (set each build): the side panel when wide, the
+  /// map-first sheets on a phone.
+  bool _wide = false;
+
+  /// Phone layout: the stat tiles are revealed (the Insights key), the People
+  /// sheet is up and at its expanded height, and the Details sheet is up.
+  bool _insights = false, _peopleOpen = false, _peopleExpanded = false, _detailsOpen = false;
+
   DateTime _now() => ref.read(godViewClockProvider)();
+
+  /// The map zoom to centre a selected person on (phone), from the admin's
+  /// Focus zoom percentage.
+  double _focusZoomLevel() => godViewFocusZoom(SurfaceStyle.of(context, godViewSurface).number('focusZoom'));
 
   @override
   void initState() {
@@ -308,9 +320,16 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
       _selectedId = p.id;
       _selectedLast = p;
       if (_follow) _follow = false;
+      // Phone: picking closes the list and reveals the pin on the map; the
+      // Details sheet opens only from the Details chip.
+      if (!_wide) _peopleOpen = false;
     });
-    _tabs.animateTo(1);
-    if (move && _mapReady) _map.move(LatLng(p.lat, p.lng), math.max(_map.camera.zoom, 14));
+    if (_wide) {
+      _tabs.animateTo(1);
+      if (move && _mapReady) _map.move(LatLng(p.lat, p.lng), math.max(_map.camera.zoom, 14));
+    } else if (move && _mapReady) {
+      _map.move(LatLng(p.lat, p.lng), _focusZoomLevel());
+    }
     if (other) {
       unawaited(_openLive(p.id));
       unawaited(_loadPhoneChange(p.id));
@@ -783,6 +802,8 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
       body: LayoutBuilder(
         builder: (context, c) {
           final wide = c.maxWidth >= 1000;
+          _wide = wide;
+          final b = Theme.of(context).brightness;
           final top = _TopBar(
             filters: _filters,
             search: _search,
@@ -792,21 +813,6 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
             liveOk: _error == null,
             onFilters: _setFilters,
             onSearch: _onSearch,
-          );
-          final map = _mapStack(context, shown, style.number('markerSize'));
-          final panel = _Panel(
-            tabs: _tabs,
-            people: godViewListOrder(shown),
-            unlocated: godViewUnlocatedShown(_unlocated, _filters),
-            versionRules: ref.watch(appVersionRulesProvider).value ?? const [],
-            noLocationOpen: _noLocationOpen,
-            onNoLocationOpen: (v) => setState(() => _noLocationOpen = v),
-            onOpenUnlocated: (u) => _openUnlocated(u, canPartner: canPartner, canUser: canUser),
-            selected: _selectedLast,
-            selectedId: _selectedId,
-            now: now,
-            onPick: (p) => _select(p),
-            details: _details(context, now),
           );
           if (snap == null && _error != null) {
             return Column(children: [
@@ -822,6 +828,21 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
             ]);
           }
           if (wide) {
+            final map = _mapStack(context, shown, style.number('markerSize'));
+            final panel = _Panel(
+              tabs: _tabs,
+              people: godViewListOrder(shown),
+              unlocated: godViewUnlocatedShown(_unlocated, _filters),
+              versionRules: ref.watch(appVersionRulesProvider).value ?? const [],
+              noLocationOpen: _noLocationOpen,
+              onNoLocationOpen: (v) => setState(() => _noLocationOpen = v),
+              onOpenUnlocated: (u) => _openUnlocated(u, canPartner: canPartner, canUser: canUser),
+              selected: _selectedLast,
+              selectedId: _selectedId,
+              now: now,
+              onPick: (p) => _select(p),
+              details: _details(context, now),
+            );
             return Column(children: [
               top,
               const Divider(height: 1),
@@ -834,21 +855,116 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
               ),
             ]);
           }
-          // A phone: the panel under the map.
-          final mapHeight = math.max(300.0, math.min(c.maxHeight * 0.5, 520.0));
+          // A phone: the map fills the body; People and Details are sheets over
+          // it, built as Positioned children of the map's own Stack (the same
+          // shape the wide layout proves). Heights are the admin's.
+          final anyOpen = _peopleOpen || _detailsOpen;
+          final sheetColor = style.setColor('mapSheetColor', b) ?? Theme.of(context).colorScheme.surface;
+          final sheetRadius = style.number('mapSheetRadius');
+          final overlays = <Widget>[
+            // No one selected: just the People pill, bottom-right, clear of the
+            // bottom-left Legend. Once selected, the Legend is hidden and the
+            // reopen bar spans the width.
+            if (!anyOpen && _selectedLast == null)
+              Positioned(
+                right: 12,
+                bottom: 12 + MediaQuery.paddingOf(context).bottom,
+                child: _PeopleButton(
+                  onTap: () => setState(() {
+                    _peopleOpen = true;
+                    _detailsOpen = false;
+                  }),
+                ),
+              ),
+            if (!anyOpen && _selectedLast != null)
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12 + MediaQuery.paddingOf(context).bottom,
+                child: _ReopenBar(
+                  selected: _selectedLast!,
+                  selectedColor: godViewStatusColor(_selectedLast!.status, b),
+                  onPeople: () => setState(() {
+                    _peopleOpen = true;
+                    _detailsOpen = false;
+                  }),
+                  onDetails: () => setState(() {
+                    _detailsOpen = true;
+                    _peopleOpen = false;
+                  }),
+                ),
+              ),
+            if (anyOpen)
+              Positioned.fill(
+                child: GestureDetector(
+                  key: const ValueKey('god-view-sheet-scrim'),
+                  onTap: () => setState(() {
+                    _peopleOpen = false;
+                    _detailsOpen = false;
+                  }),
+                  child: const ColoredBox(color: Color(0x4D000000)),
+                ),
+              ),
+            if (_peopleOpen)
+              Positioned.fill(
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _PhoneSheet(
+                    frac: (_peopleExpanded ? style.number('sheetExpanded') : style.number('sheetCompact')) / 100,
+                    radius: sheetRadius,
+                    color: sheetColor,
+                    child: _PeopleSheet(
+                      people: godViewListOrder(shown),
+                      unlocated: godViewUnlocatedShown(_unlocated, _filters),
+                      versionRules: ref.watch(appVersionRulesProvider).value ?? const [],
+                      noLocationOpen: _noLocationOpen,
+                      onNoLocationOpen: (v) => setState(() => _noLocationOpen = v),
+                      onOpenUnlocated: (u) => _openUnlocated(u, canPartner: canPartner, canUser: canUser),
+                      selectedId: _selectedId,
+                      now: now,
+                      query: _filters.query,
+                      onSearch: _onSearch,
+                      expanded: _peopleExpanded,
+                      onToggleExpanded: () => setState(() => _peopleExpanded = !_peopleExpanded),
+                      onClose: () => setState(() => _peopleOpen = false),
+                      onPick: (p) => _select(p),
+                    ),
+                  ),
+                ),
+              ),
+            if (_detailsOpen)
+              Positioned.fill(
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _PhoneSheet(
+                    frac: style.number('detailsHeight') / 100,
+                    radius: sheetRadius,
+                    color: sheetColor,
+                    child: _DetailsSheet(
+                      title: _selectedLast?.displayName ?? 'Details',
+                      onClose: () => setState(() => _detailsOpen = false),
+                      onPeople: () => setState(() {
+                        _detailsOpen = false;
+                        _peopleOpen = true;
+                      }),
+                      child: _details(context, now),
+                    ),
+                  ),
+                ),
+              ),
+          ];
           return Column(children: [
             top,
             const Divider(height: 1),
-            SizedBox(height: mapHeight, child: map),
-            const Divider(height: 1),
-            Expanded(child: panel),
+            Expanded(child: _mapStack(context, shown, style.number('markerSize'), phone: true, overlays: overlays)),
           ]);
         },
       ),
     );
   }
 
-  Widget _mapStack(BuildContext context, List<GodViewPerson> shown, double size) {
+  Widget _mapStack(BuildContext context, List<GodViewPerson> shown, double size,
+      {bool phone = false, List<Widget> overlays = const []}) {
     final b = Theme.of(context).brightness;
     final snap = _snap;
     final markers = godViewMarkers(shown);
@@ -930,6 +1046,9 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           const MapCreditLayer(),
         ],
       ),
+      // Phone: the stat tiles are hidden until the Insights key reveals them,
+      // so the map lands clear; wide shows them always.
+      if (!phone || _insights)
       Positioned(
         left: 10,
         top: 10,
@@ -971,15 +1090,33 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           _MapButton(tooltip: 'Zoom out', icon: Icons.remove, onPressed: () => _zoom(-1)),
           const SizedBox(height: 4),
           _MapButton(tooltip: 'Fit everyone', icon: Icons.fit_screen, onPressed: () => _fitAll(markers)),
+          if (phone) ...[
+            const SizedBox(height: 10),
+            _MapButton(
+              key: const ValueKey('god-view-insights'),
+              tooltip: _insights ? 'Hide insights' : 'Show insights',
+              icon: Icons.insights,
+              selected: _insights,
+              onPressed: () => setState(() => _insights = !_insights),
+            ),
+          ],
         ]),
       ),
+      // Phone: the Legend yields the bottom-left corner to the reopen bar once
+      // someone is selected. Keyed so its open/closed state survives the stat
+      // tiles being added or removed (the Insights key) above it in this Stack.
+      if (!phone || _selectedLast == null)
       Positioned(
+        key: const ValueKey('god-view-legend-pos'),
         left: 10,
         bottom: 24,
         child: _Legend(
           statuses: godViewLegend(lastKnown: _filters.lastKnown, partners: _filters.partners, users: _filters.users),
         ),
       ),
+      // Phone: the reopen bar and the People/Details sheets, as Positioned
+      // children of this one Stack (the same shape the wide layout proves).
+      ...overlays,
     ]);
   }
 
@@ -1594,21 +1731,28 @@ class _Note extends StatelessWidget {
 }
 
 class _MapButton extends StatelessWidget {
-  const _MapButton({required this.tooltip, required this.icon, required this.onPressed});
+  const _MapButton({super.key, required this.tooltip, required this.icon, required this.onPressed, this.selected = false});
   final String tooltip;
   final IconData icon;
   final VoidCallback onPressed;
+
+  /// Drawn filled (the Insights key while the tiles are shown).
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     return Material(
-      color: t.colorScheme.surface,
+      color: selected ? t.colorScheme.primary : t.colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(9),
-        side: BorderSide(color: t.colorScheme.outlineVariant),
+        side: BorderSide(color: selected ? t.colorScheme.primary : t.colorScheme.outlineVariant),
       ),
-      child: IconButton(tooltip: tooltip, icon: Icon(icon, size: 20), onPressed: onPressed),
+      child: IconButton(
+        tooltip: tooltip,
+        icon: Icon(icon, size: 20, color: selected ? t.colorScheme.onPrimary : null),
+        onPressed: onPressed,
+      ),
     );
   }
 }
@@ -1683,6 +1827,298 @@ class _LegendState extends State<_Legend> {
           ),
       ]),
     );
+  }
+}
+
+// ---- The phone layout: map first, People and Details as sheets ---------------------------------
+
+/// A bottom-anchored sheet sized to [frac] of the available height.
+class _PhoneSheet extends StatelessWidget {
+  const _PhoneSheet({required this.frac, required this.radius, required this.color, required this.child});
+  final double frac, radius;
+  final Color color;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => FractionallySizedBox(
+    heightFactor: frac.clamp(0.2, 1.0).toDouble(),
+    child: Material(
+      color: color,
+      elevation: 12,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(radius))),
+      clipBehavior: Clip.antiAlias,
+      child: child,
+    ),
+  );
+}
+
+/// The People pill (opens the list). A Material pill, not a FilledButton: the
+/// app's FilledButton theme sets minimumSize Size.fromHeight(52) (infinite
+/// width), which overflows when the button is measured with unbounded width.
+class _PeopleButton extends StatelessWidget {
+  const _PeopleButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Material(
+      color: t.colorScheme.primary,
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      elevation: 3,
+      child: InkWell(
+        key: const ValueKey('god-view-people-button'),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.people_alt_outlined, size: 18, color: t.colorScheme.onPrimary),
+            const SizedBox(width: 8),
+            Text('People', style: TextStyle(color: t.colorScheme.onPrimary, fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// The bottom bar once someone is selected (the Legend is hidden then): the
+/// selected person, which reopens Details, and the People button.
+class _ReopenBar extends StatelessWidget {
+  const _ReopenBar({required this.selected, required this.selectedColor, required this.onPeople, required this.onDetails});
+  final GodViewPerson selected;
+  final Color? selectedColor;
+  final VoidCallback onPeople;
+  final VoidCallback onDetails;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final p = selected;
+    return Row(children: [
+      Expanded(
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Material(
+            color: t.colorScheme.surface,
+            elevation: 3,
+            shape: StadiumBorder(side: BorderSide(color: t.colorScheme.outlineVariant)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              key: const ValueKey('god-view-reopen-details'),
+              onTap: onDetails,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  _Avatar(person: p, color: selectedColor ?? t.colorScheme.primary, size: 24),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(p.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                ]),
+              ),
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(width: 10),
+      _PeopleButton(onTap: onPeople),
+    ]);
+  }
+}
+
+/// The grey grip at a sheet's top.
+class _SheetGrip extends StatelessWidget {
+  const _SheetGrip();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 8, bottom: 2),
+    child: Center(
+      child: Container(
+        width: 38,
+        height: 5,
+        decoration: BoxDecoration(color: Theme.of(context).colorScheme.outlineVariant, borderRadius: BorderRadius.circular(3)),
+      ),
+    ),
+  );
+}
+
+/// The People sheet's content: a search box and the ordered list (with the
+/// collapsible "No location" section), plus the Show all / close controls.
+class _PeopleSheet extends StatefulWidget {
+  const _PeopleSheet({
+    required this.people,
+    required this.unlocated,
+    required this.versionRules,
+    required this.noLocationOpen,
+    required this.onNoLocationOpen,
+    required this.onOpenUnlocated,
+    required this.selectedId,
+    required this.now,
+    required this.query,
+    required this.onSearch,
+    required this.expanded,
+    required this.onToggleExpanded,
+    required this.onClose,
+    required this.onPick,
+  });
+
+  final List<GodViewPerson> people;
+  final List<GodViewUnlocated> unlocated;
+  final List<AppVersionRule> versionRules;
+  final bool noLocationOpen;
+  final ValueChanged<bool> onNoLocationOpen;
+  final VoidCallback? Function(GodViewUnlocated) onOpenUnlocated;
+  final String? selectedId;
+  final DateTime now;
+  final String query;
+  final ValueChanged<String> onSearch;
+  final bool expanded;
+  final VoidCallback onToggleExpanded, onClose;
+  final ValueChanged<GodViewPerson> onPick;
+
+  @override
+  State<_PeopleSheet> createState() => _PeopleSheetState();
+}
+
+class _PeopleSheetState extends State<_PeopleSheet> {
+  late final TextEditingController _c = TextEditingController(text: widget.query);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final people = widget.people;
+    final unlocated = widget.unlocated;
+    final noLoc = unlocated.isEmpty ? 0 : 1 + (widget.noLocationOpen ? unlocated.length : 0);
+    return Column(children: [
+      const _SheetGrip(),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
+        child: Row(children: [
+          Expanded(
+            child: Text('People (${people.length})', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+          ),
+          TextButton(
+            key: const ValueKey('god-view-people-expand'),
+            onPressed: widget.onToggleExpanded,
+            child: Text(widget.expanded ? 'Show less' : 'Show all'),
+          ),
+          IconButton(
+            key: const ValueKey('god-view-people-close'),
+            tooltip: 'Close',
+            icon: const Icon(Icons.close),
+            onPressed: widget.onClose,
+          ),
+        ]),
+      ),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+        child: TextField(
+          key: const ValueKey('god-view-people-search'),
+          controller: _c,
+          onChanged: widget.onSearch,
+          textInputAction: TextInputAction.search,
+          decoration: InputDecoration(
+            isDense: true,
+            prefixIcon: const Icon(Icons.search),
+            hintText: 'Search name, phone, plate or ride code',
+            suffixIcon: _c.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: 'Clear',
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      _c.clear();
+                      widget.onSearch('');
+                      setState(() {});
+                    },
+                  ),
+          ),
+        ),
+      ),
+      Expanded(
+        child: people.isEmpty && unlocated.isEmpty
+            ? const Padding(padding: EdgeInsets.all(16), child: Text('No one matches.'))
+            : ListView.builder(
+                key: const ValueKey('god-view-people'),
+                itemCount: people.length + noLoc,
+                itemBuilder: (_, i) {
+                  if (i < people.length) {
+                    return _PersonRow(
+                      person: people[i],
+                      selected: people[i].id == widget.selectedId,
+                      now: widget.now,
+                      onTap: () => widget.onPick(people[i]),
+                    );
+                  }
+                  if (i == people.length) {
+                    return _NoLocationHeader(
+                      count: unlocated.length,
+                      open: widget.noLocationOpen,
+                      onTap: () => widget.onNoLocationOpen(!widget.noLocationOpen),
+                    );
+                  }
+                  final u = unlocated[i - people.length - 1];
+                  return _UnlocatedRow(
+                    person: u,
+                    reason: godViewNoLocationReason(u, widget.versionRules),
+                    onTap: widget.onOpenUnlocated(u),
+                  );
+                },
+              ),
+      ),
+    ]);
+  }
+}
+
+/// The Details sheet's chrome around the shared details body.
+class _DetailsSheet extends StatelessWidget {
+  const _DetailsSheet({required this.title, required this.onClose, required this.onPeople, required this.child});
+  final String title;
+  final VoidCallback onClose, onPeople;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Column(children: [
+      const _SheetGrip(),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 8, 0),
+        child: Row(children: [
+          TextButton.icon(
+            key: const ValueKey('god-view-details-people'),
+            onPressed: onPeople,
+            icon: const Icon(Icons.chevron_left),
+            label: const Text('People'),
+          ),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: t.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          IconButton(
+            key: const ValueKey('god-view-details-close'),
+            tooltip: 'Close',
+            icon: const Icon(Icons.close),
+            onPressed: onClose,
+          ),
+        ]),
+      ),
+      Expanded(child: child),
+    ]);
   }
 }
 

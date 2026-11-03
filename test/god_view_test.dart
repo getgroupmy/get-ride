@@ -557,6 +557,15 @@ void main() {
       expect(godViewPaddedBox(-89.9, -179.9, 89.9, 179.9).minLat, -90);
     });
 
+    test('focus zoom: the admin percentage to a map zoom level', () {
+      expect(godViewFocusZoom(100), 13, reason: 'neighbourhood');
+      expect(godViewFocusZoom(200), 16, reason: 'streets');
+      expect(godViewFocusZoom(300), 19, reason: 'building');
+      expect(godViewFocusZoom(180), closeTo(15.4, 1e-9));
+      expect(godViewFocusZoom(50), 13, reason: 'clamped to the 100% floor');
+      expect(godViewFocusZoom(400), 19, reason: 'clamped to the map max');
+    });
+
     test('actions by grant', () {
       final partner = _people.firstWhere((p) => p.id == 'd7');
       final all = godViewActionsFor(partner, canReadRides: true, canOpenProfile: true, canPush: true, canSuspend: true);
@@ -574,11 +583,11 @@ void main() {
     for (final b in Brightness.values) {
       for (final size in const [Size(1400, 900), Size(390, 844)]) {
         testWidgets('builds in ${b.name} at ${size.width.toInt()} wide', (tester) async {
+          final phone = size.width <= 1000;
           final repo = await _pump(tester, b: b, size: size);
           expect(tester.takeException(), isNull);
           expect(find.text('God View'), findsWidgets);
           expect(find.byKey(const ValueKey('god-view-legend')), findsOneWidget);
-          expect(find.text('Users with app open'), findsOneWidget);
           // The legend starts closed, opens on a tap and closes again.
           final legendBox = find.byKey(const ValueKey('god-view-legend'));
           expect(find.descendant(of: legendBox, matching: find.text('Always on')), findsNothing);
@@ -586,12 +595,9 @@ void main() {
           await tester.tap(find.byKey(const ValueKey('god-view-legend-toggle')));
           await tester.pump();
           expect(tester.takeException(), isNull);
-          // 0272: the new statuses in the legend and the stats.
+          // 0272: the new statuses in the legend.
           for (final l in ['Always on', 'Online, not responding', 'Last known']) {
             expect(find.descendant(of: legendBox, matching: find.text(l)), findsOneWidget, reason: l);
-          }
-          for (final l in ['Always on', 'Not responding', 'Last known']) {
-            expect(find.text(l), findsWidgets, reason: l);
           }
           expect(find.byKey(const ValueKey('god-view-last-known')), findsOneWidget);
           expect(find.byKey(const ValueKey('god-view-marker-d6')), findsOneWidget, reason: 'last known on by default');
@@ -600,13 +606,26 @@ void main() {
           expect(find.byKey(const ValueKey('god-view-marker-d3')), findsOneWidget);
           expect(find.byKey(const ValueKey('god-view-user-filter')), findsOneWidget);
           expect(repo.asked, isNotEmpty);
-          // The panel sits beside the map when wide, under it on a phone.
-          final panel = tester.getTopLeft(find.byKey(const ValueKey('god-view-tab-people')));
-          final legend = tester.getTopLeft(find.byKey(const ValueKey('god-view-legend')));
-          if (size.width > 1000) {
+          if (!phone) {
+            // Wide: the stat tiles show and the panel sits beside the map.
+            expect(find.text('Users with app open'), findsOneWidget);
+            for (final l in ['Always on', 'Not responding', 'Last known']) {
+              expect(find.text(l), findsWidgets, reason: l);
+            }
+            final panel = tester.getTopLeft(find.byKey(const ValueKey('god-view-tab-people')));
+            final legend = tester.getTopLeft(find.byKey(const ValueKey('god-view-legend')));
             expect(panel.dx, greaterThan(legend.dx + 300));
           } else {
-            expect(panel.dy, greaterThan(legend.dy));
+            // Phone: the map fills the body, the tiles are hidden behind the
+            // Insights key, and People/Details are sheets (no side tabs).
+            expect(find.byKey(const ValueKey('god-view-tab-people')), findsNothing);
+            expect(find.byKey(const ValueKey('god-view-people-button')), findsOneWidget);
+            expect(find.byKey(const ValueKey('god-view-insights')), findsOneWidget);
+            expect(find.text('Users with app open'), findsNothing, reason: 'tiles hidden by default');
+            // The Insights key reveals the tiles.
+            await tester.tap(find.byKey(const ValueKey('god-view-insights')));
+            await tester.pump();
+            expect(find.text('Users with app open'), findsOneWidget);
           }
           await tester.tap(find.byKey(const ValueKey('god-view-legend-toggle')));
           await tester.pump();
