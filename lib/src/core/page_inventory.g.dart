@@ -464,6 +464,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('route:/admin/m/help-articles', SurfaceKind.page, 'Admin help articles', 'lib/src/admin/screens/help/help_module.dart', path: '/admin/m/help-articles'),
   SurfaceEntry('route:/admin/m/hire-bookings', SurfaceKind.page, 'Admin hire bookings', 'lib/src/admin/screens/hire_bookings_screen.dart', path: '/admin/m/hire-bookings'),
   SurfaceEntry('route:/admin/m/ip-access', SurfaceKind.page, 'Admin ip access', 'lib/src/admin/screens/security/security_module.dart', path: '/admin/m/ip-access'),
+  SurfaceEntry('route:/admin/m/lawful-export', SurfaceKind.page, 'Lawful export', 'lib/src/admin/screens/security/security_module.dart', path: '/admin/m/lawful-export'),
   SurfaceEntry('route:/admin/m/maps', SurfaceKind.page, 'Admin maps', 'lib/src/admin/screens/meterapp/meterapp_module.dart', path: '/admin/m/maps'),
   SurfaceEntry('route:/admin/m/media-gallery', SurfaceKind.page, 'Admin media gallery', 'lib/src/admin/screens/meterapp/meterapp_module.dart', path: '/admin/m/media-gallery'),
   SurfaceEntry('route:/admin/m/messaging', SurfaceKind.page, 'Admin messaging', 'lib/src/admin/screens/security/security_module.dart', path: '/admin/m/messaging'),
