@@ -12,6 +12,7 @@ import '../../data/models.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../profile/emergency_contacts_screen.dart';
+import 'safety_location.dart';
 import 'voice_protection_card.dart';
 import '../ride/trip_safety_parts.dart' show PassengerCoverCard;
 import 'rider_audio_widgets.dart';
@@ -137,6 +138,9 @@ class SafetyScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
+                // Background location turned on for a safety case (0337):
+                // a standing, disclosed row while it is active.
+                const SafetyLocationSettingsCard(),
                 const VoiceProtectionCard(),
                 // Passenger cover and permits (0311).
                 const PassengerCoverCard(),

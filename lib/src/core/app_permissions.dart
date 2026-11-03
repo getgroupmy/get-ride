@@ -191,11 +191,19 @@ const backgroundLocationDisclosure =
 /// Settings, asked there after the disclosure.
 PermissionChecks riderChecks(PermissionChecks user) => user.copyWith(locationAlways: false, locationAlwaysAndroid: false);
 
-/// Whether the closed app's check-ins may run for this account (0333):
-/// a driver as before, a passenger only with the admin's switch on and their
-/// own opt-in. The server keeps the same rule (background_checkin_allowed).
-bool backgroundCheckinsAllowed({required bool isPartner, required bool switchOn, required bool optedIn}) =>
-    isPartner || (switchOn && optedIn);
+/// Whether the closed app's check-ins may run for this account:
+/// a driver as before (0333), a passenger only with the admin's switch on and
+/// their own opt-in (0333), or a user with an active safety case that has been
+/// disclosed to them (0337). The server keeps the same rule
+/// (background_checkin_allowed): it still refuses any report for a safety case
+/// until the app has shown the indicator and called the ack.
+bool backgroundCheckinsAllowed({
+  required bool isPartner,
+  required bool switchOn,
+  required bool optedIn,
+  bool safetyCase = false,
+}) =>
+    isPartner || (switchOn && optedIn) || safetyCase;
 
 /// What must change before going on: one entry for each check that holds
 /// someone up.

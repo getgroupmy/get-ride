@@ -769,3 +769,91 @@ List<GodViewUnlocated> godViewUnlocatedShown(List<GodViewUnlocated> rows, GodVie
   for (final u in rows)
     if (u.isPartner ? f.partners : f.users && f.userFilter == GodViewUserFilter.all) u,
 ];
+
+/// One of a person's logged-in devices (migration 0337), for the God View
+/// device picker: the admin can centre the map on a specific device's last
+/// known position.
+class GodViewDevice {
+  const GodViewDevice({
+    this.deviceKey,
+    required this.tokenId,
+    this.platform,
+    this.lat,
+    this.lng,
+    this.locatedAt,
+    this.locatedBg = false,
+    this.locationAlways = false,
+  });
+
+  final String? deviceKey;
+  final String tokenId;
+  final String? platform;
+  final double? lat;
+  final double? lng;
+  final DateTime? locatedAt;
+  final bool locatedBg;
+  final bool locationAlways;
+
+  bool get hasPosition => lat != null && lng != null;
+
+  /// A short label for the picker, e.g. "Android · 3 min ago".
+  String get label {
+    final p = (platform == null || platform!.isEmpty)
+        ? 'Device'
+        : platform![0].toUpperCase() + platform!.substring(1);
+    return p;
+  }
+
+  static GodViewDevice fromJson(Map<String, dynamic> j) => GodViewDevice(
+        deviceKey: j['device_key'] as String?,
+        tokenId: '${j['token_id'] ?? ''}',
+        platform: j['platform'] as String?,
+        lat: (j['lat'] as num?)?.toDouble(),
+        lng: (j['lng'] as num?)?.toDouble(),
+        locatedAt: DateTime.tryParse('${j['located_at'] ?? ''}')?.toLocal(),
+        locatedBg: j['located_bg'] == true,
+        locationAlways: j['location_always'] == true,
+      );
+}
+
+/// The admin's read-only view of a person's safety location case
+/// (migration 0337): whether it is on, the style, the reason, and when the
+/// user was actually shown the indicator (notifiedAt, null until their app
+/// acknowledges it).
+class SafetyCaseAdminState {
+  const SafetyCaseAdminState({
+    required this.enabled,
+    this.reason,
+    required this.style,
+    this.openedAt,
+    this.closedAt,
+    this.notifiedAt,
+  });
+
+  final bool enabled;
+  final String? reason;
+  final String style; // 'modal' | 'banner'
+  final DateTime? openedAt;
+  final DateTime? closedAt;
+  final DateTime? notifiedAt;
+
+  bool get notified => notifiedAt != null;
+
+  SafetyCaseAdminState copyWith({bool? enabled, String? reason, String? style}) => SafetyCaseAdminState(
+        enabled: enabled ?? this.enabled,
+        reason: reason ?? this.reason,
+        style: style ?? this.style,
+        openedAt: openedAt,
+        closedAt: closedAt,
+        notifiedAt: notifiedAt,
+      );
+
+  static SafetyCaseAdminState fromJson(Map<String, dynamic> j) => SafetyCaseAdminState(
+        enabled: j['enabled'] == true,
+        reason: j['reason'] as String?,
+        style: j['disclosure_style'] == 'banner' ? 'banner' : 'modal',
+        openedAt: DateTime.tryParse('${j['opened_at'] ?? ''}')?.toLocal(),
+        closedAt: DateTime.tryParse('${j['closed_at'] ?? ''}')?.toLocal(),
+        notifiedAt: DateTime.tryParse('${j['notified_at'] ?? ''}')?.toLocal(),
+      );
+}

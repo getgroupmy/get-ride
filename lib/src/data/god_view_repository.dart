@@ -65,6 +65,43 @@ class GodViewRepository {
     return res is Map ? res['phone'] as String? : null;
   }
 
+  /// The person's logged-in devices with a known position (migration 0337),
+  /// newest first, so the admin can pick which one to centre on. The server
+  /// checks God View access.
+  Future<List<GodViewDevice>> devices(String profileId) async {
+    final res = await _db!.rpc('god_view_devices', params: {'p_profile_id': profileId});
+    final list = res is Map ? res['devices'] : null;
+    return [
+      for (final r in (list as List? ?? const []))
+        if (r is Map) GodViewDevice.fromJson(Map<String, dynamic>.from(r)),
+    ];
+  }
+
+  /// The person's safety location case, read-only (0337): whether it is on,
+  /// the style, the reason, and when the user was shown the indicator
+  /// (notified_at, null until their app acks).
+  Future<SafetyCaseAdminState> safetyCase(String profileId) async {
+    final res = await _db!.rpc('admin_safety_location_state', params: {'p_user_id': profileId});
+    return SafetyCaseAdminState.fromJson(res is Map ? Map<String, dynamic>.from(res) : const {});
+  }
+
+  /// Opens, retunes or closes the person's safety location case (0337). Needs
+  /// edit on God View; opening needs a reason. Returns the new state.
+  Future<SafetyCaseAdminState> setSafetyCase(
+    String profileId, {
+    required bool enabled,
+    String? reason,
+    required String style,
+  }) async {
+    final res = await _db!.rpc('admin_safety_location_set', params: {
+      'p_user_id': profileId,
+      'p_enabled': enabled,
+      'p_reason': reason,
+      'p_disclosure_style': style,
+    });
+    return SafetyCaseAdminState.fromJson(res is Map ? Map<String, dynamic>.from(res) : const {});
+  }
+
   /// Blocks a partner or user as the Partners / Users pages do. True when
   /// a partner was on a ride, which they may finish.
   Future<bool> suspend(String profileId, String reason, {String? note}) async {

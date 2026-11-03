@@ -116,6 +116,7 @@ import 'features/my_qr/my_qr_screen.dart';
 import 'features/my_qr/qr_link_screen.dart';
 import 'features/my_qr/qr_result_sheet.dart' show PendingQrLink;
 import 'features/profile/user_guide_screen.dart';
+import 'features/safety/safety_location.dart';
 import 'features/safety/safety_screen.dart';
 import 'features/ride/demo_ride.dart';
 import 'features/ride/home_screen.dart';
@@ -1040,6 +1041,14 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
       _backgroundArmed = null;
       if (previous != null) unawaited(_background.disarm(forgetKey: true));
     });
+    // A safety case turning on or off (0337) re-evaluates background reporting
+    // promptly, rather than waiting for the next check-in tick.
+    ref.listenManual(safetyLocationProvider, (previous, next) {
+      if ((previous == null) != (next == null)) {
+        _backgroundArmed = null;
+        unawaited(_reportPushLocation());
+      }
+    });
   }
 
   final _background = BackgroundLocation();
@@ -1098,9 +1107,13 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         isPartner: await ref.read(partnerProvider.future).timeout(wait) != null,
         switchOn: await ref.read(locationCheckinsConfigProvider.future).timeout(wait),
         optedIn: (await ref.read(profileProvider.future).timeout(wait))?.raw['location_checkins'] == true,
+        // 0337: an active, disclosed safety case makes the app report in the
+        // background like "always on" (never prompting for new permission; the
+        // server still refuses any report before the ack).
+        safetyCase: ref.read(safetyLocationProvider) != null,
       );
     } catch (_) {
-      allowed = ref.read(partnerProvider).value != null;
+      allowed = ref.read(partnerProvider).value != null || ref.read(safetyLocationProvider) != null;
     }
     final want = key != null &&
         allowed &&
@@ -1321,8 +1334,11 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
                                   child: RouteTitle(
                                     location: () => router.routerDelegate.currentConfiguration.uri.path,
                                     listenable: router.routerDelegate,
-                                    // "Shared live with support" while God View streams them (0282).
-                                    child: LiveShareNotice(child: child ?? const SizedBox.shrink()),
+                                    // The safety-location indicator (0337), then "Shared live with
+                                    // support" while God View streams them (0282).
+                                    child: SafetyLocationNotice(
+                                      child: LiveShareNotice(child: child ?? const SizedBox.shrink()),
+                                    ),
                                   ),
                                 ),
                               ),
