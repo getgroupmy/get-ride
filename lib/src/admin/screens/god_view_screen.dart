@@ -862,24 +862,36 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           final sheetColor = style.setColor('mapSheetColor', b) ?? Theme.of(context).colorScheme.surface;
           final sheetRadius = style.number('mapSheetRadius');
           final overlays = <Widget>[
-            if (!anyOpen)
+            // No one selected: just the People pill, bottom-right, clear of the
+            // bottom-left Legend. Once selected, the Legend is hidden and the
+            // reopen bar spans the width.
+            if (!anyOpen && _selectedLast == null)
+              Positioned(
+                right: 12,
+                bottom: 12 + MediaQuery.paddingOf(context).bottom,
+                child: _PeopleButton(
+                  onTap: () => setState(() {
+                    _peopleOpen = true;
+                    _detailsOpen = false;
+                  }),
+                ),
+              ),
+            if (!anyOpen && _selectedLast != null)
               Positioned(
                 left: 12,
-                right: 72,
+                right: 12,
                 bottom: 12 + MediaQuery.paddingOf(context).bottom,
                 child: _ReopenBar(
-                  selected: _selectedLast,
-                  selectedColor: _selectedLast == null ? null : godViewStatusColor(_selectedLast!.status, b),
+                  selected: _selectedLast!,
+                  selectedColor: godViewStatusColor(_selectedLast!.status, b),
                   onPeople: () => setState(() {
                     _peopleOpen = true;
                     _detailsOpen = false;
                   }),
-                  onDetails: _selectedLast == null
-                      ? null
-                      : () => setState(() {
-                          _detailsOpen = true;
-                          _peopleOpen = false;
-                        }),
+                  onDetails: () => setState(() {
+                    _detailsOpen = true;
+                    _peopleOpen = false;
+                  }),
                 ),
               ),
             if (anyOpen)
@@ -1091,9 +1103,11 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
         ]),
       ),
       // Phone: the Legend yields the bottom-left corner to the reopen bar once
-      // someone is selected.
+      // someone is selected. Keyed so its open/closed state survives the stat
+      // tiles being added or removed (the Insights key) above it in this Stack.
       if (!phone || _selectedLast == null)
       Positioned(
+        key: const ValueKey('god-view-legend-pos'),
         left: 10,
         bottom: 24,
         child: _Legend(
@@ -1838,57 +1852,78 @@ class _PhoneSheet extends StatelessWidget {
   );
 }
 
-/// The bottom bar while no sheet is up: the selected person (reopens Details)
-/// and the People button (opens the list).
+/// The People pill (opens the list). A Material pill, not a FilledButton: the
+/// app's FilledButton theme sets minimumSize Size.fromHeight(52) (infinite
+/// width), which overflows when the button is measured with unbounded width.
+class _PeopleButton extends StatelessWidget {
+  const _PeopleButton({required this.onTap});
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Material(
+      color: t.colorScheme.primary,
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      elevation: 3,
+      child: InkWell(
+        key: const ValueKey('god-view-people-button'),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.people_alt_outlined, size: 18, color: t.colorScheme.onPrimary),
+            const SizedBox(width: 8),
+            Text('People', style: TextStyle(color: t.colorScheme.onPrimary, fontWeight: FontWeight.w600)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// The bottom bar once someone is selected (the Legend is hidden then): the
+/// selected person, which reopens Details, and the People button.
 class _ReopenBar extends StatelessWidget {
   const _ReopenBar({required this.selected, required this.selectedColor, required this.onPeople, required this.onDetails});
-  final GodViewPerson? selected;
+  final GodViewPerson selected;
   final Color? selectedColor;
   final VoidCallback onPeople;
-  final VoidCallback? onDetails;
+  final VoidCallback onDetails;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final p = selected;
     return Row(children: [
-      if (p != null && onDetails != null)
-        Expanded(
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Material(
-              color: t.colorScheme.surface,
-              elevation: 3,
-              shape: StadiumBorder(side: BorderSide(color: t.colorScheme.outlineVariant)),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                key: const ValueKey('god-view-reopen-details'),
-                onTap: onDetails,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    _Avatar(person: p, color: selectedColor ?? t.colorScheme.primary, size: 24),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(p.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    ),
-                  ]),
-                ),
+      Expanded(
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Material(
+            color: t.colorScheme.surface,
+            elevation: 3,
+            shape: StadiumBorder(side: BorderSide(color: t.colorScheme.outlineVariant)),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              key: const ValueKey('god-view-reopen-details'),
+              onTap: onDetails,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(6, 6, 14, 6),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  _Avatar(person: p, color: selectedColor ?? t.colorScheme.primary, size: 24),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(p.displayName, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+                ]),
               ),
             ),
           ),
-        )
-      else
-        const Spacer(),
-      Padding(
-        padding: const EdgeInsets.only(left: 10),
-        child: FilledButton.icon(
-          key: const ValueKey('god-view-people-button'),
-          onPressed: onPeople,
-          icon: const Icon(Icons.people_alt_outlined, size: 18),
-          label: const Text('People'),
         ),
       ),
+      const SizedBox(width: 10),
+      _PeopleButton(onTap: onPeople),
     ]);
   }
 }
