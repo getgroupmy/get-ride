@@ -28,8 +28,8 @@ class LawfulSubject {
   String get label {
     final parts = <String>[
       name ?? 'Unnamed',
-      if (phone != null) phone!,
-      if (displayId != null) displayId!,
+      ?phone,
+      ?displayId,
     ];
     return parts.join(' · ');
   }
