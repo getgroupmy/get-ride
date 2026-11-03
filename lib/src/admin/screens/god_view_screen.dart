@@ -814,7 +814,6 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
             onFilters: _setFilters,
             onSearch: _onSearch,
           );
-          final map = _mapStack(context, shown, style.number('markerSize'), phone: !wide);
           if (snap == null && _error != null) {
             return Column(children: [
               top,
@@ -829,6 +828,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
             ]);
           }
           if (wide) {
+            final map = _mapStack(context, shown, style.number('markerSize'));
             final panel = _Panel(
               tabs: _tabs,
               people: godViewListOrder(shown),
@@ -856,69 +856,103 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
             ]);
           }
           // A phone: the map fills the body; People and Details are sheets over
-          // it, their heights the admin's (App Page Settings → God View).
+          // it, built as Positioned children of the map's own Stack (the same
+          // shape the wide layout proves). Heights are the admin's.
+          final anyOpen = _peopleOpen || _detailsOpen;
+          final sheetColor = style.setColor('mapSheetColor', b) ?? Theme.of(context).colorScheme.surface;
+          final sheetRadius = style.number('mapSheetRadius');
+          final overlays = <Widget>[
+            if (!anyOpen)
+              Positioned(
+                left: 12,
+                right: 72,
+                bottom: 12 + MediaQuery.paddingOf(context).bottom,
+                child: _ReopenBar(
+                  selected: _selectedLast,
+                  selectedColor: _selectedLast == null ? null : godViewStatusColor(_selectedLast!.status, b),
+                  onPeople: () => setState(() {
+                    _peopleOpen = true;
+                    _detailsOpen = false;
+                  }),
+                  onDetails: _selectedLast == null
+                      ? null
+                      : () => setState(() {
+                          _detailsOpen = true;
+                          _peopleOpen = false;
+                        }),
+                ),
+              ),
+            if (anyOpen)
+              Positioned.fill(
+                child: GestureDetector(
+                  key: const ValueKey('god-view-sheet-scrim'),
+                  onTap: () => setState(() {
+                    _peopleOpen = false;
+                    _detailsOpen = false;
+                  }),
+                  child: const ColoredBox(color: Color(0x4D000000)),
+                ),
+              ),
+            if (_peopleOpen)
+              Positioned.fill(
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _PhoneSheet(
+                    frac: (_peopleExpanded ? style.number('sheetExpanded') : style.number('sheetCompact')) / 100,
+                    radius: sheetRadius,
+                    color: sheetColor,
+                    child: _PeopleSheet(
+                      people: godViewListOrder(shown),
+                      unlocated: godViewUnlocatedShown(_unlocated, _filters),
+                      versionRules: ref.watch(appVersionRulesProvider).value ?? const [],
+                      noLocationOpen: _noLocationOpen,
+                      onNoLocationOpen: (v) => setState(() => _noLocationOpen = v),
+                      onOpenUnlocated: (u) => _openUnlocated(u, canPartner: canPartner, canUser: canUser),
+                      selectedId: _selectedId,
+                      now: now,
+                      query: _filters.query,
+                      onSearch: _onSearch,
+                      expanded: _peopleExpanded,
+                      onToggleExpanded: () => setState(() => _peopleExpanded = !_peopleExpanded),
+                      onClose: () => setState(() => _peopleOpen = false),
+                      onPick: (p) => _select(p),
+                    ),
+                  ),
+                ),
+              ),
+            if (_detailsOpen)
+              Positioned.fill(
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: _PhoneSheet(
+                    frac: style.number('detailsHeight') / 100,
+                    radius: sheetRadius,
+                    color: sheetColor,
+                    child: _DetailsSheet(
+                      title: _selectedLast?.displayName ?? 'Details',
+                      onClose: () => setState(() => _detailsOpen = false),
+                      onPeople: () => setState(() {
+                        _detailsOpen = false;
+                        _peopleOpen = true;
+                      }),
+                      child: _details(context, now),
+                    ),
+                  ),
+                ),
+              ),
+          ];
           return Column(children: [
             top,
             const Divider(height: 1),
-            Expanded(
-              child: _PhoneGodView(
-                map: map,
-                radius: style.number('mapSheetRadius'),
-                sheetColor: style.setColor('mapSheetColor', b),
-                peopleOpen: _peopleOpen,
-                detailsOpen: _detailsOpen,
-                selected: _selectedLast,
-                selectedColor: _selectedLast == null ? null : godViewStatusColor(_selectedLast!.status, b),
-                peopleFrac: (_peopleExpanded ? style.number('sheetExpanded') : style.number('sheetCompact')) / 100,
-                detailsFrac: style.number('detailsHeight') / 100,
-                onOpenPeople: () => setState(() {
-                  _peopleOpen = true;
-                  _detailsOpen = false;
-                }),
-                onOpenDetails: _selectedLast == null
-                    ? null
-                    : () => setState(() {
-                        _detailsOpen = true;
-                        _peopleOpen = false;
-                      }),
-                onCloseSheets: () => setState(() {
-                  _peopleOpen = false;
-                  _detailsOpen = false;
-                }),
-                people: _PeopleSheet(
-                  people: godViewListOrder(shown),
-                  unlocated: godViewUnlocatedShown(_unlocated, _filters),
-                  versionRules: ref.watch(appVersionRulesProvider).value ?? const [],
-                  noLocationOpen: _noLocationOpen,
-                  onNoLocationOpen: (v) => setState(() => _noLocationOpen = v),
-                  onOpenUnlocated: (u) => _openUnlocated(u, canPartner: canPartner, canUser: canUser),
-                  selectedId: _selectedId,
-                  now: now,
-                  query: _filters.query,
-                  onSearch: _onSearch,
-                  expanded: _peopleExpanded,
-                  onToggleExpanded: () => setState(() => _peopleExpanded = !_peopleExpanded),
-                  onClose: () => setState(() => _peopleOpen = false),
-                  onPick: (p) => _select(p),
-                ),
-                details: _DetailsSheet(
-                  title: _selectedLast?.displayName ?? 'Details',
-                  onClose: () => setState(() => _detailsOpen = false),
-                  onPeople: () => setState(() {
-                    _detailsOpen = false;
-                    _peopleOpen = true;
-                  }),
-                  child: _details(context, now),
-                ),
-              ),
-            ),
+            Expanded(child: _mapStack(context, shown, style.number('markerSize'), phone: true, overlays: overlays)),
           ]);
         },
       ),
     );
   }
 
-  Widget _mapStack(BuildContext context, List<GodViewPerson> shown, double size, {bool phone = false}) {
+  Widget _mapStack(BuildContext context, List<GodViewPerson> shown, double size,
+      {bool phone = false, List<Widget> overlays = const []}) {
     final b = Theme.of(context).brightness;
     final snap = _snap;
     final markers = godViewMarkers(shown);
@@ -1066,6 +1100,9 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
           statuses: godViewLegend(lastKnown: _filters.lastKnown, partners: _filters.partners, users: _filters.users),
         ),
       ),
+      // Phone: the reopen bar and the People/Details sheets, as Positioned
+      // children of this one Stack (the same shape the wide layout proves).
+      ...overlays,
     ]);
   }
 
@@ -1780,83 +1817,6 @@ class _LegendState extends State<_Legend> {
 }
 
 // ---- The phone layout: map first, People and Details as sheets ---------------------------------
-
-/// The phone God View: the map fills the body, with the People and Details
-/// sheets sliding up over it and a reopen bar (People, and the selected
-/// person) along the bottom. Heights come from the admin (App Page Settings →
-/// God View). The wide layout keeps its side panel.
-class _PhoneGodView extends StatelessWidget {
-  const _PhoneGodView({
-    required this.map,
-    required this.radius,
-    required this.sheetColor,
-    required this.peopleOpen,
-    required this.detailsOpen,
-    required this.selected,
-    required this.selectedColor,
-    required this.peopleFrac,
-    required this.detailsFrac,
-    required this.onOpenPeople,
-    required this.onOpenDetails,
-    required this.onCloseSheets,
-    required this.people,
-    required this.details,
-  });
-
-  final Widget map;
-  final double radius;
-  final Color? sheetColor;
-  final bool peopleOpen, detailsOpen;
-  final GodViewPerson? selected;
-  final Color? selectedColor;
-  final double peopleFrac, detailsFrac;
-  final VoidCallback onOpenPeople;
-  final VoidCallback? onOpenDetails;
-  final VoidCallback onCloseSheets;
-  final Widget people, details;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final anyOpen = peopleOpen || detailsOpen;
-    final color = sheetColor ?? t.colorScheme.surface;
-    return Stack(fit: StackFit.expand, children: [
-      Positioned.fill(child: map),
-      if (!anyOpen)
-        Positioned(
-          left: 12,
-          right: 72,
-          bottom: 12 + MediaQuery.paddingOf(context).bottom,
-          child: _ReopenBar(
-            selected: selected,
-            selectedColor: selectedColor,
-            onPeople: onOpenPeople,
-            onDetails: onOpenDetails,
-          ),
-        ),
-      if (anyOpen)
-        Positioned.fill(
-          child: GestureDetector(
-            key: const ValueKey('god-view-sheet-scrim'),
-            onTap: onCloseSheets,
-            child: const ColoredBox(color: Color(0x4D000000)),
-          ),
-        ),
-      // Only the open sheet is mounted, so there is never an off-screen
-      // render/semantics subtree over the map.
-      if (peopleOpen)
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: _PhoneSheet(frac: peopleFrac, radius: radius, color: color, child: people),
-        ),
-      if (detailsOpen)
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: _PhoneSheet(frac: detailsFrac, radius: radius, color: color, child: details),
-        ),
-    ]);
-  }
-}
 
 /// A bottom-anchored sheet sized to [frac] of the available height.
 class _PhoneSheet extends StatelessWidget {
