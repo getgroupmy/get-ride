@@ -11,6 +11,7 @@ import 'elife_screen.dart';
 import 'fare_ai_request_screen.dart';
 import 'fare_ai_screens.dart';
 import 'ip_access_screen.dart';
+import '../lawful_export_screen.dart';
 import '../messaging_screen.dart';
 import 'session_history_screen.dart';
 import 'trace_fraud_screen.dart';
@@ -48,6 +49,7 @@ final securityRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/fare-ai-logs', builder: (_, _) => const AdminFareAiLogsScreen()),
   GoRoute(path: '/admin/m/fare-ai-request', builder: (_, _) => const AdminFareAiRequestScreen()),
   GoRoute(path: '/admin/m/backend', builder: (_, _) => const AdminBackendScreen()),
+  GoRoute(path: '/admin/m/lawful-export', builder: (_, _) => const LawfulExportScreen()),
 ];
 
 const _section = 'Security & integrations';
@@ -164,5 +166,13 @@ const securityEntries = <AdminScreenEntry>[
     path: '/admin/m/backend',
     pages: ['admin-settings-supabase'],
     icon: Icons.dns_outlined,
+  ),
+  AdminScreenEntry(
+    section: _section,
+    title: 'Lawful-request export',
+    subtitle: 'Export the data held about one account for a valid authority request (full admins)',
+    path: '/admin/m/lawful-export',
+    pages: ['admin-lawful-export'],
+    icon: Icons.gavel_outlined,
   ),
 ];
