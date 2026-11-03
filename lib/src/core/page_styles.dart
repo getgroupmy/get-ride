@@ -218,7 +218,15 @@ const elementTokens = <String, List<StyleToken>>{
   ],
   godViewSurface: [
     StyleToken.number('markerSize', 'Marker size', 30, min: 20, max: 48, group: 'Map'),
+    // How far the map zooms to the selected person (phone), as a percentage
+    // the admin slides; the screen turns it into a map zoom level.
+    StyleToken.number('focusZoom', 'Focus zoom (selected)', 180, min: 100, max: 320, step: 10, unit: '%', group: 'Map'),
     StyleToken.number('panelWidth', 'People panel width', 340, min: 280, max: 480, group: 'Panel'),
+    // The phone-only People and Details sheets over the map. The People sheet
+    // opens at the compact height and grows to the expanded one on "Show all".
+    StyleToken.number('sheetCompact', 'People: compact height', 58, min: 30, max: 100, unit: '% of screen', group: _phoneSheets),
+    StyleToken.number('sheetExpanded', 'People: expanded height', 88, min: 30, max: 100, unit: '% of screen', group: _phoneSheets),
+    StyleToken.number('detailsHeight', 'Details height', 80, min: 30, max: 100, unit: '% of screen', group: _phoneSheets),
     StyleToken.color('trailLate', 'Colour (latest)', light: 0xFF0C7AB8, dark: 0xFF4CC0FF, group: _trail),
     StyleToken.toggle('trailFade', 'Lighter for earlier', group: _trail),
     StyleToken.color('trailEarly', 'Colour (earliest)', light: 0xFF9CC9E6, dark: 0xFF2B5F80, group: _trail),
@@ -231,6 +239,7 @@ const elementTokens = <String, List<StyleToken>>{
 
 const _trail = 'Movement trail';
 const _chosen = 'Confirm ride: chosen vehicle';
+const _phoneSheets = 'Phone sheets (People & Details)';
 
 /// God View → Movement: how the line is drawn, and whether it follows the
 /// roads between the reported points or goes straight from one to the next.

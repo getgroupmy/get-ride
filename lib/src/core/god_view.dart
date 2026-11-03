@@ -639,6 +639,12 @@ const godViewSuspendReasons = [
   'Other',
 ];
 
+/// The map zoom level to centre on the selected person for a focus-zoom
+/// percentage (Admin → App Page Settings → God View → Focus zoom). 100 % is a
+/// neighbourhood view, 200 % the streets, 300 % a building; linear between,
+/// and clamped to the map's own range so a wound-up value never over-zooms.
+double godViewFocusZoom(double pct) => (10 + pct.clamp(100, 320) * 0.03).clamp(2, 19).toDouble();
+
 /// The map's visible box, padded so a marker just off the edge is fetched.
 ({double minLat, double minLng, double maxLat, double maxLng}) godViewPaddedBox(
   double south,
