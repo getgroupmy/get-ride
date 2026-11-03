@@ -54,15 +54,15 @@ on conflict (id) do update set name = excluded.name;
 insert into public.admin_access (profile_id, page, access_level) values
   ('00000000-0000-0000-0000-0000000337c1', 'admin-god-view', 'edit')
 on conflict do nothing;
-insert into public.partners (auth_user_id, name) values ('00000000-0000-0000-0000-0000000337a2', 'Driver');
+insert into public.partners (auth_user_id, name, phone, status) values ('00000000-0000-0000-0000-0000000337a2', 'Driver', '60337000002', 'approved');
 update public.profiles set location_checkins = true where id = '00000000-0000-0000-0000-0000000337a3';
 
 -- A background token for each account that reports (key, location_always, no
 -- location yet so the throttle lets the first report through).
-insert into public.push_tokens (profile_id, platform, device_key, bg_key_hash, location_always, last_lat, last_lng) values
-  ('00000000-0000-0000-0000-0000000337a1', 'android', 'dev-a1', pg_temp.hash(repeat('a1', 24)), true, 3.1, 101.6),
-  ('00000000-0000-0000-0000-0000000337a2', 'android', 'dev-a2', pg_temp.hash(repeat('a2', 24)), true, 3.1, 101.6),
-  ('00000000-0000-0000-0000-0000000337a3', 'android', 'dev-a3', pg_temp.hash(repeat('a3', 24)), true, 3.1, 101.6);
+insert into public.push_tokens (profile_id, token, platform, device_key, bg_key_hash, location_always, last_lat, last_lng) values
+  ('00000000-0000-0000-0000-0000000337a1', 'sl337-a1', 'android', 'dev-a1', pg_temp.hash(repeat('a1', 24)), true, 3.1, 101.6),
+  ('00000000-0000-0000-0000-0000000337a2', 'sl337-a2', 'android', 'dev-a2', pg_temp.hash(repeat('a2', 24)), true, 3.1, 101.6),
+  ('00000000-0000-0000-0000-0000000337a3', 'sl337-a3', 'android', 'dev-a3', pg_temp.hash(repeat('a3', 24)), true, 3.1, 101.6);
 
 -- ---- 1. The admin target page is registered -------------------------------------------------------
 do $$
