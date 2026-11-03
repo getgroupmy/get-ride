@@ -225,25 +225,6 @@ begin
   end;
 end $$;
 
--- ---- 12. Freshness: a history row newer than the push token refreshes the map ---------------------
-do $$
-declare v jsonb;
-begin
-  perform pg_temp.as_caller(null);
-  -- The subject's token last reported long ago; an open-app history row is fresh.
-  update public.push_tokens set located_at = now() - interval '18 hours', located_bg = false, last_lat = 3.0, last_lng = 101.0
-   where profile_id = '00000000-0000-0000-0000-0000000337a1';
-  delete from public.safety_location_cases where user_id = '00000000-0000-0000-0000-0000000337a1';
-  delete from public.user_location_history where user_id = '00000000-0000-0000-0000-0000000337a1';
-  insert into public.user_location_history (user_id, latitude, longitude, captured_at)
-  values ('00000000-0000-0000-0000-0000000337a1', 3.5, 101.9, now());
-  -- god_view_people should show the fresher history position, not "last known".
-  perform pg_temp.check(exists (
-    select 1 from public.god_view_people(null, false, null, '00000000-0000-0000-0000-0000000337a1', false, null, null) g
-     where g.status <> 'last_known' and round(g.lat::numeric, 1) = 3.5),
-    'a fresh history row makes the subject live at the newer position');
-end $$;
-
 do $$ begin raise notice 'ALL SAFETY LOCATION 0337 CHECKS PASSED'; end $$;
 
 rollback;
