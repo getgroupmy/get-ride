@@ -51,8 +51,8 @@ insert into public.profiles (id, name) values
   ('00000000-0000-0000-0000-0000000337c1', 'God View Admin'),
   ('00000000-0000-0000-0000-0000000337c2', 'Non Admin')
 on conflict (id) do update set name = excluded.name;
-insert into public.admin_access (profile_id, page, access_level) values
-  ('00000000-0000-0000-0000-0000000337c1', 'admin-god-view', 'edit')
+insert into public.admin_access (profile_id, page, access_level, region) values
+  ('00000000-0000-0000-0000-0000000337c1', '*', 'edit', null)
 on conflict do nothing;
 insert into public.partners (auth_user_id, name, phone, status) values ('00000000-0000-0000-0000-0000000337a2', 'Driver', '60337000002', 'approved');
 update public.profiles set location_checkins = true where id = '00000000-0000-0000-0000-0000000337a3';
