@@ -67,15 +67,15 @@ stable
 security definer
 set search_path = ''
 as $$
-  with blocked as (select public.reg_type_blocked_keys(p_row) as k)
   select case
-    when coalesce(cardinality((select k from blocked)), 0) = 0 then true
+    when coalesce(cardinality(bk.k), 0) = 0 then true
     else exists (
       select 1
         from unnest(public.ptr_text_array(p_row -> 'partner_types')) as t
        where nullif(btrim(coalesce(t, '')), '') is not null
-         and public.ptr_key(public.partner_type_rules(t) ->> 'name') <> all((select k from blocked)))
-  end;
+         and not (public.ptr_key(public.partner_type_rules(t) ->> 'name') = any (bk.k)))
+  end
+  from (select public.reg_type_blocked_keys(p_row) as k) bk;
 $$;
 revoke execute on function public.reg_has_ready_type(jsonb) from public, anon, authenticated;
 grant execute on function public.reg_has_ready_type(jsonb) to service_role;
