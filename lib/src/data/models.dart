@@ -507,6 +507,17 @@ class Profile {
   String? get idNumber => raw['ic'] as String?;
   String? get address => raw['address'] as String?;
   String? get idImage => raw['id_image'] as String?;
+
+  /// Date of birth, as stored (yyyy-mm-dd); read from the ID at verification.
+  String? get birthDate => raw['birth_date'] as String?;
+
+  /// 'male', 'female' or 'other'; read from the ID at verification.
+  String? get gender => raw['gender'] as String?;
+
+  /// The ID-verification state (migration 0342 gate reads this): 'Verified',
+  /// 'Failed', 'Expired' or null (never verified).
+  String? get idVerified => raw['id_verified'] as String?;
+  bool get isIdVerified => idVerified == 'Verified';
 }
 
 class Partner {
