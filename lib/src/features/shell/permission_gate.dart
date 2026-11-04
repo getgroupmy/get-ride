@@ -1,9 +1,14 @@
-// Before the rider's home map: what Admin → App Settings → Permissions holds
-// riders to (by default the phone's location switched on, GET.ride allowed to
-// use it, and notifications allowed; each can be bypassed). Until it's all
-// done, a page over the app lists what to switch on, each with the button
-// that does it; coming back from Settings checks again. Checked after every
-// sign-in and launch, and whenever the app comes back to the front.
+// What Admin → App Settings → Permissions holds the account to, as a page
+// over the app that lists what to switch on, each with the button that does
+// it; coming back from Settings checks again. Checked after every sign-in and
+// launch, and whenever the app comes back to the front.
+//
+// A rider is held to the rider rules (by default the phone's location
+// switched on, GET.ride allowed to use it, and notifications allowed; each
+// can be bypassed) on the rider's screens only. A partner account is held to
+// the partner rules — location "Always" / "All the time" — on EVERY screen,
+// in driver mode and as a passenger alike, so the gate stands until they
+// allow it (`gatePermissionChecks`).
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_permissions.dart';
+import '../../core/partner_onboarding.dart' show isActivePartner;
 import '../../core/push_logic.dart';
 import '../../data/permission_probe.dart';
 import '../../data/permission_rules.dart';
@@ -23,7 +29,8 @@ class PermissionGate extends ConsumerStatefulWidget {
 
   final Widget child;
 
-  /// Where the app is now; the page shows on the rider's screens only.
+  /// Where the app is now; a rider is gated on the rider's screens only, a
+  /// partner on every screen.
   final String Function() location;
 
   /// Fires when [location] may have changed (the router).
@@ -40,6 +47,7 @@ class _PermissionGateState extends ConsumerState<PermissionGate> {
   AppLifecycleListener? _lifecycle;
   List<PermissionBlock> _blocks = const [];
   bool _inRiderArea = false;
+  bool _isPartner = false;
   bool _checking = false;
   bool _again = false;
 
@@ -51,7 +59,13 @@ class _PermissionGateState extends ConsumerState<PermissionGate> {
     if (!_enabled) return;
     widget.listenable?.addListener(_routeChanged);
     _lifecycle = AppLifecycleListener(onResume: () => unawaited(_check()));
-    WidgetsBinding.instance.addPostFrameCallback((_) => _routeChanged());
+    // Check on first frame whatever the landing route is — a partner is gated
+    // on a drive route too, so this can't wait for a rider-area change.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _inRiderArea = pushModeAt(widget.location(), null) == 'rider';
+      unawaited(_check());
+    });
   }
 
   @override
@@ -64,9 +78,11 @@ class _PermissionGateState extends ConsumerState<PermissionGate> {
   void _routeChanged() {
     if (!mounted) return;
     final rider = pushModeAt(widget.location(), null) == 'rider';
-    if (rider == _inRiderArea) return;
+    final changed = rider != _inRiderArea;
     _inRiderArea = rider;
-    unawaited(_check());
+    // A partner is gated on every screen, so its blocks don't depend on the
+    // rider/drive boundary; a rider's do, so only re-check when it moves.
+    if (changed || _isPartner) unawaited(_check());
   }
 
   Future<void> _check() async {
@@ -80,17 +96,42 @@ class _PermissionGateState extends ConsumerState<PermissionGate> {
       do {
         _again = false;
         var blocks = const <PermissionBlock>[];
-        if (_inRiderArea && ref.read(currentUserIdProvider) != null) {
+        final signedIn = ref.read(currentUserIdProvider) != null;
+        var isPartner = false;
+        if (signedIn) {
           PermissionRules rules;
           try {
             rules = await ref.read(permissionRulesProvider.future).timeout(const Duration(seconds: 8));
           } catch (_) {
             rules = PermissionRules.defaults;
           }
-          blocks = await currentPermissionBlocks(ref.read(permissionProbeProvider), riderChecks(rules.user));
+          // Mode-independent: a committed partner is gated as a partner even
+          // while riding as a passenger. Unknown (slow/failed) reads as not a
+          // partner, so a rider is never hard-blocked by a stale lookup; the
+          // partnerProvider listener re-checks once it resolves.
+          try {
+            final partner = await ref.read(partnerProvider.future).timeout(const Duration(seconds: 8));
+            isPartner = isActivePartner(partner?.raw);
+          } catch (_) {
+            isPartner = false;
+          }
+          final checks = gatePermissionChecks(
+            signedIn: signedIn,
+            isPartner: isPartner,
+            riderArea: _inRiderArea,
+            rules: rules,
+          );
+          if (checks != null) {
+            blocks = await currentPermissionBlocks(ref.read(permissionProbeProvider), checks);
+          }
         }
         if (!mounted) return;
-        if (!listEquals(blocks, _blocks)) setState(() => _blocks = blocks);
+        if (isPartner != _isPartner || !listEquals(blocks, _blocks)) {
+          setState(() {
+            _isPartner = isPartner;
+            _blocks = blocks;
+          });
+        }
       } while (_again);
     } finally {
       _checking = false;
@@ -112,9 +153,11 @@ class _PermissionGateState extends ConsumerState<PermissionGate> {
   @override
   Widget build(BuildContext context) {
     if (_enabled) {
-      // Signing in or out, and the admin's rules changing, check again.
+      // Signing in or out, the admin's rules changing, and the partner row
+      // loading or changing (approve / block / types), check again.
       ref.listen(currentUserIdProvider, (_, _) => unawaited(_check()));
       ref.listen(permissionRulesProvider, (_, _) => unawaited(_check()));
+      ref.listen(partnerProvider, (_, _) => unawaited(_check()));
     }
     if (_blocks.isEmpty) return widget.child;
     return Stack(
@@ -129,6 +172,7 @@ class _PermissionGateState extends ConsumerState<PermissionGate> {
                   key: const ValueKey('permissions-required-page'),
                   child: PermissionsRequiredPage(
                     blocks: _blocks,
+                    partner: _isPartner,
                     onFix: (b) => unawaited(_fix(b)),
                     onCheckAgain: () => unawaited(_check()),
                     onSignOut: () => unawaited(ref.read(authRepositoryProvider).signOut()),
@@ -149,12 +193,16 @@ class PermissionsRequiredPage extends StatelessWidget {
   const PermissionsRequiredPage({
     super.key,
     required this.blocks,
+    this.partner = false,
     required this.onFix,
     required this.onCheckAgain,
     required this.onSignOut,
   });
 
   final List<PermissionBlock> blocks;
+
+  /// A partner account: gated on every screen, with the "Always" rationale.
+  final bool partner;
   final ValueChanged<PermissionBlock> onFix;
   final VoidCallback onCheckAgain;
   final VoidCallback onSignOut;
@@ -175,11 +223,16 @@ class PermissionsRequiredPage extends StatelessWidget {
               children: [
                 Icon(Icons.verified_user_outlined, size: 48, color: t.colorScheme.primary),
                 const SizedBox(height: 16),
-                Text('Before you start', style: t.textTheme.headlineSmall, textAlign: TextAlign.center),
+                Text(partner ? 'Turn on location to continue' : 'Before you start',
+                    style: t.textTheme.headlineSmall, textAlign: TextAlign.center),
                 const SizedBox(height: 8),
                 Text(
-                  'GET.ride needs these to find your pickup, match you with drivers and keep you updated about '
-                  'your ride.',
+                  partner
+                      ? 'You are signed in as a GET.ride partner. Partners must allow location all the time — in '
+                          'driver mode and while riding as a passenger — so trips, safety and ride requests keep '
+                          'working even when the app is in the background. Turn it on to use GET.ride.'
+                      : 'GET.ride needs these to find your pickup, match you with drivers and keep you updated about '
+                          'your ride.',
                   style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
