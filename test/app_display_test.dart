@@ -51,7 +51,15 @@ void main() {
         expect(d.showSignInLogo, isTrue);
         // The connection-diagnostics icon is hidden unless the admin turns it on.
         expect(d.showSignInDiagnostics, isFalse);
+        // The admin Backend tile shows by default (admins only); off-switch hides it.
+        expect(d.showBackendInfo, isTrue);
       }
+    });
+
+    test('Backend server info can be hidden', () {
+      expect(AppDisplay.fromSettings(const {'backendInfo': false}).showBackendInfo, isFalse);
+      expect(AppDisplay.fromSettings(const {'backendInfo': 'off'}).showBackendInfo, isFalse);
+      expect(AppDisplay.fromSettings(const {'backendInfo': true}).showBackendInfo, isTrue);
     });
 
     test('sign-in diagnostics icon is opt-in', () {

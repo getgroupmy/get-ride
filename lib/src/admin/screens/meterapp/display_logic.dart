@@ -379,6 +379,7 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'driverRegistrationEnabled': true,
       'signInLogo': true,
       'signInDiagnostics': false,
+      'backendInfo': true,
       // Off unless stored on, as the apps read them (DemoSettings): a
       // default of on showed mocks as running when they weren't, and a save
       // or a reset would have switched them on for real.

@@ -294,6 +294,10 @@ class _DisplayBody extends ConsumerWidget {
                   displayBool(s, 'connectedPopupEnabled'), (v) => set('connectedPopupEnabled', v)),
               toggle('Show "Not Connected" popup', "On app launch, show the failure popup when Supabase can't be reached",
                   displayBool(s, 'connectionFailedPopupEnabled'), (v) => set('connectionFailedPopupEnabled', v)),
+              toggle('Show Backend server info',
+                  'The admin-only "Backend" row in account Settings showing which server the app talks to. '
+                      'Turn off to hide it (e.g. for a store build).',
+                  displayBool(s, 'backendInfo'), (v) => set('backendInfo', v)),
             ]),
           ),
           const _Section('Popups'),

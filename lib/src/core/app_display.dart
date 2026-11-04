@@ -12,6 +12,7 @@ class AppDisplay {
     this.driverRegistrationEnabled = true,
     this.showSignInLogo = true,
     this.showSignInDiagnostics = false,
+    this.showBackendInfo = true,
     this.showAiTollCharges = true,
     this.showAiTollBooths = true,
     this.recenterButton = true,
@@ -61,6 +62,11 @@ class AppDisplay {
   /// Sign-in Screen.
   final bool showSignInDiagnostics;
 
+  /// Whether the admin-only "Backend" row in account Settings (which server
+  /// the app talks to) is shown. On by default; an admin can hide it for a
+  /// clean store build. Admin → Display → Connection Status Popups.
+  final bool showBackendInfo;
+
   /// Whether the AI route estimate's toll charges are shown on the booking
   /// panel.
   final bool showAiTollCharges;
@@ -109,6 +115,7 @@ class AppDisplay {
       driverRegistrationEnabled: flag('driverRegistrationEnabled'),
       showSignInLogo: flag('signInLogo'),
       showSignInDiagnostics: flag('signInDiagnostics', orElse: false),
+      showBackendInfo: flag('backendInfo'),
       showAiTollCharges: flag('showAiTollCharges'),
       showAiTollBooths: flag('showAiTollBooths'),
       recenterButton: flag('recenterButton'),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin/admin_providers.dart' show adminAccessProvider;
+import '../../data/app_display_repository.dart' show appDisplayProvider;
 import '../../config.dart';
 import '../../core/backend_route.dart';
 import '../../core/obd_adapters.dart';
@@ -124,6 +125,8 @@ class BackendSettingsTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (!(ref.watch(adminAccessProvider).value?.isAdmin ?? false)) return const SizedBox.shrink();
+    // Admins can hide it (Admin → Display → Connection Status Popups).
+    if (!(ref.watch(appDisplayProvider).value?.showBackendInfo ?? true)) return const SizedBox.shrink();
     return Card(
       child: ListTile(
         key: const ValueKey('settings-backend'),
