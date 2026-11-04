@@ -191,6 +191,9 @@ select pg_temp.check(not public.partner_type_ready('00000000-0000-0000-0000-0000
   'the added citizens-only type is not ready for the passport holder');
 select pg_temp.check(public.partner_type_ready('00000000-0000-0000-0000-0000000305b2', 'Test0305 Dealer'),
   'the Dealer type it already satisfied stays ready');
+-- Restore f2 to its submitted single type, so the later "who fails now" checks
+-- (which expect nobody failing the Hail type) see the fixture they assume.
+update public.partners set partner_types = '{Test0305 Dealer}' where id = '00000000-0000-0000-0000-0000000305f2';
 
 -- 3. Driver permit ------------------------------------------------------------------------------------------
 set local role authenticated;
