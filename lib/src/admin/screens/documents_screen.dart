@@ -26,6 +26,15 @@ final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dyn
   (ref, table) async {
     ref.watchAdminLive(table);
     final repo = ref.watch(adminRepositoryProvider);
+    // Permits GET.ride still has to upload show in the vehicle "To review"
+    // queue alongside the uploaded documents (the uploaded ones are already
+    // vehicle_documents rows).
+    final pending = table == 'vehicle_documents'
+        ? await (() async {
+            ref.watchAdminLive('vehicle_service_status');
+            return repo.pendingProvidedPermits();
+          })()
+        : const <Map<String, dynamic>>[];
     final docs = await repo.documents(table);
     // Whose document it is (Expo joined these in). The list still works
     // without them when the lookup fails.
@@ -50,9 +59,10 @@ final adminDocsProvider = FutureProvider.autoDispose.family<List<Map<String, dyn
             '_face': faces['${d['id']}'],
             '_nas': nas['${d['id']}'],
           },
+        ...pending,
       ];
     } catch (_) {
-      return docs;
+      return [...docs, ...pending];
     }
   },
 );
@@ -191,7 +201,48 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
 
   String get _table => _vehicle ? 'vehicle_documents' : 'provider_documents';
 
+  /// A permit GET.ride still has to upload: read-only (no file, nothing to
+  /// edit, delete or approve here), with the way into the application.
+  void _openProvidedPermit(Map<String, dynamic> d) {
+    showAdminSheet<void>(
+      context,
+      title: (d['doc_name'] as String?) ?? 'Vehicle permit',
+      builder: (ctx) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [StatusChip(documentDisplayStatus(d)), const Spacer()]),
+        const SizedBox(height: 12),
+        DetailTable({
+          'Partner': d['_owner'] ?? d['partner_id'],
+          'Vehicle': d['_plate'] ?? d['vehicle_id'],
+          'Service': d['_service'],
+        }),
+        Text(
+          'GET.ride uploads this vehicle permit — the driver never does. It is not on file yet; '
+          'the service turns on for the vehicle once it is uploaded against the application.',
+          style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+        ),
+        if ('${d['partner_id'] ?? ''}'.isNotEmpty &&
+            ref.read(pageAccessProvider('admin-partner-edit')) != AccessLevel.none)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              key: const ValueKey('permit-open-review'),
+              icon: const Icon(Icons.rule),
+              label: const Text('Review the whole application'),
+              onPressed: () {
+                Navigator.pop(ctx);
+                context.push('/admin/m/partner-review?id=${d['partner_id']}');
+              },
+            ),
+          ),
+      ]),
+    );
+  }
+
   void _open(Map<String, dynamic> d) {
+    if (d['_providedPermit'] == true) {
+      _openProvidedPermit(d);
+      return;
+    }
     final canEdit = ref.read(moduleAccessProvider('documents')) == AccessLevel.edit;
     final notes = TextEditingController(text: d['reviewer_notes'] as String?);
     final ai = d['ai_verification'];
@@ -534,10 +585,13 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
                   final d = ordered[i];
                   final face = documentFace(d);
                   final closer = documentNeedsCloserLook(d);
+                  final providedPermit = d['_providedPermit'] == true;
                   return ListTile(
                     key: ValueKey('doc-row-${d['id']}'),
                     leading: Icon(
-                      closer ? Icons.report_outlined : Icons.description_outlined,
+                      providedPermit
+                          ? Icons.verified_user_outlined
+                          : (closer ? Icons.report_outlined : Icons.description_outlined),
                       color: closer ? Theme.of(context).colorScheme.error : null,
                     ),
                     title: Text((d['doc_name'] as String?) ?? 'Document'),
@@ -545,6 +599,7 @@ class _AdminDocumentsScreenState extends ConsumerState<AdminDocumentsScreen> {
                       d['_owner'],
                       if (_vehicle) d['_plate'],
                       d['document_number'],
+                      if (providedPermit) 'GET.ride uploads this',
                       if (d['expiry_date'] != null) 'expires ${formatStoredDateForUser(d['expiry_date'])}',
                       dateText(d['uploaded_at']),
                     ].whereType<String>().where((s) => s.isNotEmpty).join(' · ') +

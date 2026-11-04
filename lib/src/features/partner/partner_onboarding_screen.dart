@@ -14,6 +14,7 @@ import '../../core/partner_doc_check.dart' show renewalWindowDays;
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_registration.dart';
 import '../../core/partner_type_rules.dart' show EffectiveTypeRules, partnerTypesAvailableIn;
+import '../../core/provided_permits.dart';
 import '../../core/document_text.dart' show IdDocType;
 import '../../core/registration_rules.dart';
 import '../../core/vehicle_onboarding.dart';
@@ -668,6 +669,47 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
   Widget _continue(BusyAction onPressed, {String label = 'Save and continue'}) =>
       BusyButton.filled(onPressed: _busy ? null : onPressed, child: Text(label));
 
+  /// The vehicle permits GET.ride provides (never the driver), read-only, so
+  /// the Documents page lists the same admin-provided permits the review
+  /// screen requires. Nothing here when the vehicle needs no permit.
+  Widget _providedPermitsSection() {
+    final permits = providedPermits(_vehicleStatuses);
+    if (permits.isEmpty) return const SizedBox.shrink();
+    final t = Theme.of(context);
+    return Card(
+      key: const ValueKey('provided-permits'),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(Icons.verified_user_outlined, color: t.colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Permits GET.ride provides', style: t.textTheme.titleSmall)),
+          ]),
+          const SizedBox(height: 4),
+          Text(
+            'You never upload these — GET.ride uploads them for your vehicle. '
+            'They show here so you can see what each service is waiting for.',
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+          for (final p in permits)
+            ListTile(
+              key: ValueKey('provided-permit-${p.service}'),
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                p.waiting ? Icons.hourglass_top : Icons.check_circle_outline,
+                color: p.waiting ? t.colorScheme.tertiary : t.colorScheme.primary,
+              ),
+              title: Text('${p.name} for ${p.service}'),
+              subtitle: Text(p.waiting
+                  ? 'GET.ride uploads it for your vehicle after approval. ${p.service} turns on once it is in.'
+                  : 'On file — uploaded by GET.ride.'),
+            ),
+        ]),
+      ),
+    );
+  }
+
   Widget _avatarStep(OnboardingState s) {
     final url = [s.partner['avatar_url'], s.profile?['avatar_url'], s.profile?['profile_image']]
         .map((v) => '${v ?? ''}'.trim())
@@ -747,6 +789,10 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
             if (mounted && complete != _docsComplete) setState(() => _docsComplete = complete);
           },
         ),
+        if (providedPermits(_vehicleStatuses).isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _providedPermitsSection(),
+        ],
         const SizedBox(height: 16),
         // What the server checks on Submit (0305), worked out here first.
         SubmitChecklist(
@@ -771,7 +817,6 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         if (st != OnboardingStep.avatar || _photoStep) st,
     ];
     final paused = [for (final r in _vehicleStatuses) if (r['status'] == 'paused_age') r];
-    final waiting = [for (final r in _vehicleStatuses) if (r['status'] == 'waiting_permit') r];
     final hasVehicle = _needsFor(s.partner).vehicle;
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Card(
@@ -816,15 +861,10 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
                 'from My vehicles to turn it on.'),
           ),
         ),
-      for (final r in waiting)
-        Card(
-          key: ValueKey('pending-permit-${r['service']}'),
-          child: ListTile(
-            leading: Icon(Icons.hourglass_top, color: t.colorScheme.tertiary),
-            title: Text('${r['permit_name'] ?? 'Vehicle permit'} for ${r['service']}'),
-            subtitle: Text('GET.ride uploads it for your vehicle after approval. ${r['service']} turns on once it is in.'),
-          ),
-        ),
+      if (providedPermits(_vehicleStatuses).isNotEmpty) ...[
+        _providedPermitsSection(),
+        const SizedBox(height: 8),
+      ],
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(
