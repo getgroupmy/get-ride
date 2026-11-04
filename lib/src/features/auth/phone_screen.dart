@@ -225,6 +225,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final blocked = ref.watch(deviceBlockedProvider).value ?? false;
+    final showDiagnostics = ref.watch(appDisplayProvider).value?.showSignInDiagnostics ?? false;
     final muted = t.colorScheme.onSurfaceVariant;
     final short = otpShortScreen(MediaQuery.of(context));
     Widget title(TextStyle? style) => Text(
@@ -262,12 +263,13 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
                       Expanded(child: title(t.textTheme.titleLarge)),
                     ] else
                       const Spacer(),
-                    IconButton(
-                      key: const ValueKey('phone-diagnostics'),
-                      tooltip: 'Connection diagnostics',
-                      icon: Icon(Icons.network_check, color: muted),
-                      onPressed: () => context.push('/diagnostics'),
-                    ),
+                    if (showDiagnostics)
+                      IconButton(
+                        key: const ValueKey('phone-diagnostics'),
+                        tooltip: 'Connection diagnostics',
+                        icon: Icon(Icons.network_check, color: muted),
+                        onPressed: () => context.push('/diagnostics'),
+                      ),
                   ]),
                   // Short, the line under the title goes: the title and the
                   // number field stay in view together.

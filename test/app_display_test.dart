@@ -49,7 +49,17 @@ void main() {
         expect(d.registrationEnabled, isTrue);
         expect(d.showAiTollCharges, isTrue);
         expect(d.showSignInLogo, isTrue);
+        // The connection-diagnostics icon is hidden unless the admin turns it on.
+        expect(d.showSignInDiagnostics, isFalse);
       }
+    });
+
+    test('sign-in diagnostics icon is opt-in', () {
+      expect(AppDisplay.fromSettings(const {'signInDiagnostics': true}).showSignInDiagnostics, isTrue);
+      expect(AppDisplay.fromSettings(const {'signInDiagnostics': 'on'}).showSignInDiagnostics, isTrue);
+      expect(AppDisplay.fromSettings(const {'signInDiagnostics': false}).showSignInDiagnostics, isFalse);
+      // A nonsense value falls back to off, not on (unlike the default-on flags).
+      expect(AppDisplay.fromSettings(const {'signInDiagnostics': 'nonsense'}).showSignInDiagnostics, isFalse);
     });
 
     test('reads the admin switches, tolerating stored spellings', () {

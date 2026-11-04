@@ -74,6 +74,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final showLogo = ref.watch(appDisplayProvider).value?.showSignInLogo ?? true;
+    final showDiagnostics = ref.watch(appDisplayProvider).value?.showSignInDiagnostics ?? false;
     final passkeys = ref.watch(passkeyOfferedHereProvider).value == true;
     final big = const Size.fromHeight(58);
     final shape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
@@ -94,15 +95,16 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                   alignment: Alignment.center,
                   children: [
                     if (showLogo) const BrandMark(key: ValueKey('sign-in-logo'), size: 28),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: IconButton(
-                        key: const ValueKey('phone-diagnostics'),
-                        tooltip: 'Connection diagnostics',
-                        icon: Icon(Icons.network_check, color: muted),
-                        onPressed: () => context.push('/diagnostics'),
+                    if (showDiagnostics)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: IconButton(
+                          key: const ValueKey('phone-diagnostics'),
+                          tooltip: 'Connection diagnostics',
+                          icon: Icon(Icons.network_check, color: muted),
+                          onPressed: () => context.push('/diagnostics'),
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

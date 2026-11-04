@@ -281,6 +281,10 @@ class _DisplayBody extends ConsumerWidget {
               ),
               toggle('Show logo', 'Show the GET.ride logo at the top of the sign-in screen',
                   displayBool(s, 'signInLogo'), (v) => set('signInLogo', v)),
+              toggle('Show connection-diagnostics icon',
+                  'Show the small network icon on the sign-in screens. Off by default; support can still open '
+                      'diagnostics from the "Not Connected" popup.',
+                  displayBool(s, 'signInDiagnostics'), (v) => set('signInDiagnostics', v)),
             ]),
           )),
           const _Section('Connection Status Popups'),
