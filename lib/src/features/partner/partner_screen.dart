@@ -42,6 +42,7 @@ import '../../providers.dart';
 import '../../data/driver_presence.dart' show driverPresenceProvider;
 import '../../core/ride_offers.dart';
 import '../../data/city_ride_repository.dart';
+import '../../data/offer_alert_sound.dart';
 import '../../core/rider_rating.dart';
 import '../../widgets/rider_badge.dart';
 import '../../widgets/offer_motion.dart';
@@ -206,6 +207,10 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// showed: what support's "Go online" reports back (0286).
   String? _refusal;
 
+  /// The incoming-request alert ringer (kept so it can be stopped from
+  /// dispose without touching ref there).
+  late final OfferAlertSound _alertSound;
+
   /// This screen's own buttons, for support's requests (remote_action.dart).
   late final DriverScreenActions _remoteSlot;
   late final _ScreenRemoteActions _remote = _ScreenRemoteActions(this);
@@ -254,6 +259,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   void dispose() {
     _fixes?.cancel();
     _alertTick?.cancel();
+    unawaited(_alertSound.stop());
     _alertClock.dispose();
     _meFix.dispose();
     // Online stays as the driver left it (driverOnlineProvider): a trip
@@ -307,17 +313,30 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
       _alertSeen.add(next);
       unawaited(HapticFeedback.heavyImpact());
       unawaited(SystemSound.play(SystemSoundType.alert));
+      _ringAlert();
       _alertTick ??= Timer.periodic(const Duration(seconds: 1), (_) => _onAlertTick());
     } else {
+      _stopAlertSound();
       _alertTick?.cancel();
       _alertTick = null;
     }
   }
 
+  /// Rings the incoming-request alert sound, for as long as the admin's Ride
+  /// offers length allows and never past the spotlight window.
+  void _ringAlert() {
+    final seconds = ref.read(cityRideConfigProvider).value?.offers.alertSoundSeconds ?? OfferSettings.defaultAlertSoundSeconds;
+    final ring = offerAlertRingFor(alertSoundSeconds: seconds, spotlight: requestAlertWindow);
+    unawaited(_alertSound.start(ring));
+  }
+
+  void _stopAlertSound() => unawaited(_alertSound.stop());
+
   /// A request on the queue tapped: it comes up in the request sheet
   /// (inDrive's), with a fresh countdown, as a new one would.
   void _openRequest(RideRequest r) {
     if (_accepting != null) return;
+    _stopAlertSound();
     _alertSeen.add(r.id);
     setState(() {
       _alertId = r.id;
@@ -356,6 +375,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   void initState() {
     super.initState();
     _alertClock = ValueNotifier(ref.read(requestAlertClockProvider)());
+    _alertSound = ref.read(offerAlertSoundProvider);
     _onlineState = ref.read(driverOnlineProvider.notifier);
     _online = _restoredOnline = ref.read(driverOnlineProvider);
     _remoteSlot = ref.read(driverScreenActionsProvider.notifier);
@@ -994,6 +1014,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// A counter-offer on [r]: [preset] when one was tapped, else the amount
   /// the driver types. [accepting] is an Accept at the rider's own fare.
   Future<void> _offer(RideRequest r, Partner partner, {double? preset, bool accepting = false}) async {
+    // The driver is answering, so silence the ring at once.
+    _stopAlertSound();
     // A vehicle first (no offer goes without one), then the questions.
     if (!await _vehicleReadyToOffer(partner, accepting: accepting) || !mounted) return;
     // "Passenger added extras" first (0253). The extras ticked to stop
