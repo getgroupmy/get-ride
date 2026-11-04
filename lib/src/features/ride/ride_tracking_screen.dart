@@ -38,7 +38,14 @@ import '../../core/search_timer.dart';
 import '../../core/raise_nudge.dart';
 import '../../core/sheet_min_height.dart';
 import '../../config.dart';
-import '../../data/app_display_repository.dart' show displaySettingsBlobProvider;
+import '../../data/app_display_repository.dart' show displaySettingsBlobProvider, rideServicesProvider;
+import '../../data/fare_tariff_repository.dart' show fareTariffsProvider;
+import '../../data/route_estimate_repository.dart' show routeEstimateRepositoryProvider;
+import '../../core/drop_change.dart';
+import '../../core/early_end.dart' show rideTariffCard;
+import '../../core/fare.dart' show RideService;
+import '../../core/fare_tariff.dart' show FareTariff;
+import 'map_place_picker.dart' show pickPlaceOnMap;
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../data/trip_card_controller.dart' show tripCardControllerProvider;
@@ -271,6 +278,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   DateTime get _now => _clock.value;
   bool _expiryShown = false;
 
+  /// The drop-change outcome already told to the rider (its timestamp), so a
+  /// driver's accept/decline is announced once (migration 0341).
+  String? _lastDropOutcomeAt;
+
   /// When the wait for an offer last started over: the request going out,
   /// a raise, or "Keep waiting" (null: the request's own start).
   DateTime? _nudgeFrom;
@@ -312,6 +323,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   void initState() {
     super.initState();
     _openedCancelled = widget.ride.status == RideStatus.cancelled;
+    // Seed the drop-change guard so only a NEW outcome after this screen opens
+    // is announced, not one already on the row.
+    _lastDropOutcomeAt = widget.ride.dropChangeOutcomeAt?.toIso8601String();
     _clock = ValueNotifier(ref.read(searchClockProvider)());
     ref.read(fareCoinChoiceStoreProvider).chosen(widget.ride.id).then((v) {
       if (mounted && v) setState(() => _coinsChosen = true);
@@ -386,6 +400,119 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     );
   }
 
+  /// Announces the driver's answer to a drop-off change once (0341).
+  void _dropChangeOutcomeNotice() {
+    if (!mounted || _isDemo) return;
+    final r = widget.ride;
+    final at = r.dropChangeOutcomeAt;
+    if (at == null || r.dropChangeOutcomeBy != 'partner') return;
+    final key = at.toIso8601String();
+    if (_lastDropOutcomeAt == key) return;
+    _lastDropOutcomeAt = key;
+    if (r.dropChangeOutcome == 'accepted') {
+      showInfo(context, 'Your driver accepted the new drop-off — ${r.fareText(r.effectiveFare)}.');
+    } else if (r.dropChangeOutcome == 'declined') {
+      showInfo(context, 'Your driver kept the original drop-off.');
+    }
+  }
+
+  /// The rider moves the drop-off mid-ride (0341): pick a new place, re-quote
+  /// the fare, confirm, then send it. A cheaper or small change applies at
+  /// once; a bigger increase waits for the driver.
+  Future<void> _changeDrop(RideRequest r) async {
+    if (_busy || _isDemo) return;
+    final start = (r.dropLat != null && r.dropLng != null) ? LatLng(r.dropLat!, r.dropLng!) : null;
+    final place = await pickPlaceOnMap(context, start: start);
+    if (place == null || !mounted) return;
+    final to = place.point;
+
+    // The new route for the whole trip, pickup → new drop (as it was booked).
+    final from = (r.pickupLat != null && r.pickupLng != null) ? LatLng(r.pickupLat!, r.pickupLng!) : null;
+    double? km;
+    double? mins;
+    if (from != null) {
+      final est = await ref.read(routeEstimateRepositoryProvider).estimate(from, to);
+      if (est != null) {
+        km = est.distanceKm;
+        mins = est.durationMin;
+      }
+    }
+    if (!mounted) return;
+    if (km == null) {
+      final f = from ?? to;
+      km = const Distance()(f, to) / 1000;
+      mins = (km / 25 * 60);
+      if (mins < 1) mins = 1;
+    }
+
+    // Re-price on the ride's own tariff, the way the booking priced it.
+    final cards = ref.read(fareTariffsProvider).value ?? const <FareTariff>[];
+    RideService? svc;
+    for (final s in ref.read(rideServicesProvider).value ?? const <RideService>[]) {
+      if (s.id != null && s.id == r.service) {
+        svc = s;
+        break;
+      }
+    }
+    final card = rideTariffCard(cards, r.raw, vehicleServiceId: r.service, serviceTypes: const {});
+    final newFare = quoteDropChangeFare(
+      card: card,
+      distanceKm: km,
+      durationMin: mins ?? 0,
+      multiplier: svc?.multiplier ?? 1,
+      rates: svc?.rates,
+      pricing: r.pricing,
+    );
+    final rules = ref.read(cityRideConfigProvider).value?.dropChange ?? DropChangeSettings.standard;
+    final oldFare = r.effectiveFare ?? 0;
+    final kind = dropChangeKind(oldFare: oldFare, newFare: newFare, rules: rules);
+
+    final go = await showAppDialog<bool>(
+      id: 'ride.drop-change-review',
+      context: context,
+      builder: (_) => _DropChangeReviewDialog(
+        oldLabel: r.dropLabel,
+        newLabel: place.address.isNotEmpty ? place.address : place.name,
+        oldFare: oldFare,
+        newFare: newFare,
+        fareText: r.fareText,
+        kind: kind,
+      ),
+    );
+    if (go != true || !mounted) return;
+
+    await _run(() async {
+      final res = await ref.read(rideRepositoryProvider).requestDropChange(
+            rideId: r.id,
+            name: place.name,
+            address: place.address.isEmpty ? null : place.address,
+            lat: to.latitude,
+            lng: to.longitude,
+            distanceKm: km,
+            durationMin: mins,
+            newFare: newFare,
+          );
+      if (mounted && res.applied) {
+        showInfo(context, 'Drop-off updated — ${r.fareText(newFare)}.');
+      }
+    });
+  }
+
+  /// The "Change" button on the drop-off tile, or null when a change isn't
+  /// offered (off by admin, not ongoing, one already pending, or the per-ride
+  /// limit reached).
+  Widget? _dropChangeButton(RideRequest r) {
+    final rules = ref.read(cityRideConfigProvider).value?.dropChange;
+    if (_isDemo || !r.status.isOngoing || r.dropChangePending || rules == null || !rules.allow) return null;
+    if (r.dropChangeCount >= rules.maxChangesPerRide) return null;
+    return TextButton.icon(
+      key: const ValueKey('ride-change-drop'),
+      icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+      label: const Text('Change'),
+      onPressed: _busy ? null : () => _changeDrop(r),
+    );
+  }
+
   @override
   void didUpdateWidget(covariant _RidePanel old) {
     super.didUpdateWidget(old);
@@ -395,6 +522,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     _primeMic();
     _syncAudio();
     WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _dropChangeOutcomeNotice());
     // Expired elsewhere (the home screen's timer, or the server's job, 0139)
     // before this screen's own clock got there: say so all the same.
     if (!_expiryShown && requestJustExpired(old.ride.status.db, widget.ride.status.db)) {
@@ -1363,6 +1491,11 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               ),
               onSos: () => _sos(r),
             ),
+          if (r.dropChangePending && r.dropChangeRequestedBy == 'rider' && r.status.isOngoing)
+            _DropChangeWaitCard(
+              ride: r,
+              onCancel: () => _run(() => ref.read(rideRepositoryProvider).withdrawDropChange(r.id)),
+            ),
           Card(
             child: Column(
               children: [
@@ -1376,6 +1509,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
                   leading: Icon(Icons.location_on, color: Colors.red.shade700),
                   title: Text(r.dropLabel),
                   subtitle: r.dropAddress == null ? null : Text(r.dropAddress!, maxLines: 2),
+                  trailing: _dropChangeButton(r),
                 ),
                 const Divider(height: 1),
                 ListTile(
@@ -1722,6 +1856,173 @@ class _CancelReasonDialogState extends State<_CancelReasonDialog> {
           child: Text(status == RideStatus.onTrip ? 'Request cancellation' : 'Cancel ride'),
         ),
       ],
+    );
+  }
+}
+
+/// The review before a drop-off change is sent (0341): the new place, the old
+/// → new fare, and whether it applies at once or waits for the driver.
+class _DropChangeReviewDialog extends StatelessWidget {
+  const _DropChangeReviewDialog({
+    required this.oldLabel,
+    required this.newLabel,
+    required this.oldFare,
+    required this.newFare,
+    required this.fareText,
+    required this.kind,
+  });
+
+  final String oldLabel, newLabel;
+  final double oldFare, newFare;
+  final String Function(num?) fareText;
+  final DropChangeKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final delta = newFare - oldFare;
+    final deltaText = '${delta >= 0 ? '+' : '−'}${fareText(delta.abs())}';
+    final instant = kind == DropChangeKind.instant;
+    return AlertDialog(
+      key: const ValueKey('drop-change-review-dialog'),
+      icon: Icon(Icons.edit_location_alt_outlined, color: t.colorScheme.primary),
+      title: const Text('Change drop-off'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            leading: const Icon(Icons.location_on_outlined),
+            title: Text(newLabel),
+            subtitle: Text('was $oldLabel'),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                fareText(oldFare),
+                style: t.textTheme.titleMedium?.copyWith(
+                  color: t.colorScheme.onSurfaceVariant,
+                  decoration: TextDecoration.lineThrough,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.arrow_forward, size: 18),
+              const SizedBox(width: 8),
+              Text(fareText(newFare), style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(width: 8),
+              Text(deltaText, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            instant
+                ? 'This applies straight away.'
+                : 'Your driver needs to accept the new drop-off and fare first.',
+            textAlign: TextAlign.center,
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey('drop-change-review-cancel'),
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Keep original'),
+        ),
+        FilledButton(
+          key: const ValueKey('drop-change-review-confirm'),
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(instant ? 'Change drop-off' : 'Request change'),
+        ),
+      ],
+    );
+  }
+}
+
+/// While a drop-off change waits for the driver (0341): the new place and
+/// fare, a countdown over the admin's response window, and Cancel. The ride
+/// carries on to the original drop until the driver accepts; if the window
+/// lapses the change is withdrawn by itself.
+class _DropChangeWaitCard extends ConsumerStatefulWidget {
+  const _DropChangeWaitCard({required this.ride, required this.onCancel});
+
+  final RideRequest ride;
+  final Future<void> Function() onCancel;
+
+  @override
+  ConsumerState<_DropChangeWaitCard> createState() => _DropChangeWaitCardState();
+}
+
+class _DropChangeWaitCardState extends ConsumerState<_DropChangeWaitCard> {
+  Timer? _timer;
+  bool _expired = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.ride;
+    final t = Theme.of(context);
+    final rules = ref.watch(cityRideConfigProvider).value?.dropChange ?? DropChangeSettings.standard;
+    final asked = r.dropChangeRequestedAt;
+    if (asked == null) return const SizedBox.shrink();
+    final left = rules.responseWindow - DateTime.now().toUtc().difference(asked.toUtc());
+    final secs = left.inSeconds;
+    if (secs <= 0 && !_expired) {
+      _expired = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(widget.onCancel()));
+    }
+    return Card(
+      key: const ValueKey('drop-change-waiting'),
+      color: t.colorScheme.tertiaryContainer,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Waiting for your driver',
+              style: t.textTheme.titleMedium?.copyWith(
+                color: t.colorScheme.onTertiaryContainer,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'New drop-off: ${r.dropChangeAddress ?? r.dropChangeLabel} · ${r.fareText(r.dropChangeFare)}'
+              '${secs > 0 ? ' · ${secs}s' : ''}. You are still heading to the original drop until the driver accepts.',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onTertiaryContainer),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: BusyButton.outlined(
+                key: const ValueKey('drop-change-cancel'),
+                onPressed: widget.onCancel,
+                child: const Text('Cancel the change'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

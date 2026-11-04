@@ -9,6 +9,10 @@
 // the admin can edit the rules. Pure.
 library;
 
+import 'fare_tariff.dart';
+import 'fare.dart' show ServiceRates;
+import 'region_pricing.dart';
+
 /// Admin > App Settings > Mid-ride drop-off change (app_settings
 /// 'drop_change_rules').
 class DropChangeSettings {
@@ -106,3 +110,18 @@ DropChangeKind dropChangeKind({required double oldFare, required double newFare,
 }
 
 double _max(double a, double b) => a > b ? a : b;
+
+/// The fare for the trip re-quoted to the new drop, the same way the booking
+/// priced it: on the ride's tariff [card] (null → the service's [rates], else
+/// the built-in TEKSI tariff), with the service [multiplier], over the new
+/// route's [distanceKm] / [durationMin], rounded as the ride's region books
+/// fares ([pricing]). Pure.
+double quoteDropChangeFare({
+  FareTariff? card,
+  required double distanceKm,
+  required double durationMin,
+  double multiplier = 1,
+  ServiceRates? rates,
+  RegionPricing pricing = RegionPricing.none,
+}) =>
+    pricing.roundFare(quoteFare(card, distanceKm, durationMin, multiplier: multiplier, rates: rates).fare);

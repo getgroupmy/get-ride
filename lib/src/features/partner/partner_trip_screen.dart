@@ -52,6 +52,7 @@ import '../ride/city_extras_parts.dart' show DriverTipCard, WaitingClockCard;
 import '../../widgets/place_type_badge.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/cancel_request_prompt.dart';
+import '../../widgets/drop_change_prompt.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/ride_stop_tiles.dart';
@@ -276,6 +277,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
     final notice = passengerCancelNotice(before, r, approvedHere: _approvedHere);
     if (notice != null) WidgetsBinding.instance.addPostFrameCallback((_) => _showCancelled(notice));
     WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutCancel(r));
+    WidgetsBinding.instance.addPostFrameCallback((_) => _askAboutDropChange(r));
   }
 
   DateTime get _now => ref.read(tripClockProvider)();
@@ -301,6 +303,25 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   }
 
   final _cancelPrompt = CancelRequestPrompt();
+  final _dropPrompt = DropChangePrompt();
+
+  /// The passenger's request to move the drop-off, as a popup the driver
+  /// accepts or rejects (migration 0341). The fare re-prices on accept.
+  void _askAboutDropChange(RideRequest r) {
+    if (!mounted) return;
+    final asking = r.dropChangePending && r.dropChangeRequestedBy == 'rider' && r.status.isOngoing;
+    final repo = ref.read(rideRepositoryProvider);
+    _dropPrompt.update(
+      context,
+      askedAt: asking ? r.dropChangeRequestedAt : null,
+      newAddress: r.dropChangeAddress ?? r.dropChangeLabel,
+      oldFare: r.effectiveFare,
+      newFare: r.dropChangeFare,
+      fareText: r.fareText,
+      onAccept: () => _run(() => repo.resolveDropChange(r.id, accept: true)),
+      onReject: () => _run(() => repo.resolveDropChange(r.id, accept: false)),
+    );
+  }
 
   /// The passenger's request to cancel, as a popup the driver answers.
   void _askAboutCancel(RideRequest r) {
