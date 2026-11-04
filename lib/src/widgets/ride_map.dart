@@ -168,6 +168,7 @@ class RideMap extends StatefulWidget {
     this.framed = const [],
     this.satellite = false,
     this.autoFit = true,
+    this.rotate = false,
     this.onGesture,
     this.onReady,
     this.pointZoom = 15,
@@ -219,6 +220,11 @@ class RideMap extends StatefulWidget {
   /// Whether the map frames its points again as they change. Off while
   /// something else steers the camera (a map following the car).
   final bool autoFit;
+
+  /// Whether two fingers may turn the map. Off by default — north stays up on
+  /// the trip maps, which turn the map themselves while following the car. The
+  /// driver's idle home map turns it on so the driver can rotate it freely.
+  final bool rotate;
 
   /// The user panned, zoomed or turned the map by hand.
   final VoidCallback? onGesture;
@@ -401,9 +407,14 @@ class _RideMapState extends State<RideMap> {
             // Never so far out that the world shows twice across the map, its
             // pins and labels with it (a wide, short map framing a ride).
             minZoom: minZoom,
-            // North stays up: two fingers pinch and pan but never turn the
-            // map (a trip map that follows the car still turns it itself).
-            interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate, keyboardOptions: mapKeyboardOptions),
+            // North stays up unless the map opts into rotation ([rotate]): two
+            // fingers pinch and pan, and turn the map only where it is allowed
+            // (the driver's idle home map). A trip map that follows the car
+            // still turns it itself.
+            interactionOptions: InteractionOptions(
+              flags: widget.rotate ? InteractiveFlag.all : (InteractiveFlag.all & ~InteractiveFlag.rotate),
+              keyboardOptions: mapKeyboardOptions,
+            ),
             onTap: _onTap,
             onPositionChanged: _onPositionChanged,
             onMapReady: _onMapReady,
