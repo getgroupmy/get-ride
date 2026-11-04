@@ -223,6 +223,54 @@ void main() {
       expect(find.text('You are online'), findsOneWidget);
     });
   });
+
+  group('serviceReadiness (per-service)', () {
+    // eHailing needs doc A; Teksi needs doc B; doc S is required for all.
+    Map<String, List<RequiredDoc>> docsByType() => {
+      'eHailing': [_doc('S', 'Selfie'), _doc('A', 'Licence')],
+      'Teksi': [_doc('S', 'Selfie'), _doc('B', 'PSV')],
+    };
+
+    test('a service whose own documents are approved is ready while another waits', () {
+      // A approved, B missing → eHailing ready, Teksi held on B.
+      final r = serviceReadiness(docsByType(), [_upload('S'), _upload('A')], now: now);
+      final byType = {for (final s in r) s.type: s};
+      expect(byType['eHailing']!.ready, isTrue);
+      expect(byType['Teksi']!.ready, isFalse);
+      expect(byType['Teksi']!.blocking.map((i) => i.id), ['B']);
+      expect(readyServiceTypes(r), ['eHailing']);
+    });
+
+    test('a document required for all types holds every service until approved', () {
+      final r = serviceReadiness(docsByType(), [_upload('A'), _upload('B')], now: now); // S missing
+      expect(r.every((s) => !s.ready), isTrue);
+      expect(readyServiceTypes(r), isEmpty);
+    });
+
+    test('a rejected or expired document is blocking just like a missing one', () {
+      final r = serviceReadiness(docsByType(), [
+        _upload('S'),
+        _upload('A', status: 'Rejected'),
+        _upload('B', expiry: '2026-01-01'), // expired before now
+      ], now: now);
+      final byType = {for (final s in r) s.type: s};
+      expect(byType['eHailing']!.blocking.single.reason, DocIssueReason.rejected);
+      expect(byType['Teksi']!.blocking.single.reason, DocIssueReason.expired);
+    });
+
+    test('optional documents never hold a service', () {
+      final docs = {
+        'eHailing': [_doc('S', 'Selfie'), _doc('O', 'Optional extra', compulsory: false)],
+      };
+      final r = serviceReadiness(docs, [_upload('S')], now: now); // O missing but optional
+      expect(r.single.ready, isTrue);
+    });
+
+    test('all services ready when every document is approved', () {
+      final r = serviceReadiness(docsByType(), [_upload('S'), _upload('A'), _upload('B')], now: now);
+      expect(readyServiceTypes(r), ['eHailing', 'Teksi']);
+    });
+  });
 }
 
 /// Lets a dialog or sheet open over a busy control: the control's spinner

@@ -10,7 +10,7 @@ import '../../admin/screens/people/people_data.dart';
 import '../../admin/screens/people/people_logic.dart';
 import '../../admin/screens/people/people_widgets.dart';
 import '../../core/app_display.dart' show partnerRegistrationPausedMessage, partnerRegistrationPausedTitle;
-import '../../core/partner_doc_check.dart' show renewalWindowDays;
+import '../../core/partner_doc_check.dart' show ServiceReadiness, renewalWindowDays, summarizeDocIssues;
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_registration.dart';
 import '../../core/partner_type_rules.dart' show EffectiveTypeRules, partnerTypesAvailableIn;
@@ -21,6 +21,7 @@ import '../../core/vehicle_onboarding.dart';
 import '../../data/app_display_repository.dart' show appDisplayProvider;
 import '../../data/identity_repository.dart' show recordProfileSelfie;
 import '../../data/live_tables.dart';
+import '../../data/partner_doc_check.dart' show serviceReadinessProvider;
 import '../../data/partner_onboarding_repository.dart';
 import '../../data/vehicle_onboarding_repository.dart';
 import '../../providers.dart';
@@ -710,6 +711,50 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
     );
   }
 
+  /// Read-only: each service the partner picked and whether its own documents
+  /// are met, so they can see eHailing is on while Teksi still waits on its
+  /// documents (per-service enabling). Shown only when it adds something —
+  /// more than one service, or one still waiting.
+  Widget _servicesReadinessCard() {
+    final readiness = ref.watch(serviceReadinessProvider).value ?? const <ServiceReadiness>[];
+    final show = readiness.length > 1 || readiness.any((r) => !r.ready);
+    if (readiness.isEmpty || !show) return const SizedBox.shrink();
+    final t = Theme.of(context);
+    return Card(
+      key: const ValueKey('services-readiness'),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(Icons.checklist_rtl, color: t.colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Your services', style: t.textTheme.titleSmall)),
+          ]),
+          const SizedBox(height: 4),
+          Text(
+            'Each service turns on by itself once its own documents are approved — the others keep waiting, '
+            'they don’t hold it up.',
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+          for (final r in readiness)
+            ListTile(
+              key: ValueKey('service-readiness-${r.type}'),
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                r.ready ? Icons.check_circle : Icons.hourglass_top,
+                color: r.ready ? t.colorScheme.primary : t.colorScheme.tertiary,
+              ),
+              title: Text(r.type),
+              subtitle: Text(r.ready
+                  ? 'Ready — its documents are approved.'
+                  : 'Waiting on your documents:\n${summarizeDocIssues(r.blocking)}'),
+              isThreeLine: !r.ready && r.blocking.length > 1,
+            ),
+        ]),
+      ),
+    );
+  }
+
   Widget _avatarStep(OnboardingState s) {
     final url = [s.partner['avatar_url'], s.profile?['avatar_url'], s.profile?['profile_image']]
         .map((v) => '${v ?? ''}'.trim())
@@ -865,6 +910,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         _providedPermitsSection(),
         const SizedBox(height: 8),
       ],
+      _servicesReadinessCard(),
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(

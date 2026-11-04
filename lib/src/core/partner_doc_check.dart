@@ -57,6 +57,36 @@ DateTime _uploadedAt(Map<String, dynamic> u) =>
 /// The issues that keep the partner offline.
 List<DocIssue> blockingDocIssues(List<DocIssue> issues) => issues.where((i) => i.compulsory).toList();
 
+/// One partner-type service's readiness, judged on its OWN documents: ready
+/// when nothing compulsory is missing, rejected or expired for it, else the
+/// blocking issues that hold it. The whole point of per-service enabling —
+/// a partner picked eHailing + Teksi whose documents satisfy eHailing but
+/// not Teksi is ready for eHailing and waiting on Teksi, not blocked outright.
+typedef ServiceReadiness = ({String type, bool ready, List<DocIssue> blocking});
+
+/// Each partner type's readiness from its own required documents. [docsByType]
+/// maps a partner type to the documents that apply to it (resolved with the
+/// same rules onboarding uses, scoped to that one type); [uploads] are the
+/// partner's `provider_documents` rows. Order follows [docsByType]. Pure.
+List<ServiceReadiness> serviceReadiness(
+  Map<String, List<RequiredDoc>> docsByType,
+  Iterable<Map<String, dynamic>> uploads, {
+  DateTime? now,
+}) {
+  final ups = uploads.toList();
+  final out = <ServiceReadiness>[];
+  docsByType.forEach((type, docs) {
+    final blocking = blockingDocIssues(partnerDocIssues(docs, ups, now: now));
+    out.add((type: type, ready: blocking.isEmpty, blocking: blocking));
+  });
+  return out;
+}
+
+/// The types ready to use, from [readiness]. A partner can drive when this is
+/// not empty, even while other services wait on their documents.
+List<String> readyServiceTypes(List<ServiceReadiness> readiness) =>
+    [for (final r in readiness) if (r.ready) r.type];
+
 /// The partner types a service mode checks documents for: TEKSI for the
 /// meter, every other assigned type for e-hailing. A partner who only has the
 /// other kind is checked against all their types, so nothing slips through.
