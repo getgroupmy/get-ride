@@ -17,8 +17,9 @@ import '../../widgets/road_info_layers.dart';
 ///
 /// It opens at street level ([driverHomeZoom]) on the driver and follows
 /// them as they move, keeping them in the middle of the map above the
-/// sheet. Moving the map by hand stops the following; the recenter button
-/// starts it again.
+/// sheet. Moving the map by hand — panning, zooming or turning it (two
+/// fingers; the idle home map rotates freely) — stops the following; the
+/// recenter button recentres on the driver and straightens it north-up.
 class DriverHomeMap extends ConsumerStatefulWidget {
   const DriverHomeMap({super.key, required this.me, required this.requests, this.onSelect});
 
@@ -115,6 +116,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     if (me == null) return;
     try {
       _map.move(me, driverHomeZoom, offset: _offset);
+      _map.rotate(0); // straighten back to north-up on recenter
     } catch (_) {}
   }
 
@@ -138,6 +140,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       pointZoom: driverHomeZoom,
       // The camera follows the driver instead of framing the pins.
       autoFit: false,
+      // The idle home map turns freely: two fingers rotate it (a gesture
+      // stops the following, as pan and zoom do; recenter straightens it).
+      rotate: true,
       onGesture: _onGesture,
       onReady: () {
         _ready = true;

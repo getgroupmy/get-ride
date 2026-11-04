@@ -60,6 +60,22 @@ void main() {
     expect(InteractiveFlag.hasDrag(flags), isTrue);
   });
 
+  testWidgets('rotate: true lets the map turn by hand (the driver idle home map)', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: RideMap(me: LatLng(2.96, 101.81), rotate: true, autoFit: false),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+    final flags = tester.widget<FlutterMap>(find.byType(FlutterMap)).options.interactionOptions.flags;
+    expect(InteractiveFlag.hasRotate(flags), isTrue, reason: 'the idle home map turns freely');
+    expect(InteractiveFlag.hasPinchZoom(flags), isTrue);
+    expect(InteractiveFlag.hasDrag(flags), isTrue);
+  });
+
   testWidgets('focusOffset is up by half the lowest sheet, and nothing without one', (tester) async {
     late Offset inside, outside;
     await tester.pumpWidget(
