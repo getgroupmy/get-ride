@@ -214,6 +214,7 @@ jobs:
           # An app bundle, not an APK: Play requires an AAB.
           flutter build appbundle --release --build-number="$code" \
             --dart-define-from-file="$RUNNER_TEMP/map-defines.json" \
+            --dart-define=HIDE_COMING_SOON=true \
             --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
             --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID" \
             --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID" \
@@ -250,6 +251,7 @@ jobs:
           set -euo pipefail
           flutter build apk --release --build-number="${{ steps.build.outputs.code }}" \
             --dart-define-from-file="$RUNNER_TEMP/map-defines.json" \
+            --dart-define=HIDE_COMING_SOON=true \
             --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
             --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID" \
             --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID" \
@@ -288,6 +290,7 @@ jobs:
             -Pforce-version-code-ignoring-abi=true \
             --build-number="$code" \
             --dart-define-from-file="$RUNNER_TEMP/map-defines.json" \
+            --dart-define=HIDE_COMING_SOON=true \
             --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
             --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID" \
             --dart-define=FIREBASE_ANDROID_APP_ID="$FIREBASE_ANDROID_APP_ID" \

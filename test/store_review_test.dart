@@ -484,6 +484,17 @@ void main() {
       expect(c.read(hideComingSoonProvider), isTrue);
     });
 
+    test('coming soon is hidden by a store build, the hide flag, or store review', () {
+      expect(hideComingSoon(storeBuild: false, hideFlag: false, storeReview: false), isFalse,
+          reason: 'a plain build shows the roadmap');
+      expect(hideComingSoon(storeBuild: true, hideFlag: false, storeReview: false), isTrue,
+          reason: 'the iPhone App Store build');
+      expect(hideComingSoon(storeBuild: false, hideFlag: true, storeReview: false), isTrue,
+          reason: 'the Android release (HIDE_COMING_SOON) matches the App Store look');
+      expect(hideComingSoon(storeBuild: false, hideFlag: false, storeReview: true), isTrue,
+          reason: 'the store review account');
+    });
+
     test('the iPhone store build only', () {
       expect(iosStoreBuild(storeBuild: true, platform: TargetPlatform.iOS, web: false), isTrue);
       expect(iosStoreBuild(storeBuild: true, platform: TargetPlatform.android, web: false), isFalse);

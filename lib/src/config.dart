@@ -43,6 +43,13 @@ class AppConfig {
   /// itms-services links (App Review 2.5.2).
   static const storeBuild = bool.fromEnvironment('STORE_BUILD');
 
+  /// Leave out the "coming soon" services and menu rows, without the rest of
+  /// [storeBuild] (`--dart-define=HIDE_COMING_SOON=true` in android-release.yml):
+  /// the Play build then matches the App Store look — only the services that
+  /// work are shown — while keeping the App Release and install screens that a
+  /// store build drops. iOS already hides them through [storeBuild].
+  static const hideComingSoon = bool.fromEnvironment('HIDE_COMING_SOON');
+
   /// The version compiled in, used only until the platform's own is read
   /// (core/installed_app.dart). Kept in step with `pubspec.yaml` by a test.
   static const appVersion = '1.4.10';
