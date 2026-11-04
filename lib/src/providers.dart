@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'config.dart';
 import 'core/navigation_app.dart';
 import 'data/account_repository.dart';
 import 'data/auth_repository.dart';
@@ -14,7 +13,7 @@ import 'data/models.dart';
 import 'data/reliability_repository.dart';
 import 'data/ride_repository.dart';
 import 'data/map_profile_repository.dart' show geoProxyProvider;
-import 'core/store_review.dart' show isStoreReviewAccount, storeReviewDemoPartner;
+import 'core/store_review.dart' show hideComingSoon, isStoreReviewAccount, storeReviewDemoPartner;
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
 
@@ -65,10 +64,12 @@ final storeReviewProvider = Provider<bool>((ref) {
   }
 });
 
-/// "Coming soon" items are not shown at all (0333): in store builds, and
-/// to the store review account. The admin's flags stay as they are; normal
-/// builds show them as before.
-final hideComingSoonProvider = Provider<bool>((ref) => AppConfig.storeBuild || ref.watch(storeReviewProvider));
+/// "Coming soon" items are not shown at all (0333): in store builds (iOS App
+/// Store), in a build asked to hide them (the Android release, so Play matches
+/// the App Store look), and to the store review account. The admin's flags
+/// stay as they are; a plain build shows them as before.
+final hideComingSoonProvider =
+    Provider<bool>((ref) => hideComingSoon(storeReview: ref.watch(storeReviewProvider)));
 
 final partnerProvider = FutureProvider<Partner?>((ref) async {
   final uid = ref.watch(currentUserIdProvider);

@@ -24,6 +24,17 @@ bool isStoreReviewAccount({String? userId, Map<String, dynamic>? appMetadata}) {
 bool iosStoreBuild({bool storeBuild = AppConfig.storeBuild, TargetPlatform? platform, bool web = kIsWeb}) =>
     storeBuild && !web && (platform ?? defaultTargetPlatform) == TargetPlatform.iOS;
 
+/// Whether to leave out the "coming soon" services and menu rows: in a store
+/// build (iOS App Store, [AppConfig.storeBuild]), in a build asked to hide them
+/// ([AppConfig.hideComingSoon] — set on the Android release so Play matches the
+/// App Store look, App-Review-safe either way), or during store review. Pure.
+bool hideComingSoon({
+  bool storeBuild = AppConfig.storeBuild,
+  bool hideFlag = AppConfig.hideComingSoon,
+  bool storeReview = false,
+}) =>
+    storeBuild || hideFlag || storeReview;
+
 /// What the app says when the server refuses the demo account something
 /// (`STORE_REVIEW_DEMO`).
 const storeReviewRefusal =
