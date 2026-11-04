@@ -176,11 +176,21 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000305b2');
 update public.partners set documents_ok = true where id = '00000000-0000-0000-0000-0000000305f2';
 select pg_temp.check((select documents_ok from public.partners where id = '00000000-0000-0000-0000-0000000305f2'),
   'with number and document, it is submitted');
--- Submitted, adding a citizens-only type with a passport: refused.
-select pg_temp.check(pg_temp.error_of($q$update public.partners set partner_types = '{Test0305 Dealer,Test0305 Hail}'
-                                        where id = '00000000-0000-0000-0000-0000000305f2'$q$) like 'CITIZENS_ONLY:%',
-  'a submitted application can''t take a type it fails');
+-- Submitted, adding a citizens-only type the passport holder fails: per-service
+-- (0339) the application still submits, because the ready type (Dealer) keeps it
+-- submittable; the added type just stays unready until it qualifies. (The whole
+-- submit is refused only when NOTHING is ready — the single-type cases above.)
+update public.partners set partner_types = '{Test0305 Dealer,Test0305 Hail}'
+ where id = '00000000-0000-0000-0000-0000000305f2';
+select pg_temp.check((select partner_types @> '{Test0305 Hail}'::text[]
+                        from public.partners where id = '00000000-0000-0000-0000-0000000305f2'),
+  'per-service (0339): a submitted application may add a type it fails while a ready type keeps it submittable');
 reset role;
+select pg_temp.as_db();
+select pg_temp.check(not public.partner_type_ready('00000000-0000-0000-0000-0000000305b2', 'Test0305 Hail'),
+  'the added citizens-only type is not ready for the passport holder');
+select pg_temp.check(public.partner_type_ready('00000000-0000-0000-0000-0000000305b2', 'Test0305 Dealer'),
+  'the Dealer type it already satisfied stays ready');
 
 -- 3. Driver permit ------------------------------------------------------------------------------------------
 set local role authenticated;
