@@ -1213,6 +1213,42 @@ class RideRepository {
   Future<void> declineCancellation(String id) =>
       _db.from(_table).update({'cancel_requested_at': null, 'cancel_requested_by': null}).eq('id', id);
 
+  /// The passenger moves the drop-off mid-ride (migration 0341). The server
+  /// re-prices and either applies it at once (cheaper / within the admin
+  /// threshold) or holds it for the driver. [applied] true means it is live
+  /// now; false means it is waiting for the driver.
+  Future<({bool applied})> requestDropChange({
+    required String rideId,
+    required String name,
+    String? address,
+    required double lat,
+    required double lng,
+    double? distanceKm,
+    double? durationMin,
+    required double newFare,
+  }) async {
+    final res = await _db.rpc('ride_drop_change_request', params: {
+      'p_ride': rideId,
+      'p_name': name,
+      'p_address': address,
+      'p_lat': lat,
+      'p_lng': lng,
+      'p_distance_km': distanceKm,
+      'p_duration_min': durationMin,
+      'p_new_fare': newFare,
+    });
+    final applied = res is Map && res['applied'] == true;
+    return (applied: applied);
+  }
+
+  /// The driver accepts or rejects a held drop-off change (0341).
+  Future<void> resolveDropChange(String rideId, {required bool accept}) =>
+      _db.rpc('ride_drop_change_resolve', params: {'p_ride': rideId, 'p_accept': accept});
+
+  /// The passenger withdraws a held change (their Cancel, or the window lapsing).
+  Future<void> withdrawDropChange(String rideId) =>
+      _db.rpc('ride_drop_change_withdraw', params: {'p_ride': rideId});
+
   Future<void> publishPartnerLocation(String id, double lat, double lng, double? heading) => _db
       .from(_table)
       .update({

@@ -304,6 +304,31 @@ class RideRequest {
   /// The support ticket opened for it, when there is one.
   String? get cancelTicketId => raw['cancel_ticket_id'] as String?;
 
+  /// Mid-ride drop-off change (migration 0341). A change the passenger has
+  /// asked for and the driver has not yet answered: set while pending, with
+  /// the proposed new drop and fare; cleared when accepted, declined or
+  /// withdrawn.
+  DateTime? get dropChangeRequestedAt => _t(raw['drop_change_requested_at']);
+  String? get dropChangeRequestedBy => raw['drop_change_requested_by'] as String?;
+  bool get dropChangePending => dropChangeRequestedAt != null;
+  String? get dropChangeName => raw['drop_change_name'] as String?;
+  String? get dropChangeAddress => raw['drop_change_address'] as String?;
+  double? get dropChangeLat => _d(raw['drop_change_lat']);
+  double? get dropChangeLng => _d(raw['drop_change_lng']);
+  double? get dropChangeFare => _d(raw['drop_change_fare']);
+
+  /// A one-line label for the proposed new drop.
+  String get dropChangeLabel => dropChangeName ?? dropChangeAddress ?? 'new drop-off';
+
+  /// How the last drop-change ended without a pending one now (0341):
+  /// 'accepted', 'declined' or 'expired'; and who ('rider', 'partner', 'auto').
+  String? get dropChangeOutcome => raw['drop_change_outcome'] as String?;
+  String? get dropChangeOutcomeBy => raw['drop_change_outcome_by'] as String?;
+  DateTime? get dropChangeOutcomeAt => _t(raw['drop_change_outcome_at']);
+
+  /// How many drop-off changes have been applied on this ride.
+  int get dropChangeCount => _i(raw['drop_change_count']) ?? 0;
+
   /// Trip safety signals (migration 0154): why the start was flagged, when,
   /// when the phones were found apart mid-trip, and when the passenger said
   /// they were OK.

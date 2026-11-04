@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/city_cancel.dart';
+import '../core/drop_change.dart';
 import '../core/ride_offers.dart';
 import '../core/rider_rating.dart';
 import '../core/trip_safety.dart';
@@ -21,6 +22,7 @@ class CityRideConfig {
     this.offers = OfferSettings.standard,
     this.riderRating = RiderRatingSettings.standard,
     this.driverCancel = DriverCancelLimit.standard,
+    this.dropChange = DropChangeSettings.standard,
   });
 
   static const standard = CityRideConfig();
@@ -28,12 +30,14 @@ class CityRideConfig {
   final OfferSettings offers;
   final RiderRatingSettings riderRating;
   final DriverCancelLimit driverCancel;
+  final DropChangeSettings dropChange;
 
   factory CityRideConfig.fromJson(Object? json) => json is Map
       ? CityRideConfig(
           offers: OfferSettings.fromJson(json['offers']),
           riderRating: RiderRatingSettings.fromJson(json['riderRating']),
           driverCancel: DriverCancelLimit.fromJson(json['driverCancel']),
+          dropChange: DropChangeSettings.fromJson(json['dropChange']),
         )
       : standard;
 }
