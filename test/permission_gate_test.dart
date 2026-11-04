@@ -2,12 +2,14 @@
 // Settings → Permissions enforces is done (features/shell/permission_gate.dart),
 // and the admin's card for those rules.
 
+import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/permission_rules_card.dart';
 import 'package:get_ride/src/core/app_permissions.dart';
 import 'package:get_ride/src/core/permission_ask.dart';
+import 'package:get_ride/src/data/models.dart' show Partner;
 import 'package:get_ride/src/data/permission_probe.dart';
 import 'package:get_ride/src/data/permission_rules.dart';
 import 'package:get_ride/src/features/permissions/permission_actions.dart';
@@ -80,6 +82,7 @@ void main() {
     String location = '/',
     String? user = 'me',
     PermissionRules rules = PermissionRules.defaults,
+    Partner? partner,
     ThemeData? theme,
   }) async {
     await tester.pumpWidget(
@@ -89,6 +92,7 @@ void main() {
           permissionProbeProvider.overrideWithValue(probe),
           permissionRulesProvider.overrideWith((_) async => rules),
           currentUserIdProvider.overrideWithValue(user),
+          partnerProvider.overrideWith((_) => partner),
         ],
         child: MaterialApp(
           theme: theme,
@@ -138,6 +142,59 @@ void main() {
     expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
     await pump(tester, _Probe(service: false), location: '/drive');
     expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
+  });
+
+  group('a partner is held to location "Always" in every mode', () {
+    final activePartner = Partner({'id': 'p1', 'partner_types': const ['eHailing']});
+
+    // "Always" is an iPhone setting (Android's "All the time" is off by
+    // default), so these run as iOS; reset inside the body as the framework
+    // requires.
+    Future<void> onIos(Future<void> Function() body) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      try {
+        await body();
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    }
+
+    testWidgets('on a drive screen (where a rider is never gated), with its own copy', (tester) async {
+      await onIos(() async {
+        await pump(tester, _Probe(loc: PermState.limited), location: '/drive', partner: activePartner);
+        expect(find.byKey(const ValueKey('permissions-required')), findsOneWidget);
+        expect(find.byKey(const ValueKey('permission-block-notAlways')), findsOneWidget);
+        expect(find.text('Turn on location to continue'), findsOneWidget);
+        // A non-partner on the same drive route is not gated.
+        await pump(tester, _Probe(loc: PermState.limited), location: '/drive');
+        expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
+      });
+    });
+
+    testWidgets('while riding as a passenger too (where whileInUse is fine for a rider)', (tester) async {
+      await onIos(() async {
+        await pump(tester, _Probe(loc: PermState.limited), location: '/', partner: activePartner);
+        expect(find.byKey(const ValueKey('permission-block-notAlways')), findsOneWidget);
+        // The same whileInUse state does not hold a plain rider at home.
+        await pump(tester, _Probe(loc: PermState.limited), location: '/');
+        expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
+      });
+    });
+
+    testWidgets('with "Always" granted the partner goes through', (tester) async {
+      await onIos(() async {
+        await pump(tester, _Probe(loc: PermState.granted), location: '/drive', partner: activePartner);
+        expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
+        expect(find.text('Home map'), findsOneWidget);
+      });
+    });
+
+    testWidgets('a stub partner row (no types, no documents) is treated as a rider', (tester) async {
+      await onIos(() async {
+        await pump(tester, _Probe(loc: PermState.limited), location: '/drive', partner: Partner({'id': 'p1'}));
+        expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
+      });
+    });
   });
 
   testWidgets('a check the admin bypassed holds nobody up', (tester) async {
@@ -193,6 +250,33 @@ void main() {
       tester.widget<SwitchListTile>(find.byKey(const ValueKey('permission-rule-user-location'))).onChanged,
       isNull,
     );
+  });
+
+  group('gatePermissionChecks (pure)', () {
+    const rules = PermissionRules();
+    test('signed out: nothing is gated', () {
+      expect(
+        gatePermissionChecks(signedIn: false, isPartner: true, riderArea: true, rules: rules),
+        isNull,
+      );
+    });
+    test('a partner is held to the partner rules on every screen', () {
+      for (final riderArea in [true, false]) {
+        final checks = gatePermissionChecks(signedIn: true, isPartner: true, riderArea: riderArea, rules: rules);
+        expect(checks, isNotNull);
+        expect(checks!.locationAlways, isTrue, reason: 'partner keeps "Always" in both modes');
+      }
+    });
+    test('a non-partner is gated only on the rider screens, without "Always"', () {
+      final rider = gatePermissionChecks(signedIn: true, isPartner: false, riderArea: true, rules: rules);
+      expect(rider, isNotNull);
+      expect(rider!.locationAlways, isFalse);
+      expect(
+        gatePermissionChecks(signedIn: true, isPartner: false, riderArea: false, rules: rules),
+        isNull,
+        reason: 'a rider off their screens (e.g. a drive route) is not gated',
+      );
+    });
   });
 
   group('asking again', () {

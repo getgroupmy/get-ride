@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/commission_promotions.dart';
 import '../core/promo_codes.dart';
+import '../core/provided_permits.dart' show providedPermitDocRow;
 import '../core/commission_settings.dart';
 import '../core/fare_tariff.dart' show fareTariffRowWithoutServices;
 import 'admin_access.dart';
@@ -211,6 +212,41 @@ class AdminRepository {
       };
     } catch (_) {
       return const {};
+    }
+  }
+
+  /// The vehicle permits GET.ride still has to upload (`waiting_permit` in
+  /// `vehicle_service_status`, 0288) shaped as document rows, so the admin
+  /// sees them in the Documents "To review" queue before any file exists —
+  /// the uploaded ones already show as `vehicle_documents` rows. Each carries
+  /// the plate and owning partner so the row opens the application. Empty on a
+  /// database before 0288, or when the admin may not read the table.
+  Future<List<Map<String, dynamic>>> pendingProvidedPermits() async {
+    try {
+      final statuses = List<Map<String, dynamic>>.from(
+        await _db.from('vehicle_service_status').select().eq('status', 'waiting_permit').limit(500),
+      );
+      if (statuses.isEmpty) return const [];
+      final vehicleIds = statuses.map((s) => '${s['vehicle_id'] ?? ''}').where((s) => s.isNotEmpty).toSet().toList();
+      final vehicles = vehicleIds.isEmpty
+          ? const <Map<String, dynamic>>[]
+          : List<Map<String, dynamic>>.from(
+              await _db.from('vehicle').select('id, plate, owner_partner_id').inFilter('id', vehicleIds),
+            );
+      final byVehicle = {for (final v in vehicles) '${v['id']}': v};
+      final partnerIds =
+          vehicles.map((v) => '${v['owner_partner_id'] ?? ''}').where((s) => s.isNotEmpty).toSet().toList();
+      final partners = partnerIds.isEmpty
+          ? const <Map<String, dynamic>>[]
+          : List<Map<String, dynamic>>.from(
+              await _db.from('partners').select('id, name, phone').inFilter('id', partnerIds),
+            );
+      final byPartner = {for (final p in partners) '${p['id']}': Map<String, dynamic>.from(p)};
+      return [
+        for (final s in statuses) ?providedPermitDocRow(s, vehicle: byVehicle['${s['vehicle_id']}'], partners: byPartner),
+      ];
+    } catch (_) {
+      return const [];
     }
   }
 

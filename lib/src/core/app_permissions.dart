@@ -191,6 +191,23 @@ const backgroundLocationDisclosure =
 /// Settings, asked there after the disclosure.
 PermissionChecks riderChecks(PermissionChecks user) => user.copyWith(locationAlways: false, locationAlwaysAndroid: false);
 
+/// What the app-wide gate holds this account to, or null when nothing is
+/// gated here. A partner is held to the partner rules — location "Always" /
+/// "All the time" — on *every* screen, in driver mode and as a passenger
+/// alike, so the full-screen gate stands until they allow it. Anyone else is
+/// held only on the rider's screens, to the rider rules (never "Always").
+PermissionChecks? gatePermissionChecks({
+  required bool signedIn,
+  required bool isPartner,
+  required bool riderArea,
+  required PermissionRules rules,
+}) {
+  if (!signedIn) return null;
+  if (isPartner) return rules.partner;
+  if (riderArea) return riderChecks(rules.user);
+  return null;
+}
+
 /// Whether the closed app's check-ins may run for this account:
 /// a driver as before (0333), a passenger only with the admin's switch on and
 /// their own opt-in (0333), or a user with an active safety case that has been
