@@ -12,11 +12,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../admin/screens/people/people_data.dart' show docPhotoPickerProvider;
+import '../../core/document_text.dart'
+    show IdDocType, IdRead, genderFromMrz, genderFromMyKad, nationalityCode, readIdText;
 import '../../core/rider_id_gate.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart' show showInfo, showError;
 import '../../widgets/live_selfie.dart' show LiveSelfie, takeLiveSelfie;
-import '../../widgets/live_selfie/on_device.dart' show readCardPhoto;
+import '../../widgets/live_selfie/on_device.dart' show readImageText;
 import '../../widgets/page_style_host.dart';
 import '../../data/rider_id_gate_repository.dart';
 
@@ -70,17 +72,29 @@ Future<bool> _runVerify(BuildContext context, WidgetRef ref, RiderIdGateRule rul
   final LiveSelfie? selfie = await takeLiveSelfie(context);
   if (selfie == null || !context.mounted) return false;
 
-  // Read what we can off the ID (best-effort, on-device); the server keeps it
-  // and fills the profile where empty when the match is strong.
-  final card = await readCardPhoto(idBytes);
+  // Read what we can off the ID on-device (best-effort). This is only a
+  // FALLBACK: the server re-reads the ID with Vision and that read wins, so a
+  // client can't pass off a fake name / DOB / gender. The server fills the
+  // profile (where empty) when the face match is strong.
+  final docType = rule.idType == 'passport' ? 'passport' : 'national';
+  final idDoc = docType == 'passport' ? IdDocType.passport : IdDocType.mykad;
+  final text = await readImageText(idBytes);
+  final IdRead r = text == null ? const IdRead() : readIdText(text, idDoc);
+  final gender = text == null
+      ? null
+      : (idDoc == IdDocType.passport ? genderFromMrz(text) : genderFromMyKad(r.number));
+  final nationality = nationalityCode(r.nationality);
   final read = <String, dynamic>{
-    if (card?.name != null) 'name': card!.name,
-    if (card?.ic != null) 'ic': card!.ic,
-    if (card?.expiry != null) 'expiry': _iso(card!.expiry!),
+    'name': ?r.name,
+    if (idDoc != IdDocType.passport && r.number != null) 'ic': r.number,
+    if (r.dateOfBirth != null) 'birth': _iso(r.dateOfBirth!),
+    'nationality': ?nationality,
+    'gender': ?gender,
+    'address': ?r.address,
+    if (r.expiry != null) 'expiry': _iso(r.expiry!),
   };
   if (!context.mounted) return false;
 
-  final docType = rule.idType == 'passport' ? 'passport' : 'national';
   final result = await _withWorking(context, () => ref.read(riderIdGateRepositoryProvider).riderVerify(
         docType: docType,
         idFront: idBytes!,

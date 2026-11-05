@@ -192,6 +192,42 @@ String formatMyKad(String s) {
   return RegExp(r'^\d{12}$').hasMatch(k) ? '${k.substring(0, 6)}-${k.substring(6, 8)}-${k.substring(8)}' : s.trim();
 }
 
+/// Sex from a MyKad (or MyPR) number: an odd last digit is male, an even one
+/// female. 'male' | 'female' | null. (The server re-derives this; this is the
+/// phone's best-effort value, used only until the server reads the card.)
+String? genderFromMyKad(String? ic) {
+  final k = idKey(ic);
+  if (!RegExp(r'^\d{12}$').hasMatch(k)) return null;
+  return int.parse(k[11]).isOdd ? 'male' : 'female';
+}
+
+/// Sex from a passport's machine lines (the M / F at position 20 of line 2).
+String? genderFromMrz(String text) {
+  final clean = [for (final l in _lines(text)) l.replaceAll(' ', '').toUpperCase()];
+  for (var i = 0; i + 1 < clean.length; i++) {
+    final a = clean[i], b = clean[i + 1];
+    if (a.startsWith('P') && a.length >= 40 && b.length >= 40 && RegExp(r'^[A-Z0-9<]+$').hasMatch(b)) {
+      if (b[20] == 'M') return 'male';
+      if (b[20] == 'F') return 'female';
+      return null;
+    }
+  }
+  return null;
+}
+
+/// An ICAO 3-letter nationality code from [nationality] (already a code, or an
+/// adjective like "Malaysian"); null when it isn't confidently a country (a
+/// permanent resident, a non-citizen, or unknown).
+String? nationalityCode(String? nationality) {
+  final n = (nationality ?? '').trim();
+  if (RegExp(r'^[A-Z]{3}$').hasMatch(n)) return n;
+  final lower = n.toLowerCase();
+  for (final e in passportNationalities.entries) {
+    if (e.value.toLowerCase() == lower) return e.key;
+  }
+  return null;
+}
+
 const _notNameWords = {
   'KAD', 'PENGENALAN', 'MALAYSIA', 'MYKAD', 'MYPR', 'IDENTITY', 'CARD', 'WARGANEGARA', 'LELAKI', 'PEREMPUAN',
   'ISLAM', 'PASPORT', 'PASSPORT', 'JALAN', 'JLN', 'TAMAN', 'LORONG', 'KAMPUNG', 'KG', 'NO', 'KUALA', 'LUMPUR',

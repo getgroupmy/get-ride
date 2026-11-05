@@ -164,6 +164,108 @@ function mrzDate(yymmdd: string): string | null {
   return new Date(Date.UTC(2000 + yy, mm - 1, dd)).toISOString().slice(0, 10);
 }
 
+// ---- The full field set (migrations 0342-0344: the rider ID gate) ---------------------------------
+//
+// The rider gate copies the read fields onto the profile, so they must be read
+// on the SERVER — a client could lie about its name / DOB / gender. readIdFull
+// is what the rider-verify path trusts. readCardText and CardRead are left
+// unchanged (the shared id_card_cases.json fixtures deep-equal against them).
+
+export interface IdFull extends CardRead {
+  /** yyyy-mm-dd, from the IC (MyKad) or the machine lines (passport). */
+  birth: string | null;
+  gender: "male" | "female" | null;
+  /** An ICAO 3-letter nationality code. */
+  nationality: string | null;
+  address: string | null;
+}
+
+/** The yyyy-mm-dd a MyKad number starts with (YYMMDD): this century unless that is in the future. */
+export function icDob(ic: string | null, now: Date = new Date()): string | null {
+  const k = (ic ?? "").replace(/[^0-9]/g, "");
+  if (k.length < 6) return null;
+  const yy = Number(k.slice(0, 2)), mm = Number(k.slice(2, 4)), dd = Number(k.slice(4, 6));
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const y = 2000 + yy > now.getUTCFullYear() ? 1900 + yy : 2000 + yy;
+  return `${y}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+}
+
+/** A MyKad number's sex: an odd last digit is male, an even one female. */
+export function icGender(ic: string | null): "male" | "female" | null {
+  const k = (ic ?? "").replace(/[^0-9]/g, "");
+  if (k.length < 12) return null;
+  return Number(k[11]) % 2 === 1 ? "male" : "female";
+}
+
+/** A birth date's YYMMDD from the machine lines: in the past (this century unless that is future). */
+function mrzBirth(yymmdd: string, now: Date): string | null {
+  if (!/^\d{6}$/.test(yymmdd)) return null;
+  const yy = Number(yymmdd.slice(0, 2)), mm = Number(yymmdd.slice(2, 4)), dd = Number(yymmdd.slice(4, 6));
+  if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
+  const y = 2000 + yy > now.getUTCFullYear() ? 1900 + yy : 2000 + yy;
+  return `${y}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+}
+
+/** The cleaned second machine line (>= 40 chars) of a passport, or null. */
+function mrzSecondLine(text: string): string | null {
+  const lines = text.split(/[\r\n]+/).map((l) => l.replaceAll(" ", "").toUpperCase()).filter((l) => l.length > 0);
+  for (let i = 0; i + 1 < lines.length; i++) {
+    const a = lines[i], b = lines[i + 1];
+    if (a.startsWith("P") && a.length >= 40 && b.length >= 40 && /^[A-Z0-9<]+$/.test(b)) return b;
+  }
+  return null;
+}
+
+const CARD_END = /\b(WARGANEGARA|PEMASTAUTIN|ISLAM|LELAKI|PEREMPUAN|KRISTIAN|BUDDHA|HINDU|BUKAN|PERMANENT RESIDENT)\b/;
+
+/** A MyKad front's address: the lines under the name, up to the citizenship line (at most 5). */
+function myKadAddress(text: string, name: string | null): string | null {
+  if (!name) return null;
+  const lines = text.split(/[\r\n]+/).map((l) => l.trim()).filter((l) => l.length > 0);
+  const nameAt = lines.findIndex((l) => l.toUpperCase().replace(/\s+/g, " ") === name.toUpperCase());
+  if (nameAt < 0) return null;
+  const out: string[] = [];
+  for (let i = nameAt + 1; i < lines.length && out.length < 5; i++) {
+    if (CARD_END.test(lines[i].toUpperCase())) break;
+    out.push(lines[i]);
+  }
+  return out.length ? out.join(", ") : null;
+}
+
+/** A MyKad's citizenship as an ICAO code: MYS for a citizen, null for a PR / non-citizen. */
+function myKadNationality(text: string): string | null {
+  const up = text.toUpperCase();
+  if (/\bBUKAN WARGANEGARA\b/.test(up) || /\b(PEMASTAUTIN TETAP|PERMANENT RESIDENT|MYPR)\b/.test(up)) return null;
+  return "MYS";
+}
+
+/**
+ * The full field set a rider's ID gives, read server-side (the trusted read):
+ * name / IC / expiry from readCardText, plus DOB, gender, nationality and
+ * address derived from the IC (MyKad) or the machine lines (passport).
+ */
+export function readIdFull(text: string, now: Date = new Date()): IdFull {
+  const base = readCardText(text);
+  const mrz = mrzSecondLine(text);
+  if (mrz) {
+    const code = mrz.slice(10, 13).replace(/</g, "");
+    return {
+      ...base,
+      birth: mrzBirth(mrz.slice(13, 19), now),
+      gender: mrz[20] === "M" ? "male" : mrz[20] === "F" ? "female" : null,
+      nationality: /^[A-Z]{3}$/.test(code) ? code : null,
+      address: null,
+    };
+  }
+  return {
+    ...base,
+    birth: icDob(base.ic, now),
+    gender: icGender(base.ic),
+    nationality: base.ic ? myKadNationality(text) : null,
+    address: myKadAddress(text, base.name),
+  };
+}
+
 // ---- Google Cloud Vision -------------------------------------------------------------------------
 
 interface KeyEntry {
