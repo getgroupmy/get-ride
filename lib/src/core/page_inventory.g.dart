@@ -60,6 +60,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:admin.push-button', SurfaceKind.modal, 'Admin · Push button', 'lib/src/admin/screens/push_composer_widgets.dart'),
   SurfaceEntry('modal:admin.push-link', SurfaceKind.modal, 'Admin · Push link', 'lib/src/admin/screens/push_composer_widgets.dart'),
   SurfaceEntry('modal:admin.reject-reason', SurfaceKind.modal, 'Admin · Reject reason', 'lib/src/admin/widgets/reject_reason.dart'),
+  SurfaceEntry('modal:admin.rider-id-gate', SurfaceKind.modal, 'Admin · Rider id gate', 'lib/src/admin/screens/rider_id_gate_card.dart'),
   SurfaceEntry('modal:admin.rider-live-map-colours', SurfaceKind.modal, 'Admin · Rider live map colours', 'lib/src/admin/screens/live_map/rider_live_map_screen.dart'),
   SurfaceEntry('modal:admin.selfie-watch-find', SurfaceKind.modal, 'Admin · Selfie watch find', 'lib/src/admin/screens/selfie_watch_list.dart'),
   SurfaceEntry('modal:admin.selfie-watch-rule', SurfaceKind.modal, 'Admin · Selfie watch rule', 'lib/src/admin/screens/selfie_watch_list.dart'),

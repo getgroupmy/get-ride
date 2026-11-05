@@ -22,7 +22,8 @@ import '../../data/geo_service.dart' show Place;
 import '../../providers.dart';
 import '../store_review/demo_flows.dart' show playDemoBooking;
 import '../../widgets/busy.dart';
-import '../../widgets/common.dart' show showError;
+import '../../widgets/common.dart' show showError, showInfo;
+import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
 import '../../widgets/date_boxes.dart';
 import '../../widgets/page_style_host.dart';
 import 'city_to_city_parts.dart';
@@ -221,6 +222,8 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
   Future<void> _book() async {
     final q = _quote, r = _route, leave = _leaveAt, fare = _fare, pay = _payment;
     if (q == null || r == null || leave == null || fare == null || pay == null) return;
+    // ID verification (0342–0344): an admin country rule may require it.
+    if (!mounted || !await ensureRiderIdVerified(context, ref)) return;
     try {
       final b = await ref.read(cityToCityRepositoryProvider).book(c2cBookingRow(
         pickup: _pickup!,
@@ -253,7 +256,13 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
       }
       await openC2cTrip(context, b.id, replace: true);
     } catch (e) {
-      if (mounted) showError(context, e);
+      if (isRiderIdRequired(e)) {
+        if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
+          showInfo(context, 'You can book now.');
+        }
+      } else if (mounted) {
+        showError(context, e);
+      }
     }
   }
 

@@ -26,21 +26,24 @@ bool isRiderIdRequired(Object error) => '$error'.contains('RIDER_ID_REQUIRED');
 /// Whether the rider may book now. Returns true at once when no rule applies;
 /// otherwise runs the verify flow and returns whether they got through.
 Future<bool> ensureRiderIdVerified(BuildContext context, WidgetRef ref) async {
-  RiderIdGateConfig config;
+  final RiderIdGateRule rule;
   try {
-    config = await ref.read(riderIdGateConfigProvider.future);
+    final config = await ref.read(riderIdGateConfigProvider.future);
+    final profile = await ref.read(profileProvider.future);
+    final blocked = riderIdGateBlocks(
+      config: config,
+      country: profile?.nationality,
+      priorBookings: profile?.totalRides ?? 0,
+      verified: profile?.isIdVerified ?? false,
+    );
+    if (!blocked) return true;
+    rule = config.ruleFor(profile?.nationality) ?? RiderIdGateRule.standard;
   } catch (_) {
-    return true; // Config unreadable: don't block; the server still guards.
+    // The rule or profile is unreadable (a transient error, a test without
+    // these providers): don't block — the server trigger still enforces it.
+    return true;
   }
-  final profile = await ref.read(profileProvider.future);
-  final blocked = riderIdGateBlocks(
-    config: config,
-    country: profile?.nationality,
-    priorBookings: profile?.totalRides ?? 0,
-    verified: profile?.isIdVerified ?? false,
-  );
-  if (!blocked || !context.mounted) return !blocked;
-  final rule = config.ruleFor(profile?.nationality) ?? RiderIdGateRule.standard;
+  if (!context.mounted) return false;
   return _runVerify(context, ref, rule);
 }
 
