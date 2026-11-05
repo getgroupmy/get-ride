@@ -289,6 +289,8 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:ride.freight-cancel', SurfaceKind.modal, 'Ride · Freight cancel', 'lib/src/features/ride/freight_screen.dart'),
   SurfaceEntry('modal:ride.freight-cargo-photo', SurfaceKind.modal, 'Ride · Freight cargo photo', 'lib/src/features/ride/freight_parts.dart'),
   SurfaceEntry('modal:ride.freight-driver-cancel', SurfaceKind.modal, 'Ride · Freight driver cancel', 'lib/src/features/ride/freight_parts.dart'),
+  SurfaceEntry('modal:ride.id-verify-intro', SurfaceKind.modal, 'Ride · Id verify intro', 'lib/src/features/ride/rider_id_gate_flow.dart'),
+  SurfaceEntry('modal:ride.id-verify-working', SurfaceKind.modal, 'Ride · Id verify working', 'lib/src/features/ride/rider_id_gate_flow.dart'),
   SurfaceEntry('modal:ride.pet-photo', SurfaceKind.modal, 'Ride · Pet photo', 'lib/src/features/ride/pet_parts.dart'),
   SurfaceEntry('modal:rider-handover.ask', SurfaceKind.modal, 'Rider handover · Ask', 'lib/src/features/ride/rider_handover_card.dart'),
   SurfaceEntry('modal:safety-incidents.resolve', SurfaceKind.modal, 'Safety incidents · Resolve', 'lib/src/admin/screens/safety/safety_incidents_screen.dart'),
