@@ -117,11 +117,14 @@ select pg_temp.check((public.set_city_ride_config('offers', '{"shown": 3, "lifet
                       ->>'lifetimeSeconds')::int = 120, 'the lifetime is held to 120 s');
 select public.set_city_ride_config('offers', '{}');
 select pg_temp.check(public.city_ride_config()->'offers' = '{"shown": 5, "sort": "cheapest", "lifetimeSeconds": 15,
-  "reofferAfterDecline": true}'::jsonb, 'the offer defaults: ' || (public.city_ride_config()->'offers')::text);
+  "alertSoundSeconds": 20, "reofferAfterDecline": true}'::jsonb, 'the offer defaults: ' || (public.city_ride_config()->'offers')::text);
 select pg_temp.check(public.city_ride_config()->'riderRating' = '{"window": 100, "newBelow": 5, "lowBelow": 4.0}'::jsonb,
   'the rating defaults');
 select pg_temp.check(public.city_ride_config()->'driverCancel'
   = '{"limitPercent": 20, "days": 7, "pauseMinutes": 30, "minRides": 5}'::jsonb, 'the cancel limit defaults');
+select pg_temp.check(public.city_ride_config()->'dropChange'
+  = '{"allow": true, "autoApproveCheaper": true, "autoApproveRm": 3, "autoApprovePct": 15, "responseWindowSec": 30,
+     "maxChangesPerRide": 2}'::jsonb, 'the drop-change defaults: ' || (public.city_ride_config()->'dropChange')::text);
 -- Places: the admin's, read by everyone.
 insert into public.ride_cancel_places (level, country, rules) values ('country', 'Testland', '{"lateFee": 4}');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000269b1');
