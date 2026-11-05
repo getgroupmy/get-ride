@@ -4,18 +4,23 @@ import {
   type CardRead,
   handleIdRead,
   handleRegistrationRead,
+  icDob,
+  icGender,
   type IdCheckRow,
   type IdReadDeps,
   idReaders,
   idReadMode,
   isRegistrationRead,
   readCardText,
+  readIdFull,
   readVision,
   type RegistrationReadDeps,
   visionKey,
   visionOn,
   visionRequest,
 } from "./id_read.ts";
+
+const NOW = new Date("2026-10-24T00:00:00Z");
 
 const cases = JSON.parse(await Deno.readTextFile(new URL("./id_card_cases.json", import.meta.url))) as {
   cases: { name: string; text: string; expect: CardRead }[];
@@ -26,6 +31,40 @@ for (const c of cases.cases) {
     assertEquals(readCardText(c.text), c.expect);
   });
 }
+
+// ---- The full field set (the rider ID gate, read server-side) ------------------------------------
+
+Deno.test("icDob / icGender from a MyKad number", () => {
+  assertEquals(icDob("900101-14-5678", NOW), "1990-01-01");
+  assertEquals(icGender("900101-14-5677"), "male"); // odd
+  assertEquals(icGender("900101-14-5678"), "female"); // even
+  assertEquals(icDob("short", NOW), null);
+  assertEquals(icGender("9001011456"), null);
+});
+
+Deno.test("readIdFull: a MyKad gives DOB, gender, nationality and address", () => {
+  const r = readIdFull(
+    "KAD PENGENALAN\n900101-14-5678\nAINA BINTI RAHMAN\nNO 12 JALAN SS2/24\n47300 PETALING JAYA\nWARGANEGARA",
+    NOW,
+  );
+  assertEquals(r.name, "AINA BINTI RAHMAN");
+  assertEquals(r.ic, "900101-14-5678");
+  assertEquals(r.birth, "1990-01-01");
+  assertEquals(r.gender, "female"); // last digit 8 is even
+  assertEquals(r.nationality, "MYS");
+  assertEquals(r.address, "NO 12 JALAN SS2/24, 47300 PETALING JAYA");
+});
+
+Deno.test("readIdFull: a passport gives nationality, DOB and sex from the machine lines", () => {
+  const page = "P<IDNSANTOSO<<BUDI<HARTONO<<<<<<<<<<<<<<<<<<\nC4821937<2IDN8503125M3001019<<<<<<<<<<<<<<04";
+  const r = readIdFull(page, NOW);
+  assertEquals(r.name, "BUDI HARTONO SANTOSO");
+  assertEquals(r.passport, "C4821937");
+  assertEquals(r.nationality, "IDN");
+  assertEquals(r.birth, "1985-03-12");
+  assertEquals(r.gender, "male");
+  assertEquals(r.address, null);
+});
 
 const ID = "00000000-0000-0000-0000-000000000283";
 const BUCKET = "https://x.supabase.co/storage/v1/object/public/ID_Image";

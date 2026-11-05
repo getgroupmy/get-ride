@@ -46,8 +46,10 @@ import {
   handleOnlineFaceCompare,
   ONLINE_FACE_PAGES,
   type Result,
+  storageObject,
 } from "../_shared/face_compare.ts";
 import { compareRequest, FACE_SERVER_TIMEOUT_MS } from "../_shared/face_server.ts";
+import { type IdFull, MAX_IMAGE_BYTES, readIdFull, readVision, visionKey, visionRequest } from "../_shared/id_read.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -138,6 +140,37 @@ const riderNationality = (v: unknown): string | null => {
 const riderGender = (v: unknown): string | null =>
   v === "male" || v === "female" || v === "other" ? v : null;
 
+/**
+ * Re-reads the ID image on the server with Google Vision — the TRUSTED read,
+ * since a client could lie about the name / DOB / gender it sends. Null when
+ * Vision isn't configured, the image is missing/too big, or nothing was read;
+ * the caller then falls back to the client's values.
+ */
+async function serverReadId(idFrontUrl: string): Promise<IdFull | null> {
+  try {
+    const key = visionKey(await setting("api_providers"));
+    if (!key) return null;
+    const where = storageObject(idFrontUrl);
+    const image = where ? await download(where.bucket, where.path) : null;
+    if (!image || image.length > MAX_IMAGE_BYTES) return null;
+    const rq = visionRequest(key, image);
+    const res = await fetch(rq.url, {
+      method: rq.method,
+      headers: rq.headers,
+      body: rq.body,
+      signal: AbortSignal.timeout(15000),
+    });
+    const v = readVision(res.status, await res.json().catch(() => null));
+    if ("error" in v || !v.text.trim()) return null;
+    const full = readIdFull(v.text);
+    const found = full.name || full.ic || full.passport || full.birth || full.gender || full.nationality ||
+      full.address;
+    return found ? full : null;
+  } catch {
+    return null;
+  }
+}
+
 async function handleRiderVerify(body: unknown, authorization: string | null): Promise<Result> {
   if (!authorization) return { status: 401, body: { error: "not_signed_in" } };
   const b = (body ?? {}) as Record<string, unknown>;
@@ -156,6 +189,11 @@ async function handleRiderVerify(body: unknown, authorization: string | null): P
   const rider = who?.user?.id;
   if (whoErr || !rider) return { status: 401, body: { error: "not_signed_in" } };
 
+  // Re-read the ID server-side (Vision). The server read WINS for every field
+  // it could read — a client value only fills a field the server missed, or
+  // stands in entirely when Vision isn't configured (read_source 'phone').
+  const srv = await serverReadId(idFrontUrl);
+
   // Record the submission (service role).
   const { data: idRow, error: idErr } = await db.from("identity_checks").insert({
     user_id: rider,
@@ -163,13 +201,14 @@ async function handleRiderVerify(body: unknown, authorization: string | null): P
     purpose: "rider_gate",
     file_url: idFrontUrl,
     status: "Pending Review",
-    read_name: riderText(read.name, 120),
-    read_ic: riderText(read.ic, 40),
-    read_expiry: riderDate(read.expiry),
-    read_birth: riderDate(read.birth),
-    read_nationality: riderNationality(read.nationality),
-    read_gender: riderGender(read.gender),
-    read_address: riderText(read.address, 300),
+    read_source: srv ? "vision" : "phone",
+    read_name: riderText(srv?.name ?? read.name, 120),
+    read_ic: riderText(srv?.ic ?? read.ic, 40),
+    read_expiry: riderDate(srv?.expiry ?? read.expiry),
+    read_birth: riderDate(srv?.birth ?? read.birth),
+    read_nationality: riderNationality(srv?.nationality ?? read.nationality),
+    read_gender: riderGender(srv?.gender ?? read.gender),
+    read_address: riderText(srv?.address ?? read.address, 300),
   }).select("id").single();
   if (idErr || !idRow) return { status: 500, body: { error: "insert_failed" } };
   const idCheckId = idRow.id as string;

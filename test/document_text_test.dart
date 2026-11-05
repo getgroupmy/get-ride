@@ -111,6 +111,33 @@ C4821937<2IDN8503125M3001019<<<<<<<<<<<<<<04
     });
   });
 
+  group('gender and nationality code (ID gate)', () {
+    test('MyKad gender from the last digit', () {
+      expect(genderFromMyKad('900101-14-5677'), 'male'); // odd
+      expect(genderFromMyKad('900101-14-5678'), 'female'); // even
+      expect(genderFromMyKad('9001011456'), isNull); // too short
+      expect(genderFromMyKad(null), isNull);
+    });
+
+    test('passport gender from the machine lines', () {
+      const page = '''
+REPUBLIK INDONESIA
+P<IDNSANTOSO<<BUDI<HARTONO<<<<<<<<<<<<<<<<<<
+C4821937<2IDN8503125M3001019<<<<<<<<<<<<<<04
+''';
+      expect(genderFromMrz(page), 'male');
+      expect(genderFromMrz('no machine lines here'), isNull);
+    });
+
+    test('nationality code from a code or an adjective', () {
+      expect(nationalityCode('Malaysian'), 'MYS');
+      expect(nationalityCode('Indonesian'), 'IDN');
+      expect(nationalityCode('MYS'), 'MYS');
+      expect(nationalityCode('Permanent resident'), isNull);
+      expect(nationalityCode(null), isNull);
+    });
+  });
+
   group('names', () {
     test('joining words and order do not matter', () {
       expect(namesMatch('AINA BINTI RAHMAN', 'Aina Rahman'), isTrue);
