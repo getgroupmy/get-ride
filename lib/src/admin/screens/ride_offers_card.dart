@@ -66,6 +66,7 @@ class RideOffersCard extends ConsumerStatefulWidget {
 class _RideOffersCardState extends ConsumerState<RideOffersCard> {
   final _shown = TextEditingController();
   final _lifetime = TextEditingController();
+  final _alertSound = TextEditingController();
   OfferSort _sort = OfferSort.cheapest;
   bool _reoffer = true;
   OfferSettings? _loaded;
@@ -74,6 +75,7 @@ class _RideOffersCardState extends ConsumerState<RideOffersCard> {
   void dispose() {
     _shown.dispose();
     _lifetime.dispose();
+    _alertSound.dispose();
     super.dispose();
   }
 
@@ -82,6 +84,7 @@ class _RideOffersCardState extends ConsumerState<RideOffersCard> {
     _loaded = s;
     _shown.text = '${s.shown}';
     _lifetime.text = '${s.lifetime.inSeconds}';
+    _alertSound.text = '${s.alertSoundSeconds}';
     _sort = s.sort;
     _reoffer = s.reofferAfterDecline;
   }
@@ -89,12 +92,14 @@ class _RideOffersCardState extends ConsumerState<RideOffersCard> {
   OfferSettings? _draft() {
     final shown = AdminNumberField.read(_shown, OfferSettings.minShown, OfferSettings.maxShown);
     final life = AdminNumberField.read(_lifetime, OfferSettings.minLifetime, OfferSettings.maxLifetime);
-    if (shown == null || life == null) return null;
+    final alert = AdminNumberField.read(_alertSound, OfferSettings.minAlertSound, OfferSettings.maxAlertSound);
+    if (shown == null || life == null || alert == null) return null;
     return OfferSettings(
       shown: shown.toInt(),
       lifetime: Duration(seconds: life.toInt()),
       sort: _sort,
       reofferAfterDecline: _reoffer,
+      alertSoundSeconds: alert.toInt(),
     );
   }
 
@@ -154,6 +159,24 @@ class _RideOffersCardState extends ConsumerState<RideOffersCard> {
                   max: OfferSettings.maxLifetime,
                   enabled: widget.canEdit,
                   onChanged: () => setState(() {}),
+                ),
+                const SizedBox(height: 8),
+                AdminNumberField(
+                  key: const ValueKey('ride-offers-alert-sound'),
+                  controller: _alertSound,
+                  label: 'Incoming-request alert sound (seconds, 0 = off)',
+                  min: OfferSettings.minAlertSound,
+                  max: OfferSettings.maxAlertSound,
+                  enabled: widget.canEdit,
+                  onChanged: () => setState(() {}),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 4),
+                  child: Text(
+                    'The looping sound a driver hears when a request pops up (like the big ride apps). '
+                    'It rings over silent and stops the moment the request is answered or its spotlight ends.',
+                    style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 Align(

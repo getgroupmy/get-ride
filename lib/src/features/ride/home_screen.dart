@@ -133,6 +133,7 @@ import '../../core/courier.dart' show courierPageRoute;
 import '../../core/freight.dart' show freightPageRoute, isCourierService, isFreightService;
 import '../../data/freight_repository.dart' show courierAvailableProvider, freightAvailableProvider;
 import 'ride_tracking_screen.dart' show rideStreamProvider;
+import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
 import '../meter/meter_auto_launch.dart';
 import 'unavailable_sheet.dart';
 import '../../admin/screens/commerce/get_coin.dart' show rideRewardCoins;
@@ -2111,6 +2112,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (mounted) showInfo(context, serviceComingSoonMessage);
       return;
     }
+    // ID verification (migrations 0342–0344): an admin country rule may require
+    // the rider to verify a photo ID before this booking. Run it up front; the
+    // server's booking trigger enforces it regardless.
+    if (!mounted || !await ensureRiderIdVerified(context, ref)) return;
     // Checked again as it is booked: a region blocked since, or a trip
     // booked before the route's check answered, never goes out.
     final gap = await _findGap(a, List.of(_stops), b);
@@ -2373,8 +2378,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       setState(() => _gap = gap);
       _showGap(gap);
     } catch (e) {
+      // The server's ID gate (0342): verify, then invite them to send again.
+      if (isRiderIdRequired(e)) {
+        if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
+          showInfo(context, 'You can send your booking now.');
+        }
+      }
       // Refused by the server's service check (0302): its own modal.
-      if (mounted && !showServiceNotOffered(context, e, service: _service.name)) showError(context, e);
+      else if (mounted && !showServiceNotOffered(context, e, service: _service.name)) {
+        showError(context, e);
+      }
     } finally {
       if (mounted) setState(() => _booking = false);
     }
@@ -2928,6 +2941,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (mounted) showInfo(context, serviceComingSoonMessage);
       return;
     }
+    // ID verification (0342–0344): an admin country rule may require it.
+    if (!mounted || !await ensureRiderIdVerified(context, ref)) return;
     final d = _hireDrop;
     final gap = await _findGap(a, stops, d ?? a);
     if (gap != null) {
@@ -3024,7 +3039,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     } on DuplicateRideRequest catch (e) {
       if (mounted) showInfo(context, e.toString());
     } catch (e) {
-      if (mounted) showError(context, HireError.wrap(e));
+      // The server's ID gate (0342): verify, then invite them to send again.
+      if (isRiderIdRequired(e)) {
+        if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
+          showInfo(context, 'You can book now.');
+        }
+      } else if (mounted) {
+        showError(context, HireError.wrap(e));
+      }
     } finally {
       if (mounted) setState(() => _booking = false);
     }

@@ -11,6 +11,8 @@ class AppDisplay {
     this.passengerRegistrationEnabled = true,
     this.driverRegistrationEnabled = true,
     this.showSignInLogo = true,
+    this.showSignInDiagnostics = false,
+    this.showBackendInfo = true,
     this.showAiTollCharges = true,
     this.showAiTollBooths = true,
     this.recenterButton = true,
@@ -54,6 +56,17 @@ class AppDisplay {
   /// Whether the sign-in screen shows the GET.ride logo.
   final bool showSignInLogo;
 
+  /// Whether the sign-in screens show the small connection-diagnostics
+  /// (network_check) icon. Off by default — support can still reach
+  /// `/diagnostics` from the connection-error popup. Admin → Display →
+  /// Sign-in Screen.
+  final bool showSignInDiagnostics;
+
+  /// Whether the admin-only "Backend" row in account Settings (which server
+  /// the app talks to) is shown. On by default; an admin can hide it for a
+  /// clean store build. Admin → Display → Connection Status Popups.
+  final bool showBackendInfo;
+
   /// Whether the AI route estimate's toll charges are shown on the booking
   /// panel.
   final bool showAiTollCharges;
@@ -83,7 +96,7 @@ class AppDisplay {
   /// so a half-written or older row never switches the service off.
   static AppDisplay fromSettings(Object? raw) {
     if (raw is! Map) return const AppDisplay();
-    bool flag(String key) {
+    bool flag(String key, {bool orElse = true}) {
       final v = raw[key];
       if (v is bool) return v;
       if (v is num) return v != 0;
@@ -92,7 +105,7 @@ class AppDisplay {
         if (s == 'false' || s == '0' || s == 'off') return false;
         if (s == 'true' || s == '1' || s == 'on') return true;
       }
-      return true;
+      return orElse;
     }
 
     return AppDisplay(
@@ -101,6 +114,8 @@ class AppDisplay {
       passengerRegistrationEnabled: flag('passengerRegistrationEnabled'),
       driverRegistrationEnabled: flag('driverRegistrationEnabled'),
       showSignInLogo: flag('signInLogo'),
+      showSignInDiagnostics: flag('signInDiagnostics', orElse: false),
+      showBackendInfo: flag('backendInfo'),
       showAiTollCharges: flag('showAiTollCharges'),
       showAiTollBooths: flag('showAiTollBooths'),
       recenterButton: flag('recenterButton'),

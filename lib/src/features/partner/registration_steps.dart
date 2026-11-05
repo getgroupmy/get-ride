@@ -471,6 +471,11 @@ class _DetailsStepState extends ConsumerState<DetailsStep> {
           icon: Icons.edit_note,
           children: [Text("We couldn't read your ID. Type your details exactly as they are on it.")],
         ),
+      const RegNotice(
+        key: ValueKey('details-face-match'),
+        icon: Icons.verified_user_outlined,
+        children: [Text('Your selfie is matched to the photo on your ID, so your account is really you.')],
+      ),
       Card(
         key: const ValueKey('details-number'),
         shape: RoundedRectangleBorder(

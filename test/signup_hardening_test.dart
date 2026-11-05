@@ -86,7 +86,9 @@ void main() {
         overrides: [
           deviceBlockedProvider.overrideWith((ref) async => false),
           authRepositoryProvider.overrideWithValue(auth),
-          appDisplayProvider.overrideWith((ref) async => const AppDisplay()),
+          // The connection-diagnostics icon is admin-gated and off by default
+          // now; these auth tests exercise it, so turn it on here.
+          appDisplayProvider.overrideWith((ref) async => const AppDisplay(showSignInDiagnostics: true)),
         ],
         child: MaterialApp.router(
           theme: ThemeData(brightness: brightness),

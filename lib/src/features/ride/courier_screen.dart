@@ -55,6 +55,7 @@ import '../../core/business_accounts.dart';
 import '../../data/business_repository.dart';
 import '../business/business_booking.dart';
 import 'confirm_parts.dart' show paymentLook;
+import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
 import 'delivery_addons_parts.dart';
 import 'delivery_look.dart';
 import 'freight_parts.dart' show FreightVehicleImage;
@@ -383,6 +384,9 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     final a = _pickup, b = _drop, v = _vehicle;
     final problem = courierDraftProblem(_draft, _config) ?? _addonProblem;
     if (problem != null) return showInfo(context, problem);
+    // ID verification (migrations 0342–0344): an admin country rule may require
+    // the rider to verify before booking; the server trigger enforces it too.
+    if (!mounted || !await ensureRiderIdVerified(context, ref)) return;
     setState(() => _booking = true);
     try {
       try {
@@ -488,8 +492,16 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     } on DuplicateRideRequest catch (e) {
       if (mounted) showInfo(context, e.toString());
     } catch (e) {
+      // The server's ID gate (0342): verify, then invite them to send again.
+      if (isRiderIdRequired(e)) {
+        if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
+          showInfo(context, 'You can send your booking now.');
+        }
+      }
       // Refused by the server's service check (0302): its own modal.
-      if (mounted && !showServiceNotOffered(context, e)) showError(context, e);
+      else if (mounted && !showServiceNotOffered(context, e)) {
+        showError(context, e);
+      }
     } finally {
       if (mounted) setState(() => _booking = false);
     }

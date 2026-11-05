@@ -106,8 +106,19 @@ void main() {
       expect(OfferSettings.standard.lifetime, const Duration(seconds: 15));
       expect(OfferSettings.standard.sort, OfferSort.cheapest);
       expect(OfferSettings.standard.reofferAfterDecline, isTrue);
+      expect(OfferSettings.standard.alertSoundSeconds, 20);
       final s = OfferSettings.fromJson({'shown': 50, 'lifetimeSeconds': 1, 'sort': 'rating', 'reofferAfterDecline': false});
       expect((s.shown, s.lifetime.inSeconds, s.sort, s.reofferAfterDecline), (10, 5, OfferSort.rating, false));
+      expect(OfferSettings.fromJson(s.toJson()), s);
+    });
+
+    test('alert sound length clamps and round-trips', () {
+      // Out of range is clamped to 0..120; a missing key keeps the default.
+      expect(OfferSettings.fromJson({'alertSoundSeconds': 999}).alertSoundSeconds, 120);
+      expect(OfferSettings.fromJson({'alertSoundSeconds': -5}).alertSoundSeconds, 0);
+      expect(OfferSettings.fromJson({'shown': 3}).alertSoundSeconds, OfferSettings.defaultAlertSoundSeconds);
+      final s = OfferSettings.fromJson({'alertSoundSeconds': 12});
+      expect(s.alertSoundSeconds, 12);
       expect(OfferSettings.fromJson(s.toJson()), s);
     });
   });

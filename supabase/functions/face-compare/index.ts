@@ -39,10 +39,13 @@ import {
   DOCUMENT_FACE_PAGES,
   DOCUMENT_PAGES,
   documentRequest,
+  type FaceProvider,
+  type FaceState,
   handleDocumentFaceCompare,
   handleFaceCompare,
   handleOnlineFaceCompare,
   ONLINE_FACE_PAGES,
+  type Result,
 } from "../_shared/face_compare.ts";
 import { compareRequest, FACE_SERVER_TIMEOUT_MS } from "../_shared/face_server.ts";
 
@@ -97,11 +100,141 @@ async function serverCompare(server: Parameters<typeof compareRequest>[0], selfi
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
+// ---- Rider ID verification (migrations 0342 / 0343) ----------------------------------------------
+// A rider self-verifies before booking: they upload their ID photo and a live
+// selfie, and this scores the two server-side (the admin face pipeline, keys
+// never leaving the server) and applies the auto-verify policy. The score is
+// ALWAYS computed here, never taken from the client, and only the rider's own
+// `rider_gate` check is ever scored.
+async function saveScore(
+  id: string,
+  state: FaceState,
+  score: number | null,
+  provider: FaceProvider | null,
+  reason: string | null,
+) {
+  const { error } = await db.from("identity_checks").update({
+    face_state: state,
+    face_score: score,
+    face_provider: provider,
+    face_reason: reason,
+    face_checked_at: new Date().toISOString(),
+  }).eq("id", id);
+  if (error) throw error;
+}
+
+const riderText = (v: unknown, max: number): string | null => {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s ? s.slice(0, max) : null;
+};
+const riderDate = (v: unknown): string | null => {
+  const s = typeof v === "string" ? v.trim() : "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+};
+const riderNationality = (v: unknown): string | null => {
+  const s = typeof v === "string" ? v.trim().toUpperCase() : "";
+  return /^[A-Z]{3}$/.test(s) ? s : null;
+};
+const riderGender = (v: unknown): string | null =>
+  v === "male" || v === "female" || v === "other" ? v : null;
+
+async function handleRiderVerify(body: unknown, authorization: string | null): Promise<Result> {
+  if (!authorization) return { status: 401, body: { error: "not_signed_in" } };
+  const b = (body ?? {}) as Record<string, unknown>;
+  const idFrontUrl = typeof b.idFrontUrl === "string" ? b.idFrontUrl : null;
+  const selfieUrl = typeof b.selfieUrl === "string" ? b.selfieUrl : null;
+  if (!idFrontUrl || !selfieUrl) return { status: 400, body: { error: "bad_request" } };
+  const read = (b.read ?? {}) as Record<string, unknown>;
+
+  // Who is asking — resolved from the token, never from the body.
+  const user = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    { global: { headers: { Authorization: authorization } }, auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const { data: who, error: whoErr } = await user.auth.getUser();
+  const rider = who?.user?.id;
+  if (whoErr || !rider) return { status: 401, body: { error: "not_signed_in" } };
+
+  // Record the submission (service role).
+  const { data: idRow, error: idErr } = await db.from("identity_checks").insert({
+    user_id: rider,
+    kind: "id",
+    purpose: "rider_gate",
+    file_url: idFrontUrl,
+    status: "Pending Review",
+    read_name: riderText(read.name, 120),
+    read_ic: riderText(read.ic, 40),
+    read_expiry: riderDate(read.expiry),
+    read_birth: riderDate(read.birth),
+    read_nationality: riderNationality(read.nationality),
+    read_gender: riderGender(read.gender),
+    read_address: riderText(read.address, 300),
+  }).select("id").single();
+  if (idErr || !idRow) return { status: 500, body: { error: "insert_failed" } };
+  const idCheckId = idRow.id as string;
+  await db.from("identity_checks").insert({
+    user_id: rider,
+    kind: "selfie",
+    purpose: "rider_gate",
+    file_url: selfieUrl,
+    status: "Pending Review",
+  });
+
+  // Score the rider's own check with the admin face pipeline (service role);
+  // canReview is scoped to this rider's rider_gate check, not an admin page.
+  const scored = await handleFaceCompare({ check_id: idCheckId }, authorization, {
+    async canReview() {
+      const { data } = await db.from("identity_checks").select("user_id, purpose").eq("id", idCheckId).maybeSingle();
+      return !!data && data.user_id === rider && data.purpose === "rider_gate";
+    },
+    async check(id) {
+      const { data, error } = await db.from("identity_checks").select("id, user_id, kind, file_url")
+        .eq("id", id).maybeSingle();
+      if (error) throw error;
+      return (data as CheckRow | null) ?? null;
+    },
+    async counterpart(row) {
+      const { data, error } = await db.from("identity_checks").select("id, user_id, kind, file_url")
+        .eq("user_id", row.user_id).eq("kind", row.kind === "selfie" ? "id" : "selfie").eq("purpose", "rider_gate")
+        .neq("status", "Rejected").order("created_at", { ascending: false }).limit(1).maybeSingle();
+      if (error) throw error;
+      return (data as CheckRow | null) ?? null;
+    },
+    apiProviders: () => setting("api_providers"),
+    verifySettings: () => setting("dispatch_verify"),
+    download,
+    compare: awsCompare,
+    compareSelfHosted: serverCompare,
+    save: saveScore,
+  });
+
+  // Apply the auto-verify policy — reads only the score just saved above.
+  let verified = false;
+  let pending = true;
+  try {
+    const { data: applied, error: applyErr } = await db.rpc("rider_id_gate_apply", { p_check: idCheckId });
+    if (!applyErr && applied) {
+      verified = (applied as Record<string, unknown>).verified === true;
+      pending = (applied as Record<string, unknown>).pending === true;
+    }
+  } catch {
+    // Leave the rider pending; an admin will review the check.
+  }
+
+  const sb = (scored.body ?? {}) as Record<string, unknown>;
+  return { status: 200, body: { verified, pending, state: sb.state ?? null, score: sb.score ?? null } };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return reply({ error: "Method not allowed" }, 405);
 
   const input = await req.json().catch(() => null);
+  if ((input as { rider_verify?: unknown } | null)?.rider_verify !== undefined) {
+    const r = await handleRiderVerify((input as { rider_verify?: unknown }).rider_verify, req.headers.get("Authorization"));
+    return reply(r.body, r.status);
+  }
   if ((input as { online_check?: unknown } | null)?.online_check !== undefined) {
     const online = await handleOnlineFaceCompare(input, {
       authorization: req.headers.get("Authorization"),

@@ -29,10 +29,17 @@ class OfferSettings {
     this.lifetime = const Duration(seconds: defaultLifetimeSeconds),
     this.sort = OfferSort.cheapest,
     this.reofferAfterDecline = true,
+    this.alertSoundSeconds = defaultAlertSoundSeconds,
   });
 
-  static const defaultShown = 5, defaultLifetimeSeconds = 15;
+  static const defaultShown = 5, defaultLifetimeSeconds = 15, defaultAlertSoundSeconds = 20;
   static const minShown = 1, maxShown = 10, minLifetime = 5, maxLifetime = 120;
+
+  /// How long the partner's incoming-request alert sound may ring, in
+  /// seconds. 0 turns it off. The ring is always cut short when the request
+  /// is answered or its spotlight ends, so this only shortens it below the
+  /// spotlight window, never past it.
+  static const minAlertSound = 0, maxAlertSound = 120;
   static const standard = OfferSettings();
 
   /// Offers on screen at once; the rest wait in line.
@@ -47,6 +54,10 @@ class OfferSettings {
   /// A driver may offer again, once, after the rider declined them.
   final bool reofferAfterDecline;
 
+  /// Seconds the incoming-request alert sound rings on the partner's phone
+  /// (0 = off). Admin · Ride offers.
+  final int alertSoundSeconds;
+
   factory OfferSettings.fromJson(Object? json) {
     if (json is! Map) return standard;
     int n(Object? v, int fallback, int lo, int hi) => v is num ? v.round().clamp(lo, hi) : fallback;
@@ -55,6 +66,7 @@ class OfferSettings {
       lifetime: Duration(seconds: n(json['lifetimeSeconds'], defaultLifetimeSeconds, minLifetime, maxLifetime)),
       sort: OfferSort.parse(json['sort']),
       reofferAfterDecline: json['reofferAfterDecline'] != false,
+      alertSoundSeconds: n(json['alertSoundSeconds'], defaultAlertSoundSeconds, minAlertSound, maxAlertSound),
     );
   }
 
@@ -63,6 +75,7 @@ class OfferSettings {
     'lifetimeSeconds': lifetime.inSeconds,
     'sort': sort.name,
     'reofferAfterDecline': reofferAfterDecline,
+    'alertSoundSeconds': alertSoundSeconds,
   };
 
   @override
@@ -71,10 +84,11 @@ class OfferSettings {
       other.shown == shown &&
       other.lifetime == lifetime &&
       other.sort == sort &&
-      other.reofferAfterDecline == reofferAfterDecline;
+      other.reofferAfterDecline == reofferAfterDecline &&
+      other.alertSoundSeconds == alertSoundSeconds;
 
   @override
-  int get hashCode => Object.hash(shown, lifetime, sort, reofferAfterDecline);
+  int get hashCode => Object.hash(shown, lifetime, sort, reofferAfterDecline, alertSoundSeconds);
 }
 
 /// Where an offer stands (`ride_offers.status`).
