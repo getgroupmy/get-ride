@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../admin/screens/meterapp/pick_image.dart' show pickDocumentImage;
+import '../../core/document_ai.dart';
+import '../../core/secure_screen.dart';
 import '../../data/approver_inbox_repository.dart';
+import '../../data/document_ai_repository.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/date_boxes.dart';
@@ -36,7 +39,11 @@ class ApproverInboxScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final value = ref.watch(approverPendingProvider);
-    return Scaffold(
+    // Other people's ID and licence images: keep them out of screenshots and
+    // screen recordings while they are on screen (Android fully; iOS hides
+    // during recording — a screenshot can't be blocked there).
+    return SecureScreen(
+      child: Scaffold(
       appBar: AppBar(title: const Text('Approvals')),
       body: OfflineStrip.over(AsyncView<List<ApproverDoc>>(
         value: value,
@@ -76,6 +83,7 @@ class ApproverInboxScreen extends ConsumerWidget {
                 ),
               ),
       )),
+    ),
     );
   }
 
@@ -161,6 +169,81 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
     );
   }
 
+  /// Re-scan the document to re-read the captured fields: capture or pick a
+  /// photo, run the same AI reader the upload form uses, and fill in what it
+  /// reads (overwriting, since a rescan is a correction). The approver still
+  /// checks the values before saving.
+  Future<void> _rescan() async {
+    final picked = await pickDocumentImage(context);
+    if (picked == null || !mounted) return;
+    final doc = widget.doc;
+    setState(() => _busy = true);
+    try {
+      final repo = ref.read(documentAiRepositoryProvider);
+      final url = await repo.prepare(picked.bytes, picked.name);
+      final outcome = url == null
+          ? (result: null, reason: 'image_too_large')
+          : await repo.verify(docAiRequestBody(
+              frontDataUrl: url,
+              docName: doc.docLabel,
+              documentNumber: doc.requiresNumber ? _number.text : null,
+              startDate: doc.requiresStart ? _start.text : null,
+              expiryDate: doc.requiresExpiry ? _expiry.text : null,
+            ));
+      if (!mounted) return;
+      final r = outcome.result;
+      if (r == null) {
+        setState(() => _busy = false);
+        unawaited(showAppNotice(
+          id: 'notice.approver',
+          context: context,
+          message: docAiUnavailableText(outcome.reason),
+          kind: NoticeKind.error,
+        ));
+        return;
+      }
+      final fill = docAiAutofill(
+        r,
+        requireDocumentNumber: doc.requiresNumber,
+        requireStartDate: doc.requiresStart,
+        requireExpiryDate: doc.requiresExpiry,
+        requireInsuranceProvider: false,
+        pwdFlag: false,
+        // Empty "current" values so the scan fills every required field,
+        // replacing whatever was captured before (this is a correction).
+        documentNumber: '',
+        startDate: '',
+        expiryDate: '',
+        insurerId: null,
+        isPwd: false,
+        insurers: const [],
+      );
+      setState(() {
+        _busy = false;
+        if (fill.documentNumber != null) _number.text = fill.documentNumber!;
+        if (fill.startDate != null) _start.text = fill.startDate!;
+        if (fill.expiryDate != null) _expiry.text = fill.expiryDate!;
+      });
+      unawaited(showAppNotice(
+        id: 'notice.approver',
+        context: context,
+        message: fill.filled.isEmpty
+            ? "The document was read but nothing matched. Check the fields and type them if needed."
+            : 'Read from the document. Check the fields before saving.',
+        kind: fill.filled.isEmpty ? NoticeKind.info : NoticeKind.success,
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      unawaited(showAppNotice(
+        id: 'notice.approver',
+        context: context,
+        message: "Couldn't read the document. Type the details instead.",
+        kind: NoticeKind.error,
+      ));
+    }
+  }
+
   Future<void> _replace() async {
     final picked = await pickDocumentImage(context);
     if (picked == null || !mounted) return;
@@ -187,7 +270,8 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
       if ((doc.fileUrl ?? '').isNotEmpty) doc.fileUrl!,
       if ((doc.fileUrlBack ?? '').isNotEmpty) doc.fileUrlBack!,
     ];
-    return Dialog(
+    return SecureScreen(
+      child: Dialog(
       insetPadding: const EdgeInsets.all(16),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 560),
@@ -261,6 +345,7 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -424,6 +509,13 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            OutlinedButton.icon(
+              key: const ValueKey('approver-edit-rescan'),
+              onPressed: _busy ? null : _rescan,
+              icon: const Icon(Icons.document_scanner_outlined, size: 18),
+              label: const Text('Rescan to capture'),
+            ),
+            const SizedBox(height: 12),
             if (doc.requiresNumber) ...[
               TextField(
                 key: const ValueKey('approver-edit-number'),
