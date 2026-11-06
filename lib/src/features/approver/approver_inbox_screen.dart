@@ -94,46 +94,58 @@ class _DocumentViewer extends ConsumerStatefulWidget {
   ConsumerState<_DocumentViewer> createState() => _DocumentViewerState();
 }
 
+enum _ViewerMode { none, reject, delete }
+
 class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
   final _reason = TextEditingController();
+  final _deleteNote = TextEditingController();
   bool _busy = false;
-  bool _rejecting = false;
+  _ViewerMode _mode = _ViewerMode.none;
 
   @override
   void dispose() {
     _reason.dispose();
+    _deleteNote.dispose();
     super.dispose();
   }
 
-  Future<void> _review(String action, {String? note}) async {
+  Future<void> _run(Future<void> Function() action, String ok) async {
     setState(() => _busy = true);
     try {
-      await ref.read(approverInboxRepositoryProvider).review(widget.doc, action, note: note);
+      await action();
       ref.invalidate(approverPendingProvider);
       if (!mounted) return;
       Navigator.pop(context);
-      unawaited(showAppNotice(
-        id: 'notice.approver',
-        context: context,
-        message: action == 'approve' ? 'Approved.' : 'Rejected.',
-        kind: NoticeKind.success,
-      ));
+      unawaited(showAppNotice(id: 'notice.approver', context: context, message: ok, kind: NoticeKind.success));
     } catch (_) {
       if (!mounted) return;
       setState(() => _busy = false);
       unawaited(showAppNotice(
         id: 'notice.approver',
         context: context,
-        message: "Couldn't save your decision. Try again.",
+        message: "Couldn't save. Try again.",
         kind: NoticeKind.error,
       ));
     }
   }
 
+  Future<void> _review(String action, {String? note}) => _run(
+        () => ref.read(approverInboxRepositoryProvider).review(widget.doc, action, note: note),
+        action == 'approve' ? 'Approved.' : 'Rejected.',
+      );
+
+  Future<void> _delete(bool hard, {String? note}) => _run(
+        () => ref.read(approverInboxRepositoryProvider).remove(widget.doc, note: note),
+        hard ? 'Deleted.' : 'Sent back for re-upload.',
+      );
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final canApprove = ref.watch(approverSelfProvider).value?.canApprove ?? false;
+    final grant = ref.watch(approverSelfProvider).value;
+    final canApprove = grant?.canApprove ?? false;
+    final canDelete = grant?.canDelete ?? false;
+    final deleteHard = grant?.deleteHard ?? false;
     final doc = widget.doc;
     final urls = [
       if ((doc.fileUrl ?? '').isNotEmpty) doc.fileUrl!,
@@ -208,25 +220,31 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
                       ],
                     ),
             ),
-            _actions(context, canApprove, cs),
+            _actions(context, canApprove, canDelete, deleteHard, cs),
           ],
         ),
       ),
     );
   }
 
-  Widget _actions(BuildContext context, bool canApprove, ColorScheme cs) {
-    if (!canApprove) {
+  Widget _spinnerOr(String label) => _busy
+      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+      : Text(label);
+
+  Widget _actions(BuildContext context, bool canApprove, bool canDelete, bool deleteHard, ColorScheme cs) {
+    final pad = const EdgeInsets.fromLTRB(20, 8, 20, 16);
+    if (!canApprove && !canDelete) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-        child: Text('You can view these documents; your admin has not granted approve or reject.',
+        child: Text('You can view these documents; your admin has not granted a review action.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
       );
     }
-    if (_rejecting) {
+
+    if (_mode == _ViewerMode.reject) {
       final reason = _reason.text.trim();
       return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+        padding: pad,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -247,18 +265,13 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
             const SizedBox(height: 10),
             Row(
               children: [
-                TextButton(
-                  onPressed: _busy ? null : () => setState(() => _rejecting = false),
-                  child: const Text('Back'),
-                ),
+                TextButton(onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.none), child: const Text('Back')),
                 const Spacer(),
                 FilledButton(
                   key: const ValueKey('approver-reject-confirm'),
                   style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError),
                   onPressed: (_busy || reason.isEmpty) ? null : () => _review('reject', note: reason),
-                  child: _busy
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Reject'),
+                  child: _spinnerOr('Reject'),
                 ),
               ],
             ),
@@ -266,23 +279,85 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
         ),
       );
     }
+
+    if (_mode == _ViewerMode.delete) {
+      final note = _deleteNote.text.trim();
+      return Padding(
+        padding: pad,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              deleteHard
+                  ? 'Permanently delete this document? This cannot be undone.'
+                  : 'Remove this upload and ask the owner to send a new one?',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              key: const ValueKey('approver-delete-note'),
+              controller: _deleteNote,
+              enabled: !_busy,
+              minLines: 1,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: deleteHard ? 'Note (optional)' : 'Reason for the owner (optional)',
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                TextButton(onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.none), child: const Text('Back')),
+                const Spacer(),
+                FilledButton(
+                  key: const ValueKey('approver-delete-confirm'),
+                  style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError),
+                  onPressed: _busy ? null : () => _delete(deleteHard, note: note.isEmpty ? null : note),
+                  child: _spinnerOr(deleteHard ? 'Delete' : 'Send back'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-      child: Row(
+      padding: pad,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          OutlinedButton(
-            key: const ValueKey('approver-reject'),
-            style: OutlinedButton.styleFrom(foregroundColor: cs.error, side: BorderSide(color: cs.error)),
-            onPressed: _busy ? null : () => setState(() => _rejecting = true),
-            child: const Text('Reject'),
-          ),
-          const Spacer(),
-          FilledButton(
-            key: const ValueKey('approver-approve'),
-            onPressed: _busy ? null : () => _review('approve'),
-            child: _busy
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Approve'),
+          if (canApprove)
+            FilledButton(
+              key: const ValueKey('approver-approve'),
+              onPressed: _busy ? null : () => _review('approve'),
+              child: _spinnerOr('Approve'),
+            ),
+          if (canApprove) const SizedBox(height: 8),
+          Row(
+            children: [
+              if (canApprove)
+                Expanded(
+                  child: OutlinedButton(
+                    key: const ValueKey('approver-reject'),
+                    style: OutlinedButton.styleFrom(foregroundColor: cs.error, side: BorderSide(color: cs.error)),
+                    onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.reject),
+                    child: const Text('Reject'),
+                  ),
+                ),
+              if (canApprove && canDelete) const SizedBox(width: 10),
+              if (canDelete)
+                Expanded(
+                  child: OutlinedButton.icon(
+                    key: const ValueKey('approver-delete'),
+                    style: OutlinedButton.styleFrom(foregroundColor: cs.error, side: BorderSide(color: cs.error)),
+                    onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.delete),
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: Text(deleteHard ? 'Delete' : 'Send back'),
+                  ),
+                ),
+            ],
           ),
         ],
       ),

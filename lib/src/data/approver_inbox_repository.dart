@@ -101,6 +101,17 @@ class ApproverInboxRepository {
       'p_note': note,
     });
   }
+
+  /// Delete [doc]: a soft "send back for re-upload", or a permanent removal
+  /// when the grant is delete_hard. The server decides soft vs hard and
+  /// re-checks the scope and permission before writing.
+  Future<void> remove(ApproverDoc doc, {String? note}) async {
+    await _db.rpc('approver_delete_document', params: {
+      'p_source': doc.source,
+      'p_id': doc.id,
+      'p_note': note,
+    });
+  }
 }
 
 final approverInboxRepositoryProvider = Provider((ref) => ApproverInboxRepository(ref.watch(supabaseProvider)));
