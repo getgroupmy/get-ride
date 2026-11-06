@@ -130,6 +130,7 @@ void main() {
     test('missing keys are off', () {
       final s = PartnerServiceSettings.fromValues(const {'name': 'Dealer'});
       expect(s.citizensOnly.required, isFalse);
+      expect(s.liveSelfie.required, isFalse);
       expect(s.businessRegistration.required, isFalse);
       expect(s.driverPermit.required, isFalse);
       expect(s.vehiclePermit.required, isFalse);
@@ -149,6 +150,21 @@ void main() {
       });
       expect(fromStrings.citizensOnly.required, isTrue);
       expect(fromStrings.vehiclePermitAlsoFor, ['Teksi'], reason: 'deduplicated by name key, blanks dropped');
+
+      final live = PartnerServiceSettings.fromValues({
+        'liveSelfie': {
+          'required': true,
+          'all': false,
+          'regions': [
+            {'country': 'Malaysia'},
+          ],
+        },
+      });
+      expect(live.liveSelfie.required, isTrue);
+      expect(live.liveSelfie.where.regions.single.country, 'Malaysia');
+      expect(PartnerServiceSettings.fromValues(live.toValues()).toValues(), live.toValues(),
+          reason: 'liveSelfie round-trips');
+      expect(PartnerServiceSettings.keys, contains('liveSelfie'));
     });
 
     test('problems', () {
@@ -159,6 +175,15 @@ void main() {
       expect(
         p(none.copyWith(citizensOnly: const RegionRequirement(required: true, where: RegionList(all: false)))),
         contains('only citizens'),
+      );
+      expect(
+        p(none.copyWith(liveSelfie: const RegionRequirement(required: true, where: RegionList(all: false)))),
+        contains('live selfie'),
+      );
+      expect(
+        p(none.copyWith(liveSelfie: const RegionRequirement(required: true, where: RegionList(all: true)))),
+        isNull,
+        reason: 'all regions is valid',
       );
       expect(
         p(none.copyWith(businessRegistration: const RegionRequirement(required: true, where: RegionList(all: false)))),

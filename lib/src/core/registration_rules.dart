@@ -25,17 +25,25 @@ import 'partner_type_rules.dart';
 
 /// The codes a Submit is refused with, one per rule.
 const citizensOnlyCode = 'CITIZENS_ONLY';
+const liveSelfieCode = 'LIVE_SELFIE_REQUIRED';
 const businessRegistrationCode = 'BUSINESS_REGISTRATION_REQUIRED';
 const driverPermitCode = 'DRIVER_PERMIT_REQUIRED';
 
 /// An approval refused while rules fail.
 const partnerRulesNotMetCode = 'PARTNER_RULES_NOT_MET';
 
-const registrationRuleCodes = {citizensOnlyCode, businessRegistrationCode, driverPermitCode, partnerRulesNotMetCode};
+const registrationRuleCodes = {
+  citizensOnlyCode,
+  liveSelfieCode,
+  businessRegistrationCode,
+  driverPermitCode,
+  partnerRulesNotMetCode,
+};
 
 /// The rules, by the server's key.
 enum RegRule {
   citizensOnly('citizens_only', 'Citizens only'),
+  liveSelfie('live_selfie', 'Live selfie'),
   businessRegistration('business_registration', 'Business registration'),
   driverPermit('driver_permit', 'Driver permit'),
   vehiclePermit('vehicle_permit', 'Vehicle permit'),
@@ -49,6 +57,7 @@ enum RegRule {
 
   static RegRule? ofCode(String code) => switch (code) {
         citizensOnlyCode => citizensOnly,
+        liveSelfieCode => liveSelfie,
         businessRegistrationCode => businessRegistration,
         driverPermitCode => driverPermit,
         _ => null,
@@ -190,6 +199,16 @@ SubmitRefusal submitRefusal(RuleProblem p, {IdDocType? idType, String idNumber =
         step: OnboardingStep.partnerType,
         rule: p.rule,
       );
+    case RegRule.liveSelfie:
+      return (
+        title: 'Retake your selfie',
+        body: '$type in $place needs a selfie taken with the live check (blink or turn). '
+            'Retake your profile photo, then submit again.',
+        note: 'Sent back by the server, so it applies to every app version. Your answers are kept.',
+        action: 'Retake selfie',
+        step: OnboardingStep.avatar,
+        rule: p.rule,
+      );
     case RegRule.businessRegistration:
       final missing = p.missing.isEmpty ? const ['company number', 'registration document'] : p.missing;
       return (
@@ -279,6 +298,21 @@ List<ChecklistRow> submitChecklist({
       detail: '${only.join(', ')}: ${[idType?.label ?? 'ID', if (ic.isNotEmpty) ic].join(' ')}',
       state: CheckState.done,
       step: null,
+    ));
+  }
+
+  // Live selfie (0346).
+  final live = liveSelfieTypes(types, entries, area);
+  if (live.isEmpty) {
+    rows.add((name: 'Live selfie', detail: 'Not needed for these types', state: CheckState.notNeeded, step: null));
+  } else if (_s(partner['selfie_liveness']) == 'passed') {
+    rows.add((name: 'Live selfie', detail: '${live.join(', ')}: taken with the live check', state: CheckState.done, step: null));
+  } else {
+    rows.add((
+      name: 'Live selfie',
+      detail: '${live.join(', ')}: retake your selfie with the live check',
+      state: CheckState.needed,
+      step: OnboardingStep.avatar,
     ));
   }
 

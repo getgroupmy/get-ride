@@ -65,6 +65,23 @@ class PartnerServiceSettingsEditor extends StatelessWidget {
           onChanged: (l) => onChanged(_s.copyWith(citizensOnly: _s.citizensOnly.copyWith(where: l))),
         ),
       SwitchListTile(
+        key: const ValueKey('pst-live-selfie-required'),
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Live selfie'),
+        subtitle: const Text('The registration selfie must be taken with the live check (blink or turn) in these '
+            'regions. A selfie taken without it (uploaded, or from an old app) is refused until it is retaken — '
+            'before this it was only flagged for a closer look.'),
+        value: _s.liveSelfie.required,
+        onChanged: (v) => onChanged(_s.copyWith(liveSelfie: _s.liveSelfie.copyWith(required: v))),
+      ),
+      if (_s.liveSelfie.required)
+        RegionListEditor(
+          keyPrefix: 'live-selfie',
+          value: _s.liveSelfie.where,
+          title: 'Live selfie required in',
+          onChanged: (l) => onChanged(_s.copyWith(liveSelfie: _s.liveSelfie.copyWith(where: l))),
+        ),
+      SwitchListTile(
         key: const ValueKey('pst-business-required'),
         contentPadding: EdgeInsets.zero,
         title: const Text('Business registration'),
