@@ -11,10 +11,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 
+import 'dart:io';
+
 import '../config.dart';
 import '../core/backend_route.dart';
 import '../core/icon_pack.dart';
 import '../core/media_assets.dart';
+import '../data/media_cache.dart';
 import '../data/media_repository.dart';
 import 'net_image.dart';
 
@@ -140,10 +143,21 @@ class MediaIcon extends ConsumerWidget {
     if (a == null || path == null) return plain();
     final ink = color ?? IconTheme.of(context).color ?? Theme.of(context).colorScheme.onSurface;
     if (a.isSvg) {
+      // SVGs are small and are never disk-cached (SvgPicture.file doesn't
+      // compile for web); they load from the network.
       final svg = svgNetwork(mediaUrlOf(path), width: side, height: side, tint: a.tint ? ink : null, fallback: plain());
       return Semantics(label: semanticLabel, image: true, child: SizedBox.square(dimension: side, child: svg));
     }
-    Widget image = NetImage(mediaUrlOf(path), width: side, height: side, fit: BoxFit.contain, radius: 4, fallback: plain());
+    // A cached copy on disk paints without the network; null on web and until
+    // the sync has it, where it falls back to the public URL.
+    ref.watch(mediaCacheProvider); // rebuild when a file is cached
+    final File? cached = ref.read(mediaCacheProvider.notifier).fileForPath(path);
+    Widget image = cached != null
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Image.file(cached, width: side, height: side, fit: BoxFit.contain, errorBuilder: (_, _, _) => plain()),
+          )
+        : NetImage(mediaUrlOf(path), width: side, height: side, fit: BoxFit.contain, radius: 4, fallback: plain());
     if (a.tint) {
       image = ColorFiltered(colorFilter: ColorFilter.mode(ink, BlendMode.srcIn), child: image);
     }
@@ -221,8 +235,16 @@ class MediaImage extends ConsumerWidget {
         return none;
       }
       if (a.isSvg) {
+        // SVGs are never disk-cached (SvgPicture.file doesn't compile for web).
         _settled();
         return svgNetwork(mediaUrlOf(path), width: width, height: height, fit: fit, alignment: alignment, fallback: none);
+      }
+      ref.watch(mediaCacheProvider); // rebuild when a file is cached
+      final File? cached = ref.read(mediaCacheProvider.notifier).fileForPath(path);
+      if (cached != null) {
+        _settled();
+        return Image.file(cached, width: width, height: height, fit: fit, alignment: alignment,
+            errorBuilder: (_, _, _) => none);
       }
       return _network(mediaUrlOf(path), none);
     }
