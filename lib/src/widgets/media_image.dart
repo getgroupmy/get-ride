@@ -142,23 +142,16 @@ class MediaIcon extends ConsumerWidget {
     final path = a?.pathFor(dark: Theme.of(context).brightness == Brightness.dark);
     if (a == null || path == null) return plain();
     final ink = color ?? IconTheme.of(context).color ?? Theme.of(context).colorScheme.onSurface;
+    if (a.isSvg) {
+      // SVGs are small and are never disk-cached (SvgPicture.file doesn't
+      // compile for web); they load from the network.
+      final svg = svgNetwork(mediaUrlOf(path), width: side, height: side, tint: a.tint ? ink : null, fallback: plain());
+      return Semantics(label: semanticLabel, image: true, child: SizedBox.square(dimension: side, child: svg));
+    }
     // A cached copy on disk paints without the network; null on web and until
     // the sync has it, where it falls back to the public URL.
     ref.watch(mediaCacheProvider); // rebuild when a file is cached
     final File? cached = ref.read(mediaCacheProvider.notifier).fileForPath(path);
-    if (a.isSvg) {
-      final tint = a.tint ? ink : null;
-      final svg = cached != null
-          ? SvgPicture.file(
-              cached,
-              width: side,
-              height: side,
-              colorFilter: tint == null ? null : ColorFilter.mode(tint, BlendMode.srcIn),
-              placeholderBuilder: (_) => plain(),
-            )
-          : svgNetwork(mediaUrlOf(path), width: side, height: side, tint: tint, fallback: plain());
-      return Semantics(label: semanticLabel, image: true, child: SizedBox.square(dimension: side, child: svg));
-    }
     Widget image = cached != null
         ? ClipRRect(
             borderRadius: BorderRadius.circular(4),
@@ -241,15 +234,13 @@ class MediaImage extends ConsumerWidget {
         _settled();
         return none;
       }
+      if (a.isSvg) {
+        // SVGs are never disk-cached (SvgPicture.file doesn't compile for web).
+        _settled();
+        return svgNetwork(mediaUrlOf(path), width: width, height: height, fit: fit, alignment: alignment, fallback: none);
+      }
       ref.watch(mediaCacheProvider); // rebuild when a file is cached
       final File? cached = ref.read(mediaCacheProvider.notifier).fileForPath(path);
-      if (a.isSvg) {
-        _settled();
-        return cached != null
-            ? SvgPicture.file(cached, width: width, height: height, fit: fit, alignment: alignment,
-                placeholderBuilder: (_) => none)
-            : svgNetwork(mediaUrlOf(path), width: width, height: height, fit: fit, alignment: alignment, fallback: none);
-      }
       if (cached != null) {
         _settled();
         return Image.file(cached, width: width, height: height, fit: fit, alignment: alignment,

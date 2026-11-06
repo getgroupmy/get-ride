@@ -62,6 +62,9 @@ String mediaCacheUrlOf(String path) => onActiveBackend(
 Map<String, String> mediaCacheWanted(List<MediaAsset> assets) {
   final wanted = <String, String>{};
   for (final a in assets) {
+    // SVGs render from the network (SvgPicture.file doesn't compile for web),
+    // so there is nothing to cache for them.
+    if (a.isSvg) continue;
     final fp = '${a.mime}|${a.bytes ?? 0}|${a.angles.length}';
     for (final path in a.files) {
       wanted[path] = fp;
