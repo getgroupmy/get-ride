@@ -524,6 +524,7 @@ class _VehicleOnboardingScreenState extends ConsumerState<VehicleOnboardingScree
         vehicleTypeIds: _vehicleTypeIds,
         partnerTypes: parseStringList(_ctx?.partner['partner_types']),
         area: ServiceArea.fromRow(_ctx?.partner),
+        vehicleYear: int.tryParse(RegExp(r'\d{4}').firstMatch('${_v?['year'] ?? ''}')?.group(0) ?? ''),
       );
 
   // ---- Layout ----------------------------------------------------------------

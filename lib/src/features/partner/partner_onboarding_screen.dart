@@ -438,6 +438,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         vehicleTypeIds: _vehicleTypeIds,
         partnerTypes: parseStringList(s.partner['partner_types']),
         area: ServiceArea.fromRow(s.partner),
+        vehicleYear: int.tryParse(RegExp(r'\d{4}').firstMatch('${_vehicle?['year'] ?? ''}')?.group(0) ?? ''),
       );
 
   // ---- Layout ----------------------------------------------------------------

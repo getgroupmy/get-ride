@@ -207,16 +207,45 @@ Set<String> vehicleDocTypeIds(Iterable<({String id, Map<String, dynamic> values}
 bool isVehicleDocument(Map<String, dynamic> values, Set<String> vehicleTypeIds) =>
     vehicleTypeIds.isNotEmpty && parseStringList(values['docTypes']).any(vehicleTypeIds.contains);
 
+/// The admin's "request only for vehicles this old or older" setting
+/// (`vehicleAgeMin`): a whole number of years, or null for "all ages". Values
+/// of zero or less, and anything unparseable, mean "all ages".
+int? vehicleDocMinAge(Map<String, dynamic> values) {
+  final raw = values['vehicleAgeMin'];
+  final n = raw is num ? raw.toInt() : int.tryParse('${raw ?? ''}'.trim());
+  return (n == null || n <= 0) ? null : n;
+}
+
+/// Whether a vehicle document applies to a car of [vehicleYear] (its year of
+/// manufacture). A document with no age floor ("all ages") always applies.
+/// With a floor of N, it applies once the car is N years old or older, where
+/// age is `currentYear - vehicleYear` (the definition used across the app, see
+/// [vehicleAgeProblem]). When the year is unknown it still applies, so a
+/// compliance document is never quietly dropped because a year was left blank.
+bool vehicleAgeDocApplies(Map<String, dynamic> values, int? vehicleYear, {DateTime? now}) {
+  final min = vehicleDocMinAge(values);
+  if (min == null) return true;
+  if (vehicleYear == null) return true;
+  final age = (now ?? DateTime.now()).year - vehicleYear;
+  return age >= min;
+}
+
 /// The documents a vehicle needs: required documents tagged Vehicle, for the
-/// partner's types and service area.
+/// partner's types and service area. [vehicleYear] (year of manufacture)
+/// drops documents whose age floor the car has not reached; null keeps every
+/// document (the car's age is not yet known).
 List<RequiredDoc> vehicleRequiredDocs({
   required Iterable<({String id, Map<String, dynamic> values})> requiredDocuments,
   required Set<String> vehicleTypeIds,
   required List<String> partnerTypes,
   required ServiceArea area,
+  int? vehicleYear,
+  DateTime? now,
 }) =>
     resolveRequiredDocs(
-      requiredDocuments.where((e) => isVehicleDocument(e.values, vehicleTypeIds)),
+      requiredDocuments.where(
+        (e) => isVehicleDocument(e.values, vehicleTypeIds) && vehicleAgeDocApplies(e.values, vehicleYear, now: now),
+      ),
       partnerTypeNames: partnerTypes,
       countries: area.countries,
       states: area.statePairs(),

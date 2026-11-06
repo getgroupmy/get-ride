@@ -486,6 +486,19 @@ void main() {
       expect(r.values['isTaxiPermit'], isTrue);
     });
 
+    test('vehicle-age floor round-trips; zero / junk clear it', () {
+      expect(RequiredDocForm.fromValues({'name': 'Inspection', 'vehicleAgeMin': 10}).vehicleAgeMin, 10);
+      expect(RequiredDocForm.fromValues({'name': 'Inspection', 'vehicleAgeMin': '5'}).vehicleAgeMin, 5);
+      expect(RequiredDocForm.fromValues({'name': 'Inspection', 'vehicleAgeMin': 0}).vehicleAgeMin, isNull);
+      expect(RequiredDocForm.fromValues({'name': 'Inspection'}).vehicleAgeMin, isNull);
+
+      final all = [e('1', {'name': 'Inspection'})];
+      final limited = RequiredDocForm(name: 'Old-car inspection', vehicleAgeMin: 10);
+      expect(buildRequiredDocValues(entries: all, form: limited).values['vehicleAgeMin'], 10);
+      final allAges = RequiredDocForm(name: 'Any-age inspection');
+      expect(buildRequiredDocValues(entries: all, form: allAges).values['vehicleAgeMin'], isNull);
+    });
+
     test('Partner Service type names and doc type labels', () {
       expect(
         enabledPartnerTypeNames([
