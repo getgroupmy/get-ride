@@ -61,9 +61,11 @@ create or replace function pg_temp.check(p_ok boolean, p_what text) returns void
 begin if not coalesce(p_ok, false) then raise exception 'FAILED: %', p_what; end if; end $$;
 create or replace function pg_temp.as_user(p uuid) returns void language plpgsql as $$
 begin perform set_config('request.jwt.claims', json_build_object('sub', p, 'role', 'authenticated')::text, true); end $$;
--- Grant / reconfigure the approver directly (admin_set_approver is tested in 0349).
+-- Grant / reconfigure the approver directly (admin_set_approver is tested in
+-- 0349). SECURITY DEFINER so the fixture writes as the privileged test role —
+-- authenticated has only SELECT on approvers (0349).
 create or replace function pg_temp.grant_approver(p_scope text, p_conflict boolean, p_own boolean, p_regions jsonb, p_doc_types text[])
-returns void language plpgsql as $$
+returns void language plpgsql security definer as $$
 begin
   insert into public.approvers (profile_id, scope, conflict_guard, use_own_region, regions, doc_types)
   values ('00000000-0000-0000-0000-0000000350a1', p_scope, p_conflict, p_own, p_regions, p_doc_types)
