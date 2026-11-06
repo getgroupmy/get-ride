@@ -18,6 +18,7 @@ import '../../../widgets/storage_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/date_boxes.dart';
 import '../../../core/signin_checks.dart' show RejectChoice;
+import '../../../core/id_review_compare.dart';
 import '../../../data/identity_repository.dart';
 import '../../widgets/reject_reason.dart';
 import '../dispatch/dispatch_roles_card.dart';
@@ -415,6 +416,12 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
   final _notes = TextEditingController();
   bool _busy = false;
 
+  /// The fields Vision read from the ID image (Read from ID), and the
+  /// reviewer's per-field choice; null until they read it.
+  Map<String, dynamic>? _idRead;
+  final Map<String, IdSource> _choice = {};
+  bool _reading = false;
+
   @override
   void dispose() {
     _notes.dispose();
@@ -449,11 +456,20 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
       if (choice == null || !mounted) return;
     }
     setState(() => _busy = true);
+    final rc = choice;
     final ok = await runAdminAction(
       context,
-      () => ref
-          .read(identityRepositoryProvider)
-          .reviewProfileId(_id, verified: decision == 'Verified', reason: choice?.reason, note: choice?.note),
+      () async {
+        // Write the fields the reviewer chose from the ID image first, then
+        // verify (there is no admin UPDATE policy, so this goes through the RPC).
+        if (decision == 'Verified' && _idRead != null) {
+          final fields = idReviewChosen(idReviewRows(profile: _row, read: _idRead!), _choice);
+          if (fields.isNotEmpty) await ref.read(identityRepositoryProvider).setProfileIdFields(_id, fields);
+        }
+        await ref
+            .read(identityRepositoryProvider)
+            .reviewProfileId(_id, verified: decision == 'Verified', reason: rc?.reason, note: rc?.note);
+      },
       success: decision == 'Verified' ? 'ID verified' : 'ID rejected',
     );
     if (!mounted) return;
@@ -461,6 +477,25 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
     if (ok) {
       widget.onChanged();
       Navigator.pop(context);
+    }
+  }
+
+  /// Reads the ID image with Vision (admin), so the reviewer can compare the
+  /// read fields with what the user keyed and keep either, per field.
+  Future<void> _readId() async {
+    setState(() => _reading = true);
+    Map<String, dynamic>? read;
+    await runAdminAction(context, () async {
+      read = await ref.read(identityRepositoryProvider).readProfileIdImage(_id);
+    });
+    if (!mounted) return;
+    setState(() {
+      _reading = false;
+      _idRead = read;
+      _choice.clear();
+    });
+    if (read == null && mounted) {
+      showInfo(context, "Couldn't read the ID image — check the Cloud Vision key and that the photo is sharp.");
     }
   }
 
@@ -572,10 +607,28 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         'Phone': _row['phone'] ?? '—',
         'Email': _row['email'] ?? '—',
         'IC': _row['ic'] ?? '—',
+        'Date of birth': formatStoredDateForUser(_row['birth_date']),
+        'Gender': _genderText(_row['gender']) ?? '—',
         'Nationality': _row['nationality'] ?? '—',
+        'Address': _row['address'] ?? '—',
         'ID Expiry': formatStoredDateForUser(_row['id_expiry_date']),
         'Documents OK': _row['documents_ok'] == true ? 'Yes' : 'No',
       }),
+      if (img != null && canEdit) ...[
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: BusyButton.text(
+            onPressed: (_busy || _reading) ? null : _readId,
+            icon: _reading
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.document_scanner_outlined),
+            child: Text(_reading ? 'Reading…' : (_idRead == null ? 'Read from ID image' : 'Read again')),
+          ),
+        ),
+        if (_idRead != null) _IdCompareTable(rows: idReviewRows(profile: _row, read: _idRead!), choice: _choice,
+            genderText: _genderText, onChanged: () => setState(() {})),
+      ],
       if (canEdit) ...[
         Align(
           alignment: Alignment.centerLeft,
@@ -609,5 +662,93 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         ]),
       ],
     ]);
+  }
+}
+
+/// 'male' / 'female' / 'other' → 'Male' / 'Female' / 'Other'; null otherwise.
+String? _genderText(Object? g) => switch ('${g ?? ''}'.trim().toLowerCase()) {
+  'male' => 'Male',
+  'female' => 'Female',
+  'other' => 'Other',
+  _ => null,
+};
+
+/// Each ID field keyed beside what Vision read, with a Keep-keyed / Use-ID
+/// choice where they differ (migration 0345).
+class _IdCompareTable extends StatelessWidget {
+  const _IdCompareTable({required this.rows, required this.choice, required this.genderText, required this.onChanged});
+  final List<IdFieldRow> rows;
+  final Map<String, IdSource> choice;
+  final String? Function(Object?) genderText;
+  final VoidCallback onChanged;
+
+  String _disp(String key, String? v) {
+    if (v == null || v.trim().isEmpty) return '—';
+    if (key == 'birth_date') return formatStoredDateForUser(v);
+    if (key == 'gender') return genderText(v) ?? v;
+    return v;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final muted = mutedTextColor(t);
+    return Card(
+      margin: const EdgeInsets.only(top: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Read from ID — keep the keyed value or the one on the ID, per field',
+              style: t.textTheme.bodySmall?.copyWith(color: muted)),
+          const SizedBox(height: 8),
+          for (final r in rows) ...[
+            if (r != rows.first) const Divider(height: 16),
+            Text(r.label, style: t.textTheme.labelLarge),
+            const SizedBox(height: 4),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('Keyed', style: t.textTheme.labelSmall?.copyWith(color: muted)),
+                  Text(_disp(r.key, r.keyed)),
+                ]),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('From ID', style: t.textTheme.labelSmall?.copyWith(color: muted)),
+                  Text(
+                    r.hasRead ? _disp(r.key, r.read) : 'not read',
+                    style: TextStyle(
+                      color: r.hasRead ? (r.differs ? t.colorScheme.primary : null) : muted,
+                      fontWeight: r.differs ? FontWeight.w700 : null,
+                    ),
+                  ),
+                ]),
+              ),
+            ]),
+            if (r.hasRead && r.differs) ...[
+              const SizedBox(height: 6),
+              SegmentedButton<IdSource>(
+                showSelectedIcon: false,
+                style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                segments: const [
+                  ButtonSegment(value: IdSource.keyed, label: Text('Keep keyed')),
+                  ButtonSegment(value: IdSource.fromId, label: Text('Use ID')),
+                ],
+                selected: {choice[r.key] ?? r.defaultChoice},
+                onSelectionChanged: (s) {
+                  choice[r.key] = s.first;
+                  onChanged();
+                },
+              ),
+            ] else if (r.hasRead)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('Matches', style: t.textTheme.labelSmall?.copyWith(color: muted)),
+              ),
+          ],
+        ]),
+      ),
+    );
   }
 }

@@ -23,6 +23,11 @@
 // SSM document, Kad Pemandu, vehicle grant) for the app to read, at most 30
 // a day, unless ID card reading is "On the phone only".
 //
+// Admin ID review (0345): POST { profile_id } with an admin session reads
+// that profile's ID image with Vision and returns the full field set
+// { state, name?, ic?, birth?, gender?, nationality?, address?, expiry? } so
+// the reviewer can compare it with the keyed values. Writes nothing.
+//
 // The office NAS (0320): with the NAS before Google Vision in Admin's ID card
 // reading order, the person's own read answers { state: "not_read",
 // reason: "nas" } while the NAS has the ID; what the NAS can't read the
@@ -33,12 +38,17 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { callerCanEditHere } from "../_shared/admin_page.ts";
+import { storageObject } from "../_shared/face_compare.ts";
 import {
   DOCUMENT_PAGES,
   handleIdRead,
   handleRegistrationRead,
   type IdCheckRow,
   isRegistrationRead,
+  MAX_IMAGE_BYTES,
+  readIdFull,
+  readVision,
+  visionKey,
   visionRequest,
 } from "../_shared/id_read.ts";
 
@@ -85,11 +95,66 @@ async function annotate(key: string, image: Uint8Array) {
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
+// Admin → People → User ID Documents: read a profile's ID image with Vision
+// so the reviewer can compare the read fields with what the user keyed and
+// pick per field which to keep. Admin-only; reads nothing but the image, and
+// writes nothing (no check row, no profile change).
+async function profileIdImage(profileId: string): Promise<string | null> {
+  const { data, error } = await db.from("profiles").select("id_image").eq("id", profileId).maybeSingle();
+  if (error) throw error;
+  const v = data?.id_image;
+  return typeof v === "string" && v.length > 0 ? v : null;
+}
+
+async function handleProfileRead(
+  profileId: string,
+  authorization: string | null,
+): Promise<{ body: Record<string, unknown>; status: number }> {
+  if (!/^[0-9a-f-]{36}$/i.test(profileId)) return { body: { error: "bad_request" }, status: 400 };
+  const allowed = await callerCanEditHere(authorization, DOCUMENT_PAGES);
+  if (allowed === null) return { body: { error: "not_signed_in" }, status: 401 };
+  if (!allowed) return { body: { error: "not_authorized" }, status: 403 };
+
+  const url = await profileIdImage(profileId);
+  if (!url) return { body: { state: "not_read", reason: "no_image" }, status: 200 };
+  const key = visionKey(await setting("api_providers"));
+  if (!key) return { body: { state: "not_read", reason: "vision_off" }, status: 200 };
+  const where = url.length <= 1000 ? storageObject(url) : null;
+  const image = where ? await download(where.bucket, where.path) : null;
+  if (!image) return { body: { state: "not_read", reason: "no_image" }, status: 200 };
+  if (image.length > MAX_IMAGE_BYTES) return { body: { state: "not_read", reason: "too_big" }, status: 200 };
+
+  const ann = await annotate(key, image);
+  const v = readVision(ann.status, ann.body);
+  if ("error" in v) return { body: { state: "error", reason: v.error }, status: 200 };
+  if (!v.text.trim()) return { body: { state: "not_read", reason: "no_text" }, status: 200 };
+
+  const full = readIdFull(v.text);
+  return {
+    body: {
+      state: "read",
+      name: full.name,
+      ic: full.ic,
+      birth: full.birth,
+      gender: full.gender,
+      nationality: full.nationality,
+      address: full.address,
+      expiry: full.expiry,
+    },
+    status: 200,
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return reply({ error: "Method not allowed" }, 405);
 
   const input = await req.json().catch(() => null);
+  const profileId = (input as { profile_id?: unknown } | null)?.profile_id;
+  if (typeof profileId === "string") {
+    const r = await handleProfileRead(profileId, req.headers.get("Authorization"));
+    return reply(r.body, r.status);
+  }
   if (isRegistrationRead(input)) {
     const r = await handleRegistrationRead(input, req.headers.get("Authorization"), {
       caller: callerId,
