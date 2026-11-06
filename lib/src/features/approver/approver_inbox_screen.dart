@@ -8,6 +8,7 @@ import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/offline_strip.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/storage_image.dart';
 
 /// Side menu → Approvals: the documents waiting for review in this approver's
 /// scope (migrations 0349/0350). Tapping a row opens the uploaded image(s); an
@@ -199,7 +200,7 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: InteractiveViewer(
-                                child: Image.network(
+                                child: StorageImage(
                                   url,
                                   fit: BoxFit.contain,
                                   loadingBuilder: (c, child, progress) => progress == null
