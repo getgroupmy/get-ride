@@ -1,7 +1,12 @@
-// Approver (migrations 0349/0350): the app side — the caller's own grant
-// (approver_self) and their scoped, read-only pending-documents inbox
-// (approver_pending_documents). The server decides the scope and what is in
-// it; this only asks the RPCs. The admin side is in approvers_repository.dart.
+// Approver (migrations 0349/0350/0351/0353): the app side — the caller's own
+// grant (approver_self), their scoped pending-documents inbox
+// (approver_pending_documents), the approve/reject and delete actions, and the
+// replace-image upload (via the approver-upload edge function). The server
+// decides the scope and what is in it; this only asks. The admin side is in
+// approvers_repository.dart.
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -110,6 +115,18 @@ class ApproverInboxRepository {
       'p_source': doc.source,
       'p_id': doc.id,
       'p_note': note,
+    });
+  }
+
+  /// Replace [doc]'s image with [bytes] (via the approver-upload edge
+  /// function, which authorises and does the privileged storage write), then
+  /// the document reopens for review. Throws on a non-2xx response.
+  Future<void> replaceImage(ApproverDoc doc, {required Uint8List bytes, required String contentType}) async {
+    await _db.functions.invoke('approver-upload', body: {
+      'source': doc.source,
+      'id': doc.id,
+      'contentType': contentType,
+      'data': base64Encode(bytes),
     });
   }
 }

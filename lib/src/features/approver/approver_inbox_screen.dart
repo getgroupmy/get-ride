@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../admin/screens/meterapp/pick_image.dart' show pickDocumentImage;
 import '../../data/approver_inbox_repository.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
@@ -140,12 +141,26 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
         hard ? 'Deleted.' : 'Sent back for re-upload.',
       );
 
+  Future<void> _replace() async {
+    final picked = await pickDocumentImage(context);
+    if (picked == null || !mounted) return;
+    await _run(
+      () => ref.read(approverInboxRepositoryProvider).replaceImage(
+            widget.doc,
+            bytes: picked.bytes,
+            contentType: picked.contentType,
+          ),
+      'Image replaced.',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final grant = ref.watch(approverSelfProvider).value;
     final canApprove = grant?.canApprove ?? false;
     final canDelete = grant?.canDelete ?? false;
+    final canUpload = grant?.canUpload ?? false;
     final deleteHard = grant?.deleteHard ?? false;
     final doc = widget.doc;
     final urls = [
@@ -221,7 +236,7 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
                       ],
                     ),
             ),
-            _actions(context, canApprove, canDelete, deleteHard, cs),
+            _actions(context, canApprove, canDelete, canUpload, deleteHard, cs),
           ],
         ),
       ),
@@ -232,9 +247,9 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
       : Text(label);
 
-  Widget _actions(BuildContext context, bool canApprove, bool canDelete, bool deleteHard, ColorScheme cs) {
+  Widget _actions(BuildContext context, bool canApprove, bool canDelete, bool canUpload, bool deleteHard, ColorScheme cs) {
     final pad = const EdgeInsets.fromLTRB(20, 8, 20, 16);
-    if (!canApprove && !canDelete) {
+    if (!canApprove && !canDelete && !canUpload) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
         child: Text('You can view these documents; your admin has not granted a review action.',
@@ -336,27 +351,32 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
               child: _spinnerOr('Approve'),
             ),
           if (canApprove) const SizedBox(height: 8),
-          Row(
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            alignment: WrapAlignment.center,
             children: [
               if (canApprove)
-                Expanded(
-                  child: OutlinedButton(
-                    key: const ValueKey('approver-reject'),
-                    style: OutlinedButton.styleFrom(foregroundColor: cs.error, side: BorderSide(color: cs.error)),
-                    onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.reject),
-                    child: const Text('Reject'),
-                  ),
+                OutlinedButton(
+                  key: const ValueKey('approver-reject'),
+                  style: OutlinedButton.styleFrom(foregroundColor: cs.error, side: BorderSide(color: cs.error)),
+                  onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.reject),
+                  child: const Text('Reject'),
                 ),
-              if (canApprove && canDelete) const SizedBox(width: 10),
+              if (canUpload)
+                OutlinedButton.icon(
+                  key: const ValueKey('approver-replace'),
+                  onPressed: _busy ? null : _replace,
+                  icon: const Icon(Icons.upload_outlined, size: 18),
+                  label: const Text('Replace image'),
+                ),
               if (canDelete)
-                Expanded(
-                  child: OutlinedButton.icon(
-                    key: const ValueKey('approver-delete'),
-                    style: OutlinedButton.styleFrom(foregroundColor: cs.error, side: BorderSide(color: cs.error)),
-                    onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.delete),
-                    icon: const Icon(Icons.delete_outline, size: 18),
-                    label: Text(deleteHard ? 'Delete' : 'Send back'),
-                  ),
+                OutlinedButton.icon(
+                  key: const ValueKey('approver-delete'),
+                  style: OutlinedButton.styleFrom(foregroundColor: cs.error, side: BorderSide(color: cs.error)),
+                  onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.delete),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: Text(deleteHard ? 'Delete' : 'Send back'),
                 ),
             ],
           ),
