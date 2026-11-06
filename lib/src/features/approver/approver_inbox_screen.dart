@@ -7,6 +7,7 @@ import '../../admin/screens/meterapp/pick_image.dart' show pickDocumentImage;
 import '../../data/approver_inbox_repository.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
+import '../../widgets/date_boxes.dart';
 import '../../widgets/offline_strip.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/storage_image.dart';
@@ -96,11 +97,14 @@ class _DocumentViewer extends ConsumerStatefulWidget {
   ConsumerState<_DocumentViewer> createState() => _DocumentViewerState();
 }
 
-enum _ViewerMode { none, reject, delete }
+enum _ViewerMode { none, reject, delete, edit }
 
 class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
   final _reason = TextEditingController();
   final _deleteNote = TextEditingController();
+  late final _number = TextEditingController(text: widget.doc.documentNumber ?? '');
+  late final _start = TextEditingController(text: widget.doc.startDate ?? '');
+  late final _expiry = TextEditingController(text: widget.doc.expiryDate ?? '');
   bool _busy = false;
   _ViewerMode _mode = _ViewerMode.none;
 
@@ -108,6 +112,9 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
   void dispose() {
     _reason.dispose();
     _deleteNote.dispose();
+    _number.dispose();
+    _start.dispose();
+    _expiry.dispose();
     super.dispose();
   }
 
@@ -140,6 +147,19 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
         () => ref.read(approverInboxRepositoryProvider).remove(widget.doc, note: note),
         hard ? 'Deleted.' : 'Sent back for re-upload.',
       );
+
+  Future<void> _saveFields() async {
+    final doc = widget.doc;
+    await _run(
+      () => ref.read(approverInboxRepositoryProvider).editFields(
+            doc,
+            documentNumber: doc.requiresNumber ? _number.text.trim() : null,
+            startDate: doc.requiresStart ? _start.text.trim() : null,
+            expiryDate: doc.requiresExpiry ? _expiry.text.trim() : null,
+          ),
+      'Details saved.',
+    );
+  }
 
   Future<void> _replace() async {
     final picked = await pickDocumentImage(context);
@@ -199,42 +219,43 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
               ),
             ),
             Flexible(
-              child: urls.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.all(32),
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                children: [
+                  if (urls.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(28),
                       child: Text('No image was uploaded for this document.',
                           textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
-                    )
-                  : ListView(
-                      shrinkWrap: true,
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                      children: [
-                        for (final url in urls)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: InteractiveViewer(
-                                child: StorageImage(
-                                  url,
-                                  fit: BoxFit.contain,
-                                  loadingBuilder: (c, child, progress) => progress == null
-                                      ? child
-                                      : const Padding(
-                                          padding: EdgeInsets.all(32),
-                                          child: Center(child: CircularProgressIndicator()),
-                                        ),
-                                  errorBuilder: (c, _, _) => Padding(
-                                    padding: const EdgeInsets.all(32),
-                                    child: Text("Couldn't load this image.",
-                                        textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
+                    ),
+                  for (final url in urls)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: InteractiveViewer(
+                          child: StorageImage(
+                            url,
+                            fit: BoxFit.contain,
+                            loadingBuilder: (c, child, progress) => progress == null
+                                ? child
+                                : const Padding(
+                                    padding: EdgeInsets.all(32),
+                                    child: Center(child: CircularProgressIndicator()),
                                   ),
-                                ),
-                              ),
+                            errorBuilder: (c, _, _) => Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: Text("Couldn't load this image.",
+                                  textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
                             ),
                           ),
-                      ],
+                        ),
+                      ),
                     ),
+                  if (doc.hasCapturedFields && _mode != _ViewerMode.edit) _capturedSummary(context, doc, cs),
+                ],
+              ),
             ),
             _actions(context, canApprove, canDelete, canUpload, deleteHard, cs),
           ],
@@ -246,6 +267,63 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
   Widget _spinnerOr(String label) => _busy
       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
       : Text(label);
+
+  /// The fields the owner captured, read-only, so an approver can check them
+  /// against the image before approving. A missing required field, or a
+  /// past-dated expiry, is flagged.
+  Widget _capturedSummary(BuildContext context, ApproverDoc doc, ColorScheme cs) {
+    final rows = <Widget>[];
+    void row(String label, String? value, {String? warn}) {
+      final shown = (value ?? '').trim();
+      rows.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 120,
+              child: Text(label, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+            ),
+            Expanded(
+              child: Text(
+                shown.isEmpty ? 'Not provided' : shown,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: shown.isEmpty ? cs.error : null,
+                      fontStyle: shown.isEmpty ? FontStyle.italic : null,
+                    ),
+              ),
+            ),
+            if (warn != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(warn, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: cs.error)),
+              ),
+          ],
+        ),
+      ));
+    }
+
+    if (doc.requiresNumber) row('Document number', doc.documentNumber);
+    if (doc.requiresStart) {
+      row('Start date', doc.startDate == null ? null : formatStoredDateForUser(doc.startDate));
+    }
+    if (doc.requiresExpiry) {
+      final d = DateTime.tryParse(doc.expiryDate ?? '');
+      final past = d != null && d.isBefore(DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day));
+      row('Expiry date', doc.expiryDate == null ? null : formatStoredDateForUser(doc.expiryDate),
+          warn: past ? 'Expired' : null);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 4, bottom: 4),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
+    );
+  }
 
   Widget _actions(BuildContext context, bool canApprove, bool canDelete, bool canUpload, bool deleteHard, ColorScheme cs) {
     final pad = const EdgeInsets.fromLTRB(20, 8, 20, 16);
@@ -339,6 +417,62 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
       );
     }
 
+    if (_mode == _ViewerMode.edit) {
+      final doc = widget.doc;
+      return Padding(
+        padding: pad,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (doc.requiresNumber) ...[
+              TextField(
+                key: const ValueKey('approver-edit-number'),
+                controller: _number,
+                enabled: !_busy,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'Document number', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (doc.requiresStart) ...[
+              DateBoxesField(
+                key: const ValueKey('approver-edit-start'),
+                label: 'Start date',
+                controller: _start,
+                isRequired: true,
+                enabled: !_busy,
+              ),
+              const SizedBox(height: 10),
+            ],
+            if (doc.requiresExpiry) ...[
+              DateBoxesField(
+                key: const ValueKey('approver-edit-expiry'),
+                label: 'Expiry date',
+                controller: _expiry,
+                isRequired: true,
+                enabled: !_busy,
+                // An expired document can't be accepted — the server refuses it too.
+                firstDate: DateTime.now(),
+                beforeFirstText: 'That date is in the past. Use the renewed document.',
+              ),
+              const SizedBox(height: 10),
+            ],
+            Row(
+              children: [
+                TextButton(onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.none), child: const Text('Back')),
+                const Spacer(),
+                FilledButton(
+                  key: const ValueKey('approver-edit-save'),
+                  onPressed: _busy ? null : _saveFields,
+                  child: _spinnerOr('Save'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: pad,
       child: Column(
@@ -362,6 +496,13 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
                   style: OutlinedButton.styleFrom(foregroundColor: cs.error, side: BorderSide(color: cs.error)),
                   onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.reject),
                   child: const Text('Reject'),
+                ),
+              if (canUpload && widget.doc.hasCapturedFields)
+                OutlinedButton.icon(
+                  key: const ValueKey('approver-edit-fields'),
+                  onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.edit),
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: const Text('Edit details'),
                 ),
               if (canUpload)
                 OutlinedButton.icon(
