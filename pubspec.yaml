@@ -139,6 +139,14 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  # One bundled font for every platform (Android, iOS, web), so text looks the
+  # same everywhere instead of each platform's default. Inter is a variable
+  # font; Flutter maps fontWeight to its wght axis.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg

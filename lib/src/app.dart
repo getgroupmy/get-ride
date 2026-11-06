@@ -211,6 +211,11 @@ ThemeData appTheme(Brightness b, {Map<String, String> colors = const {}}) {
   return ThemeData(
     colorScheme: scheme,
     useMaterial3: true,
+    // One bundled font everywhere, so text looks the same on Android, iOS and
+    // web (each platform's default — Roboto / San Francisco / the browser's —
+    // otherwise differs in shape and size). Inter is a variable font; weights
+    // map to its wght axis.
+    fontFamily: 'Inter',
     scaffoldBackgroundColor: background,
     inputDecorationTheme: InputDecorationTheme(
       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
