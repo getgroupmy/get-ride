@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../admin/screens/meterapp/display_logic.dart'
     show
+        approverMenuItemId,
         cityToCityMenuItemId,
         myPermitMenuItemId,
         myQrMenuItemId,
@@ -19,6 +20,7 @@ import '../../admin/screens/meterapp/display_logic.dart'
 import '../../core/side_menu.dart';
 import '../../data/city_to_city_repository.dart' show c2cServiceActiveProvider;
 import '../../data/app_display_repository.dart';
+import '../../data/approver_inbox_repository.dart' show isApproverProvider;
 import '../../data/driver_services_repository.dart' show servicesPageAvailableProvider;
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
 import '../../data/mygig_repository.dart' show mygigAt, mygigConfigProvider;
@@ -61,6 +63,7 @@ bool partnerMenuRowShows(
   bool servicesPage = false,
   bool cityToCity = false,
   bool mygig = false,
+  bool approver = false,
 }) => switch (id) {
   _ when !approved && partnerRowsAfterApproval.contains(id) => false,
   mygigMenuItemId || mygigScheduledMenuItemId || mygigHotspotsMenuItemId => mygig,
@@ -69,6 +72,7 @@ bool partnerMenuRowShows(
   myRideCodeMenuItemId => hasMyRideCode,
   scheduledRidesMenuItemId => scheduledRides,
   cityToCityMenuItemId => cityToCity,
+  approverMenuItemId => approver,
   _ => true,
 };
 
@@ -113,6 +117,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     vehicleInfoMenuItemId: '/meter/vehicle',
     myRideCodeMenuItemId: '/drive/my-ride',
     'documents': '/drive/onboarding',
+    approverMenuItemId: '/approvals',
     'notifications': '/account/notifications',
     'support': '/account/support',
     'help-assistant': '/account/help',
@@ -165,6 +170,7 @@ class PartnerMenuSheet extends ConsumerWidget {
     final services = ref.watch(servicesPageAvailableProvider);
     final c2c = ref.watch(c2cServiceActiveProvider).value ?? false;
     final mygig = mygigButtonShows(ref.watch(mygigConfigProvider(mygigAt(null, null))).value);
+    final approver = ref.watch(isApproverProvider);
     final menu = [
       for (final e in resolveSideMenu(blob, 'partner'))
         if (!(ref.watch(hideComingSoonProvider) && e.comingSoon) && partnerMenuRowShows(
@@ -176,6 +182,7 @@ class PartnerMenuSheet extends ConsumerWidget {
           servicesPage: services,
           cityToCity: c2c,
           mygig: mygig,
+          approver: approver,
         ))
           e,
     ];

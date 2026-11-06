@@ -36,6 +36,7 @@ import 'core/demo_mode.dart';
 import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/trip_card.dart' show tripCardLinkLocation;
 import 'core/partner_remote_action.dart' show RemoteActionRequest, remoteActionIdFromPush, remoteActionLinkLocation, remoteActionRoute;
+import 'features/approver/approver_inbox_screen.dart';
 import 'features/business/business_apply_screen.dart';
 import 'features/business/business_screen.dart';
 import 'features/partner/remote_action.dart' show remoteActionAskProvider, remoteActionHandlerProvider;
@@ -599,6 +600,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/ev', builder: (_, _) => const EvOrderScreen()),
           // Order dispatch (0251): a stand's console, its staff and charges, a fleet.
           GoRoute(path: '/dispatch', builder: (_, _) => const DispatchScreen()),
+          // Approvals (0349/0350): a delegated approver's scoped document inbox.
+          GoRoute(path: '/approvals', builder: (_, _) => const ApproverInboxScreen()),
           // Driver mode's pages, under the driver menu.
           GoRoute(
             path: '/drive/onboarding',
