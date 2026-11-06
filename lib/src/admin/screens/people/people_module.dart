@@ -6,6 +6,7 @@ import '../../admin_registry.dart';
 import '../dispatch/selfie_checks_settings.dart' show dispatchSelfiePage;
 import '../online_selfie_check_screen.dart';
 import '../selfie_watch_list.dart';
+import 'approvers_screen.dart';
 import 'partner_review_screen.dart';
 import 'partner_screens.dart';
 import 'user_screens.dart';
@@ -24,6 +25,7 @@ final peopleRoutes = <RouteBase>[
   // low-match push opens it) and the watch list.
   GoRoute(path: '/admin/m/online-selfie-check', builder: (_, s) => OnlineSelfieCheckScreen(id: _id(s))),
   GoRoute(path: '/admin/m/selfie-watch-list', builder: (_, _) => const SelfieWatchListScreen()),
+  GoRoute(path: '/admin/m/approvers', builder: (_, _) => const ApproversScreen()),
   GoRoute(path: '/admin/m/vehicle-add', builder: (_, _) => const VehicleAddScreen()),
   GoRoute(path: '/admin/m/vehicle-edit', builder: (_, s) => VehicleEditScreen(id: _id(s))),
   GoRoute(
@@ -52,6 +54,14 @@ const peopleEntries = <AdminScreenEntry>[
     pages: [dispatchSelfiePage],
     icon: Icons.face_outlined,
     listed: false,
+  ),
+  AdminScreenEntry(
+    section: 'People',
+    title: 'Approvers',
+    subtitle: 'Delegate document review to chosen users, with a permission level and scope',
+    path: '/admin/m/approvers',
+    pages: [approversPage],
+    icon: Icons.verified_user_outlined,
   ),
   AdminScreenEntry(
     section: 'People',

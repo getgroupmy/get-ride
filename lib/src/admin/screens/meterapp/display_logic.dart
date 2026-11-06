@@ -68,6 +68,10 @@ const serviceMenuItemIds = <String>{
 /// trips (0308); the driver's row shows only while the service is on.
 const cityToCityMenuItemId = 'city-to-city';
 
+/// Approvals (0349/0350): a delegated approver's scoped inbox of documents
+/// waiting for review; shown only to an active approver. On both menus.
+const approverMenuItemId = 'approver';
+
 /// The driver's My Ride code (QR and the riders who added them); shown only
 /// where the database has My Ride (migration 0160).
 const myRideCodeMenuItemId = 'my-ride-code';
@@ -103,6 +107,7 @@ const defaultUserMenuItems = <(String, String)>[
   ('pay-later', 'Pay Later'),
   ('insurance', 'Insurance'),
   ('wallet', 'Wallet'),
+  (approverMenuItemId, 'Approvals'), // this app's own (0349/0350); shown only to an approver
   ('notifications', 'Notifications'),
   ('safety', 'Safety'),
   ('settings', 'Settings'),
@@ -154,6 +159,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   (standGroupsMenuItemId, 'Stand groups'), // this app's own (0251): groups a driver asks to join
   (vehicleInfoMenuItemId, 'Vehicle information'),
   ('documents', 'Documents'),
+  (approverMenuItemId, 'Approvals'), // this app's own (0349/0350); shown only to an approver
   ('notifications', 'Notifications'),
   (helpAssistantMenuItemId, 'Help assistant'), // this app's own; the Expo menu skips it
   ('support', 'Support'),

@@ -26,7 +26,7 @@ void main() {
   const pages = [
     '/', '/ev', '/trips', '/wallet', '/account/safety', '/account/settings', '/account/guide', '/account/support', '/account/help',
     '/account/emergency', '/account/referral', '/account/my-ride', '/account/my-qr', '/account/family', '/account/notifications',
-    '/trips/scheduled', '/freight', '/courier',
+    '/trips/scheduled', '/freight', '/courier', '/approvals',
   ];
 
   /// Taps [id]'s row as [settings] arrange the menu; the page on top after,
@@ -76,6 +76,7 @@ void main() {
       inviteFriendsMenuItemId: '/account/referral',
       'freight': '/freight',
       'courier': '/courier',
+      'approver': '/approvals',
     };
     for (final MapEntry(key: id, value: page) in expected.entries) {
       testWidgets('$id opens $page', (tester) async {

@@ -5,10 +5,12 @@ import 'package:go_router/go_router.dart';
 import '../../admin/admin_providers.dart';
 import '../../core/contact_phone.dart' show formatPhoneDisplay;
 import '../../core/referral.dart';
-import '../../admin/screens/meterapp/display_logic.dart' show inviteFriendsMenuItemId, scheduledRidesMenuItemId;
+import '../../admin/screens/meterapp/display_logic.dart'
+    show approverMenuItemId, inviteFriendsMenuItemId, scheduledRidesMenuItemId;
 import '../../core/side_menu.dart';
 import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../../data/app_display_repository.dart';
+import '../../data/approver_inbox_repository.dart' show isApproverProvider;
 import '../../data/dispatch_repository.dart' show dispatchRolesProvider;
 import '../../data/identity_repository.dart' show dispatchChecksProvider;
 import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
@@ -42,6 +44,7 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
     'help-assistant': '/account/help',
     'emergency-contacts': '/account/emergency',
     'invite-friends': '/account/referral',
+    'approver': '/approvals',
   };
   if (id == 'logout') {
     // Asked first, while the menu is still open: a stray tap must not sign out.
@@ -61,8 +64,12 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
 }
 
 /// Whether a rider menu row shows now: Ride Later (scheduled) only while
-/// scheduled rides are on.
-bool riderMenuRowShows(String id, {bool scheduledRides = false}) => id != scheduledRidesMenuItemId || scheduledRides;
+/// scheduled rides are on; Approvals only for an active approver.
+bool riderMenuRowShows(String id, {bool scheduledRides = false, bool approver = false}) => switch (id) {
+      scheduledRidesMenuItemId => scheduledRides,
+      approverMenuItemId => approver,
+      _ => true,
+    };
 
 /// Asks before signing out; true when the rider confirmed.
 Future<bool> confirmSignOut(BuildContext context) async {
@@ -120,9 +127,12 @@ class RiderMenu extends ConsumerWidget {
         ((ref.watch(dispatchRolesProvider).value?.any ?? false) || (ref.watch(dispatchChecksProvider).value?.holds ?? false));
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
+    final approver = ref.watch(isApproverProvider);
     final menu = [
       for (final e in resolveSideMenu(blob, 'user'))
-        if (riderMenuRowShows(e.id, scheduledRides: scheduled) && !(ref.watch(hideComingSoonProvider) && e.comingSoon)) e,
+        if (riderMenuRowShows(e.id, scheduledRides: scheduled, approver: approver) &&
+            !(ref.watch(hideComingSoonProvider) && e.comingSoon))
+          e,
     ];
     final mode = hideSoon(sideMenuModeButton(blob, 'user'), ref.watch(hideComingSoonProvider));
     void go(String route) {

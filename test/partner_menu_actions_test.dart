@@ -13,6 +13,7 @@ void main() {
     '/account/support', '/account/help', '/account/settings', '/account/my-qr', '/account/notifications',
     '/drive/earnings', '/drive/history', '/drive/scheduled', '/drive/groups', '/drive/permits',
     '/drive/telematics', '/drive/services', '/drive/city-to-city', '/drive/mygig/scheduled', '/drive/mygig/hotspots',
+    '/approvals',
   ];
 
   Future<(String, bool?)> tap(WidgetTester tester, String id) async {
@@ -60,6 +61,7 @@ void main() {
     vehicleInfoMenuItemId: '/meter/vehicle',
     myRideCodeMenuItemId: '/drive/my-ride',
     'documents': '/drive/onboarding',
+    'approver': '/approvals',
     'notifications': '/account/notifications',
     'support': '/account/support',
     'help-assistant': '/account/help',
