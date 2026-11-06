@@ -688,6 +688,7 @@ class AgeCoverRule {
 class PartnerServiceSettings {
   const PartnerServiceSettings({
     this.citizensOnly = const RegionRequirement(),
+    this.liveSelfie = const RegionRequirement(),
     this.businessRegistration = const RegionRequirement(),
     this.driverPermit = const PermitRequirement(),
     this.vehiclePermit = const PermitRequirement(),
@@ -699,6 +700,7 @@ class PartnerServiceSettings {
     final covers = _json(values['ageLimitCovers']);
     return PartnerServiceSettings(
       citizensOnly: RegionRequirement.fromJson(values['citizensOnly']),
+      liveSelfie: RegionRequirement.fromJson(values['liveSelfie']),
       businessRegistration: RegionRequirement.fromJson(values['businessRegistration']),
       driverPermit: PermitRequirement.fromJson(values['driverPermit']),
       vehiclePermit: PermitRequirement.fromJson(values['vehiclePermit']),
@@ -714,6 +716,7 @@ class PartnerServiceSettings {
   /// The `values` keys these settings are kept under.
   static const keys = [
     'citizensOnly',
+    'liveSelfie',
     'businessRegistration',
     'driverPermit',
     'vehiclePermit',
@@ -722,6 +725,12 @@ class PartnerServiceSettings {
   ];
 
   final RegionRequirement citizensOnly;
+
+  /// Where the onboarding profile selfie must be taken with the live check
+  /// (blink / turn). A selfie taken without it fails the server's registration
+  /// rules (migration 0346), blocking submit and approval. Off = all ages of
+  /// selfie allowed (only the soft "Needs a closer look" flag, as before).
+  final RegionRequirement liveSelfie;
   final RegionRequirement businessRegistration;
   final PermitRequirement driverPermit;
   final PermitRequirement vehiclePermit;
@@ -730,6 +739,7 @@ class PartnerServiceSettings {
 
   PartnerServiceSettings copyWith({
     RegionRequirement? citizensOnly,
+    RegionRequirement? liveSelfie,
     RegionRequirement? businessRegistration,
     PermitRequirement? driverPermit,
     PermitRequirement? vehiclePermit,
@@ -738,6 +748,7 @@ class PartnerServiceSettings {
   }) =>
       PartnerServiceSettings(
         citizensOnly: citizensOnly ?? this.citizensOnly,
+        liveSelfie: liveSelfie ?? this.liveSelfie,
         businessRegistration: businessRegistration ?? this.businessRegistration,
         driverPermit: driverPermit ?? this.driverPermit,
         vehiclePermit: vehiclePermit ?? this.vehiclePermit,
@@ -748,6 +759,7 @@ class PartnerServiceSettings {
   /// The `values` keys to write.
   Map<String, dynamic> toValues() => {
         'citizensOnly': citizensOnly.toJson(),
+        'liveSelfie': liveSelfie.toJson(),
         'businessRegistration': businessRegistration.toJson(),
         'driverPermit': driverPermit.toJson(),
         'vehiclePermit': vehiclePermit.toJson(),
@@ -761,6 +773,9 @@ class PartnerServiceSettings {
   String? problem({required bool vehicleRequired, required bool ageRequired}) {
     if (citizensOnly.required && !citizensOnly.where.all && citizensOnly.where.regions.isEmpty) {
       return 'Pick the regions where only citizens may join, or choose All regions.';
+    }
+    if (liveSelfie.required && !liveSelfie.where.all && liveSelfie.where.regions.isEmpty) {
+      return 'Pick the regions where a live selfie is required, or choose All regions.';
     }
     if (businessRegistration.required &&
         !businessRegistration.where.all &&
@@ -799,6 +814,14 @@ List<String> citizensOnlyTypes(List<String> types, Iterable<Map<String, dynamic>
       for (final t in types)
         if (t.trim().isNotEmpty)
           if (EffectiveTypeRules.of(t, entries) case final r when r.settings.citizensOnly.regionIn(area) != null) r.name,
+    ];
+
+/// Of [types], those that need a live-checked onboarding selfie somewhere in
+/// [area] (migration 0346), in [types]' order.
+List<String> liveSelfieTypes(List<String> types, Iterable<Map<String, dynamic>> entries, ServiceArea area) => [
+      for (final t in types)
+        if (t.trim().isNotEmpty)
+          if (EffectiveTypeRules.of(t, entries) case final r when r.settings.liveSelfie.regionIn(area) != null) r.name,
     ];
 
 /// Of [types], those anyone may join in [area].

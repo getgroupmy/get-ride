@@ -93,8 +93,8 @@ void main() {
         ...failed,
         const RuleProblem(rule: RegRule.vehiclePermit, status: 'paused', type: 'eHailing', message: 'Waiting.'),
       ]);
-      expect([for (final r in rows) r.chip], ['Not set', 'Failed', 'Not set', 'Paused', 'Not set']);
-      expect(reviewRuleRows(failed, overridden: true)[1].chip, 'Overridden');
+      expect([for (final r in rows) r.chip], ['Not set', 'Not set', 'Failed', 'Not set', 'Paused', 'Not set']);
+      expect(reviewRuleRows(failed, overridden: true)[2].chip, 'Overridden');
       expect(askLineFor(failed.single)!.key, 'company.document');
       expect(askLineFor(const RuleProblem(rule: RegRule.citizensOnly))!.key, 'services');
       expect(askLineFor(const RuleProblem(rule: RegRule.driverPermit, permitState: 'expired'))!.key, 'permit.valid_until');
@@ -125,6 +125,7 @@ void main() {
       );
       expect([for (final r in rows) (r.name, r.state)], [
         ('Citizens only', CheckState.done),
+        ('Live selfie', CheckState.notNeeded),
         ('Company registration', CheckState.needed),
         ('Driver permit (Kad Pemandu)', CheckState.needed),
         ('Driver permit expiry', CheckState.needed),
@@ -132,11 +133,11 @@ void main() {
         ('Vehicle age', CheckState.done),
       ]);
       expect(rows.first.detail, 'eHailing, Teksi: MyKad 900101-14-5566');
-      expect(rows[2].detail, 'Teksi: upload Kad Pemandu');
-      expect(rows[3].detail, 'Type the expiry date');
-      expect(rows[4].detail, 'eHailing, also Teksi: paused until uploaded');
-      expect(rows[5].detail, 'WXY 1234, 2021: within 20 years (Teksi covers eHailing)');
-      expect(rows[1].step, OnboardingStep.company);
+      expect(rows[3].detail, 'Teksi: upload Kad Pemandu');
+      expect(rows[4].detail, 'Type the expiry date');
+      expect(rows[5].detail, 'eHailing, also Teksi: paused until uploaded');
+      expect(rows[6].detail, 'WXY 1234, 2021: within 20 years (Teksi covers eHailing)');
+      expect(rows[2].step, OnboardingStep.company);
       expect(checklistLead(_partner()), 'You chose eHailing and Teksi in Malaysia. These are the rules the server checks when you submit.');
     });
 
@@ -167,6 +168,36 @@ void main() {
     test('a type with no rules: nothing needed', () {
       final rows = submitChecklist(profile: _myKad, partner: _partner({'partner_types': ['Delivery']}), entries: regEntries);
       expect(rows.every((r) => r.state == CheckState.notNeeded), isTrue);
+    });
+
+    test('live selfie (0346): Needed until the selfie is live, then Done', () {
+      final entries = <Map<String, dynamic>>[
+        {
+          'name': 'HailLive',
+          'vehicleRequired': false,
+          'liveSelfie': {'required': true, 'all': true, 'regions': <Map<String, dynamic>>[]},
+        },
+      ];
+      Map<String, dynamic> partner(String? liveness) => {
+            'id': 'p1',
+            'partner_types': ['HailLive'],
+            'service_countries': ['Malaysia'],
+            'service_states': <String>[],
+            'service_cities': <String>[],
+            'selfie_liveness': ?liveness,
+          };
+      ChecklistRow liveRow(String? liveness) =>
+          submitChecklist(profile: _myKad, partner: partner(liveness), entries: entries)
+              .firstWhere((r) => r.name == 'Live selfie');
+      expect(liveRow(null).state, CheckState.needed, reason: 'no selfie yet');
+      expect(liveRow('not_checked').state, CheckState.needed, reason: 'taken without the live check');
+      expect(liveRow(null).step, OnboardingStep.avatar);
+      expect(liveRow('passed').state, CheckState.done);
+
+      final refusal = submitRefusal(const RuleProblem(rule: RegRule.liveSelfie, type: 'HailLive', place: 'Malaysia'));
+      expect(refusal.title, 'Retake your selfie');
+      expect(refusal.step, OnboardingStep.avatar);
+      expect(refusal.rule, RegRule.liveSelfie);
     });
   });
 
