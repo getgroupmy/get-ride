@@ -182,6 +182,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:notice.admin-commission-promotions', SurfaceKind.modal, 'Notice · Admin commission promotions', 'lib/src/admin/screens/commission_promotions_tabs.dart'),
   SurfaceEntry('modal:notice.admin-trip-audio', SurfaceKind.modal, 'Notice · Admin trip audio', 'lib/src/admin/widgets/trip_audio_panel.dart'),
   SurfaceEntry('modal:notice.app-build', SurfaceKind.modal, 'Notice · App build', 'lib/src/widgets/app_build_widgets.dart'),
+  SurfaceEntry('modal:notice.approver', SurfaceKind.modal, 'Notice · Approver', 'lib/src/features/approver/approver_inbox_screen.dart'),
   SurfaceEntry('modal:notice.book-for', SurfaceKind.modal, 'Notice · Book for', 'lib/src/features/ride/book_for_sheet.dart'),
   SurfaceEntry('modal:notice.call-number', SurfaceKind.modal, 'Notice · Call number', 'lib/src/widgets/call_number.dart'),
   SurfaceEntry('modal:notice.catalogue-rename', SurfaceKind.modal, 'Notice · Catalogue rename', 'lib/src/admin/screens/catalogue/safe_rename.dart'),

@@ -1,14 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/approver_inbox_repository.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/offline_strip.dart';
 import '../../widgets/page_style_host.dart';
 
 /// Side menu → Approvals: the documents waiting for review in this approver's
-/// scope (migrations 0349/0350). Read only in this phase — tapping a row opens
-/// the uploaded image(s); approve / reject / upload / delete come next.
+/// scope (migrations 0349/0350). Tapping a row opens the uploaded image(s); an
+/// approver with can_approve decides it there (0351). The server re-checks the
+/// scope and permission before writing.
 class ApproverInboxScreen extends ConsumerWidget {
   const ApproverInboxScreen({super.key});
 
@@ -79,15 +83,58 @@ class ApproverInboxScreen extends ConsumerWidget {
       );
 }
 
-/// The uploaded image(s) for one document, read only.
-class _DocumentViewer extends StatelessWidget {
+/// The uploaded image(s) for one document, with approve / reject for an
+/// approver who may decide it.
+class _DocumentViewer extends ConsumerStatefulWidget {
   const _DocumentViewer({required this.doc});
 
   final ApproverDoc doc;
 
   @override
+  ConsumerState<_DocumentViewer> createState() => _DocumentViewerState();
+}
+
+class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
+  final _reason = TextEditingController();
+  bool _busy = false;
+  bool _rejecting = false;
+
+  @override
+  void dispose() {
+    _reason.dispose();
+    super.dispose();
+  }
+
+  Future<void> _review(String action, {String? note}) async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).review(widget.doc, action, note: note);
+      ref.invalidate(approverPendingProvider);
+      if (!mounted) return;
+      Navigator.pop(context);
+      unawaited(showAppNotice(
+        id: 'notice.approver',
+        context: context,
+        message: action == 'approve' ? 'Approved.' : 'Rejected.',
+        kind: NoticeKind.success,
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      unawaited(showAppNotice(
+        id: 'notice.approver',
+        context: context,
+        message: "Couldn't save your decision. Try again.",
+        kind: NoticeKind.error,
+      ));
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final canApprove = ref.watch(approverSelfProvider).value?.canApprove ?? false;
+    final doc = widget.doc;
     final urls = [
       if ((doc.fileUrl ?? '').isNotEmpty) doc.fileUrl!,
       if ((doc.fileUrlBack ?? '').isNotEmpty) doc.fileUrlBack!,
@@ -118,7 +165,7 @@ class _DocumentViewer extends StatelessWidget {
                   IconButton(
                     key: const ValueKey('approver-document-close'),
                     icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: _busy ? null : () => Navigator.pop(context),
                   ),
                 ],
               ),
@@ -128,8 +175,7 @@ class _DocumentViewer extends StatelessWidget {
                   ? Padding(
                       padding: const EdgeInsets.all(32),
                       child: Text('No image was uploaded for this document.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: cs.onSurfaceVariant)),
+                          textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
                     )
                   : ListView(
                       shrinkWrap: true,
@@ -153,8 +199,7 @@ class _DocumentViewer extends StatelessWidget {
                                   errorBuilder: (c, _, _) => Padding(
                                     padding: const EdgeInsets.all(32),
                                     child: Text("Couldn't load this image.",
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(color: cs.onSurfaceVariant)),
+                                        textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
                                   ),
                                 ),
                               ),
@@ -163,13 +208,83 @@ class _DocumentViewer extends StatelessWidget {
                       ],
                     ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-              child: Text('Review actions are coming soon.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+            _actions(context, canApprove, cs),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _actions(BuildContext context, bool canApprove, ColorScheme cs) {
+    if (!canApprove) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+        child: Text('You can view these documents; your admin has not granted approve or reject.',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+      );
+    }
+    if (_rejecting) {
+      final reason = _reason.text.trim();
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              key: const ValueKey('approver-reject-reason'),
+              controller: _reason,
+              enabled: !_busy,
+              minLines: 2,
+              maxLines: 4,
+              textInputAction: TextInputAction.newline,
+              decoration: const InputDecoration(
+                labelText: 'Reason',
+                hintText: 'Tell the owner why, so they can fix it',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                TextButton(
+                  onPressed: _busy ? null : () => setState(() => _rejecting = false),
+                  child: const Text('Back'),
+                ),
+                const Spacer(),
+                FilledButton(
+                  key: const ValueKey('approver-reject-confirm'),
+                  style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError),
+                  onPressed: (_busy || reason.isEmpty) ? null : () => _review('reject', note: reason),
+                  child: _busy
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Reject'),
+                ),
+              ],
             ),
           ],
         ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+      child: Row(
+        children: [
+          OutlinedButton(
+            key: const ValueKey('approver-reject'),
+            style: OutlinedButton.styleFrom(foregroundColor: cs.error, side: BorderSide(color: cs.error)),
+            onPressed: _busy ? null : () => setState(() => _rejecting = true),
+            child: const Text('Reject'),
+          ),
+          const Spacer(),
+          FilledButton(
+            key: const ValueKey('approver-approve'),
+            onPressed: _busy ? null : () => _review('approve'),
+            child: _busy
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Approve'),
+          ),
+        ],
       ),
     );
   }

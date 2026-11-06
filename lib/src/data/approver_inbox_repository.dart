@@ -90,6 +90,17 @@ class ApproverInboxRepository {
         for (final r in (await _db.rpc('approver_pending_documents') as List))
           ApproverDoc.fromJson(Map<String, dynamic>.from(r as Map)),
       ];
+
+  /// Approve or reject [doc]. [action] is 'approve' or 'reject'; a reject needs
+  /// a [note]. The server re-checks the scope and permission before writing.
+  Future<void> review(ApproverDoc doc, String action, {String? note}) async {
+    await _db.rpc('approver_review_document', params: {
+      'p_source': doc.source,
+      'p_id': doc.id,
+      'p_action': action,
+      'p_note': note,
+    });
+  }
 }
 
 final approverInboxRepositoryProvider = Provider((ref) => ApproverInboxRepository(ref.watch(supabaseProvider)));
