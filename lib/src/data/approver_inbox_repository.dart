@@ -52,6 +52,12 @@ class ApproverDoc {
     required this.docLabel,
     required this.fileUrl,
     required this.fileUrlBack,
+    this.documentNumber,
+    this.startDate,
+    this.expiryDate,
+    this.requiresNumber = false,
+    this.requiresStart = false,
+    this.requiresExpiry = false,
   });
 
   /// 'partner' (registration), 'vehicle' (documents & permits) or 'identity'
@@ -66,6 +72,28 @@ class ApproverDoc {
   final String? fileUrl;
   final String? fileUrlBack;
 
+  /// The fields the owner captured at upload, shown to the approver. The
+  /// dates are stored `yyyy-mm-dd`. Each `requires*` says the document type
+  /// asks for that field (so it is shown, and editable with can_upload).
+  final String? documentNumber;
+  final String? startDate;
+  final String? expiryDate;
+  final bool requiresNumber;
+  final bool requiresStart;
+  final bool requiresExpiry;
+
+  /// Whether this document type captures any field an approver can correct.
+  /// identity is never editable here (the server refuses it).
+  bool get hasCapturedFields =>
+      source != 'identity' && (requiresNumber || requiresStart || requiresExpiry);
+
+  static String? _date(Object? v) {
+    final s = (v as String?)?.trim();
+    if (s == null || s.isEmpty) return null;
+    // The RPC returns a full date/timestamp; keep the yyyy-mm-dd the app uses.
+    return s.length >= 10 ? s.substring(0, 10) : s;
+  }
+
   static ApproverDoc fromJson(Map<String, dynamic> j) => ApproverDoc(
         source: j['source'] as String,
         id: j['doc_pk'] as String,
@@ -76,6 +104,12 @@ class ApproverDoc {
         docLabel: (j['doc_label'] as String?) ?? 'Document',
         fileUrl: j['file_url'] as String?,
         fileUrlBack: j['file_url_back'] as String?,
+        documentNumber: (j['document_number'] as String?)?.trim(),
+        startDate: _date(j['start_date']),
+        expiryDate: _date(j['expiry_date']),
+        requiresNumber: j['requires_number'] == true,
+        requiresStart: j['requires_start'] == true,
+        requiresExpiry: j['requires_expiry'] == true,
       );
 }
 
@@ -115,6 +149,20 @@ class ApproverInboxRepository {
       'p_source': doc.source,
       'p_id': doc.id,
       'p_note': note,
+    });
+  }
+
+  /// Correct the fields [doc]'s type captures (document number, start and
+  /// expiry date). Only the fields the type requires are written; the server
+  /// (with can_upload) re-checks the scope, refuses a past expiry, and leaves
+  /// the image and the Pending Review status alone. Dates are `yyyy-mm-dd`.
+  Future<void> editFields(ApproverDoc doc, {String? documentNumber, String? startDate, String? expiryDate}) async {
+    await _db.rpc('approver_edit_document', params: {
+      'p_source': doc.source,
+      'p_id': doc.id,
+      'p_document_number': documentNumber,
+      'p_start': startDate,
+      'p_expiry': expiryDate,
     });
   }
 

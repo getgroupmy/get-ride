@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -42,6 +43,23 @@ class MainActivity : FlutterActivity() {
                 "statuses" -> result.success(permissionStatuses())
                 "requestLocationAlways" -> requestLocationAlways(result)
                 "openNotificationSettings" -> result.success(openNotificationSettings())
+                else -> result.notImplemented()
+            }
+        }
+        // Approver document review (lib/src/core/secure_screen.dart): FLAG_SECURE
+        // blanks the window in screenshots and screen recordings and blocks the
+        // screenshot gesture, so other people's ID/licence images can't leave
+        // the device while they are on screen.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "get_ride/secure_screen").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "on" -> {
+                    runOnUiThread { window.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+                    result.success(null)
+                }
+                "off" -> {
+                    runOnUiThread { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

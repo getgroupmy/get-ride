@@ -78,6 +78,11 @@ import flutter_callkit_incoming
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "TripCardPlugin") {
       TripCardPlugin.register(with: registrar)
     }
+    // Approver document review (lib/src/core/secure_screen.dart): hide content
+    // while the screen is being recorded or mirrored.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SecureScreenPlugin") {
+      SecureScreenPlugin.register(with: registrar)
+    }
   }
 
   // MARK: PushKit
@@ -328,6 +333,87 @@ final class AppIconPlugin: NSObject, FlutterPlugin {
       }
     default:
       result(FlutterMethodNotImplemented)
+    }
+  }
+}
+
+/// Approver document review (lib/src/core/secure_screen.dart). iOS has no API
+/// to block a still screenshot, but it can hide the app's content while the
+/// screen is being recorded or mirrored (UIScreen.isCaptured). While secured
+/// and captured, an opaque cover is placed over the key window and removed
+/// when capture stops or the screen is left.
+final class SecureScreenPlugin: NSObject, FlutterPlugin {
+  static let shared = SecureScreenPlugin()
+  private var secured = false
+  private var cover: UIView?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "get_ride/secure_screen", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(SecureScreenPlugin.shared, channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    switch call.method {
+    case "on":
+      start()
+      result(nil)
+    case "off":
+      stop()
+      result(nil)
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func start() {
+    guard !secured else { return }
+    secured = true
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(captureChanged),
+      name: UIScreen.capturedDidChangeNotification, object: nil)
+    applyCover()
+  }
+
+  private func stop() {
+    guard secured else { return }
+    secured = false
+    NotificationCenter.default.removeObserver(self, name: UIScreen.capturedDidChangeNotification, object: nil)
+    removeCover()
+  }
+
+  @objc private func captureChanged() {
+    applyCover()
+  }
+
+  private func keyWindow() -> UIWindow? {
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    for scene in scenes {
+      if let window = scene.windows.first(where: { $0.isKeyWindow }) { return window }
+    }
+    return scenes.first?.windows.first
+  }
+
+  private func applyCover() {
+    DispatchQueue.main.async {
+      if self.secured && UIScreen.main.isCaptured {
+        guard self.cover == nil, let window = self.keyWindow() else { return }
+        let view = UIView(frame: window.bounds)
+        view.backgroundColor = .black
+        view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        view.isUserInteractionEnabled = false
+        window.addSubview(view)
+        self.cover = view
+      } else {
+        self.cover?.removeFromSuperview()
+        self.cover = nil
+      }
+    }
+  }
+
+  private func removeCover() {
+    DispatchQueue.main.async {
+      self.cover?.removeFromSuperview()
+      self.cover = nil
     }
   }
 }
