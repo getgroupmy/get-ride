@@ -474,8 +474,28 @@ class _RequiredDocEditorState extends State<_RequiredDocEditor> {
             ),
         ]),
       ],
-      group('Countries', 'country', 'No countries found. Add them in Country / States / Cities.'),
-      group('States', 'state', 'No states found.'),
+      // The full list is 249 countries — far too long to scroll. Show it only
+      // once the admin starts typing; an empty box just prompts a search.
+      if (q.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(children: [
+            const Icon(Icons.search, size: 16),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                f.regions.isEmpty
+                    ? 'Type a country or state name above to find and add it.'
+                    : 'Type above to add more countries or states.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ),
+          ]),
+        )
+      else ...[
+        group('Countries', 'country', 'No countries found. Add them in Country / States / Cities.'),
+        group('States', 'state', 'No states found.'),
+      ],
     ]);
   }
 
