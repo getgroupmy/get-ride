@@ -122,6 +122,7 @@ class SplashView extends StatelessWidget {
       key: const ValueKey('splash-wordmark'),
       textAlign: TextAlign.center,
       style: TextStyle(
+        fontFamily: 'Inter',
         color: splashInk(dark: dark, branding: branding),
         fontSize: 40,
         fontWeight: FontWeight.w800,
