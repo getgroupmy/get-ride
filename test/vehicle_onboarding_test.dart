@@ -161,6 +161,49 @@ void main() {
       );
       expect(docs.map((d) => d.id), unorderedEquals(['licence', 'permit']));
     });
+
+    group('vehicle-age condition (request only for older vehicles)', () {
+      final now = DateTime(2026, 6, 1);
+      final aged = [
+        (
+          id: 'inspection',
+          values: <String, dynamic>{'name': 'Old-car inspection', 'docTypes': '["type-vehicle"]', 'vehicleAgeMin': 10}
+        ),
+        (id: 'insurance', values: <String, dynamic>{'name': 'Vehicle Insurance', 'docTypes': '["type-vehicle"]'}),
+      ];
+      List<String> idsFor(int? year) => vehicleRequiredDocs(
+            requiredDocuments: aged,
+            vehicleTypeIds: ids,
+            partnerTypes: const ['Teksi'],
+            area: area,
+            vehicleYear: year,
+            now: now,
+          ).map((d) => d.id).toList();
+
+      test('an age floor drops the document until the car reaches it (X and up)', () {
+        expect(idsFor(2010), unorderedEquals(['inspection', 'insurance']), reason: '16 years old');
+        expect(idsFor(2016), unorderedEquals(['inspection', 'insurance']), reason: 'exactly 10 → floor met');
+        expect(idsFor(2017), unorderedEquals(['insurance']), reason: '9 years old → inspection dropped');
+        expect(idsFor(2026), unorderedEquals(['insurance']), reason: 'brand new');
+        expect(idsFor(null), unorderedEquals(['inspection', 'insurance']), reason: 'unknown year keeps everything');
+      });
+
+      test('vehicleDocMinAge: whole years, else all ages', () {
+        expect(vehicleDocMinAge({'vehicleAgeMin': 10}), 10);
+        expect(vehicleDocMinAge({'vehicleAgeMin': '7'}), 7);
+        expect(vehicleDocMinAge({'vehicleAgeMin': 0}), isNull);
+        expect(vehicleDocMinAge({'vehicleAgeMin': -3}), isNull);
+        expect(vehicleDocMinAge({'vehicleAgeMin': 'abc'}), isNull);
+        expect(vehicleDocMinAge(const {}), isNull);
+      });
+
+      test('vehicleAgeDocApplies: no floor always applies; unknown year keeps the doc', () {
+        expect(vehicleAgeDocApplies(const {}, 2025, now: now), isTrue);
+        expect(vehicleAgeDocApplies({'vehicleAgeMin': 10}, 2016, now: now), isTrue, reason: 'age 10');
+        expect(vehicleAgeDocApplies({'vehicleAgeMin': 10}, 2017, now: now), isFalse, reason: 'age 9');
+        expect(vehicleAgeDocApplies({'vehicleAgeMin': 10}, null, now: now), isTrue);
+      });
+    });
   });
 
   group('wizard checks', () {

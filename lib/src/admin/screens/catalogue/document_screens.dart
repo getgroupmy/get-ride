@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/doc_kinds.dart' show docKindById, docKinds;
+import '../../../core/vehicle_onboarding.dart' show vehicleDocMinAge, vehicleDocTypeIds;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/search_select.dart';
@@ -357,6 +358,7 @@ class _RequiredDocumentsScreenState extends ConsumerState<RequiredDocumentsScree
     final pTypes = parseLooseList(v['partnerTypes']);
     final partnerLabels = pTypes.contains(allToken) ? ['All Partner Service types'] : pTypes;
     final summary = regionSummary(v);
+    final minAge = vehicleDocMinAge(v);
     Iterable<Widget> tags(List<String> l) => [
           for (final t in l.take(5)) Pill(t),
           if (l.length > 5) Pill('+${l.length - 5}'),
@@ -375,6 +377,7 @@ class _RequiredDocumentsScreenState extends ConsumerState<RequiredDocumentsScree
           const SizedBox(height: 4),
           Wrap(spacing: 4, runSpacing: 4, children: [
             Pill(summary, icon: summary == 'Global' ? Icons.public : Icons.place_outlined),
+            if (minAge != null) Pill('Vehicles ≥ $minAge yrs', icon: Icons.directions_car_outlined),
             ...tags(types),
             ...tags(partnerLabels),
           ]),
@@ -414,13 +417,22 @@ class _RequiredDocEditorState extends State<_RequiredDocEditor> {
       widget.entry == null ? RequiredDocForm() : RequiredDocForm.fromValues(widget.entry!.values);
   late final _name = TextEditingController(text: f.name);
   late final _desc = TextEditingController(text: f.description);
+  late final _vehicleAge = TextEditingController(text: f.vehicleAgeMin?.toString() ?? '');
+  late bool _vehicleAgeLimited = f.vehicleAgeMin != null;
+  late final Set<String> _vehicleTypeIds =
+      vehicleDocTypeIds(widget.docTypes.map((d) => (id: d.id, values: d.values)));
   String _regionFilter = '';
   String? _error;
+
+  /// The vehicle-age condition only makes sense on a Vehicle document (one
+  /// tagged "All" document types, or the Vehicle type).
+  bool get _isVehicleDoc => f.docTypes.contains(allToken) || f.docTypes.any(_vehicleTypeIds.contains);
 
   @override
   void dispose() {
     _name.dispose();
     _desc.dispose();
+    _vehicleAge.dispose();
     super.dispose();
   }
 
@@ -428,6 +440,15 @@ class _RequiredDocEditorState extends State<_RequiredDocEditor> {
     f
       ..name = _name.text
       ..description = _desc.text;
+    if (_isVehicleDoc && _vehicleAgeLimited) {
+      final years = int.tryParse(_vehicleAge.text.trim());
+      if (years == null || years <= 0) {
+        return setState(() => _error = 'Enter the minimum vehicle age in whole years, or choose All ages.');
+      }
+      f.vehicleAgeMin = years;
+    } else {
+      f.vehicleAgeMin = null;
+    }
     final r = buildRequiredDocValues(entries: widget.entries, editing: widget.entry, form: f);
     if (r.error != null) return setState(() => _error = r.error);
     Navigator.pop(context, r.values);
@@ -530,6 +551,38 @@ class _RequiredDocEditorState extends State<_RequiredDocEditor> {
             )
           else
             _regionPicker(),
+          if (_isVehicleDoc) ...[
+            const SectionLabel('Vehicle age', hint: 'Only request this document for older vehicles'),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(value: false, label: Text('All ages')),
+                  ButtonSegment(value: true, label: Text('Older vehicles')),
+                ],
+                selected: {_vehicleAgeLimited},
+                onSelectionChanged:
+                    widget.canEdit ? (s) => setState(() => _vehicleAgeLimited = s.first) : null,
+              ),
+            ),
+            if (_vehicleAgeLimited)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: TextField(
+                  controller: _vehicleAge,
+                  enabled: widget.canEdit,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Minimum vehicle age (years)',
+                    hintText: 'e.g. 10',
+                    helperText: 'Requested once the vehicle is this many years old or older '
+                        '(age = this year − year of manufacture).',
+                    helperMaxLines: 3,
+                    prefixIcon: Icon(Icons.directions_car_outlined),
+                  ),
+                ),
+              ),
+          ],
           const SectionLabel('Upload Requirements', hint: 'Fields partners must fill at every upload'),
           for (final o in requiredDocOptions)
             SwitchListTile(

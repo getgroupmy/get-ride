@@ -14,6 +14,7 @@ import '../../../core/my_ride.dart';
 import '../../../core/partner_type_rules.dart' show PartnerServiceSettings, PartnerTypeRules;
 import '../../../core/premium_plus.dart' show premiumServiceKey;
 import '../../../core/service_tree.dart';
+import '../../../core/vehicle_onboarding.dart' show vehicleDocMinAge;
 import '../../admin_settings_models.dart';
 import '../people/people_logic.dart' show defaultDocHasPhoto;
 
@@ -968,6 +969,7 @@ class RequiredDocForm {
     this.isTaxiPermit = false,
     this.hasPhoto,
     this.readAs,
+    this.vehicleAgeMin,
   })  : docTypes = docTypes ?? [],
         partnerTypes = partnerTypes ?? [],
         regions = regions ?? [],
@@ -991,6 +993,7 @@ class RequiredDocForm {
       isTaxiPermit: jsBool(v['isTaxiPermit']),
       hasPhoto: v['hasPhoto'] is bool ? v['hasPhoto'] as bool : null,
       readAs: v['readAs'] is String && '${v['readAs']}'.isNotEmpty ? v['readAs'] as String : null,
+      vehicleAgeMin: vehicleDocMinAge(v),
     );
   }
 
@@ -1018,6 +1021,11 @@ class RequiredDocForm {
 
   /// The kind the document is read as: the admin's pick, else the guess.
   String get effectiveReadAs => readAs ?? guessDocKind(name)?.id ?? 'none';
+
+  /// "Request only for vehicles this old or older" (whole years), or null for
+  /// all ages. Only meaningful on a Vehicle document; the car's age is
+  /// `currentYear - year of manufacture`.
+  int? vehicleAgeMin;
 
   void toggleRegion(RegionSelection r) {
     regions = regions.any((x) => x.key == r.key)
@@ -1057,6 +1065,8 @@ ValuesResult buildRequiredDocValues({
     'isTaxiPermit': form.isTaxiPermit,
     'hasPhoto': form.effectiveHasPhoto,
     'readAs': form.effectiveReadAs,
+    // null clears the floor ("all ages"); Expo merges, so send it explicitly.
+    'vehicleAgeMin': (form.vehicleAgeMin != null && form.vehicleAgeMin! > 0) ? form.vehicleAgeMin : null,
   };
   // Expo merges onto the existing values so unknown keys survive.
   return (values: {...?editing?.values, ...values}, error: null);

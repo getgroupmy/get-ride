@@ -19,6 +19,7 @@ import '../geo/geo_data.dart' show regionVehicleTypesProvider;
 import '../geo/geo_logic.dart' show ServiceOption;
 import '../../../widgets/search_select.dart';
 import '../../../data/live_tables.dart';
+import '../../../core/vehicle_onboarding.dart' show vehicleAgeDocApplies;
 import '../../../widgets/page_style_host.dart';
 
 /// Whether a vehicle may be approved (Expo `runApprovalDocCheck`): only
@@ -218,8 +219,9 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
     final canEdit = ref.watch(pageAccessProvider(widget.page)) == AccessLevel.edit;
     final t = Theme.of(context);
     final suggestions = _ownerFocused ? partnerSuggestions(widget.data.partners, _ownerName.text) : const [];
+    final vehicleYear = int.tryParse(RegExp(r'\d{4}').firstMatch(_year.text)?.group(0) ?? '');
     final docs = resolveRequiredDocs(
-      widget.data.requiredDocs,
+      widget.data.requiredDocs.where((e) => vehicleAgeDocApplies(e.values, vehicleYear)),
       docTypeIds: widget.data.vehicleDocTypeIds.isEmpty ? const ['__none__'] : widget.data.vehicleDocTypeIds,
       countries: _area.countries,
       states: _area.statePairs(),
