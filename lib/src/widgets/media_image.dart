@@ -11,10 +11,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:http/http.dart' as http;
 
+import 'dart:io';
+
 import '../config.dart';
 import '../core/backend_route.dart';
 import '../core/icon_pack.dart';
 import '../core/media_assets.dart';
+import '../data/media_cache.dart';
 import '../data/media_repository.dart';
 import 'net_image.dart';
 
@@ -139,11 +142,29 @@ class MediaIcon extends ConsumerWidget {
     final path = a?.pathFor(dark: Theme.of(context).brightness == Brightness.dark);
     if (a == null || path == null) return plain();
     final ink = color ?? IconTheme.of(context).color ?? Theme.of(context).colorScheme.onSurface;
+    // A cached copy on disk paints without the network; null on web and until
+    // the sync has it, where it falls back to the public URL.
+    ref.watch(mediaCacheProvider); // rebuild when a file is cached
+    final File? cached = ref.read(mediaCacheProvider.notifier).fileForPath(path);
     if (a.isSvg) {
-      final svg = svgNetwork(mediaUrlOf(path), width: side, height: side, tint: a.tint ? ink : null, fallback: plain());
+      final tint = a.tint ? ink : null;
+      final svg = cached != null
+          ? SvgPicture.file(
+              cached,
+              width: side,
+              height: side,
+              colorFilter: tint == null ? null : ColorFilter.mode(tint, BlendMode.srcIn),
+              placeholderBuilder: (_) => plain(),
+            )
+          : svgNetwork(mediaUrlOf(path), width: side, height: side, tint: tint, fallback: plain());
       return Semantics(label: semanticLabel, image: true, child: SizedBox.square(dimension: side, child: svg));
     }
-    Widget image = NetImage(mediaUrlOf(path), width: side, height: side, fit: BoxFit.contain, radius: 4, fallback: plain());
+    Widget image = cached != null
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: Image.file(cached, width: side, height: side, fit: BoxFit.contain, errorBuilder: (_, _, _) => plain()),
+          )
+        : NetImage(mediaUrlOf(path), width: side, height: side, fit: BoxFit.contain, radius: 4, fallback: plain());
     if (a.tint) {
       image = ColorFiltered(colorFilter: ColorFilter.mode(ink, BlendMode.srcIn), child: image);
     }
@@ -220,9 +241,19 @@ class MediaImage extends ConsumerWidget {
         _settled();
         return none;
       }
+      ref.watch(mediaCacheProvider); // rebuild when a file is cached
+      final File? cached = ref.read(mediaCacheProvider.notifier).fileForPath(path);
       if (a.isSvg) {
         _settled();
-        return svgNetwork(mediaUrlOf(path), width: width, height: height, fit: fit, alignment: alignment, fallback: none);
+        return cached != null
+            ? SvgPicture.file(cached, width: width, height: height, fit: fit, alignment: alignment,
+                placeholderBuilder: (_) => none)
+            : svgNetwork(mediaUrlOf(path), width: width, height: height, fit: fit, alignment: alignment, fallback: none);
+      }
+      if (cached != null) {
+        _settled();
+        return Image.file(cached, width: width, height: height, fit: fit, alignment: alignment,
+            errorBuilder: (_, _, _) => none);
       }
       return _network(mediaUrlOf(path), none);
     }

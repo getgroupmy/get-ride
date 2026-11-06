@@ -45,6 +45,7 @@ import 'core/push_logic.dart';
 import 'core/ride_bidding.dart' show BiddingRegion, pushPlaceAt;
 import 'data/app_icon_service.dart';
 import 'data/app_version_repository.dart' show appUpdateProvider, recordAppVersion;
+import 'data/media_cache.dart' show syncMediaCache;
 import 'data/auth_repository.dart';
 import 'data/app_display_repository.dart';
 import 'data/phone_rules_repository.dart';
@@ -784,6 +785,9 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     setWebFavicon(widget.branding?.branding.appIconUrl);
     _branding!.latest.addListener(_brandingChanged);
     unawaited(_branding!.start());
+    // Keep the on-device media cache in step with the uploaded set (0354):
+    // only downloads when the server fingerprint changed; a no-op on web.
+    unawaited(syncMediaCache(ref));
     // The branding row live, on the app's live-settings channel rather than
     // a channel of its own (PERF-52).
     ref.listenManual(liveTablesProvider.select((r) => r['app_branding'] ?? 0), (_, _) {
@@ -949,6 +953,7 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
         unawaited(ref.read(authRepositoryProvider).guard.check());
         unawaited(_alwaysOn?.reload());
         unawaited(_branding?.resync());
+        unawaited(syncMediaCache(ref));
         unawaited(_reportPushLocation());
         unawaited(PushService.instance?.recheckPermission());
         unawaited(ref.read(tripCardControllerProvider.notifier).refresh());
