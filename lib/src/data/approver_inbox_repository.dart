@@ -52,6 +52,7 @@ class ApproverDoc {
     required this.docLabel,
     required this.fileUrl,
     required this.fileUrlBack,
+    this.plate,
   });
 
   /// 'partner' (registration), 'vehicle' (documents & permits) or 'identity'
@@ -66,6 +67,15 @@ class ApproverDoc {
   final String? fileUrl;
   final String? fileUrlBack;
 
+  /// The vehicle's plate number, for 'vehicle' documents (migration 0355);
+  /// null for other sources or when the vehicle has none.
+  final String? plate;
+
+  static String? _plate(Object? v) {
+    final t = (v as String?)?.trim() ?? '';
+    return t.isEmpty ? null : t;
+  }
+
   static ApproverDoc fromJson(Map<String, dynamic> j) => ApproverDoc(
         source: j['source'] as String,
         id: j['doc_pk'] as String,
@@ -76,6 +86,7 @@ class ApproverDoc {
         docLabel: (j['doc_label'] as String?) ?? 'Document',
         fileUrl: j['file_url'] as String?,
         fileUrlBack: j['file_url_back'] as String?,
+        plate: _plate(j['plate']),
       );
 }
 
