@@ -143,6 +143,26 @@ class IdentityRepository {
     }
   }
 
+  /// Admin → People → User ID Documents: reads [profileId]'s ID image with
+  /// Vision and returns the fields it found ({name, ic, birth, gender,
+  /// nationality, address, expiry}), or null when nothing could be read.
+  Future<Map<String, dynamic>?> readProfileIdImage(String profileId) async {
+    try {
+      final res = await _db.functions.invoke('id-read', body: {'profile_id': profileId});
+      final m = _map(res.data);
+      return m['state'] == 'read' ? m : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Admin: writes the ID fields the reviewer chose from the image onto the
+  /// profile (admin_set_profile_id_fields, 0345). [fields] carries only the
+  /// chosen keys: name, ic, nationality, address, birth_date (yyyy-mm-dd),
+  /// gender ('male' | 'female' | 'other').
+  Future<void> setProfileIdFields(String userId, Map<String, dynamic> fields) =>
+      _db.rpc('admin_set_profile_id_fields', params: {'p_user': userId, 'p_fields': fields});
+
   /// Keeps how a profile photo was taken (live or not), for the admin. Best
   /// effort: the photo is saved either way.
   Future<void> noteProfileSelfie(String avatarUrl, LiveSelfie selfie) async {
