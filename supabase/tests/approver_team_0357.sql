@@ -102,7 +102,12 @@ select pg_temp.check(
   'owner documents includes the approved document with its status');
 
 -- 7. A grant with conflict_guard on never lists the approver themselves.
+-- approvers is written only by the admin RPC / owner, not authenticated, so
+-- flip the flag as the owner, then act as the approver again.
+reset role;
 update public.approvers set conflict_guard = true where profile_id = '00000000-0000-0000-0000-0000000357a1';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000357a1');
 select pg_temp.check(
   not exists (select 1 from public.approver_covered_partners(null, null, null, 50)
                where owner_id = '00000000-0000-0000-0000-0000000357a1'),
