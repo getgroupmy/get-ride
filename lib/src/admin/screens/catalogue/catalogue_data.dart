@@ -55,6 +55,14 @@ const requiredDocumentsCategory = SettingsCategory(
   table: 'required_document',
   fields: [],
 );
+const payoutProviderCategory = SettingsCategory(
+  key: payoutProviderKey,
+  page: 'admin-settings-payout-provider',
+  title: 'Payout Providers',
+  subtitle: 'Banks & e-wallets for partner payouts',
+  table: 'settings_entries',
+  fields: [],
+);
 
 /// Entries of one category, refreshed by invalidating with the category key.
 final catalogueEntriesProvider = FutureProvider.autoDispose.family<List<SettingEntry>, SettingsCategory>(

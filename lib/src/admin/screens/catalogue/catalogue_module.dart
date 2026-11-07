@@ -10,6 +10,7 @@ import 'document_screens.dart';
 import 'driver_service_locks_screen.dart';
 import 'make_model_screen.dart';
 import 'partner_type_screen.dart';
+import 'payout_providers_screen.dart';
 import 'partner_type_services_screen.dart';
 import 'service_order_screen.dart';
 import 'services_screens.dart';
@@ -24,6 +25,7 @@ const catalogueOwnedCategories = <String>{
   partnerTypeKey,
   documentTypeKey,
   requiredDocumentsKey,
+  payoutProviderKey,
 };
 
 final catalogueRoutes = <RouteBase>[
@@ -41,6 +43,7 @@ final catalogueRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/driver-service-locks', builder: (_, _) => const DriverServiceLocksScreen()),
   GoRoute(path: '/admin/m/document-type', builder: (_, _) => const DocumentTypeScreen()),
   GoRoute(path: '/admin/m/required-documents', builder: (_, _) => const RequiredDocumentsScreen()),
+  GoRoute(path: '/admin/m/payout-providers', builder: (_, _) => const PayoutProvidersScreen()),
   GoRoute(path: documentReadingPath, builder: (_, _) => const DocumentReadingScreen()),
   GoRoute(path: '/admin/m/vehicle-make-model', builder: (_, _) => const VehicleMakeModelScreen()),
   GoRoute(path: '/admin/m/assign-service', builder: (_, _) => const AssignServiceScreen()),
@@ -114,6 +117,14 @@ const catalogueEntries = <AdminScreenEntry>[
     path: '/admin/m/required-documents',
     pages: ['admin-settings-required-documents'],
     icon: Icons.fact_check_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'Services & catalogue',
+    title: 'Payout Providers',
+    subtitle: 'Banks & e-wallets for partner payouts',
+    path: '/admin/m/payout-providers',
+    pages: ['admin-settings-payout-provider'],
+    icon: Icons.account_balance_outlined,
   ),
   AdminScreenEntry(
     section: 'Services & catalogue',
