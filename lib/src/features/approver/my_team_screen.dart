@@ -13,6 +13,7 @@ import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/offline_strip.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart';
 import '../../widgets/storage_image.dart';
 import 'approver_inbox_screen.dart' show ApproverInboxScreen, openApproverDocument;
 
@@ -529,6 +530,13 @@ class MyTeamMemberScreen extends ConsumerWidget {
                       icon: const Icon(Icons.edit_outlined, size: 18),
                       label: const Text('Edit profile'),
                     ),
+                  if (canEditProfile)
+                    OutlinedButton.icon(
+                      key: const ValueKey('my-team-payout'),
+                      onPressed: () => _openPayout(context, ref),
+                      icon: const Icon(Icons.account_balance_outlined, size: 18),
+                      label: const Text('Payout'),
+                    ),
                   if (canCredit)
                     FilledButton.tonalIcon(
                       key: const ValueKey('my-team-add-credit'),
@@ -555,6 +563,13 @@ class MyTeamMemberScreen extends ConsumerWidget {
         context: context,
         isScrollControlled: true,
         builder: (c) => _AddCreditSheet(member: member),
+      );
+
+  Future<void> _openPayout(BuildContext context, WidgetRef ref) => showAppSheet<void>(
+        id: 'approver.payout',
+        context: context,
+        isScrollControlled: true,
+        builder: (c) => _PayoutSheet(member: member),
       );
 
   Future<void> _openEditProfile(BuildContext context, WidgetRef ref) => showAppSheet<void>(
@@ -953,4 +968,164 @@ String? _editErrorText(Object e) {
   if (m.contains('invalid_status')) return 'Pick a valid status.';
   if (m.contains('invalid_id_verified')) return 'Invalid ID verification value.';
   return null;
+}
+
+/// Set a covered member's payout account (migration 0361): a bank or e-wallet,
+/// its provider (from the admin list), account number and holder. Pre-filled
+/// from the member detail.
+class _PayoutSheet extends ConsumerStatefulWidget {
+  const _PayoutSheet({required this.member});
+  final TeamMember member;
+
+  @override
+  ConsumerState<_PayoutSheet> createState() => _PayoutSheetState();
+}
+
+class _PayoutSheetState extends ConsumerState<_PayoutSheet> {
+  final _account = TextEditingController();
+  final _holder = TextEditingController();
+  String _type = 'bank';
+  String? _provider;
+  bool _loaded = false;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _account.dispose();
+    _holder.dispose();
+    super.dispose();
+  }
+
+  void _fill(Map<String, dynamic>? d) {
+    final pay = d?['payout'];
+    if (pay is Map) {
+      _type = (pay['type'] as String?) == 'ewallet' ? 'ewallet' : 'bank';
+      _provider = (pay['provider'] as String?)?.trim();
+      _account.text = (pay['account'] as String?)?.trim() ?? '';
+      _holder.text = (pay['holder'] as String?)?.trim() ?? '';
+    } else {
+      _holder.text = widget.member.name;
+    }
+    _loaded = true;
+  }
+
+  bool get _canSave =>
+      !_busy && (_provider ?? '').isNotEmpty && _account.text.trim().length >= 6 && _holder.text.trim().isNotEmpty;
+
+  Future<void> _save() async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).setMemberPayout(
+            widget.member.id,
+            provider: _provider!,
+            account: _account.text.trim(),
+            holder: _holder.text.trim(),
+            type: _type,
+          );
+      ref.invalidate(approverMemberDetailProvider(widget.member.id));
+      if (!mounted) return;
+      Navigator.pop(context);
+      unawaited(showAppNotice(
+        id: 'notice.approver-payout', context: context, message: 'Payout account saved.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-payout',
+        context: context,
+        message: m.contains('invalid_payout')
+            ? 'Enter the provider, holder and a 6–20 digit account number.'
+            : (m.contains('not_allowed') || m.contains('out_of_scope')
+                ? "You can't set this member's payout."
+                : "Couldn't save. Try again."),
+        kind: NoticeKind.error,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final detail = ref.watch(approverMemberDetailProvider(widget.member.id));
+    final providers = ref.watch(payoutProvidersProvider).value ?? const <PayoutProvider>[];
+    if (!_loaded && detail.hasValue) _fill(detail.value);
+    // Options for the selected type; keep the current provider even if not listed.
+    final names = <String>{
+      for (final p in providers) if (p.type == _type) p.name,
+      if ((_provider ?? '').isNotEmpty) _provider!,
+    }.toList()..sort();
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Payout account', style: t.textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text('Where ${widget.member.name} is paid out.',
+                style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              children: [
+                ChoiceChip(
+                  key: const ValueKey('payout-type-bank'),
+                  label: const Text('Bank'),
+                  selected: _type == 'bank',
+                  onSelected: _busy ? null : (_) => setState(() { _type = 'bank'; _provider = null; }),
+                ),
+                ChoiceChip(
+                  key: const ValueKey('payout-type-ewallet'),
+                  label: const Text('e-Wallet'),
+                  selected: _type == 'ewallet',
+                  onSelected: _busy ? null : (_) => setState(() { _type = 'ewallet'; _provider = null; }),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SearchableDropdownFormField<String>(
+              key: const ValueKey('payout-provider'),
+              initialValue: names.contains(_provider) ? _provider : null,
+              isExpanded: true,
+              decoration: InputDecoration(
+                labelText: _type == 'ewallet' ? 'e-Wallet' : 'Bank',
+                border: const OutlineInputBorder(),
+              ),
+              items: [for (final n in names) DropdownMenuItem(value: n, child: Text(n))],
+              onChanged: _busy ? null : (v) => setState(() => _provider = v),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('payout-account'),
+              controller: _account,
+              enabled: !_busy,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(labelText: 'Account number', border: OutlineInputBorder()),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const ValueKey('payout-holder'),
+              controller: _holder,
+              enabled: !_busy,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Account holder name', border: OutlineInputBorder()),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 14),
+            FilledButton(
+              key: const ValueKey('payout-save'),
+              onPressed: _canSave ? _save : null,
+              child: _busy
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Save payout'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
