@@ -95,27 +95,34 @@ class ApproverInboxScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _openDocument(BuildContext context, ApproverDoc d) => showAppDialog<void>(
-        id: 'approver.document',
-        context: context,
-        builder: (c) => _DocumentViewer(doc: d),
-      );
+  Future<void> _openDocument(BuildContext context, ApproverDoc d) => openApproverDocument(context, d);
 }
+
+/// Opens the shared document viewer for [doc]. [onChanged] runs after a
+/// successful approve / reject / edit / replace / delete, on top of the inbox
+/// refresh — the My Team member screen uses it to reload that person's docs.
+Future<void> openApproverDocument(BuildContext context, ApproverDoc doc, {VoidCallback? onChanged}) =>
+    showAppDialog<void>(
+      id: 'approver.document',
+      context: context,
+      builder: (c) => ApproverDocumentViewer(doc: doc, onChanged: onChanged),
+    );
 
 /// The uploaded image(s) for one document, with approve / reject for an
 /// approver who may decide it.
-class _DocumentViewer extends ConsumerStatefulWidget {
-  const _DocumentViewer({required this.doc});
+class ApproverDocumentViewer extends ConsumerStatefulWidget {
+  const ApproverDocumentViewer({super.key, required this.doc, this.onChanged});
 
   final ApproverDoc doc;
+  final VoidCallback? onChanged;
 
   @override
-  ConsumerState<_DocumentViewer> createState() => _DocumentViewerState();
+  ConsumerState<ApproverDocumentViewer> createState() => _DocumentViewerState();
 }
 
 enum _ViewerMode { none, reject, delete, edit }
 
-class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
+class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
   final _reason = TextEditingController();
   final _deleteNote = TextEditingController();
   late final _number = TextEditingController(text: widget.doc.documentNumber ?? '');
@@ -139,6 +146,7 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
     try {
       await action();
       ref.invalidate(approverPendingProvider);
+      widget.onChanged?.call();
       if (!mounted) return;
       Navigator.pop(context);
       unawaited(showAppNotice(id: 'notice.approver', context: context, message: ok, kind: NoticeKind.success));
@@ -361,6 +369,27 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
       : Text(label);
 
+  /// A coloured status pill for a document that is no longer pending.
+  Widget _statusLine(BuildContext context, String status, ColorScheme cs) {
+    final (bg, fg, icon) = switch (status) {
+      'Approved' => (cs.primaryContainer, cs.onPrimaryContainer, Icons.check_circle_outline),
+      'Rejected' => (cs.errorContainer, cs.onErrorContainer, Icons.cancel_outlined),
+      _ => (cs.surfaceContainerHighest, cs.onSurfaceVariant, Icons.schedule_outlined),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: fg),
+          const SizedBox(width: 8),
+          Text(status, style: Theme.of(context).textTheme.labelLarge?.copyWith(color: fg)),
+        ],
+      ),
+    );
+  }
+
   /// The fields the owner captured, read-only, so an approver can check them
   /// against the image before approving. A missing required field, or a
   /// past-dated expiry, is flagged.
@@ -573,31 +602,38 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
       );
     }
 
+    final pending = widget.doc.isPending;
     return Padding(
       padding: pad,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (canApprove)
+          // A document that is already decided shows its status; approve /
+          // reject / edit no longer apply, but replace / delete still can.
+          if (!pending && (widget.doc.status ?? '').isNotEmpty) ...[
+            _statusLine(context, widget.doc.status!, cs),
+            const SizedBox(height: 10),
+          ],
+          if (canApprove && pending)
             FilledButton(
               key: const ValueKey('approver-approve'),
               onPressed: _busy ? null : () => _review('approve'),
               child: _spinnerOr('Approve'),
             ),
-          if (canApprove) const SizedBox(height: 8),
+          if (canApprove && pending) const SizedBox(height: 8),
           Wrap(
             spacing: 10,
             runSpacing: 8,
             alignment: WrapAlignment.center,
             children: [
-              if (canApprove)
+              if (canApprove && pending)
                 OutlinedButton(
                   key: const ValueKey('approver-reject'),
                   style: OutlinedButton.styleFrom(foregroundColor: cs.error, side: BorderSide(color: cs.error)),
                   onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.reject),
                   child: const Text('Reject'),
                 ),
-              if (canUpload && widget.doc.hasCapturedFields)
+              if (canUpload && widget.doc.hasCapturedFields && pending)
                 OutlinedButton.icon(
                   key: const ValueKey('approver-edit-fields'),
                   onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.edit),

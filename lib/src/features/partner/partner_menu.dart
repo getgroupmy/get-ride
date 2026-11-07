@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../admin/screens/meterapp/display_logic.dart'
     show
         approverMenuItemId,
+        myTeamMenuItemId,
         cityToCityMenuItemId,
         myPermitMenuItemId,
         myQrMenuItemId,
@@ -73,6 +74,7 @@ bool partnerMenuRowShows(
   scheduledRidesMenuItemId => scheduledRides,
   cityToCityMenuItemId => cityToCity,
   approverMenuItemId => approver,
+  myTeamMenuItemId => approver,
   _ => true,
 };
 
@@ -118,6 +120,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     myRideCodeMenuItemId: '/drive/my-ride',
     'documents': '/drive/onboarding',
     approverMenuItemId: '/approvals',
+    myTeamMenuItemId: '/my-team',
     'notifications': '/account/notifications',
     'support': '/account/support',
     'help-assistant': '/account/help',

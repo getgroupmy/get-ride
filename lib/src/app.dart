@@ -37,6 +37,8 @@ import 'core/my_qr.dart' show QrKind, isQrLinkLocation, qrSchemeLinkLocation;
 import 'core/trip_card.dart' show tripCardLinkLocation;
 import 'core/partner_remote_action.dart' show RemoteActionRequest, remoteActionIdFromPush, remoteActionLinkLocation, remoteActionRoute;
 import 'features/approver/approver_inbox_screen.dart';
+import 'features/approver/my_team_screen.dart';
+import 'data/approver_inbox_repository.dart' show TeamMember;
 import 'features/team/team_members_screen.dart';
 import 'features/business/business_apply_screen.dart';
 import 'features/business/business_screen.dart';
@@ -609,6 +611,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/dispatch', builder: (_, _) => const DispatchScreen()),
           // Approvals (0349/0350): a delegated approver's scoped document inbox.
           GoRoute(path: '/approvals', builder: (_, _) => const ApproverInboxScreen()),
+          // My Team (0357): the people an approver covers; a member opens with
+          // the TeamMember as `extra`.
+          GoRoute(path: '/my-team', builder: (_, _) => const MyTeamScreen()),
+          GoRoute(
+            path: '/my-team/member',
+            builder: (_, state) => MyTeamMemberScreen(member: state.extra! as TeamMember),
+          ),
           // Team (0358): the member's team directory (Profile → Team → View members).
           GoRoute(path: '/team/members', builder: (_, _) => const TeamMembersScreen()),
           // Driver mode's pages, under the driver menu.

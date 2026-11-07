@@ -579,6 +579,8 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('route:/meter/printer', SurfaceKind.page, 'Printer', 'lib/src/app.dart', path: '/meter/printer'),
   SurfaceEntry('route:/meter/reader', SurfaceKind.page, 'Obd reader', 'lib/src/app.dart', path: '/meter/reader'),
   SurfaceEntry('route:/meter/vehicle', SurfaceKind.page, 'Vehicle info', 'lib/src/app.dart', path: '/meter/vehicle'),
+  SurfaceEntry('route:/my-team', SurfaceKind.page, 'My team', 'lib/src/app.dart', path: '/my-team'),
+  SurfaceEntry('route:/my-team/member', SurfaceKind.page, 'My team member', 'lib/src/app.dart', path: '/my-team/member'),
   SurfaceEntry('route:/mygig/delivery/:ride', SurfaceKind.page, 'Mygig delivery mine', 'lib/src/app.dart', path: '/mygig/delivery/:ride'),
   SurfaceEntry('route:/mygig/offer/:id', SurfaceKind.page, 'Mygig offer', 'lib/src/app.dart', path: '/mygig/offer/:id'),
   SurfaceEntry('route:/mygig/reassign/:id', SurfaceKind.page, 'Mygig reassign passenger', 'lib/src/app.dart', path: '/mygig/reassign/:id'),
