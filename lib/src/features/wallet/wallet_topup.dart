@@ -223,6 +223,7 @@ class _WalletTopUpSheetState extends ConsumerState<WalletTopUpSheet> {
             prefixText: '${info.currency} ',
             helperText: 'From ${formatMoney(info.min, info.currency)} to ${formatMoney(info.max, info.currency)}',
             errorText: _error,
+            errorMaxLines: 3,
           ),
           onChanged: (_) => setState(() => _error = null),
         ),

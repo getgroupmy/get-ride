@@ -195,6 +195,7 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
             hintText: 'Phone number or wallet ID',
             prefixIcon: const Icon(Icons.person_search_outlined),
             errorText: _recipient.text.trim().isNotEmpty && to == null ? 'Enter a phone number or wallet ID.' : null,
+            errorMaxLines: 2,
           ),
           onChanged: changed,
         ),
@@ -234,6 +235,7 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
             helperStyle: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
             helperMaxLines: 2,
             errorText: coins > 0 && to != null && problem != null ? problem : null,
+            errorMaxLines: 2,
           ),
           onChanged: changed,
         ),
@@ -370,6 +372,7 @@ class _CoinTradeScreenState extends ConsumerState<CoinTradeScreen> {
               helperStyle: t.textTheme.bodySmall?.copyWith(color: mutedTextColor(t)),
               helperMaxLines: 2,
               errorText: showProblem ? problem : null,
+              errorMaxLines: 2,
             ),
             onChanged: (_) => setState(() {
               _error = null;
