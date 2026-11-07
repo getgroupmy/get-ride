@@ -221,6 +221,13 @@ class TeamPage {
   final bool hasMore;
 }
 
+/// A bank or e-wallet from the admin-managed payout list (migration 0361).
+class PayoutProvider {
+  const PayoutProvider({required this.name, required this.type});
+  final String name;
+  final String type; // 'bank' | 'ewallet'
+}
+
 class ApproverInboxRepository {
   ApproverInboxRepository(this._db);
   final SupabaseClient _db;
@@ -287,6 +294,27 @@ class ApproverInboxRepository {
   Future<void> editProfile(String memberId, Map<String, dynamic> fields) async {
     await _db.rpc('approver_edit_profile', params: {'p_member': memberId, 'p_fields': fields});
   }
+
+  /// Set a covered member's payout account (migration 0361), bank or e-wallet.
+  Future<void> setMemberPayout(String memberId,
+      {required String provider, required String account, required String holder, required String type}) async {
+    await _db.rpc('approver_set_member_payout', params: {
+      'p_member': memberId,
+      'p_provider': provider,
+      'p_account': account,
+      'p_holder': holder,
+      'p_type': type,
+    });
+  }
+
+  /// The admin-managed bank / e-wallet list (migration 0361).
+  Future<List<PayoutProvider>> payoutProviders() async => [
+        for (final r in (await _db.rpc('payout_providers') as List))
+          PayoutProvider(
+            name: (r as Map)['name'] as String? ?? '',
+            type: (r['type'] as String?) == 'ewallet' ? 'ewallet' : 'bank',
+          ),
+      ];
 
   /// The caller's own grant, or null when they are not an active approver.
   Future<ApproverGrant?> self() async {
@@ -394,4 +422,10 @@ final approverMemberDetailProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>?, String>((ref, memberId) async {
   if (ref.watch(currentUserIdProvider) == null) return null;
   return ref.watch(approverInboxRepositoryProvider).memberDetail(memberId);
+});
+
+/// The admin-managed bank / e-wallet payout list (My Team → Payout, 0361).
+final payoutProvidersProvider = FutureProvider.autoDispose<List<PayoutProvider>>((ref) async {
+  if (ref.watch(currentUserIdProvider) == null) return const <PayoutProvider>[];
+  return ref.watch(approverInboxRepositoryProvider).payoutProviders();
 });
