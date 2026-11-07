@@ -360,7 +360,8 @@ class _RechargeDialogState extends State<_RechargeDialog> {
             enabled: !_busy,
             autofocus: true,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(labelText: 'Amount (RM)', errorText: _error),
+            // Let the error wrap instead of truncating ("Not enough balance in GET.wal…").
+            decoration: InputDecoration(labelText: 'Amount (RM)', errorText: _error, errorMaxLines: 3),
             onSubmitted: (_) => _submit(),
           ),
         ],
