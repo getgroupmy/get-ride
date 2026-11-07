@@ -59,9 +59,9 @@ select pg_temp.check(
   (select balance = 400 from public.wallets
     where user_id = '00000000-0000-0000-0000-0000000359a1' and wallet_type = 'get_wallet'),
   'the approver was debited to 400');
-select pg_temp.check(
-  (select balance = 100 from public.wallets
-    where user_id = '00000000-0000-0000-0000-0000000359b1' and wallet_type = 'get_wallet'),
+-- Read the member's balance through the approver RPC: wallets RLS shows a row
+-- only to its owner, so the approver cannot read the member's wallet directly.
+select pg_temp.check(public.approver_member_wallet('00000000-0000-0000-0000-0000000359b1') = 100,
   'the member was credited to 100');
 
 -- 3. The same request id does not charge again.
