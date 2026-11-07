@@ -98,6 +98,9 @@ select pg_temp.check(
      (select id from public.team_change_requests where requester_id = '00000000-0000-0000-0000-0000000358b1' and status = 'pending'),
      'approve', 'ok') ->> 'ok') = 'true',
   'the admin approves the change');
+-- Verify the resulting state as the member: referrals RLS only shows a row to
+-- its referrer or referred, so the admin (neither) can't see this one.
+select pg_temp.as_user('00000000-0000-0000-0000-0000000358b1');
 select pg_temp.check(
   (select referrer_user_id = '00000000-0000-0000-0000-0000000358a2'
      from public.referrals where referred_user_id = '00000000-0000-0000-0000-0000000358b1'),
