@@ -537,6 +537,13 @@ class MyTeamMemberScreen extends ConsumerWidget {
                       icon: const Icon(Icons.account_balance_outlined, size: 18),
                       label: const Text('Payout'),
                     ),
+                  if (canEditProfile)
+                    OutlinedButton.icon(
+                      key: const ValueKey('my-team-change-phone'),
+                      onPressed: () => _openChangePhone(context, ref),
+                      icon: const Icon(Icons.phone_iphone_outlined, size: 18),
+                      label: const Text('Change mobile'),
+                    ),
                   if (canCredit)
                     FilledButton.tonalIcon(
                       key: const ValueKey('my-team-add-credit'),
@@ -577,6 +584,13 @@ class MyTeamMemberScreen extends ConsumerWidget {
         context: context,
         isScrollControlled: true,
         builder: (c) => _EditProfileSheet(member: member),
+      );
+
+  Future<void> _openChangePhone(BuildContext context, WidgetRef ref) => showAppSheet<void>(
+        id: 'approver.propose-phone',
+        context: context,
+        isScrollControlled: true,
+        builder: (c) => _ProposePhoneSheet(member: member),
       );
 }
 
@@ -1128,4 +1142,118 @@ class _PayoutSheetState extends ConsumerState<_PayoutSheet> {
       ),
     );
   }
+}
+
+/// Propose a new mobile number for a covered member (migration 0362). A
+/// member's sign-in number controls OTP sign-in and PIN reset, so an approver
+/// can NOT change it silently: this only files a pending proposal and pushes the
+/// member, who confirms the new number themselves through the ordinary
+/// change-number flow (the only path that proves control of the new number).
+/// The number must be full international format (`+60…`).
+class _ProposePhoneSheet extends ConsumerStatefulWidget {
+  const _ProposePhoneSheet({required this.member});
+  final TeamMember member;
+
+  @override
+  ConsumerState<_ProposePhoneSheet> createState() => _ProposePhoneSheetState();
+}
+
+class _ProposePhoneSheetState extends ConsumerState<_ProposePhoneSheet> {
+  final _phone = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _phone.dispose();
+    super.dispose();
+  }
+
+  bool get _canSend => !_busy && _phone.text.trim().length >= 8;
+
+  Future<void> _send() async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).proposeMemberPhone(widget.member.id, _phone.text.trim());
+      if (!mounted) return;
+      Navigator.pop(context);
+      unawaited(showAppNotice(
+        id: 'notice.approver-phone',
+        context: context,
+        message: 'Proposed. ${widget.member.name} will get a notification to confirm the new number themselves.',
+        kind: NoticeKind.success,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      unawaited(showAppNotice(
+        id: 'notice.approver-phone',
+        context: context,
+        message: _proposePhoneErrorText(e) ?? "Couldn't propose that number. Try again.",
+        kind: NoticeKind.error,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Change mobile number', style: t.textTheme.titleLarge),
+            const SizedBox(height: 8),
+            Text(
+              "You can't change a member's sign-in number directly — it protects their account. "
+              'Enter the new number and ${widget.member.name} will be asked to confirm it themselves '
+              'with a code texted to the new number. Their current number keeps working until they do.',
+              style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+            ),
+            if (widget.member.phone != null) ...[
+              const SizedBox(height: 12),
+              Text('Current: ${widget.member.phone}', style: t.textTheme.bodySmall),
+            ],
+            const SizedBox(height: 14),
+            TextField(
+              key: const ValueKey('propose-phone'),
+              controller: _phone,
+              enabled: !_busy,
+              keyboardType: TextInputType.phone,
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9+ \-]'))],
+              decoration: const InputDecoration(
+                labelText: 'New mobile number',
+                hintText: '+60 12-345 6789',
+                helperText: 'Full international format, starting with the country code (+60…).',
+                helperMaxLines: 2,
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            const SizedBox(height: 14),
+            FilledButton(
+              key: const ValueKey('propose-phone-send'),
+              onPressed: _canSend ? _send : null,
+              child: _busy
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Send for confirmation'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Maps an approver_propose_member_phone error to a message for the approver.
+String? _proposePhoneErrorText(Object e) {
+  final m = e is PostgrestException ? e.message : e.toString();
+  if (m.contains('invalid_phone')) return 'Enter a full international number, e.g. +60 12-345 6789.';
+  if (m.contains('same_phone')) return "That's already this member's number.";
+  if (m.contains('phone_in_use')) return 'Another account already uses that number.';
+  if (m.contains('not_allowed')) return "You're not allowed to make that change.";
+  if (m.contains('out_of_scope')) return "This member isn't in your scope.";
+  return null;
 }

@@ -552,7 +552,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                         path: 'settings',
                         builder: (_, _) => const SettingsScreen(),
                         routes: [
-                          GoRoute(path: 'phone', builder: (_, _) => const ChangePhoneScreen()),
+                          GoRoute(
+                            path: 'phone',
+                            builder: (_, st) => ChangePhoneScreen(
+                              proposalId: st.uri.queryParameters['proposal'],
+                              proposedE164: st.uri.queryParameters['e164'],
+                            ),
+                          ),
                           GoRoute(path: 'pin', builder: (_, _) => const ChangePinScreen()),
                           GoRoute(path: 'passkeys', builder: (_, _) => const PasskeysScreen()),
                           GoRoute(path: 'delete', builder: (_, _) => const DeleteAccountScreen()),

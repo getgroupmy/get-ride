@@ -316,6 +316,33 @@ class ApproverInboxRepository {
           ),
       ];
 
+  /// Propose a new mobile number for a covered member (migration 0362). The
+  /// approver cannot change the number silently — this only files a pending
+  /// proposal and pushes the member; the MEMBER confirms it through the ordinary
+  /// change-number flow. [phone] must be full international format (`+60…`).
+  Future<void> proposeMemberPhone(String memberId, String phone) async {
+    await _db.rpc('approver_propose_member_phone', params: {'p_member': memberId, 'p_phone': phone});
+  }
+
+  /// The caller's own pending phone proposal (migration 0362), or null when
+  /// there is none. Shape: {id, proposed_phone, by_name, created_at}.
+  Future<Map<String, dynamic>?> myPhoneProposal() async {
+    final r = await _db.rpc('member_phone_proposal');
+    if (r == null) return null;
+    return Map<String, dynamic>.from(r as Map);
+  }
+
+  /// The caller declines their own pending phone proposal (migration 0362).
+  Future<void> cancelMyPhoneProposal(String id) async {
+    await _db.rpc('member_cancel_phone_proposal', params: {'p_id': id});
+  }
+
+  /// The caller marks their own pending phone proposal applied (migration 0362),
+  /// once their confirmed number already matches the proposed one.
+  Future<void> applyMyPhoneProposal(String id) async {
+    await _db.rpc('member_apply_phone_proposal', params: {'p_id': id});
+  }
+
   /// The caller's own grant, or null when they are not an active approver.
   Future<ApproverGrant?> self() async {
     final r = await _db.rpc('approver_self');
@@ -428,4 +455,16 @@ final approverMemberDetailProvider =
 final payoutProvidersProvider = FutureProvider.autoDispose<List<PayoutProvider>>((ref) async {
   if (ref.watch(currentUserIdProvider) == null) return const <PayoutProvider>[];
   return ref.watch(approverInboxRepositoryProvider).payoutProviders();
+});
+
+/// The signed-in member's own pending phone proposal (migration 0362), or null
+/// when there is none. Drives the "Confirm your new number" banner. The RPC
+/// error is swallowed (null) on a legacy session or where 0362 is not applied.
+final myPhoneProposalProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  if (ref.watch(currentUserIdProvider) == null) return null;
+  try {
+    return await ref.watch(approverInboxRepositoryProvider).myPhoneProposal();
+  } catch (_) {
+    return null;
+  }
 });
