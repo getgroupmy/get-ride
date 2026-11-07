@@ -8,6 +8,7 @@ import '../online_selfie_check_screen.dart';
 import '../selfie_watch_list.dart';
 import 'approvers_screen.dart';
 import 'partner_review_screen.dart';
+import 'team_changes_screen.dart';
 import 'partner_screens.dart';
 import 'user_screens.dart';
 import 'vehicle_permits_screen.dart';
@@ -26,6 +27,7 @@ final peopleRoutes = <RouteBase>[
   GoRoute(path: '/admin/m/online-selfie-check', builder: (_, s) => OnlineSelfieCheckScreen(id: _id(s))),
   GoRoute(path: '/admin/m/selfie-watch-list', builder: (_, _) => const SelfieWatchListScreen()),
   GoRoute(path: '/admin/m/approvers', builder: (_, _) => const ApproversScreen()),
+  GoRoute(path: '/admin/m/team-changes', builder: (_, _) => const TeamChangesScreen()),
   GoRoute(path: '/admin/m/vehicle-add', builder: (_, _) => const VehicleAddScreen()),
   GoRoute(path: '/admin/m/vehicle-edit', builder: (_, s) => VehicleEditScreen(id: _id(s))),
   GoRoute(
@@ -62,6 +64,14 @@ const peopleEntries = <AdminScreenEntry>[
     path: '/admin/m/approvers',
     pages: [approversPage],
     icon: Icons.verified_user_outlined,
+  ),
+  AdminScreenEntry(
+    section: 'People',
+    title: 'Team changes',
+    subtitle: 'Review members’ requests to move to a different team lead',
+    path: '/admin/m/team-changes',
+    pages: [teamChangesPage],
+    icon: Icons.swap_horiz_outlined,
   ),
   AdminScreenEntry(
     section: 'People',

@@ -14,6 +14,7 @@ import '../../widgets/common.dart';
 import '../../widgets/net_image.dart';
 import '../../widgets/side_menu_host.dart';
 import '../settings/change_pin_screen.dart' show pinSetProvider;
+import '../team/team_profile_card.dart' show TeamProfileCard;
 import 'account_screen.dart' show confirmSignOut;
 import 'referral_screen.dart' show myReferrerProvider;
 
@@ -160,6 +161,9 @@ class _ProfileBody extends ConsumerWidget {
           ),
           row(Icons.home_outlined, 'Address', shown(p?.address)),
         ]),
+        // Team (0358): join / change team + view members. Hides itself when the
+        // team status is unavailable (legacy session, or before 0358).
+        const TeamProfileCard(),
         section('Security', [
           ListTile(
             key: const ValueKey('profile-pin'),
