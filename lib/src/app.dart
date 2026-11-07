@@ -39,6 +39,7 @@ import 'core/partner_remote_action.dart' show RemoteActionRequest, remoteActionI
 import 'features/approver/approver_inbox_screen.dart';
 import 'features/approver/my_team_screen.dart';
 import 'data/approver_inbox_repository.dart' show TeamMember;
+import 'features/team/team_members_screen.dart';
 import 'features/business/business_apply_screen.dart';
 import 'features/business/business_screen.dart';
 import 'features/partner/remote_action.dart' show remoteActionAskProvider, remoteActionHandlerProvider;
@@ -617,6 +618,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/my-team/member',
             builder: (_, state) => MyTeamMemberScreen(member: state.extra! as TeamMember),
           ),
+          // Team (0358): the member's team directory (Profile → Team → View members).
+          GoRoute(path: '/team/members', builder: (_, _) => const TeamMembersScreen()),
           // Driver mode's pages, under the driver menu.
           GoRoute(
             path: '/drive/onboarding',
