@@ -6,6 +6,7 @@ import '../../config.dart';
 import '../../core/auth_utils.dart';
 import '../../core/dial_countries.dart';
 import '../../core/phone_input.dart';
+import '../../data/approver_inbox_repository.dart';
 import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
@@ -21,7 +22,15 @@ bool changePhoneNumberReady(String dialCode, String local) =>
 /// Supabase Auth texts a code to it, and the change only takes effect once
 /// that code is entered. The sign-in PIN is unchanged.
 class ChangePhoneScreen extends ConsumerStatefulWidget {
-  const ChangePhoneScreen({super.key});
+  const ChangePhoneScreen({super.key, this.proposalId, this.proposedE164});
+
+  /// When the member reached this screen from an approver's phone proposal
+  /// (migration 0362): the proposal's id, marked applied once the member's
+  /// number actually changes to the proposed one.
+  final String? proposalId;
+
+  /// The approver's proposed number, pre-filled into the field.
+  final String? proposedE164;
 
   @override
   ConsumerState<ChangePhoneScreen> createState() => _ChangePhoneScreenState();
@@ -34,6 +43,17 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
   String? _sentTo;
   bool _busy = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final proposed = widget.proposedE164?.trim();
+    if (proposed != null && proposed.isNotEmpty) {
+      final (country, local) = splitE164(proposed);
+      _country = country;
+      _number.text = local;
+    }
+  }
 
   @override
   void dispose() {
@@ -84,6 +104,16 @@ class _ChangePhoneScreenState extends ConsumerState<ChangePhoneScreen> {
     try {
       await ref.read(authRepositoryProvider).confirmPhoneChange(phone, _code.text.trim());
       ref.invalidate(profileProvider);
+      // If this change confirmed an approver's proposal (0362), mark it applied
+      // now that the number matches. Best-effort: the number change already
+      // succeeded, so a failure here must not look like the change failed.
+      final proposalId = widget.proposalId;
+      if (proposalId != null) {
+        try {
+          await ref.read(approverInboxRepositoryProvider).applyMyPhoneProposal(proposalId);
+        } catch (_) {/* the proposal banner self-heals on next load */}
+        ref.invalidate(myPhoneProposalProvider);
+      }
       if (!mounted) return;
       showInfo(context, 'Your phone number is now $phone.');
       await Navigator.of(context).maybePop();

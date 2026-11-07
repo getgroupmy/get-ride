@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 import '../../core/rider_rating.dart' show ownRiderRatingText;
 import '../partner/rate_rider.dart' show riderStarColor;
 import '../../core/contact_phone.dart' show formatPhoneDisplay;
+import '../../data/approver_inbox_repository.dart'
+    show myPhoneProposalProvider, approverInboxRepositoryProvider;
 import '../../data/models.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart';
@@ -147,6 +149,7 @@ class _ProfileBody extends ConsumerWidget {
             ),
           ),
         const SizedBox(height: 12),
+        const _PhoneProposalBanner(),
         section('Account', [
           row(Icons.phone_iphone, 'Phone number', shown(formatPhoneDisplay(p?.phone))),
           row(Icons.mail_outline, 'Email', shown(p?.email)),
@@ -197,6 +200,87 @@ class _ProfileBody extends ConsumerWidget {
           label: const Text('Sign out'),
         ),
       ],
+    );
+  }
+}
+
+/// Account → Profile: a banner shown when an approver has proposed a new mobile
+/// number for this member (migration 0362). A member's sign-in number can only
+/// be changed by the member, so this points them at the ordinary change-number
+/// flow, pre-filled with the proposed number; confirming it there marks the
+/// proposal applied. Hides itself when there is no pending proposal (and on a
+/// legacy session or before 0362, where the provider is null).
+class _PhoneProposalBanner extends ConsumerWidget {
+  const _PhoneProposalBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final proposal = ref.watch(myPhoneProposalProvider).value;
+    if (proposal == null) return const SizedBox.shrink();
+    final id = (proposal['id'] as String?) ?? '';
+    final phone = (proposal['proposed_phone'] as String?) ?? '';
+    final by = (proposal['by_name'] as String?)?.trim();
+    if (id.isEmpty || phone.isEmpty) return const SizedBox.shrink();
+    final t = Theme.of(context);
+
+    Future<void> confirm() => context.push(
+          '/account/settings/phone?proposal=${Uri.encodeQueryComponent(id)}'
+          '&e164=${Uri.encodeQueryComponent(phone)}',
+        );
+    Future<void> dismiss() async {
+      try {
+        await ref.read(approverInboxRepositoryProvider).cancelMyPhoneProposal(id);
+      } catch (_) {/* ignore; the banner refreshes from the server */}
+      ref.invalidate(myPhoneProposalProvider);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        key: const ValueKey('phone-proposal-banner'),
+        color: t.colorScheme.secondaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 12, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.phone_iphone, color: t.colorScheme.onSecondaryContainer),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Confirm your new number',
+                        style: t.textTheme.titleSmall?.copyWith(color: t.colorScheme.onSecondaryContainer)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${by == null || by.isEmpty ? 'Your team' : by} proposed $phone as your new mobile number. '
+                'Only you can change your sign-in number — confirm it with a code texted to the new number. '
+                'Your current number keeps working until you do.',
+                style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSecondaryContainer),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    key: const ValueKey('phone-proposal-dismiss'),
+                    onPressed: dismiss,
+                    child: const Text('Not now'),
+                  ),
+                  const SizedBox(width: 4),
+                  FilledButton(
+                    key: const ValueKey('phone-proposal-confirm'),
+                    onPressed: confirm,
+                    child: const Text('Confirm number'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

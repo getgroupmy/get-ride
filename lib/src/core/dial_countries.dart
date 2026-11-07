@@ -103,6 +103,30 @@ DialCountry dialCountryFor(String dialCode) {
   return DialCountry(dialCode, '', dialCode, '🌐');
 }
 
+/// Splits an E.164 number (`+601123456789`) into the country to show in the
+/// picker and the local part to put in the field (`1123456789`), by the longest
+/// matching dial code. An unknown code gives a bare `🌐` entry so the number
+/// still round-trips. Used to pre-fill the change-number screen from an
+/// approver's proposed number (migration 0362).
+(DialCountry, String) splitE164(String e164) {
+  final norm = e164.trim();
+  final digits = norm.replaceAll(RegExp(r'[^\d]'), '');
+  DialCountry? best;
+  for (final c in dialCountries) {
+    final code = c.dialCode.replaceAll(RegExp(r'[^\d]'), '');
+    if (code.isNotEmpty &&
+        digits.startsWith(code) &&
+        (best == null || code.length > best.dialCode.replaceAll(RegExp(r'[^\d]'), '').length)) {
+      best = c;
+    }
+  }
+  if (best == null) {
+    return (dialCountryFor(norm.startsWith('+') ? '+' : ''), digits);
+  }
+  final code = best.dialCode.replaceAll(RegExp(r'[^\d]'), '');
+  return (best, digits.substring(code.length));
+}
+
 /// Countries matching [query] by name, ISO code or dial code.
 List<DialCountry> searchDialCountries(String query) {
   final q = query.trim().toLowerCase();
