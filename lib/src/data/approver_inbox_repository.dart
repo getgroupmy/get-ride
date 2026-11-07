@@ -20,6 +20,8 @@ class ApproverGrant {
     required this.canDelete,
     required this.deleteHard,
     required this.canCredit,
+    required this.canEditProfile,
+    required this.canVerifyId,
     required this.scope,
     required this.docTypes,
   });
@@ -32,6 +34,14 @@ class ApproverGrant {
   /// Whether the approver may add wallet credit to a covered member, paid
   /// from their own GET.wallet (migration 0359). A separate, deliberate grant.
   final bool canCredit;
+
+  /// Whether the approver may edit a covered member's profile fields
+  /// (name, email, ID no., nationality, address, status, services) — 0360.
+  final bool canEditProfile;
+
+  /// The higher grant to mark a member's ID *verified* (0360); without it the
+  /// approver can edit the ID number but not flip verified.
+  final bool canVerifyId;
   final String scope;
   final List<String> docTypes;
 
@@ -41,6 +51,8 @@ class ApproverGrant {
         canDelete: j['can_delete'] == true,
         deleteHard: j['delete_hard'] == true,
         canCredit: j['can_credit'] == true,
+        canEditProfile: j['can_edit_profile'] == true,
+        canVerifyId: j['can_verify_id'] == true,
         scope: (j['scope'] as String?) ?? 'referral',
         docTypes: [for (final t in (j['doc_types'] as List? ?? const [])) t as String],
       );
@@ -261,6 +273,21 @@ class ApproverInboxRepository {
     });
   }
 
+  /// A covered member's current editable fields, to pre-fill the edit form
+  /// (migration 0360); null when out of scope.
+  Future<Map<String, dynamic>?> memberDetail(String memberId) async {
+    final r = await _db.rpc('approver_member_detail', params: {'p_member': memberId});
+    return r == null ? null : Map<String, dynamic>.from(r as Map);
+  }
+
+  /// Edit a covered member's profile (migration 0360). [fields] carries only
+  /// the keys to change: name / email / ic / nationality / address / status /
+  /// partner_types (needs can_edit_profile) and id_verified (needs
+  /// can_verify_id). The server validates and re-checks the scope.
+  Future<void> editProfile(String memberId, Map<String, dynamic> fields) async {
+    await _db.rpc('approver_edit_profile', params: {'p_member': memberId, 'p_fields': fields});
+  }
+
   /// The caller's own grant, or null when they are not an active approver.
   Future<ApproverGrant?> self() async {
     final r = await _db.rpc('approver_self');
@@ -360,4 +387,11 @@ final approverMemberWalletProvider =
     FutureProvider.autoDispose.family<double?, String>((ref, memberId) async {
   if (ref.watch(currentUserIdProvider) == null) return null;
   return ref.watch(approverInboxRepositoryProvider).memberWallet(memberId);
+});
+
+/// One covered member's editable profile fields (My Team → Edit profile, 0360).
+final approverMemberDetailProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>?, String>((ref, memberId) async {
+  if (ref.watch(currentUserIdProvider) == null) return null;
+  return ref.watch(approverInboxRepositoryProvider).memberDetail(memberId);
 });
