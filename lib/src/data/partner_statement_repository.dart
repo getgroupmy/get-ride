@@ -77,10 +77,14 @@ class StatementEntry {
 }
 
 class PayoutAccount {
-  const PayoutAccount({required this.bank, required this.account, required this.holder});
+  const PayoutAccount({required this.bank, required this.account, required this.holder, this.type = 'bank'});
   final String bank;
   final String account;
   final String holder;
+
+  /// 'bank' or 'ewallet' (migration 0361). Older rows without the column read
+  /// as 'bank'.
+  final String type;
 }
 
 class PartnerStatementRepository {
@@ -197,11 +201,30 @@ class PartnerStatementRepository {
     final r = await _db.from('partner_payout_accounts').select().eq('profile_id', uid).maybeSingle();
     return r == null
         ? null
-        : PayoutAccount(bank: '${r['bank_name']}', account: '${r['account_no']}', holder: '${r['holder_name']}');
+        : PayoutAccount(
+            bank: '${r['bank_name']}',
+            account: '${r['account_no']}',
+            holder: '${r['holder_name']}',
+            type: (r['account_type'] as String?) == 'ewallet' ? 'ewallet' : 'bank',
+          );
   }
 
-  Future<void> savePayoutAccount(String bank, String account, String holder) =>
-      _call(() => _db.rpc('set_my_payout_account', params: {'p_bank': bank, 'p_account': account, 'p_holder': holder}));
+  /// Save the caller's payout account. Prefers the 4-arg form that carries the
+  /// bank/e-wallet [type] (migration 0361); on a database without it, falls
+  /// back to the 3-arg bank-only form so older deployments keep working.
+  Future<void> savePayoutAccount(String bank, String account, String holder, {String type = 'bank'}) => _call(() async {
+        try {
+          await _db.rpc('set_my_payout_account',
+              params: {'p_bank': bank, 'p_account': account, 'p_holder': holder, 'p_type': type});
+        } on PostgrestException catch (e) {
+          // No 4-arg overload on this database (pre-0361): retry bank-only.
+          final missing = e.code == 'PGRST202' ||
+              (e.message.contains('set_my_payout_account') &&
+                  (e.message.contains('schema cache') || e.message.contains('does not exist')));
+          if (!missing) rethrow;
+          await _db.rpc('set_my_payout_account', params: {'p_bank': bank, 'p_account': account, 'p_holder': holder});
+        }
+      });
 
   /// The public verification page: what a statement's QR code proves.
   Future<StatementVerification?> verify(String token) async =>

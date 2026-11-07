@@ -10,12 +10,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
 import '../../core/partner_statement.dart';
+import '../../data/approver_inbox_repository.dart' show PayoutProvider, payoutProvidersProvider;
 import '../../data/partner_statement_repository.dart';
 import '../../providers.dart' show partnerProvider;
 import '../../widgets/common.dart';
 import '../../widgets/pdf_actions.dart';
 import '../../widgets/back_or_go_button.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/search_select.dart';
 
 /// Hands a statement's PDF to share or download. Overridden in tests.
 final statementPdfOpenerProvider =
@@ -395,6 +397,8 @@ class _PayoutAccountDialogState extends ConsumerState<_PayoutAccountDialog> {
   late final _account = TextEditingController(text: widget.current?.account);
   late final _holder = TextEditingController(text: widget.current?.holder);
   final _form = GlobalKey<FormState>();
+  late String _type = widget.current?.type == 'ewallet' ? 'ewallet' : 'bank';
+  late String? _provider = (widget.current?.bank ?? '').trim().isEmpty ? null : widget.current!.bank.trim();
   bool _saving = false;
 
   @override
@@ -405,11 +409,15 @@ class _PayoutAccountDialogState extends ConsumerState<_PayoutAccountDialog> {
     super.dispose();
   }
 
-  Future<void> _save() async {
+  Future<void> _save(bool fromList) async {
     if (!_form.currentState!.validate()) return;
+    final provider = fromList ? (_provider ?? '') : _bank.text.trim();
+    if (provider.isEmpty) return;
     setState(() => _saving = true);
     try {
-      await ref.read(partnerStatementRepositoryProvider).savePayoutAccount(_bank.text, _account.text, _holder.text);
+      await ref
+          .read(partnerStatementRepositoryProvider)
+          .savePayoutAccount(provider, _account.text, _holder.text, type: _type);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
@@ -422,6 +430,15 @@ class _PayoutAccountDialogState extends ConsumerState<_PayoutAccountDialog> {
   @override
   Widget build(BuildContext context) {
     String? required(String? v) => (v ?? '').trim().isEmpty ? 'Required' : null;
+    final providers = ref.watch(payoutProvidersProvider).value ?? const <PayoutProvider>[];
+    // Providers for the chosen type; keep the current one even if unlisted.
+    final names = <String>{
+      for (final p in providers) if (p.type == _type) p.name,
+      if ((_provider ?? '').isNotEmpty) _provider!,
+    }.toList()..sort();
+    // Fall back to a free-text field when the admin list is empty / unreadable
+    // (e.g. a database without migration 0361), so the editor still works.
+    final fromList = names.isNotEmpty;
     return AlertDialog(
       title: const Text('Payout account'),
       content: Form(
@@ -429,12 +446,41 @@ class _PayoutAccountDialogState extends ConsumerState<_PayoutAccountDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextFormField(
-              key: const ValueKey('payout-bank'),
-              controller: _bank,
-              decoration: const InputDecoration(labelText: 'Bank'),
-              validator: required,
+            Wrap(
+              spacing: 8,
+              children: [
+                ChoiceChip(
+                  key: const ValueKey('payout-type-bank'),
+                  label: const Text('Bank'),
+                  selected: _type == 'bank',
+                  onSelected: _saving ? null : (_) => setState(() => _type = 'bank'),
+                ),
+                ChoiceChip(
+                  key: const ValueKey('payout-type-ewallet'),
+                  label: const Text('e-Wallet'),
+                  selected: _type == 'ewallet',
+                  onSelected: _saving ? null : (_) => setState(() => _type = 'ewallet'),
+                ),
+              ],
             ),
+            const SizedBox(height: 8),
+            if (fromList)
+              SearchableDropdownFormField<String>(
+                key: const ValueKey('payout-provider'),
+                initialValue: names.contains(_provider) ? _provider : null,
+                isExpanded: true,
+                decoration: InputDecoration(labelText: _type == 'ewallet' ? 'e-Wallet' : 'Bank'),
+                items: [for (final n in names) DropdownMenuItem(value: n, child: Text(n))],
+                validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
+                onChanged: _saving ? null : (v) => setState(() => _provider = v),
+              )
+            else
+              TextFormField(
+                key: const ValueKey('payout-bank'),
+                controller: _bank,
+                decoration: InputDecoration(labelText: _type == 'ewallet' ? 'e-Wallet' : 'Bank'),
+                validator: required,
+              ),
             TextFormField(
               key: const ValueKey('payout-account'),
               controller: _account,
@@ -453,7 +499,10 @@ class _PayoutAccountDialogState extends ConsumerState<_PayoutAccountDialog> {
       ),
       actions: [
         TextButton(onPressed: _saving ? null : () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(key: const ValueKey('payout-save'), onPressed: _saving ? null : _save, child: const Text('Save')),
+        FilledButton(
+            key: const ValueKey('payout-save'),
+            onPressed: _saving ? null : () => _save(fromList),
+            child: const Text('Save')),
       ],
     );
   }
