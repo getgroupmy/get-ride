@@ -121,7 +121,7 @@ begin
     from covered cov
     join public.profiles p on p.id = cov.id
     left join lateral (
-      select vv.plate, vv.make, vv.model
+      select nullif(btrim(vv.plate), '') as plate, vv.make, vv.model
         from public.vehicle vv
        where vv.auth_user_id = p.id
        order by (vv.status = 'approved') desc, vv.created_at
