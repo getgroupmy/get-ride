@@ -7,8 +7,11 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../admin/screens/people/people_logic.dart' show partnerTypeOptions;
+import '../../admin/screens/people/people_widgets.dart' show PartnerTypeField;
 import '../../core/secure_screen.dart';
 import '../../data/approver_inbox_repository.dart';
+import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
 import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/offline_strip.dart';
@@ -803,6 +806,8 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
   final _nationality = TextEditingController();
   final _address = TextEditingController();
   String? _status;
+  List<String> _types = const [];
+  List<String> _origTypes = const [];
   bool _loaded = false;
   bool _busy = false;
   Map<String, dynamic> _orig = const {};
@@ -826,6 +831,8 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
     _address.text = (d['address'] as String?)?.trim() ?? '';
     final s = (d['status'] as String?)?.trim();
     _status = _statusOptions.any((o) => o.$1 == s) ? s : null;
+    _origTypes = [for (final e in (d['partner_types'] as List? ?? const [])) '$e'.trim()]..removeWhere((e) => e.isEmpty);
+    _types = List.of(_origTypes);
     _loaded = true;
   }
 
@@ -839,6 +846,11 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
     if (_nationality.text.trim() != o('nationality')) out['nationality'] = _nationality.text.trim();
     if (_address.text.trim() != o('address')) out['address'] = _address.text.trim();
     if (_status != null && _status != o('status')) out['status'] = _status;
+    // Services (partner types): send the list only when the set actually changed.
+    if (_types.toSet().difference(_origTypes.toSet()).isNotEmpty ||
+        _origTypes.toSet().difference(_types.toSet()).isNotEmpty) {
+      out['partner_types'] = _types;
+    }
     return out;
   }
 
@@ -923,14 +935,27 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                       ),
                   ],
                 ),
-                if (isPartner)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 10),
-                    child: Text(
-                      'Services for this member are edited from their Vehicle / Services (coming soon).',
-                      style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
-                    ),
+                if (isPartner) ...[
+                  const SizedBox(height: 14),
+                  Text('Services', style: t.textTheme.labelLarge),
+                  const SizedBox(height: 2),
+                  Text(
+                    'The partner service types this member drives for.',
+                    style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                   ),
+                  const SizedBox(height: 6),
+                  Builder(builder: (context) {
+                    final options = partnerTypeOptions(
+                        ref.watch(partnerTypeEntriesProvider).value?.map((e) => e.values) ?? const []);
+                    return PartnerTypeField(
+                      key: const ValueKey('edit-services'),
+                      options: options,
+                      value: _types,
+                      enabled: !_busy,
+                      onChanged: (v) => setState(() => _types = v),
+                    );
+                  }),
+                ],
                 const SizedBox(height: 14),
                 FilledButton(
                   key: const ValueKey('edit-save'),
