@@ -95,6 +95,8 @@ class _ApproverDialogState extends State<ApproverDialog> {
   late bool _delete = widget.current?['can_delete'] == true;
   late bool _hard = widget.current?['delete_hard'] == true;
   late bool _credit = widget.current?['can_credit'] == true;
+  late bool _editProfile = widget.current?['can_edit_profile'] == true;
+  late bool _verifyId = widget.current?['can_verify_id'] == true;
   late String _scope = _scopeLabels.containsKey(widget.current?['scope']) ? '${widget.current?['scope']}' : 'referral';
   late bool _useOwn = widget.current?['use_own_region'] != false;
   late bool _conflict = widget.current?['conflict_guard'] != false;
@@ -128,6 +130,8 @@ class _ApproverDialogState extends State<ApproverDialog> {
         'can_delete': _delete,
         'delete_hard': _delete && _hard,
         'can_credit': _credit,
+        'can_edit_profile': _editProfile,
+        'can_verify_id': _editProfile && _verifyId,
         'scope': _scope,
         'use_own_region': _useOwn,
         'conflict_guard': _conflict,
@@ -187,6 +191,23 @@ class _ApproverDialogState extends State<ApproverDialog> {
               value: _credit,
               onChanged: (v) => setState(() => _credit = v),
             ),
+            SwitchListTile(
+              key: const ValueKey('approver-edit-profile'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Edit member profile'),
+              subtitle: const Text('Name, email, ID no., nationality, address, status and services.'),
+              value: _editProfile,
+              onChanged: (v) => setState(() => _editProfile = v),
+            ),
+            if (_editProfile)
+              SwitchListTile(
+                key: const ValueKey('approver-verify-id'),
+                contentPadding: const EdgeInsets.only(left: 16),
+                title: const Text('Mark ID verified'),
+                subtitle: const Text('Flip a member’s ID to verified, bypassing the automated check.'),
+                value: _verifyId,
+                onChanged: (v) => setState(() => _verifyId = v),
+              ),
             if (_delete)
               SwitchListTile(
                 key: const ValueKey('approver-hard'),

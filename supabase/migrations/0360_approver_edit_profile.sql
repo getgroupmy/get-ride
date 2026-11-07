@@ -206,4 +206,42 @@ $$;
 revoke execute on function public.approver_edit_profile(uuid, jsonb) from public, anon;
 grant execute on function public.approver_edit_profile(uuid, jsonb) to authenticated;
 
+-- ---- 2. A covered member's editable fields, to pre-fill the edit form -----------------------------
+-- Name / email / ID no. / nationality / address / status / id_verified and the
+-- member's partner types (if any). Behind approver_covers, like every read.
+create or replace function public.approver_member_detail(p_member uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  p public.profiles;
+begin
+  if auth.uid() is null or p_member is null or not public.approver_covers(p_member) then
+    return null;
+  end if;
+  select * into p from public.profiles where id = p_member;
+  if not found then
+    return null;
+  end if;
+  return jsonb_build_object(
+    'id', p.id,
+    'name', p.name,
+    'email', p.email,
+    'phone', p.phone,
+    'ic', p.ic,
+    'nationality', p.nationality,
+    'address', p.address,
+    'status', p.status,
+    'id_verified', p.id_verified,
+    'is_partner', exists (select 1 from public.partners where auth_user_id = p_member),
+    'partner_types', coalesce((select to_jsonb(partner_types) from public.partners
+                                where auth_user_id = p_member limit 1), '[]'::jsonb));
+end;
+$$;
+revoke execute on function public.approver_member_detail(uuid) from public, anon;
+grant execute on function public.approver_member_detail(uuid) to authenticated;
+
 notify pgrst, 'reload schema';

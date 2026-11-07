@@ -387,7 +387,9 @@ class MyTeamMemberScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final docs = ref.watch(approverOwnerDocumentsProvider(member.id));
-    final canCredit = ref.watch(approverSelfProvider).value?.canCredit ?? false;
+    final grant = ref.watch(approverSelfProvider).value;
+    final canCredit = grant?.canCredit ?? false;
+    final canEditProfile = grant?.canEditProfile ?? false;
     final wallet = ref.watch(approverMemberWalletProvider(member.id)).value;
     return SecureScreen(
       child: Scaffold(
@@ -396,13 +398,15 @@ class MyTeamMemberScreen extends ConsumerWidget {
           onRefresh: () async {
             ref.invalidate(approverOwnerDocumentsProvider(member.id));
             ref.invalidate(approverMemberWalletProvider(member.id));
+            ref.invalidate(approverMemberDetailProvider(member.id));
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
             children: [
               ResponsiveCenter(
                 maxWidth: 760,
-                child: _header(context, ref, cs, canCredit: canCredit, wallet: wallet),
+                child: _header(context, ref, cs,
+                    canCredit: canCredit, canEditProfile: canEditProfile, wallet: wallet),
               ),
               const SizedBox(height: 8),
               ResponsiveCenter(
@@ -464,7 +468,7 @@ class MyTeamMemberScreen extends ConsumerWidget {
   }
 
   Widget _header(BuildContext context, WidgetRef ref, ColorScheme cs,
-      {required bool canCredit, required double? wallet}) {
+      {required bool canCredit, required bool canEditProfile, required double? wallet}) {
     final text = Theme.of(context).textTheme;
     Widget row(IconData icon, String label, String value) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
@@ -512,18 +516,32 @@ class MyTeamMemberScreen extends ConsumerWidget {
                   [member.vehicleLabel, member.plate].where((e) => e != null).join(' · ')),
             if (wallet != null)
               row(Icons.account_balance_wallet_outlined, 'GET.wallet', 'RM${wallet.toStringAsFixed(2)}'),
-            if (canCredit) ...[
+            if (canCredit || canEditProfile) ...[
               const SizedBox(height: 10),
-              FilledButton.tonalIcon(
-                key: const ValueKey('my-team-add-credit'),
-                onPressed: () => _openAddCredit(context, ref),
-                icon: const Icon(Icons.add_card_outlined, size: 18),
-                label: const Text('Add credit'),
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  if (canEditProfile)
+                    OutlinedButton.icon(
+                      key: const ValueKey('my-team-edit-profile'),
+                      onPressed: () => _openEditProfile(context, ref),
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: const Text('Edit profile'),
+                    ),
+                  if (canCredit)
+                    FilledButton.tonalIcon(
+                      key: const ValueKey('my-team-add-credit'),
+                      onPressed: () => _openAddCredit(context, ref),
+                      icon: const Icon(Icons.add_card_outlined, size: 18),
+                      label: const Text('Add credit'),
+                    ),
+                ],
               ),
             ],
             const SizedBox(height: 6),
             Text(
-              'Profile, vehicle and statistics are coming soon.',
+              'Vehicle and statistics are coming soon.',
               style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontStyle: FontStyle.italic),
             ),
           ],
@@ -537,6 +555,13 @@ class MyTeamMemberScreen extends ConsumerWidget {
         context: context,
         isScrollControlled: true,
         builder: (c) => _AddCreditSheet(member: member),
+      );
+
+  Future<void> _openEditProfile(BuildContext context, WidgetRef ref) => showAppSheet<void>(
+        id: 'approver.edit-profile',
+        context: context,
+        isScrollControlled: true,
+        builder: (c) => _EditProfileSheet(member: member),
       );
 }
 
@@ -721,4 +746,211 @@ class _DocStatus extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Edit a covered member's profile (migration 0360). Pre-filled from
+/// approver_member_detail; sends only the changed fields. ID-verify is a
+/// separate action, shown only with the can_verify_id grant.
+class _EditProfileSheet extends ConsumerStatefulWidget {
+  const _EditProfileSheet({required this.member});
+  final TeamMember member;
+
+  @override
+  ConsumerState<_EditProfileSheet> createState() => _EditProfileSheetState();
+}
+
+/// Status values the approver may set, with user-facing labels.
+const _statusOptions = <(String, String)>[
+  ('approved', 'Active'),
+  ('blocked', 'Blocked'),
+  ('unapproved', 'Unapproved'),
+  ('rejected', 'Rejected'),
+];
+
+class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
+  final _name = TextEditingController();
+  final _email = TextEditingController();
+  final _ic = TextEditingController();
+  final _nationality = TextEditingController();
+  final _address = TextEditingController();
+  String? _status;
+  bool _loaded = false;
+  bool _busy = false;
+  Map<String, dynamic> _orig = const {};
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _ic.dispose();
+    _nationality.dispose();
+    _address.dispose();
+    super.dispose();
+  }
+
+  void _fill(Map<String, dynamic> d) {
+    _orig = d;
+    _name.text = (d['name'] as String?)?.trim() ?? '';
+    _email.text = (d['email'] as String?)?.trim() ?? '';
+    _ic.text = (d['ic'] as String?)?.trim() ?? '';
+    _nationality.text = (d['nationality'] as String?)?.trim() ?? '';
+    _address.text = (d['address'] as String?)?.trim() ?? '';
+    final s = (d['status'] as String?)?.trim();
+    _status = _statusOptions.any((o) => o.$1 == s) ? s : null;
+    _loaded = true;
+  }
+
+  /// Only the fields the approver actually changed.
+  Map<String, dynamic> _changes() {
+    final out = <String, dynamic>{};
+    String o(String k) => (_orig[k] as String?)?.trim() ?? '';
+    if (_name.text.trim() != o('name')) out['name'] = _name.text.trim();
+    if (_email.text.trim() != o('email')) out['email'] = _email.text.trim();
+    if (_ic.text.trim() != o('ic')) out['ic'] = _ic.text.trim();
+    if (_nationality.text.trim() != o('nationality')) out['nationality'] = _nationality.text.trim();
+    if (_address.text.trim() != o('address')) out['address'] = _address.text.trim();
+    if (_status != null && _status != o('status')) out['status'] = _status;
+    return out;
+  }
+
+  Future<void> _save() async {
+    final changes = _changes();
+    if (changes.isEmpty) {
+      Navigator.pop(context);
+      return;
+    }
+    await _run(changes, 'Profile updated.');
+  }
+
+  Future<void> _verifyId() => _run({'id_verified': 'Verified'}, 'ID marked verified.');
+
+  Future<void> _run(Map<String, dynamic> fields, String ok) async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).editProfile(widget.member.id, fields);
+      ref.invalidate(approverMemberDetailProvider(widget.member.id));
+      if (!mounted) return;
+      Navigator.pop(context);
+      unawaited(showAppNotice(id: 'notice.approver-edit', context: context, message: ok, kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      unawaited(showAppNotice(
+        id: 'notice.approver-edit',
+        context: context,
+        message: _editErrorText(e) ?? "Couldn't save. Try again.",
+        kind: NoticeKind.error,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final detail = ref.watch(approverMemberDetailProvider(widget.member.id));
+    final canVerify = ref.watch(approverSelfProvider).value?.canVerifyId ?? false;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: detail.when(
+        loading: () => const Padding(
+          padding: EdgeInsets.all(28),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+        error: (_, _) => Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text("Couldn't load this member.", style: TextStyle(color: t.colorScheme.error)),
+        ),
+        data: (d) {
+          if (d == null) {
+            return const Padding(padding: EdgeInsets.all(20), child: Text('This member is no longer in your scope.'));
+          }
+          if (!_loaded) _fill(d);
+          final verified = (d['id_verified'] as String?) == 'Verified';
+          final isPartner = d['is_partner'] == true;
+          return SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Edit profile', style: t.textTheme.titleLarge),
+                const SizedBox(height: 12),
+                _field(_name, 'Name', key: 'edit-name'),
+                _field(_email, 'Email', key: 'edit-email', keyboard: TextInputType.emailAddress),
+                _field(_ic, 'ID / passport no.', key: 'edit-ic', caps: true),
+                _field(_nationality, 'Nationality', key: 'edit-nationality'),
+                _field(_address, 'Address', key: 'edit-address', lines: 2),
+                const SizedBox(height: 4),
+                Text('Account status', style: t.textTheme.labelLarge),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    for (final (value, label) in _statusOptions)
+                      ChoiceChip(
+                        key: ValueKey('edit-status-$value'),
+                        label: Text(label),
+                        selected: _status == value,
+                        onSelected: _busy ? null : (_) => setState(() => _status = value),
+                      ),
+                  ],
+                ),
+                if (isPartner)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Text(
+                      'Services for this member are edited from their Vehicle / Services (coming soon).',
+                      style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                const SizedBox(height: 14),
+                FilledButton(
+                  key: const ValueKey('edit-save'),
+                  onPressed: _busy ? null : _save,
+                  child: _busy
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Save'),
+                ),
+                if (canVerify) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: const ValueKey('edit-verify-id'),
+                    onPressed: (_busy || verified) ? null : _verifyId,
+                    icon: Icon(verified ? Icons.verified : Icons.verified_outlined, size: 18),
+                    label: Text(verified ? 'ID already verified' : 'Mark ID verified'),
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _field(TextEditingController c, String label,
+      {required String key, TextInputType? keyboard, bool caps = false, int lines = 1}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        key: ValueKey(key),
+        controller: c,
+        enabled: !_busy,
+        keyboardType: keyboard,
+        textCapitalization: caps ? TextCapitalization.characters : TextCapitalization.none,
+        minLines: lines,
+        maxLines: lines,
+        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+      ),
+    );
+  }
+}
+
+/// Maps an approver_edit_profile error to a message for the approver.
+String? _editErrorText(Object e) {
+  final m = e is PostgrestException ? e.message : e.toString();
+  if (m.contains('not_allowed')) return "You're not allowed to make that change.";
+  if (m.contains('out_of_scope')) return "This member isn't in your scope.";
+  if (m.contains('invalid_status')) return 'Pick a valid status.';
+  if (m.contains('invalid_id_verified')) return 'Invalid ID verification value.';
+  return null;
 }
