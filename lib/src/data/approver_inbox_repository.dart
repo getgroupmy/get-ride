@@ -52,6 +52,7 @@ class ApproverDoc {
     required this.docLabel,
     required this.fileUrl,
     required this.fileUrlBack,
+    this.status,
     this.plate,
     this.documentNumber,
     this.startDate,
@@ -72,6 +73,14 @@ class ApproverDoc {
   final String docLabel;
   final String? fileUrl;
   final String? fileUrlBack;
+
+  /// The review status — 'Pending Review', 'Approved', 'Rejected', 'Expired'.
+  /// The inbox only ever lists pending documents; a member's Documents tab
+  /// (My Team, 0357) lists every status, and the viewer offers approve/reject
+  /// only while it is still pending.
+  final String? status;
+
+  bool get isPending => (status ?? 'Pending Review') == 'Pending Review';
 
   /// The vehicle's plate number, for 'vehicle' documents (migration 0356);
   /// null for other sources or when the vehicle has none.
@@ -114,6 +123,7 @@ class ApproverDoc {
         docLabel: (j['doc_label'] as String?) ?? 'Document',
         fileUrl: j['file_url'] as String?,
         fileUrlBack: j['file_url_back'] as String?,
+        status: (j['status'] as String?)?.trim(),
         plate: _plate(j['plate']),
         documentNumber: (j['document_number'] as String?)?.trim(),
         startDate: _date(j['start_date']),
@@ -124,9 +134,102 @@ class ApproverDoc {
       );
 }
 
+/// One person in the approver's "My Team" list — someone their grant reaches
+/// (migration 0357). The card fields only; the member screen loads the rest.
+class TeamMember {
+  const TeamMember({
+    required this.id,
+    this.displayId,
+    required this.name,
+    this.phone,
+    this.avatarUrl,
+    this.status,
+    this.idVerified,
+    this.ic,
+    this.nationality,
+    this.plate,
+    this.vehicleLabel,
+    this.pendingDocs = 0,
+  });
+
+  final String id;
+  final String? displayId;
+  final String name;
+  final String? phone;
+  final String? avatarUrl;
+
+  /// The account's lifecycle status (`approved`, `blocked`, …) and ID-check
+  /// state, as stored; shown as a chip.
+  final String? status;
+  final String? idVerified;
+
+  /// The national ID / passport number and nationality, for the card.
+  final String? ic;
+  final String? nationality;
+
+  /// A representative vehicle (an approved one first): its plate and
+  /// "Make Model" label; null when the person has no vehicle on file.
+  final String? plate;
+  final String? vehicleLabel;
+
+  /// How many of this person's documents are waiting for review right now.
+  final int pendingDocs;
+
+  static String? _s(Object? v) {
+    final t = (v as String?)?.trim() ?? '';
+    return t.isEmpty ? null : t;
+  }
+
+  static TeamMember fromJson(Map<String, dynamic> j) => TeamMember(
+        id: j['owner_id'] as String,
+        displayId: _s(j['display_id']),
+        name: (j['name'] as String?)?.trim().isNotEmpty == true ? (j['name'] as String).trim() : 'User',
+        phone: _s(j['phone']),
+        avatarUrl: _s(j['avatar_url']),
+        status: _s(j['status']),
+        idVerified: _s(j['id_verified']),
+        ic: _s(j['ic']),
+        nationality: _s(j['nationality']),
+        plate: _s(j['plate']),
+        vehicleLabel: _s(j['vehicle_label']),
+        pendingDocs: (j['pending_docs'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// One page of covered people plus the cursor to fetch the next page.
+class TeamPage {
+  const TeamPage({required this.members, required this.hasMore});
+  final List<TeamMember> members;
+  final bool hasMore;
+}
+
 class ApproverInboxRepository {
   ApproverInboxRepository(this._db);
   final SupabaseClient _db;
+
+  /// Default page size — the list shows a few, then loads more on scroll.
+  static const int teamPageSize = 12;
+
+  /// One keyset-paginated, searchable page of the people this approver covers
+  /// (migration 0357). Pass [query] to search name / phone / plate / ID, and
+  /// the last member of the previous page as [after] to get the next one.
+  Future<TeamPage> coveredPartners({String? query, TeamMember? after, int limit = teamPageSize}) async {
+    final rows = await _db.rpc('approver_covered_partners', params: {
+      'p_query': (query ?? '').trim().isEmpty ? null : query!.trim(),
+      'p_after_name': after?.name,
+      'p_after_id': after?.id,
+      'p_limit': limit,
+    }) as List;
+    final members = [for (final r in rows) TeamMember.fromJson(Map<String, dynamic>.from(r as Map))];
+    return TeamPage(members: members, hasMore: members.length >= limit);
+  }
+
+  /// Every document of one covered person, across all three stores and every
+  /// status (migration 0357). The server re-checks the scope.
+  Future<List<ApproverDoc>> ownerDocuments(String ownerId) async => [
+        for (final r in (await _db.rpc('approver_owner_documents', params: {'p_owner': ownerId}) as List))
+          ApproverDoc.fromJson(Map<String, dynamic>.from(r as Map)),
+      ];
 
   /// The caller's own grant, or null when they are not an active approver.
   Future<ApproverGrant?> self() async {
@@ -211,4 +314,12 @@ final isApproverProvider = Provider.autoDispose<bool>((ref) => ref.watch(approve
 final approverPendingProvider = FutureProvider.autoDispose<List<ApproverDoc>>((ref) async {
   if (ref.watch(currentUserIdProvider) == null) return const <ApproverDoc>[];
   return ref.watch(approverInboxRepositoryProvider).pending();
+});
+
+/// Every document of one covered team member (My Team → member → Documents,
+/// migration 0357).
+final approverOwnerDocumentsProvider =
+    FutureProvider.autoDispose.family<List<ApproverDoc>, String>((ref, ownerId) async {
+  if (ref.watch(currentUserIdProvider) == null) return const <ApproverDoc>[];
+  return ref.watch(approverInboxRepositoryProvider).ownerDocuments(ownerId);
 });

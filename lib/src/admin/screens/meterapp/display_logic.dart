@@ -72,6 +72,11 @@ const cityToCityMenuItemId = 'city-to-city';
 /// waiting for review; shown only to an active approver. On both menus.
 const approverMenuItemId = 'approver';
 
+/// My Team (0357): the people an approver's grant reaches, so they can open a
+/// person and manage their documents; shown only to an active approver, like
+/// Approvals. On both menus.
+const myTeamMenuItemId = 'my-team';
+
 /// The driver's My Ride code (QR and the riders who added them); shown only
 /// where the database has My Ride (migration 0160).
 const myRideCodeMenuItemId = 'my-ride-code';
@@ -108,6 +113,7 @@ const defaultUserMenuItems = <(String, String)>[
   ('insurance', 'Insurance'),
   ('wallet', 'Wallet'),
   (approverMenuItemId, 'Approvals'), // this app's own (0349/0350); shown only to an approver
+  (myTeamMenuItemId, 'My Team'), // this app's own (0357); shown only to an approver
   ('notifications', 'Notifications'),
   ('safety', 'Safety'),
   ('settings', 'Settings'),
@@ -160,6 +166,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   (vehicleInfoMenuItemId, 'Vehicle information'),
   ('documents', 'Documents'),
   (approverMenuItemId, 'Approvals'), // this app's own (0349/0350); shown only to an approver
+  (myTeamMenuItemId, 'My Team'), // this app's own (0357); shown only to an approver
   ('notifications', 'Notifications'),
   (helpAssistantMenuItemId, 'Help assistant'), // this app's own; the Expo menu skips it
   ('support', 'Support'),
@@ -294,7 +301,7 @@ const allAppRoutes = <String>[
   '/dark-mode', '/language', '/distances', '/navigation', '/user-guide', '/rules-terms', '/safety',
   '/emergency-contacts', '/emergency-contact-edit', '/my-ride', '/my-qr', '/search', '/map-picker', '/offer-fare', '/ride-detail',
   '/ride-confirm', '/ride-running', '/ride-tracking', '/teksi-ev', '/support', '/support-call',
-  '/support-chat', '/partner-teksi', '/partner-ehailing', '/partner-onboarding', '/partner-documents',
+  '/support-chat', '/partner-teksi', '/partner-ehailing', '/partner-onboarding', '/partner-documents', '/my-team',
   '/vehicle-onboarding', '/auth-diagnostics', '/admin-login', '/admin-dashboard', '/admin-orders',
   '/admin-session-history', '/admin-support', '/admin-support-chat', '/admin-support-pool',
   '/admin-partners', '/admin-partners-all', '/admin-partners-approved', '/admin-partners-blocked',

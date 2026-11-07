@@ -6,7 +6,7 @@ import '../../admin/admin_providers.dart';
 import '../../core/contact_phone.dart' show formatPhoneDisplay;
 import '../../core/referral.dart';
 import '../../admin/screens/meterapp/display_logic.dart'
-    show approverMenuItemId, inviteFriendsMenuItemId, scheduledRidesMenuItemId;
+    show approverMenuItemId, inviteFriendsMenuItemId, myTeamMenuItemId, scheduledRidesMenuItemId;
 import '../../core/side_menu.dart';
 import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../../data/app_display_repository.dart';
@@ -45,6 +45,7 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
     'emergency-contacts': '/account/emergency',
     'invite-friends': '/account/referral',
     'approver': '/approvals',
+    'my-team': '/my-team',
   };
   if (id == 'logout') {
     // Asked first, while the menu is still open: a stray tap must not sign out.
@@ -68,6 +69,7 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
 bool riderMenuRowShows(String id, {bool scheduledRides = false, bool approver = false}) => switch (id) {
       scheduledRidesMenuItemId => scheduledRides,
       approverMenuItemId => approver,
+      myTeamMenuItemId => approver,
       _ => true,
     };
 
