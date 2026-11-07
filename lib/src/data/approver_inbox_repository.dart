@@ -19,6 +19,7 @@ class ApproverGrant {
     required this.canUpload,
     required this.canDelete,
     required this.deleteHard,
+    required this.canCredit,
     required this.scope,
     required this.docTypes,
   });
@@ -27,6 +28,10 @@ class ApproverGrant {
   final bool canUpload;
   final bool canDelete;
   final bool deleteHard;
+
+  /// Whether the approver may add wallet credit to a covered member, paid
+  /// from their own GET.wallet (migration 0359). A separate, deliberate grant.
+  final bool canCredit;
   final String scope;
   final List<String> docTypes;
 
@@ -35,6 +40,7 @@ class ApproverGrant {
         canUpload: j['can_upload'] == true,
         canDelete: j['can_delete'] == true,
         deleteHard: j['delete_hard'] == true,
+        canCredit: j['can_credit'] == true,
         scope: (j['scope'] as String?) ?? 'referral',
         docTypes: [for (final t in (j['doc_types'] as List? ?? const [])) t as String],
       );
@@ -231,6 +237,30 @@ class ApproverInboxRepository {
           ApproverDoc.fromJson(Map<String, dynamic>.from(r as Map)),
       ];
 
+  /// One covered member's GET.wallet balance, for display (migration 0359);
+  /// null when the member is out of the approver's scope.
+  Future<double?> memberWallet(String memberId) async {
+    final r = await _db.rpc('approver_member_wallet', params: {'p_member': memberId});
+    return r == null ? null : (r as num).toDouble();
+  }
+
+  /// Add [amount] credit to [memberId]'s GET.wallet, paid from the approver's
+  /// own GET.wallet and confirmed with [pin] (migration 0359). [requestId]
+  /// makes a retried/duplicated submit idempotent (no second charge).
+  Future<void> addCredit({
+    required String memberId,
+    required double amount,
+    required String pin,
+    required String requestId,
+  }) async {
+    await _db.rpc('approver_add_credit', params: {
+      'p_member': memberId,
+      'p_amount': amount,
+      'p_pin': pin,
+      'p_request_id': requestId,
+    });
+  }
+
   /// The caller's own grant, or null when they are not an active approver.
   Future<ApproverGrant?> self() async {
     final r = await _db.rpc('approver_self');
@@ -322,4 +352,12 @@ final approverOwnerDocumentsProvider =
     FutureProvider.autoDispose.family<List<ApproverDoc>, String>((ref, ownerId) async {
   if (ref.watch(currentUserIdProvider) == null) return const <ApproverDoc>[];
   return ref.watch(approverInboxRepositoryProvider).ownerDocuments(ownerId);
+});
+
+/// One covered member's GET.wallet balance (My Team member screen, 0359);
+/// null when out of scope or unavailable.
+final approverMemberWalletProvider =
+    FutureProvider.autoDispose.family<double?, String>((ref, memberId) async {
+  if (ref.watch(currentUserIdProvider) == null) return null;
+  return ref.watch(approverInboxRepositoryProvider).memberWallet(memberId);
 });

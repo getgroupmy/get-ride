@@ -94,6 +94,7 @@ class _ApproverDialogState extends State<ApproverDialog> {
   late bool _upload = widget.current?['can_upload'] == true;
   late bool _delete = widget.current?['can_delete'] == true;
   late bool _hard = widget.current?['delete_hard'] == true;
+  late bool _credit = widget.current?['can_credit'] == true;
   late String _scope = _scopeLabels.containsKey(widget.current?['scope']) ? '${widget.current?['scope']}' : 'referral';
   late bool _useOwn = widget.current?['use_own_region'] != false;
   late bool _conflict = widget.current?['conflict_guard'] != false;
@@ -126,6 +127,7 @@ class _ApproverDialogState extends State<ApproverDialog> {
         'can_upload': _upload,
         'can_delete': _delete,
         'delete_hard': _delete && _hard,
+        'can_credit': _credit,
         'scope': _scope,
         'use_own_region': _useOwn,
         'conflict_guard': _conflict,
@@ -176,6 +178,14 @@ class _ApproverDialogState extends State<ApproverDialog> {
               title: const Text('Delete uploaded documents'),
               value: _delete,
               onChanged: (v) => setState(() => _delete = v),
+            ),
+            SwitchListTile(
+              key: const ValueKey('approver-credit'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Add wallet credit'),
+              subtitle: const Text('Top up a member’s GET.wallet from their own, PIN-confirmed.'),
+              value: _credit,
+              onChanged: (v) => setState(() => _credit = v),
             ),
             if (_delete)
               SwitchListTile(

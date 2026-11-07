@@ -1,15 +1,35 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/secure_screen.dart';
 import '../../data/approver_inbox_repository.dart';
+import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/offline_strip.dart';
+import '../../widgets/page_style_host.dart';
 import '../../widgets/storage_image.dart';
 import 'approver_inbox_screen.dart' show ApproverInboxScreen, openApproverDocument;
+
+/// Maps an approver_add_credit error to a message for the approver; null when
+/// not recognised (a generic message is shown).
+String? _creditErrorText(Object e) {
+  final m = e is PostgrestException ? e.message : e.toString();
+  bool has(String c) => m.contains(c);
+  if (has('wrong_pin')) return 'That PIN is not right. Try again.';
+  if (has('insufficient_balance')) return "Your GET.wallet doesn't have enough for that.";
+  if (has('invalid_amount')) return 'Enter an amount between RM1 and RM10,000.';
+  if (has('not_allowed')) return "You're not allowed to add credit.";
+  if (has('out_of_scope') || has('invalid_member')) return "This member isn't in your scope.";
+  if (has('PIN_LOCKED')) return 'Too many wrong PINs. Try again later.';
+  if (has('RATE_LIMITED')) return 'Too many attempts. Try again in a moment.';
+  return null;
+}
 
 /// Side menu → My Team: the people this approver's grant reaches (migration
 /// 0357). A searchable list that loads a few at a time; tapping a person opens
@@ -367,15 +387,23 @@ class MyTeamMemberScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final docs = ref.watch(approverOwnerDocumentsProvider(member.id));
+    final canCredit = ref.watch(approverSelfProvider).value?.canCredit ?? false;
+    final wallet = ref.watch(approverMemberWalletProvider(member.id)).value;
     return SecureScreen(
       child: Scaffold(
         appBar: AppBar(title: Text(member.name)),
         body: OfflineStrip.over(RefreshIndicator(
-          onRefresh: () async => ref.invalidate(approverOwnerDocumentsProvider(member.id)),
+          onRefresh: () async {
+            ref.invalidate(approverOwnerDocumentsProvider(member.id));
+            ref.invalidate(approverMemberWalletProvider(member.id));
+          },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
             children: [
-              ResponsiveCenter(maxWidth: 760, child: _header(context, cs)),
+              ResponsiveCenter(
+                maxWidth: 760,
+                child: _header(context, ref, cs, canCredit: canCredit, wallet: wallet),
+              ),
               const SizedBox(height: 8),
               ResponsiveCenter(
                 maxWidth: 760,
@@ -435,7 +463,8 @@ class MyTeamMemberScreen extends ConsumerWidget {
     );
   }
 
-  Widget _header(BuildContext context, ColorScheme cs) {
+  Widget _header(BuildContext context, WidgetRef ref, ColorScheme cs,
+      {required bool canCredit, required double? wallet}) {
     final text = Theme.of(context).textTheme;
     Widget row(IconData icon, String label, String value) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
@@ -481,6 +510,17 @@ class MyTeamMemberScreen extends ConsumerWidget {
             if (member.plate != null || member.vehicleLabel != null)
               row(Icons.directions_car_outlined, 'Vehicle',
                   [member.vehicleLabel, member.plate].where((e) => e != null).join(' · ')),
+            if (wallet != null)
+              row(Icons.account_balance_wallet_outlined, 'GET.wallet', 'RM${wallet.toStringAsFixed(2)}'),
+            if (canCredit) ...[
+              const SizedBox(height: 10),
+              FilledButton.tonalIcon(
+                key: const ValueKey('my-team-add-credit'),
+                onPressed: () => _openAddCredit(context, ref),
+                icon: const Icon(Icons.add_card_outlined, size: 18),
+                label: const Text('Add credit'),
+              ),
+            ],
             const SizedBox(height: 6),
             Text(
               'Profile, vehicle and statistics are coming soon.',
@@ -488,6 +528,142 @@ class MyTeamMemberScreen extends ConsumerWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _openAddCredit(BuildContext context, WidgetRef ref) => showAppSheet<void>(
+        id: 'approver.add-credit',
+        context: context,
+        isScrollControlled: true,
+        builder: (c) => _AddCreditSheet(member: member),
+      );
+}
+
+/// Add credit to a member: an amount and the approver's PIN, paid from the
+/// approver's own GET.wallet (migration 0359). On success the member's wallet
+/// provider refreshes and the member is pushed.
+class _AddCreditSheet extends ConsumerStatefulWidget {
+  const _AddCreditSheet({required this.member});
+  final TeamMember member;
+
+  @override
+  ConsumerState<_AddCreditSheet> createState() => _AddCreditSheetState();
+}
+
+class _AddCreditSheetState extends ConsumerState<_AddCreditSheet> {
+  final _amount = TextEditingController();
+  final _pin = TextEditingController();
+  // One request id per sheet, so a retry after a timeout never double-charges.
+  final _requestId = const Uuid().v4();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _pin.dispose();
+    super.dispose();
+  }
+
+  double? get _parsedAmount {
+    final v = double.tryParse(_amount.text.trim());
+    if (v == null) return null;
+    return (v * 100).roundToDouble() / 100;
+  }
+
+  bool get _canSubmit {
+    final a = _parsedAmount;
+    return a != null && a >= 1 && a <= 10000 && _pin.text.trim().length >= 4 && !_busy;
+  }
+
+  Future<void> _submit() async {
+    final amount = _parsedAmount;
+    if (amount == null) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).addCredit(
+            memberId: widget.member.id,
+            amount: amount,
+            pin: _pin.text.trim(),
+            requestId: _requestId,
+          );
+      ref.invalidate(approverMemberWalletProvider(widget.member.id));
+      if (!mounted) return;
+      Navigator.pop(context);
+      unawaited(showAppNotice(
+        id: 'notice.approver-credit',
+        context: context,
+        message: 'RM${amount.toStringAsFixed(2)} added. ${widget.member.name} has been notified.',
+        kind: NoticeKind.success,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      unawaited(showAppNotice(
+        id: 'notice.approver-credit',
+        context: context,
+        message: _creditErrorText(e) ?? "Couldn't add credit. Try again.",
+        kind: NoticeKind.error,
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Add credit', style: t.textTheme.titleLarge),
+          const SizedBox(height: 4),
+          Text(
+            'Top up ${widget.member.name}’s GET.wallet from your own GET.wallet. Confirm with your sign-in PIN.',
+            style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            key: const ValueKey('add-credit-amount'),
+            controller: _amount,
+            enabled: !_busy,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+            decoration: const InputDecoration(
+              labelText: 'Amount',
+              prefixText: 'RM ',
+              hintText: '0.00',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const ValueKey('add-credit-pin'),
+            controller: _pin,
+            enabled: !_busy,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            maxLength: 6,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(
+              labelText: 'Your sign-in PIN',
+              border: OutlineInputBorder(),
+              counterText: '',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            key: const ValueKey('add-credit-submit'),
+            onPressed: _canSubmit ? _submit : null,
+            child: _busy
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Add credit'),
+          ),
+        ],
       ),
     );
   }
