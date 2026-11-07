@@ -216,7 +216,12 @@ class _ApproverDialogState extends State<ApproverDialog> {
               key: const ValueKey('approver-conflict'),
               contentPadding: EdgeInsets.zero,
               title: const Text('Conflict guard'),
-              subtitle: const Text("Can't act on their own documents, nor people they referred."),
+              // On the referral scope the whole grant IS their referrals, so the
+              // "nor people they referred" exclusion is deliberately skipped
+              // (approver_covers, 0350) — else the grant would reach no one.
+              subtitle: Text(_scope == 'referral'
+                  ? "Can't act on their own documents."
+                  : "Can't act on their own documents, nor people they referred."),
               value: _conflict,
               onChanged: (v) => setState(() => _conflict = v),
             ),
