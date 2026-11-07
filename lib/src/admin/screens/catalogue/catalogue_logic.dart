@@ -860,6 +860,7 @@ List<SettingEntry> enabledDocumentTypes(List<SettingEntry> docTypes) {
 // ---------------------------------------------------------------------------
 
 const requiredDocumentsKey = 'required-documents';
+const payoutProviderKey = 'payout_provider';
 
 /// Required-documents `docTypes` / `partnerTypes`: array, JSON string, or
 /// (legacy) comma list.
