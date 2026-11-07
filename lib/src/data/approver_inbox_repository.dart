@@ -52,6 +52,7 @@ class ApproverDoc {
     required this.docLabel,
     required this.fileUrl,
     required this.fileUrlBack,
+    this.plate,
     this.documentNumber,
     this.startDate,
     this.expiryDate,
@@ -72,6 +73,10 @@ class ApproverDoc {
   final String? fileUrl;
   final String? fileUrlBack;
 
+  /// The vehicle's plate number, for 'vehicle' documents (migration 0356);
+  /// null for other sources or when the vehicle has none.
+  final String? plate;
+
   /// The fields the owner captured at upload, shown to the approver. The
   /// dates are stored `yyyy-mm-dd`. Each `requires*` says the document type
   /// asks for that field (so it is shown, and editable with can_upload).
@@ -86,6 +91,11 @@ class ApproverDoc {
   /// identity is never editable here (the server refuses it).
   bool get hasCapturedFields =>
       source != 'identity' && (requiresNumber || requiresStart || requiresExpiry);
+
+  static String? _plate(Object? v) {
+    final t = (v as String?)?.trim() ?? '';
+    return t.isEmpty ? null : t;
+  }
 
   static String? _date(Object? v) {
     final s = (v as String?)?.trim();
@@ -104,6 +114,7 @@ class ApproverDoc {
         docLabel: (j['doc_label'] as String?) ?? 'Document',
         fileUrl: j['file_url'] as String?,
         fileUrlBack: j['file_url_back'] as String?,
+        plate: _plate(j['plate']),
         documentNumber: (j['document_number'] as String?)?.trim(),
         startDate: _date(j['start_date']),
         expiryDate: _date(j['expiry_date']),

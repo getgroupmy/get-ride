@@ -36,6 +36,14 @@ class ApproverInboxScreen extends ConsumerWidget {
         _ => 'Document',
       };
 
+  /// "Owner · Vehicle document · ABC 1234" — the plate is added for vehicle
+  /// documents so the approver can see which car the document belongs to.
+  static String ownerLine(ApproverDoc d) => [
+        d.ownerName,
+        sourceLabel(d.source),
+        if (d.source == 'vehicle' && d.plate != null) d.plate!,
+      ].join(' · ');
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final value = ref.watch(approverPendingProvider);
@@ -73,7 +81,7 @@ class ApproverInboxScreen extends ConsumerWidget {
                           child: Icon(iconFor(d.source)),
                         ),
                         title: Text(d.docLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        subtitle: Text('${d.ownerName} · ${sourceLabel(d.source)}',
+                        subtitle: Text(ownerLine(d),
                             maxLines: 1, overflow: TextOverflow.ellipsis),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => _openDocument(context, d),
@@ -289,7 +297,7 @@ class _DocumentViewerState extends ConsumerState<_DocumentViewer> {
                       children: [
                         Text(doc.docLabel, style: Theme.of(context).textTheme.titleMedium),
                         const SizedBox(height: 2),
-                        Text('${doc.ownerName} · ${ApproverInboxScreen.sourceLabel(doc.source)}',
+                        Text(ApproverInboxScreen.ownerLine(doc),
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                       ],
                     ),
