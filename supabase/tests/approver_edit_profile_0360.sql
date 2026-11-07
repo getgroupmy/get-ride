@@ -1,13 +1,15 @@
 -- ============================================================================
 -- Regression test for migration 0360: approver edits a covered member's profile.
---   * can_edit_profile writes name / nationality / address / status (status maps
---     to profile_status) and services (partner_types).
+--   * can_edit_profile writes name / nationality / status (status maps to
+--     profile_status) and services (partner_types).
 --   * marking the ID verified needs the higher can_verify_id flag.
---   * an out-of-scope member and a non-approver are refused.
+--   * an invalid status and a non-approver are refused.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/approver_edit_profile_0360.sql
 --
--- One transaction, rolled back. Made-up people only.
+-- One transaction, rolled back. Made-up people only. The RPC calls run as the
+-- approver; the DB-state checks run as the owner, because profiles/partners RLS
+-- shows a row only to its owner or an admin.
 -- ============================================================================
 begin;
 
@@ -42,57 +44,60 @@ grant execute on function pg_temp.check(boolean, text), pg_temp.as_user(uuid), p
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000360a1');
 
--- 1. Edit name, nationality and status; status maps to profile_status.
+-- 1. Edit name, nationality and status; and the services.
 select pg_temp.check(
   (public.approver_edit_profile('00000000-0000-0000-0000-0000000360b1',
      '{"name":"New Name","nationality":"Malaysia","status":"blocked"}'::jsonb) ->> 'ok') = 'true',
   'the edit succeeds');
 select pg_temp.check(
+  (public.approver_edit_profile('00000000-0000-0000-0000-0000000360b1',
+     '{"partner_types":["TEKSI","ehailing"]}'::jsonb) ->> 'ok') = 'true',
+  'editing services succeeds');
+-- ID verify is refused without can_verify_id.
+select pg_temp.check(
+  pg_temp.errored($q$select public.approver_edit_profile('00000000-0000-0000-0000-0000000360b1','{"id_verified":"Verified"}'::jsonb)$q$),
+  'ID verify is refused without the flag');
+
+-- Verify the written state as the owner (profiles/partners RLS hides other rows).
+reset role;
+select pg_temp.check(
   (select name = 'New Name' and nationality = 'Malaysia' and status::text = 'blocked'
           and profile_status::text = 'Blocked'
      from public.profiles where id = '00000000-0000-0000-0000-0000000360b1'),
   'name / nationality / status (and profile_status) are written');
-
--- 2. Services (partner_types) are written on the member's partner row.
-select pg_temp.check(
-  (public.approver_edit_profile('00000000-0000-0000-0000-0000000360b1',
-     '{"partner_types":["TEKSI","ehailing"]}'::jsonb) ->> 'ok') = 'true',
-  'editing services succeeds');
 select pg_temp.check(
   (select partner_types = array['TEKSI','ehailing']::text[]
      from public.partners where auth_user_id = '00000000-0000-0000-0000-0000000360b1'),
   'the partner types are written');
-
--- 3. Marking the ID verified is refused without can_verify_id.
-select pg_temp.check(
-  pg_temp.errored($q$select public.approver_edit_profile('00000000-0000-0000-0000-0000000360b1','{"id_verified":"Verified"}'::jsonb)$q$),
-  'ID verify is refused without the flag');
 select pg_temp.check(
   (select id_verified is null from public.profiles where id = '00000000-0000-0000-0000-0000000360b1'),
-  'the ID was not marked verified');
+  'the ID was not marked verified without the flag');
 
--- 4. With can_verify_id it works.
-reset role;
+-- 2. With can_verify_id the ID can be marked verified.
 update public.approvers set can_verify_id = true where profile_id = '00000000-0000-0000-0000-0000000360a1';
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000360a1');
 select pg_temp.check(
   (public.approver_edit_profile('00000000-0000-0000-0000-0000000360b1','{"id_verified":"Verified"}'::jsonb) ->> 'ok') = 'true',
   'ID verify works with the flag');
+reset role;
 select pg_temp.check(
   (select id_verified::text = 'Verified' from public.profiles where id = '00000000-0000-0000-0000-0000000360b1'),
   'the ID is marked verified');
 
--- 5. An invalid status value is rejected.
+-- 3. An invalid status value is rejected.
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000360a1');
 select pg_temp.check(
   pg_temp.errored($q$select public.approver_edit_profile('00000000-0000-0000-0000-0000000360b1','{"status":"bogus"}'::jsonb)$q$),
   'an invalid status is rejected');
 
--- 6. A non-approver cannot edit.
+-- 4. A non-approver cannot edit.
 select pg_temp.as_user('00000000-0000-0000-0000-0000000360c1');
 select pg_temp.check(
   pg_temp.errored($q$select public.approver_edit_profile('00000000-0000-0000-0000-0000000360b1','{"name":"Hacked"}'::jsonb)$q$),
   'a non-approver is refused');
+reset role;
 select pg_temp.check(
   (select name = 'New Name' from public.profiles where id = '00000000-0000-0000-0000-0000000360b1'),
   'the member name is unchanged by the non-approver');
