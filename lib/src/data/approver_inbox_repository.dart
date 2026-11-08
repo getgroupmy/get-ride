@@ -723,6 +723,20 @@ class ApproverInboxRepository {
     return '${(r as Map)['id']}';
   }
 
+  /// The vehicle document types a vehicle doesn't have yet (migration 0373).
+  Future<List<AddableDoc>> addableVehicleDocuments(String vehicleId) async {
+    final r = await _db.rpc('approver_addable_vehicle_documents', params: {'p_vehicle': vehicleId});
+    return [for (final e in (r as List? ?? const [])) AddableDoc.fromJson(Map<String, dynamic>.from(e as Map))];
+  }
+
+  /// Create a Pending Review vehicle document for a covered member's vehicle
+  /// (migration 0373). Returns the new document id and the vehicle owner's id.
+  Future<({String id, String ownerId})> createVehicleDocument(String vehicleId, String docId, String docName) async {
+    final r = await _db.rpc('approver_create_vehicle_document',
+        params: {'p_vehicle': vehicleId, 'p_doc_id': docId, 'p_doc_name': docName}) as Map;
+    return (id: '${r['id']}', ownerId: '${r['owner_id']}');
+  }
+
   /// One covered member's GET.wallet balance, for display (migration 0359);
   /// null when the member is out of the approver's scope.
   Future<double?> memberWallet(String memberId) async {
@@ -982,6 +996,18 @@ final approverAddableDocsProvider =
   if (ref.watch(currentUserIdProvider) == null) return const <AddableDoc>[];
   try {
     return await ref.watch(approverInboxRepositoryProvider).addableDocuments(memberId);
+  } catch (_) {
+    return const <AddableDoc>[];
+  }
+});
+
+/// The vehicle document types a vehicle hasn't got yet (My Team → Vehicle
+/// sheet, 0373). Empty on error or a legacy database.
+final approverAddableVehicleDocsProvider =
+    FutureProvider.autoDispose.family<List<AddableDoc>, String>((ref, vehicleId) async {
+  if (ref.watch(currentUserIdProvider) == null) return const <AddableDoc>[];
+  try {
+    return await ref.watch(approverInboxRepositoryProvider).addableVehicleDocuments(vehicleId);
   } catch (_) {
     return const <AddableDoc>[];
   }

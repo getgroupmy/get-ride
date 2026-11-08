@@ -58,6 +58,17 @@ class _FakeRepo extends ApproverInboxRepository {
   @override
   Future<VehiclePermits?> vehiclePermitCard(String vehicleId) async => null;
 
+  (String, String)? createdVehicleDoc; // (vehicleId, docId)
+
+  @override
+  Future<({String id, String ownerId})> createVehicleDocument(String vehicleId, String docId, String docName) async {
+    createdVehicleDoc = (vehicleId, docId);
+    return (id: 'new-veh-doc', ownerId: 'm1');
+  }
+
+  @override
+  Future<List<ApproverDoc>> ownerDocuments(String ownerId) async => const <ApproverDoc>[];
+
   @override
   Future<TeamPage> coveredPartners({String? query, TeamMember? after, int limit = ApproverInboxRepository.teamPageSize}) async =>
       const TeamPage(members: [TeamMember(id: 'm2', displayId: 'GR-0002', name: 'Rajesh')], hasMore: false);
@@ -74,6 +85,8 @@ Future<_FakeRepo> _openSheet(WidgetTester tester, {required bool canManage}) asy
         approverMemberWalletProvider.overrideWith((ref, id) async => null),
         approverMemberVehiclesProvider.overrideWith((ref, id) async => _vehicles),
         approverVehicleDetailProvider.overrideWith((ref, id) async => _detail(canManage: canManage)),
+        approverAddableVehicleDocsProvider.overrideWith((ref, id) async =>
+            const [AddableDoc(docId: 'veh-type', name: 'Inspection (Puspakom)', required: true)]),
       ],
       child: MaterialApp(theme: appTheme(Brightness.light), home: const MyTeamMemberScreen(member: _member)),
     ),
@@ -121,6 +134,19 @@ void main() {
     expect(repo.updatedPatch?['plate'], 'BMT4420');
     expect(repo.updatedPatch?['make'], 'Perodua');
     expect(repo.updatedPatch?['color'], 'Blue');
+  });
+
+  testWidgets('a missing vehicle doc offers Upload on behalf and creates it', (tester) async {
+    final repo = await _openSheet(tester, canManage: true);
+
+    expect(find.text('Inspection (Puspakom)'), findsOneWidget);
+    expect(find.text('Status: No Document'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('doc-upload-onbehalf-veh-type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('doc-upload-onbehalf-veh-type')), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(repo.createdVehicleDoc, ('v1', 'veh-type'));
   });
 
   testWidgets('Assign driver picks a covered member and assigns them', (tester) async {

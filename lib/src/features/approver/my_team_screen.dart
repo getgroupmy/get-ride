@@ -2178,9 +2178,13 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                 const SizedBox(height: 16),
                 _sectionLabel(t, cs, 'VEHICLE DOCUMENTS'),
                 const SizedBox(height: 6),
-                if (v.documents.isEmpty)
+                if (v.documents.isEmpty && !v.canManage)
                   Text('No documents on file.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                 for (final d in v.documents) _docRow(t, cs, d),
+                if (v.canManage)
+                  for (final ad in (ref.watch(approverAddableVehicleDocsProvider(widget.vehicleId)).asData?.value
+                      ?? const <AddableDoc>[]))
+                    _MissingDocCard(doc: ad, onUpload: () => _addVehicleDocument(ad)),
                 if (v.canManage) ...[
                   const SizedBox(height: 18),
                   Row(
@@ -2308,6 +2312,47 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
         kind: NoticeKind.error));
     } finally {
       if (mounted) setState(() => _busyAction = false);
+    }
+  }
+
+  /// Create a Pending Review vehicle document on behalf (migration 0373), then
+  /// open its viewer so the approver uploads the image.
+  Future<void> _addVehicleDocument(AddableDoc ad) async {
+    final repo = ref.read(approverInboxRepositoryProvider);
+    ({String id, String ownerId}) created;
+    try {
+      created = await repo.createVehicleDocument(widget.vehicleId, ad.docId, ad.name);
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed') || m.contains('not_authorized')
+            ? "You can't add documents for this vehicle."
+            : (m.contains('already_exists')
+                ? 'That document already exists on this vehicle.'
+                : "Couldn't add the document. Try again."),
+        kind: NoticeKind.error));
+      return;
+    }
+    ref.invalidate(approverVehicleDetailProvider(widget.vehicleId));
+    ref.invalidate(approverAddableVehicleDocsProvider(widget.vehicleId));
+    ref.invalidate(approverOwnerDocumentsProvider(created.ownerId));
+    ref.invalidate(approverOwnerDocMetaProvider(created.ownerId));
+    if (!mounted) return;
+    try {
+      final docs = await repo.ownerDocuments(created.ownerId);
+      final doc = docs.where((d) => d.id == created.id).firstOrNull;
+      if (doc != null && mounted) {
+        openApproverDocument(context, doc,
+            onChanged: () => ref.invalidate(approverVehicleDetailProvider(widget.vehicleId)));
+        return;
+      }
+    } catch (_) {/* fall through to the notice */}
+    if (mounted) {
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Document added — open it to upload the image.', kind: NoticeKind.success));
     }
   }
 
