@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../admin/screens/people/people_logic.dart' show partnerTypeOptions;
 import '../../admin/screens/people/people_widgets.dart' show PartnerTypeField;
+import '../../core/permits.dart' show PermitItem, PermitStatus;
 import '../../core/secure_screen.dart';
 import '../../data/approver_inbox_repository.dart';
 import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
@@ -1768,6 +1769,7 @@ class _VehicleDetailSheet extends ConsumerStatefulWidget {
 
 class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
   String? _busyAssignment;
+  bool _busyAction = false;
 
   Future<void> _setAccess(String assignmentId, String action) async {
     setState(() => _busyAssignment = assignmentId);
@@ -1824,26 +1826,168 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(v.descriptor!, style: t.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
                   ),
-                const SizedBox(height: 14),
-                Text('WHO CAN DRIVE THIS · ${v.drivers.length}',
-                    style: t.textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant, letterSpacing: 0.5)),
+                if (v.photos.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _sectionLabel(t, cs, 'VEHICLE PHOTOS · ${v.photos.length} ANGLES'),
+                  const SizedBox(height: 8),
+                  _photosGrid(v),
+                ],
+                const SizedBox(height: 16),
+                _sectionLabel(t, cs, 'VEHICLE'),
+                const SizedBox(height: 8),
+                _specGrid(t, cs, v),
+                if (v.ownerName != null || v.ownerIc != null || v.ownerPhone != null) ...[
+                  const SizedBox(height: 16),
+                  _sectionLabel(t, cs, 'OWNER'),
+                  const SizedBox(height: 8),
+                  if (v.ownerName != null) _ownerRow(t, cs, 'Owner name', v.ownerName!),
+                  if (v.ownerIc != null) _ownerRow(t, cs, 'Owner ID', '${v.ownerIc!} · National ID'),
+                  if (v.ownerPhone != null) _ownerRow(t, cs, 'Owner phone', v.ownerPhone!),
+                ],
+                const SizedBox(height: 16),
+                _sectionLabel(t, cs, 'SERVICES & PERMITS'),
+                const SizedBox(height: 8),
+                _PermitsSection(vehicleId: widget.vehicleId, regYear: v.year),
+                const SizedBox(height: 16),
+                _sectionLabel(t, cs, 'WHO CAN DRIVE THIS · ${v.drivers.length}'),
                 const SizedBox(height: 6),
                 if (v.drivers.isEmpty)
                   Text('No drivers assigned.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                 for (final dr in v.drivers) _driverRow(t, cs, v.canManage, dr),
                 const SizedBox(height: 16),
-                Text('VEHICLE DOCUMENTS',
-                    style: t.textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant, letterSpacing: 0.5)),
+                _sectionLabel(t, cs, 'VEHICLE DOCUMENTS'),
                 const SizedBox(height: 6),
                 if (v.documents.isEmpty)
                   Text('No documents on file.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                 for (final d in v.documents) _docRow(t, cs, d),
+                if (v.canManage) ...[
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const ValueKey('vehicle-edit'),
+                          onPressed: _busyAction ? null : () => _editVehicle(v),
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: const Text('Edit vehicle'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FilledButton.icon(
+                          key: const ValueKey('vehicle-assign-driver'),
+                          onPressed: _busyAction ? null : () => _assignDriver(v),
+                          icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+                          label: const Text('Assign driver'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           );
         },
       ),
     );
+  }
+
+  /// Pick a covered member and assign them as a driver of this vehicle.
+  Future<void> _assignDriver(VehicleDetail v) async {
+    final List<TeamMember> members;
+    try {
+      final page = await ref.read(approverInboxRepositoryProvider).coveredPartners(limit: 100);
+      members = page.members;
+    } catch (_) {
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: "Couldn't load your team. Try again.", kind: NoticeKind.error));
+      return;
+    }
+    if (!mounted) return;
+    if (members.isEmpty) {
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'No one in your team to assign yet.', kind: NoticeKind.info));
+      return;
+    }
+    final choices = <SearchChoice<String>>[
+      for (final m in members)
+        (
+          value: m.id,
+          label: m.name,
+          subtitle: [
+            if (m.displayId != null) '#${m.displayId}',
+            if (m.phone != null) m.phone,
+          ].whereType<String>().join(' · '),
+          leading: null,
+        ),
+    ];
+    final memberId = await showSearchPicker<String>(
+      context, title: 'Assign a driver', choices: choices);
+    if (memberId == null || !mounted) return;
+
+    setState(() => _busyAction = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(v.id, memberId);
+      ref.invalidate(approverVehicleDetailProvider(widget.vehicleId));
+      ref.invalidate(approverMemberVehiclesProvider(widget.memberId));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Driver assigned.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't manage this vehicle's drivers."
+            : (m.contains('member_out_of_scope')
+                ? "That person isn't in your team."
+                : (m.contains('out_of_scope')
+                    ? "This vehicle isn't in your scope."
+                    : "Couldn't assign the driver. Try again.")),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyAction = false);
+    }
+  }
+
+  /// Open the edit form for this vehicle's plate / make / model / colour / year.
+  Future<void> _editVehicle(VehicleDetail v) async {
+    final patch = await showAppSheet<Map<String, String?>>(
+      id: 'approver.vehicle-edit',
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _VehicleEditSheet(vehicle: v),
+    );
+    if (patch == null || patch.isEmpty || !mounted) return;
+
+    setState(() => _busyAction = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).updateVehicle(v.id, patch);
+      ref.invalidate(approverVehicleDetailProvider(widget.vehicleId));
+      ref.invalidate(approverMemberVehiclesProvider(widget.memberId));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Vehicle updated.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't edit this vehicle."
+            : (m.contains('out_of_scope')
+                ? "This vehicle isn't in your scope."
+                : "Couldn't update the vehicle. Try again."),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyAction = false);
+    }
   }
 
   Widget _driverRow(ThemeData t, ColorScheme cs, bool canManage, VehicleDriver dr) {
@@ -1877,6 +2021,11 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
             color: good ? Colors.green.shade800 : cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
       );
     }
+    final isMember = dr.driverId == widget.memberId;
+    final sub = [
+      if (dr.driverNo != null) '#${dr.driverNo}',
+      if (isMember) 'this member',
+    ].join(' · ');
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: Padding(
@@ -1888,15 +2037,153 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(dr.name, style: t.textTheme.titleSmall),
-                  if (dr.driverNo != null)
-                    Text('#${dr.driverNo}', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  if (sub.isNotEmpty)
+                    Text(sub, style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  if (dr.plateMatch != null) ...[
+                    const SizedBox(height: 4),
+                    _plateMatchChip(t, cs, dr),
+                  ],
                 ],
               ),
             ),
+            const SizedBox(width: 8),
             trailing,
           ],
         ),
       ),
+    );
+  }
+
+  Widget _plateMatchChip(ThemeData t, ColorScheme cs, VehicleDriver dr) {
+    final ok = dr.plateMatch == true;
+    final color = ok ? Colors.green.shade800 : cs.error;
+    final bg = ok ? Colors.green.withValues(alpha: 0.14) : cs.errorContainer.withValues(alpha: 0.5);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(ok ? Icons.check_circle_outline : Icons.cancel_outlined, size: 13, color: color),
+          const SizedBox(width: 5),
+          Text(
+            ok ? 'Plate match' : 'Plate mismatch${dr.permitPlate != null ? ' · ${dr.permitPlate}' : ''}',
+            style: t.textTheme.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w700),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(ThemeData t, ColorScheme cs, String text) => Text(text,
+      style: t.textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant, letterSpacing: 0.5, fontWeight: FontWeight.w700));
+
+  Widget _ownerRow(ThemeData t, ColorScheme cs, String label, String value) => Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+        decoration: BoxDecoration(color: cs.surfaceContainerHighest.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(10)),
+        child: Row(
+          children: [
+            Text(label, style: t.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+            const Spacer(),
+            Flexible(child: Text(value, textAlign: TextAlign.right,
+                style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700))),
+          ],
+        ),
+      );
+
+  Widget _photosGrid(VehicleDetail v) => GridView.count(
+        crossAxisCount: 2,
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        mainAxisSpacing: 9,
+        crossAxisSpacing: 9,
+        childAspectRatio: 3 / 2,
+        children: [
+          for (final (label, url) in v.photos)
+            GestureDetector(
+              onTap: () => _viewPhoto(label, url),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    StorageImage(url, fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const ColoredBox(color: Color(0x11000000), child: Icon(Icons.directions_car_outlined))),
+                    Positioned(
+                      left: 6, bottom: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(6)),
+                        child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      );
+
+  void _viewPhoto(String label, String url) {
+    showAppDialog<void>(
+      id: 'approver.vehicle-photo',
+      context: context,
+      builder: (_) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              child: Row(children: [
+                Text(label, style: Theme.of(context).textTheme.titleMedium),
+                const Spacer(),
+                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.of(context).pop()),
+              ]),
+            ),
+            Flexible(child: InteractiveViewer(child: StorageImage(url, fit: BoxFit.contain))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _specGrid(ThemeData t, ColorScheme cs, VehicleDetail v) {
+    final rows = <(String, String)>[
+      ('MAKE / MODEL', [v.make, v.model].whereType<String>().join(' ').trim().isEmpty ? '—' : [v.make, v.model].whereType<String>().join(' ')),
+      ('YEAR', v.year ?? '—'),
+      ('COLOUR', v.color ?? '—'),
+      ('TYPE', v.vehicleType ?? '—'),
+      ('ENERGY', v.energy ?? '—'),
+      ('STATUS', v.status == null ? '—' : v.status![0].toUpperCase() + v.status!.substring(1)),
+      if (v.vin != null) ('VIN', v.vin!),
+      if (v.engineNumber != null) ('ENGINE NO.', v.engineNumber!),
+    ];
+    Widget cell((String, String) r) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(r.$1, style: t.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 10, letterSpacing: 0.4)),
+              const SizedBox(height: 3),
+              Text(r.$2, style: t.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w700),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        );
+    return GridView.count(
+      crossAxisCount: 2,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      mainAxisSpacing: 9,
+      crossAxisSpacing: 9,
+      childAspectRatio: 2.6,
+      children: [for (final r in rows) cell(r)],
     );
   }
 
@@ -1926,6 +2213,235 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                   color: d.status == 'Approved' ? Colors.green.shade800 : cs.onSurfaceVariant,
                   fontWeight: FontWeight.w600)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The Services & Permits section of the Vehicle sheet (migration 0369):
+/// reads the same permit card the admin screen uses, approver-scoped. Shows
+/// the vehicle's age and each permit's state; hidden on a legacy database.
+class _PermitsSection extends ConsumerWidget {
+  const _PermitsSection({required this.vehicleId, this.regYear});
+  final String vehicleId;
+  final String? regYear;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    final card = ref.watch(approverVehiclePermitCardProvider(vehicleId));
+    return card.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 10),
+        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+      ),
+      error: (_, _) => const SizedBox.shrink(),
+      data: (vp) {
+        if (vp == null) {
+          return Text('Permit details are unavailable here.',
+              style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant));
+        }
+        final year = int.tryParse(regYear ?? '');
+        final age = year == null ? null : (DateTime.now().year - year);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (age != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(13),
+                decoration: BoxDecoration(
+                  border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Text('Vehicle age', style: t.textTheme.titleSmall),
+                    const Spacer(),
+                    Text('$age yr${age == 1 ? '' : 's'} · reg. $year',
+                        style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+            if (vp.permits.isEmpty)
+              Text('No permits configured for this vehicle.',
+                  style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant))
+            else
+              for (final p in vp.permits) _permitRow(t, cs, p),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _permitRow(ThemeData t, ColorScheme cs, PermitItem p) {
+    final (label, color) = switch (p.status ?? p.state) {
+      'with' || 'withPermit' => ('On file', Colors.green.shade800),
+      'bypass' => ('Bypass', cs.tertiary),
+      'expired' => ('Expired', cs.error),
+      'without' => ('Missing', cs.error),
+      _ => (PermitStatus.parse(p.status ?? p.state).label, cs.onSurfaceVariant),
+    };
+    final sub = [
+      if (p.validUntil != null) 'Valid to ${p.validUntil!.toIso8601String().split('T').first}',
+      if (p.issuer.isNotEmpty) p.issuer,
+    ].join(' · ');
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(p.name.isEmpty ? (p.shortName.isEmpty ? 'Permit' : p.shortName) : p.name,
+                      style: t.textTheme.titleSmall),
+                  if (sub.isNotEmpty)
+                    Text(sub, style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
+              child: Text(label, style: t.textTheme.labelMedium?.copyWith(color: color, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The Edit vehicle form (migration 0369): plate / make / model / colour /
+/// year. Returns the patch map to the Vehicle detail sheet on save, or null
+/// when cancelled. Plate, make and model are required (they are NOT NULL on
+/// the row); colour and year may be cleared.
+class _VehicleEditSheet extends StatefulWidget {
+  const _VehicleEditSheet({required this.vehicle});
+  final VehicleDetail vehicle;
+
+  @override
+  State<_VehicleEditSheet> createState() => _VehicleEditSheetState();
+}
+
+class _VehicleEditSheetState extends State<_VehicleEditSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final _plate = TextEditingController(text: widget.vehicle.plate == '—' ? '' : widget.vehicle.plate);
+  late final _make = TextEditingController(text: widget.vehicle.make ?? '');
+  late final _model = TextEditingController(text: widget.vehicle.model ?? '');
+  late final _color = TextEditingController(text: widget.vehicle.color ?? '');
+  late final _year = TextEditingController(text: widget.vehicle.year ?? '');
+
+  @override
+  void dispose() {
+    _plate.dispose();
+    _make.dispose();
+    _model.dispose();
+    _color.dispose();
+    _year.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    // Only the keys present are applied server-side. Colour and year are always
+    // sent (so clearing them works); plate/make/model are required and trimmed.
+    Navigator.of(context).pop(<String, String?>{
+      'plate': _plate.text.trim(),
+      'make': _make.text.trim(),
+      'model': _model.text.trim(),
+      'color': _color.text.trim(),
+      'year': _year.text.trim(),
+    });
+  }
+
+  String? _required(String? v) => (v == null || v.trim().isEmpty) ? 'Required' : null;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Edit vehicle', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 14),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-plate'),
+                controller: _plate,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'Plate', border: OutlineInputBorder()),
+                validator: _required,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-make'),
+                controller: _make,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Make', border: OutlineInputBorder()),
+                validator: _required,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-model'),
+                controller: _model,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Model', border: OutlineInputBorder()),
+                validator: _required,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      key: const ValueKey('vehicle-edit-color'),
+                      controller: _color,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Colour', border: OutlineInputBorder()),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      key: const ValueKey('vehicle-edit-year'),
+                      controller: _year,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Year', border: OutlineInputBorder()),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      key: const ValueKey('vehicle-edit-save'),
+                      onPressed: _save,
+                      child: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

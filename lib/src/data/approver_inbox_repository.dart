@@ -11,6 +11,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../providers.dart';
+import 'permits_repository.dart' show VehiclePermits;
 
 /// What the caller may do as an approver; null when they are not one.
 class ApproverGrant {
@@ -379,14 +380,27 @@ class MemberStats {
 class VehicleDriver {
   const VehicleDriver({
     required this.assignmentId,
+    required this.driverId,
     required this.name,
     this.driverNo,
     required this.state, // 'active' | 'pending' | 'revoked'
+    this.permitPlate,
+    this.permitNo,
+    this.permitExpiry,
+    this.plateMatch,
   });
   final String assignmentId;
+  final String driverId;
   final String name;
   final String? driverNo;
   final String state;
+
+  /// This driver's taxi (PSV) permit plate and whether it matches the car's
+  /// plate — null when the driver has no permit plate on file (migration 0369).
+  final String? permitPlate;
+  final String? permitNo;
+  final String? permitExpiry;
+  final bool? plateMatch;
 }
 
 /// One of a vehicle's documents, for the Vehicle detail sheet (migration 0366).
@@ -405,21 +419,69 @@ class VehicleDetail {
   const VehicleDetail({
     required this.id,
     required this.plate,
+    this.make,
+    this.model,
+    this.color,
+    this.year,
+    this.vehicleType,
+    this.energy,
+    this.vin,
+    this.engineNumber,
+    this.registrationDate,
     this.descriptor,
     this.status,
     this.ownerName,
+    this.ownerIc,
+    this.ownerPhone,
+    this.photoFront,
+    this.photoBack,
+    this.photoLeft,
+    this.photoRight,
     this.canManage = false,
     this.drivers = const [],
     this.documents = const [],
   });
   final String id;
   final String plate;
+
+  /// The vehicle's own fields, kept individually so the Edit vehicle form can
+  /// pre-fill them; [descriptor] is the joined "Make · Model · Colour · Year".
+  final String? make;
+  final String? model;
+  final String? color;
+  final String? year;
+
+  /// The rest of the spec grid shown on the detail sheet (migration 0369).
+  final String? vehicleType;
+  final String? energy;
+  final String? vin;
+  final String? engineNumber;
+  final String? registrationDate;
   final String? descriptor;
   final String? status;
+
+  /// The registered owner block (may be a third party, not the account holder).
   final String? ownerName;
+  final String? ownerIc;
+  final String? ownerPhone;
+
+  /// The four vehicle photos (storage paths; signed by StorageImage).
+  final String? photoFront;
+  final String? photoBack;
+  final String? photoLeft;
+  final String? photoRight;
+
   final bool canManage;
   final List<VehicleDriver> drivers;
   final List<VehicleDoc> documents;
+
+  /// The four photos as (label, url) pairs that are present, in sheet order.
+  List<(String, String)> get photos => [
+        if (photoFront != null) ('Front', photoFront!),
+        if (photoBack != null) ('Back', photoBack!),
+        if (photoLeft != null) ('Left', photoLeft!),
+        if (photoRight != null) ('Right', photoRight!),
+      ];
 
   static String? _s(Object? v) {
     final t = '${v ?? ''}'.trim();
@@ -431,20 +493,41 @@ class VehicleDetail {
         .map((e) => '${e ?? ''}'.trim())
         .where((e) => e.isNotEmpty)
         .join(' · ');
+    final photos = (j['photos'] as Map?) ?? const {};
     return VehicleDetail(
       id: '${j['id']}',
       plate: _s(j['plate']) ?? '—',
+      make: _s(j['make']),
+      model: _s(j['model']),
+      color: _s(j['color']),
+      year: _s(j['year']),
+      vehicleType: _s(j['vehicle_type']),
+      energy: _s(j['energy_type']),
+      vin: _s(j['vin']),
+      engineNumber: _s(j['engine_number']),
+      registrationDate: _s(j['registration_date']),
       descriptor: parts.isEmpty ? null : parts,
       status: _s(j['status']),
       ownerName: _s(j['owner_name']),
+      ownerIc: _s(j['owner_ic']),
+      ownerPhone: _s(j['owner_phone']),
+      photoFront: _s(photos['front']),
+      photoBack: _s(photos['back']),
+      photoLeft: _s(photos['left']),
+      photoRight: _s(photos['right']),
       canManage: j['can_manage'] == true,
       drivers: [
         for (final e in (j['drivers'] as List? ?? const []))
           VehicleDriver(
             assignmentId: '${(e as Map)['assignment_id']}',
+            driverId: '${e['driver_id']}',
             name: '${e['name'] ?? 'User'}',
             driverNo: _s(e['driver_no']),
             state: '${e['state'] ?? 'active'}',
+            permitPlate: _s(e['permit_plate']),
+            permitNo: _s(e['permit_no']),
+            permitExpiry: _s(e['permit_expiry']),
+            plateMatch: e['plate_match'] is bool ? e['plate_match'] as bool : null,
           ),
       ],
       documents: [
@@ -643,6 +726,25 @@ class ApproverInboxRepository {
   /// (migration 0366). [action] is 'approve' or 'revoke'; needs can_manage_vehicle.
   Future<void> setVehicleAccess(String assignmentId, String action) async {
     await _db.rpc('approver_set_vehicle_access', params: {'p_assignment': assignmentId, 'p_action': action});
+  }
+
+  /// The Services & Permits card for a covered member's vehicle (migration
+  /// 0369): the same shape the admin permit screen reads, approver-scoped.
+  Future<VehiclePermits?> vehiclePermitCard(String vehicleId) async {
+    final r = await _db.rpc('approver_vehicle_permit_card', params: {'p_vehicle': vehicleId});
+    return r is Map ? VehiclePermits.fromJson(r.cast<String, dynamic>()) : null;
+  }
+
+  /// Assign a covered member as an approved, active driver of a covered
+  /// member's vehicle (migration 0369). Idempotent; needs can_manage_vehicle.
+  Future<void> assignVehicleDriver(String vehicleId, String memberId) async {
+    await _db.rpc('approver_assign_vehicle_driver', params: {'p_vehicle': vehicleId, 'p_member': memberId});
+  }
+
+  /// Edit a covered member's vehicle (migration 0369): plate / make / model /
+  /// colour / year. Only the given keys are changed; needs can_manage_vehicle.
+  Future<void> updateVehicle(String vehicleId, Map<String, String?> patch) async {
+    await _db.rpc('approver_update_vehicle', params: {'p_vehicle': vehicleId, 'p_patch': patch});
   }
 
   /// The rich detail for one of a covered member's documents (migration 0365):
@@ -850,6 +952,18 @@ final approverVehicleDetailProvider =
     FutureProvider.autoDispose.family<VehicleDetail?, String>((ref, vehicleId) async {
   if (ref.watch(currentUserIdProvider) == null) return null;
   return ref.watch(approverInboxRepositoryProvider).vehicleDetail(vehicleId);
+});
+
+/// The Services & Permits card for a vehicle (My Team → Vehicle sheet, 0369).
+/// Null on error or a legacy database (the section is then hidden).
+final approverVehiclePermitCardProvider =
+    FutureProvider.autoDispose.family<VehiclePermits?, String>((ref, vehicleId) async {
+  if (ref.watch(currentUserIdProvider) == null) return null;
+  try {
+    return await ref.watch(approverInboxRepositoryProvider).vehiclePermitCard(vehicleId);
+  } catch (_) {
+    return null;
+  }
 });
 
 /// The rich detail for one document (My Team → document sheet, 0365), keyed by
