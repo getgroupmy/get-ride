@@ -689,11 +689,27 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
               padding: const EdgeInsets.only(top: 4),
               child: Text(ownerLine, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton(
+                key: ValueKey('vehicle-view-${v.id}'),
+                onPressed: () => _openVehicleDetail(v),
+                child: const Text('View'),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+
+  Future<void> _openVehicleDetail(MemberVehicle v) => showAppSheet<void>(
+        id: 'approver.vehicle-detail',
+        context: context,
+        isScrollControlled: true,
+        builder: (c) => _VehicleDetailSheet(vehicleId: v.id, memberId: member.id, memberName: member.name),
+      );
 
   // ---- Documents tab --------------------------------------------------------
 
@@ -1487,4 +1503,184 @@ String? _proposePhoneErrorText(Object e) {
   if (m.contains('not_allowed')) return "You're not allowed to make that change.";
   if (m.contains('out_of_scope')) return "This member isn't in your scope.";
   return null;
+}
+
+/// The Vehicle detail sheet (migration 0366): who can drive the vehicle and
+/// its documents. An approver with can_manage_vehicle can approve a pending
+/// driver or revoke another driver's access; the member's own access is shown
+/// but not revocable from here.
+class _VehicleDetailSheet extends ConsumerStatefulWidget {
+  const _VehicleDetailSheet({required this.vehicleId, required this.memberId, required this.memberName});
+  final String vehicleId;
+  final String memberId;
+  final String memberName;
+
+  @override
+  ConsumerState<_VehicleDetailSheet> createState() => _VehicleDetailSheetState();
+}
+
+class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
+  String? _busyAssignment;
+
+  Future<void> _setAccess(String assignmentId, String action) async {
+    setState(() => _busyAssignment = assignmentId);
+    try {
+      await ref.read(approverInboxRepositoryProvider).setVehicleAccess(assignmentId, action);
+      ref.invalidate(approverVehicleDetailProvider(widget.vehicleId));
+      ref.invalidate(approverMemberVehiclesProvider(widget.memberId));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle',
+        context: context,
+        message: action == 'approve' ? 'Access approved.' : 'Access revoked.',
+        kind: NoticeKind.success,
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle',
+        context: context,
+        message: m.contains('not_allowed')
+            ? "You can't change vehicle access."
+            : (m.contains('out_of_scope') ? "This vehicle isn't in your scope." : "Couldn't update access. Try again."),
+        kind: NoticeKind.error,
+      ));
+    } finally {
+      if (mounted) setState(() => _busyAssignment = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    final detail = ref.watch(approverVehicleDetailProvider(widget.vehicleId));
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: detail.when(
+        loading: () => const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator())),
+        error: (e, _) => Padding(padding: const EdgeInsets.all(20),
+            child: Text("Couldn't load this vehicle.", style: TextStyle(color: cs.error))),
+        data: (v) {
+          if (v == null) {
+            return const Padding(padding: EdgeInsets.all(20), child: Text('This vehicle is no longer in your scope.'));
+          }
+          return SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(v.plate, style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                if (v.descriptor != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(v.descriptor!, style: t.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                  ),
+                const SizedBox(height: 14),
+                Text('WHO CAN DRIVE THIS · ${v.drivers.length}',
+                    style: t.textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant, letterSpacing: 0.5)),
+                const SizedBox(height: 6),
+                if (v.drivers.isEmpty)
+                  Text('No drivers assigned.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                for (final dr in v.drivers) _driverRow(t, cs, v.canManage, dr),
+                const SizedBox(height: 16),
+                Text('VEHICLE DOCUMENTS',
+                    style: t.textTheme.labelMedium?.copyWith(color: cs.onSurfaceVariant, letterSpacing: 0.5)),
+                const SizedBox(height: 6),
+                if (v.documents.isEmpty)
+                  Text('No documents on file.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                for (final d in v.documents) _docRow(t, cs, d),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _driverRow(ThemeData t, ColorScheme cs, bool canManage, VehicleDriver dr) {
+    final busy = _busyAssignment == dr.assignmentId;
+    Widget trailing;
+    if (dr.state == 'pending' && canManage) {
+      trailing = FilledButton(
+        key: ValueKey('vehicle-approve-${dr.assignmentId}'),
+        onPressed: busy ? null : () => _setAccess(dr.assignmentId, 'approve'),
+        child: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Approve'),
+      );
+    } else if (dr.state == 'active' && canManage) {
+      trailing = OutlinedButton(
+        key: ValueKey('vehicle-revoke-${dr.assignmentId}'),
+        style: OutlinedButton.styleFrom(foregroundColor: cs.error),
+        onPressed: busy ? null : () => _setAccess(dr.assignmentId, 'revoke'),
+        child: busy ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Revoke'),
+      );
+    } else {
+      final (label, good) = switch (dr.state) {
+        'active' => ('Active', true),
+        'pending' => ('Pending', false),
+        _ => ('Access ended', false),
+      };
+      trailing = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+            color: good ? Colors.green.withValues(alpha: 0.15) : cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(20)),
+        child: Text(label, style: t.textTheme.labelMedium?.copyWith(
+            color: good ? Colors.green.shade800 : cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
+      );
+    }
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(dr.name, style: t.textTheme.titleSmall),
+                  if (dr.driverNo != null)
+                    Text('#${dr.driverNo}', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            trailing,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _docRow(ThemeData t, ColorScheme cs, VehicleDoc d) {
+    final sub = [
+      if (d.expiry != null) 'Exp ${d.expiry}',
+      if (d.provider != null) d.provider,
+    ].join(' · ');
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(d.name, style: t.textTheme.titleSmall),
+                  if (sub.isNotEmpty)
+                    Text(sub, style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                ],
+              ),
+            ),
+            if (d.status != null)
+              Text(d.status!, style: t.textTheme.labelMedium?.copyWith(
+                  color: d.status == 'Approved' ? Colors.green.shade800 : cs.onSurfaceVariant,
+                  fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
 }

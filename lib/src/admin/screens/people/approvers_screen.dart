@@ -97,6 +97,7 @@ class _ApproverDialogState extends State<ApproverDialog> {
   late bool _credit = widget.current?['can_credit'] == true;
   late bool _editProfile = widget.current?['can_edit_profile'] == true;
   late bool _verifyId = widget.current?['can_verify_id'] == true;
+  late bool _manageVehicle = widget.current?['can_manage_vehicle'] == true;
   late String _scope = _scopeLabels.containsKey(widget.current?['scope']) ? '${widget.current?['scope']}' : 'referral';
   late bool _useOwn = widget.current?['use_own_region'] != false;
   late bool _conflict = widget.current?['conflict_guard'] != false;
@@ -132,6 +133,7 @@ class _ApproverDialogState extends State<ApproverDialog> {
         'can_credit': _credit,
         'can_edit_profile': _editProfile,
         'can_verify_id': _editProfile && _verifyId,
+        'can_manage_vehicle': _manageVehicle,
         'scope': _scope,
         'use_own_region': _useOwn,
         'conflict_guard': _conflict,
@@ -208,6 +210,14 @@ class _ApproverDialogState extends State<ApproverDialog> {
                 value: _verifyId,
                 onChanged: (v) => setState(() => _verifyId = v),
               ),
+            SwitchListTile(
+              key: const ValueKey('approver-manage-vehicle'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Manage vehicles'),
+              subtitle: const Text("Approve or revoke a driver's access to a member's vehicle."),
+              value: _manageVehicle,
+              onChanged: (v) => setState(() => _manageVehicle = v),
+            ),
             if (_delete)
               SwitchListTile(
                 key: const ValueKey('approver-hard'),
