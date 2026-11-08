@@ -75,6 +75,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:app-icon.edit-window', SurfaceKind.modal, 'App icon · Edit window', 'lib/src/admin/screens/meterapp/app_icon_card.dart'),
   SurfaceEntry('modal:app-updates.save', SurfaceKind.modal, 'App updates · Save', 'lib/src/admin/screens/meterapp/app_updates_card.dart'),
   SurfaceEntry('modal:approver.document', SurfaceKind.modal, 'Approver · Document', 'lib/src/features/approver/approver_inbox_screen.dart'),
+  SurfaceEntry('modal:approver.vehicle-photo', SurfaceKind.modal, 'Approver · Vehicle photo', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:auth-diagnostics.send', SurfaceKind.modal, 'Auth diagnostics · Send', 'lib/src/features/settings/auth_diagnostics_screen.dart'),
   SurfaceEntry('modal:business.admin-status-note', SurfaceKind.modal, 'Business · Admin status note', 'lib/src/admin/screens/business/business_accounts_screen.dart'),
   SurfaceEntry('modal:business.admin-wallet', SurfaceKind.modal, 'Business · Admin wallet', 'lib/src/admin/screens/business/business_accounts_screen.dart'),

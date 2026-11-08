@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/data/approver_inbox_repository.dart';
+import 'package:get_ride/src/data/permits_repository.dart' show VehiclePermits;
 import 'package:get_ride/src/features/approver/my_team_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -55,6 +56,9 @@ class _FakeRepo extends ApproverInboxRepository {
   }
 
   @override
+  Future<VehiclePermits?> vehiclePermitCard(String vehicleId) async => null;
+
+  @override
   Future<TeamPage> coveredPartners({String? query, TeamMember? after, int limit = ApproverInboxRepository.teamPageSize}) async =>
       const TeamPage(members: [TeamMember(id: 'm2', displayId: 'GR-0002', name: 'Rajesh')], hasMore: false);
 }
@@ -98,6 +102,8 @@ void main() {
   testWidgets('Edit vehicle pre-fills and sends a trimmed patch', (tester) async {
     final repo = await _openSheet(tester, canManage: true);
 
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-edit')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('vehicle-edit')));
     await tester.pumpAndSettle();
 
@@ -120,6 +126,8 @@ void main() {
   testWidgets('Assign driver picks a covered member and assigns them', (tester) async {
     final repo = await _openSheet(tester, canManage: true);
 
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-assign-driver')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('vehicle-assign-driver')));
     await tester.pumpAndSettle();
 
