@@ -990,7 +990,11 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         }
         final driver = [for (final d in list) if (d.source != 'vehicle') d];
         final vehicle = [for (final d in list) if (d.source == 'vehicle') d];
-        void onChanged() => ref.invalidate(approverOwnerDocumentsProvider(member.id));
+        final meta = ref.watch(approverOwnerDocMetaProvider(member.id)).asData?.value ?? const {};
+        void onChanged() {
+          ref.invalidate(approverOwnerDocumentsProvider(member.id));
+          ref.invalidate(approverOwnerDocMetaProvider(member.id));
+        }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -1001,7 +1005,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         color: cs.onSurfaceVariant, letterSpacing: 0.6, fontWeight: FontWeight.w700)),
               ),
-              for (final d in driver) _DocCard(doc: d, onChanged: onChanged),
+              for (final d in driver) _DocCard(doc: d, onChanged: onChanged, meta: meta[d.id] as Map?),
             ],
             if (vehicle.isNotEmpty) ...[
               Padding(
@@ -1010,7 +1014,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                         color: cs.onSurfaceVariant, letterSpacing: 0.6, fontWeight: FontWeight.w700)),
               ),
-              for (final d in vehicle) _DocCard(doc: d, onChanged: onChanged),
+              for (final d in vehicle) _DocCard(doc: d, onChanged: onChanged, meta: meta[d.id] as Map?),
             ],
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
@@ -1229,9 +1233,13 @@ class _AddCreditSheetState extends ConsumerState<_AddCreditSheet> {
 /// Details / Rescan / Upload / Remove open the full viewer, where the capture,
 /// edit and delete flows (and their confirmations) already live.
 class _DocCard extends ConsumerStatefulWidget {
-  const _DocCard({required this.doc, required this.onChanged});
+  const _DocCard({required this.doc, required this.onChanged, this.meta});
   final ApproverDoc doc;
   final VoidCallback onChanged;
+
+  /// Per-document meta from approver_owner_document_meta (migration 0370):
+  /// changed_by, provider, is_pwd, uploaded_at, reviewed_at. Null on a legacy DB.
+  final Map? meta;
 
   @override
   ConsumerState<_DocCard> createState() => _DocCardState();
@@ -1241,6 +1249,12 @@ class _DocCardState extends ConsumerState<_DocCard> {
   bool _busy = false;
 
   ApproverDoc get doc => widget.doc;
+
+  String? _metaStr(String key) {
+    final v = widget.meta?[key];
+    final s = '${v ?? ''}'.trim();
+    return s.isEmpty || s == 'null' ? null : s;
+  }
 
   Future<void> _review(String action) async {
     setState(() => _busy = true);
@@ -1340,6 +1354,14 @@ class _DocCardState extends ConsumerState<_DocCard> {
                       if (doc.plate != null)
                         Text('Plate ${doc.plate}',
                             style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      if (_metaStr('provider') != null)
+                        Text('Insurance: ${_metaStr('provider')}',
+                            style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      if (_metaStr('changed_by') != null)
+                        Text('Changed by: ${_metaStr('changed_by')}',
+                            style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
                     ],
                   ),
                 ),
