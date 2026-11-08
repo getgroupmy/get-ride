@@ -1312,6 +1312,9 @@ class _DocCardState extends ConsumerState<_DocCard> {
               foregroundColor: fg, visualDensity: VisualDensity.compact), onPressed: onTap, child: child);
     }
 
+    final pendingUrl = _metaStr('pending_file_url');
+    final isReplacement = pendingUrl != null;
+
     return Card(
       key: ValueKey('my-team-doc-${doc.id}'),
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
@@ -1320,19 +1323,43 @@ class _DocCardState extends ConsumerState<_DocCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (isReplacement)
+              Container(
+                margin: const EdgeInsets.only(bottom: 11),
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.hourglass_top, size: 15, color: Colors.orange.shade800),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Text(
+                        'New image uploaded on behalf — awaiting approval. The approved image stays '
+                        'live until this is approved; Reject keeps it and discards the new one.',
+                        style: t.textTheme.bodySmall?.copyWith(
+                            color: Colors.orange.shade900, fontWeight: FontWeight.w600, height: 1.3),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(
-                    width: 56, height: 72,
-                    child: doc.fileUrl != null
-                        ? StorageImage(doc.fileUrl!, fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => _thumbFallback(cs))
-                        : _thumbFallback(cs),
-                  ),
-                ),
+                if (isReplacement)
+                  Column(
+                    children: [
+                      _thumb(cs, pendingUrl, label: 'New', accent: true),
+                      const SizedBox(height: 6),
+                      _thumb(cs, doc.fileUrl, label: 'Live'),
+                    ],
+                  )
+                else
+                  _thumb(cs, doc.fileUrl),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -1342,9 +1369,14 @@ class _DocCardState extends ConsumerState<_DocCard> {
                       const SizedBox(height: 3),
                       Row(children: [
                         Text('Status: ', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                        Text(status == 'Pending Review' ? 'Pending review' : status,
+                        Text(isReplacement
+                                ? 'New image · pending review'
+                                : (status == 'Pending Review' ? 'Pending review' : status),
                             style: t.textTheme.bodySmall?.copyWith(color: statusColor, fontWeight: FontWeight.w700)),
                       ]),
+                      if (isReplacement)
+                        Text('Live image: Approved',
+                            style: t.textTheme.bodySmall?.copyWith(color: Colors.green.shade700, fontWeight: FontWeight.w600)),
                       if (doc.expiryDate != null)
                         Text('Expiry: ${doc.expiryDate}',
                             style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
@@ -1389,6 +1421,36 @@ class _DocCardState extends ConsumerState<_DocCard> {
           ],
         ),
       ),
+    );
+  }
+
+  /// A document thumbnail (56×72), with an optional corner label ("New"/"Live").
+  Widget _thumb(ColorScheme cs, String? url, {String? label, bool accent = false}) {
+    final img = ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: SizedBox(
+        width: 56, height: 72,
+        child: url != null
+            ? StorageImage(url, fit: BoxFit.cover, errorBuilder: (_, _, _) => _thumbFallback(cs))
+            : _thumbFallback(cs),
+      ),
+    );
+    if (label == null) return img;
+    return Stack(
+      children: [
+        img,
+        Positioned(
+          left: 3, bottom: 3,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: accent ? const Color(0xFF2DABE2) : Colors.black.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800)),
+          ),
+        ),
+      ],
     );
   }
 

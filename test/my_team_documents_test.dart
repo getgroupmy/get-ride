@@ -104,4 +104,33 @@ void main() {
     // Details is always available.
     expect(find.byKey(const ValueKey('doc-details-d1')), findsOneWidget);
   });
+
+  testWidgets('a pending replacement shows the New/Live two-image state', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          approverInboxRepositoryProvider.overrideWithValue(_FakeRepo()),
+          approverSelfProvider.overrideWith((ref) async => _grant()),
+          approverMemberWalletProvider.overrideWith((ref, id) async => null),
+          approverOwnerDocumentsProvider.overrideWith((ref, id) async => [
+                _doc(id: 'd1', source: 'partner', label: 'PSV Licence (e-Hailing)'),
+              ]),
+          approverOwnerDocMetaProvider.overrideWith((ref, id) async => <String, dynamic>{
+                'd1': {'pending_file_url': 'https://x/storage/v1/object/public/provider-documents/u/pending-1'},
+              }),
+        ],
+        child: MaterialApp(theme: appTheme(Brightness.light), home: const MyTeamMemberScreen(member: _member)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('member-tab-documents')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('New image · pending review'), findsOneWidget);
+    expect(find.text('Live image: Approved'), findsOneWidget);
+    expect(find.text('New'), findsOneWidget);
+    expect(find.text('Live'), findsOneWidget);
+    // Approve/Reject (promote/revert) still available for the pending doc.
+    expect(find.byKey(const ValueKey('doc-approve-d1')), findsOneWidget);
+  });
 }
