@@ -22,6 +22,7 @@ class ApproverGrant {
     required this.canCredit,
     required this.canEditProfile,
     required this.canVerifyId,
+    this.canManageVehicle = false,
     required this.scope,
     required this.docTypes,
   });
@@ -42,6 +43,10 @@ class ApproverGrant {
   /// The higher grant to mark a member's ID *verified* (0360); without it the
   /// approver can edit the ID number but not flip verified.
   final bool canVerifyId;
+
+  /// Whether the approver may approve/revoke a driver's access to a covered
+  /// member's vehicle (migration 0366). Off by default.
+  final bool canManageVehicle;
   final String scope;
   final List<String> docTypes;
 
@@ -53,6 +58,7 @@ class ApproverGrant {
         canCredit: j['can_credit'] == true,
         canEditProfile: j['can_edit_profile'] == true,
         canVerifyId: j['can_verify_id'] == true,
+        canManageVehicle: j['can_manage_vehicle'] == true,
         scope: (j['scope'] as String?) ?? 'referral',
         docTypes: [for (final t in (j['doc_types'] as List? ?? const [])) t as String],
       );
@@ -301,6 +307,93 @@ class MemberVehicles {
   final List<MemberVehicle> allowed;
 }
 
+/// A driver who can drive a vehicle (migration 0366).
+class VehicleDriver {
+  const VehicleDriver({
+    required this.assignmentId,
+    required this.name,
+    this.driverNo,
+    required this.state, // 'active' | 'pending' | 'revoked'
+  });
+  final String assignmentId;
+  final String name;
+  final String? driverNo;
+  final String state;
+}
+
+/// One of a vehicle's documents, for the Vehicle detail sheet (migration 0366).
+class VehicleDoc {
+  const VehicleDoc({required this.id, required this.name, this.status, this.expiry, this.provider, this.hasFile = false});
+  final String id;
+  final String name;
+  final String? status;
+  final String? expiry;
+  final String? provider;
+  final bool hasFile;
+}
+
+/// The Vehicle detail sheet payload (migration 0366).
+class VehicleDetail {
+  const VehicleDetail({
+    required this.id,
+    required this.plate,
+    this.descriptor,
+    this.status,
+    this.ownerName,
+    this.canManage = false,
+    this.drivers = const [],
+    this.documents = const [],
+  });
+  final String id;
+  final String plate;
+  final String? descriptor;
+  final String? status;
+  final String? ownerName;
+  final bool canManage;
+  final List<VehicleDriver> drivers;
+  final List<VehicleDoc> documents;
+
+  static String? _s(Object? v) {
+    final t = '${v ?? ''}'.trim();
+    return t.isEmpty || t == 'null' ? null : t;
+  }
+
+  static VehicleDetail fromJson(Map<String, dynamic> j) {
+    final parts = [j['make'], j['model'], j['color'], j['year']]
+        .map((e) => '${e ?? ''}'.trim())
+        .where((e) => e.isNotEmpty)
+        .join(' · ');
+    return VehicleDetail(
+      id: '${j['id']}',
+      plate: _s(j['plate']) ?? '—',
+      descriptor: parts.isEmpty ? null : parts,
+      status: _s(j['status']),
+      ownerName: _s(j['owner_name']),
+      canManage: j['can_manage'] == true,
+      drivers: [
+        for (final e in (j['drivers'] as List? ?? const []))
+          VehicleDriver(
+            assignmentId: '${(e as Map)['assignment_id']}',
+            name: '${e['name'] ?? 'User'}',
+            driverNo: _s(e['driver_no']),
+            state: '${e['state'] ?? 'active'}',
+          ),
+      ],
+      documents: [
+        for (final e in (j['documents'] as List? ?? const []))
+          VehicleDoc(
+            id: '${(e as Map)['id']}',
+            name: '${e['doc_name'] ?? 'Document'}',
+            status: _s(e['status']),
+            expiry: _s(e['expiry_date']),
+            provider: _s(e['provider']),
+            hasFile: e['has_file'] == true,
+          ),
+      ],
+    );
+  }
+}
+
 /// One row of the read-from-document vs stored table (migration 0365).
 class DocReadRow {
   const DocReadRow({required this.field, this.read, this.stored, required this.match});
@@ -462,6 +555,19 @@ class ApproverInboxRepository {
   Future<Map<String, dynamic>?> memberDetail(String memberId) async {
     final r = await _db.rpc('approver_member_detail', params: {'p_member': memberId});
     return r == null ? null : Map<String, dynamic>.from(r as Map);
+  }
+
+  /// The Vehicle detail sheet for one vehicle (migration 0366): who can drive
+  /// it and its documents. Null when out of scope.
+  Future<VehicleDetail?> vehicleDetail(String vehicleId) async {
+    final r = await _db.rpc('approver_vehicle_detail', params: {'p_vehicle': vehicleId});
+    return r == null ? null : VehicleDetail.fromJson(Map<String, dynamic>.from(r as Map));
+  }
+
+  /// Approve or revoke a driver's access to a covered member's vehicle
+  /// (migration 0366). [action] is 'approve' or 'revoke'; needs can_manage_vehicle.
+  Future<void> setVehicleAccess(String assignmentId, String action) async {
+    await _db.rpc('approver_set_vehicle_access', params: {'p_assignment': assignmentId, 'p_action': action});
   }
 
   /// The rich detail for one of a covered member's documents (migration 0365):
@@ -654,6 +760,13 @@ final approverMemberVehiclesProvider =
     FutureProvider.autoDispose.family<MemberVehicles?, String>((ref, memberId) async {
   if (ref.watch(currentUserIdProvider) == null) return null;
   return ref.watch(approverInboxRepositoryProvider).memberVehicles(memberId);
+});
+
+/// The Vehicle detail sheet for one vehicle (My Team, 0366).
+final approverVehicleDetailProvider =
+    FutureProvider.autoDispose.family<VehicleDetail?, String>((ref, vehicleId) async {
+  if (ref.watch(currentUserIdProvider) == null) return null;
+  return ref.watch(approverInboxRepositoryProvider).vehicleDetail(vehicleId);
 });
 
 /// The rich detail for one document (My Team → document sheet, 0365), keyed by
