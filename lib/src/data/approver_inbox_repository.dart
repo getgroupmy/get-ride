@@ -677,6 +677,14 @@ class ApproverInboxRepository {
           ApproverDoc.fromJson(Map<String, dynamic>.from(r as Map)),
       ];
 
+  /// Per-document meta for a member's Documents tab (migration 0370), keyed by
+  /// document id: changed_by, provider, is_pwd, uploaded_at, reviewed_at.
+  /// Empty on error or a legacy database.
+  Future<Map<String, dynamic>> ownerDocumentMeta(String ownerId) async {
+    final r = await _db.rpc('approver_owner_document_meta', params: {'p_owner': ownerId});
+    return r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
+  }
+
   /// One covered member's GET.wallet balance, for display (migration 0359);
   /// null when the member is out of the approver's scope.
   Future<double?> memberWallet(String memberId) async {
@@ -915,6 +923,18 @@ final approverOwnerDocumentsProvider =
     FutureProvider.autoDispose.family<List<ApproverDoc>, String>((ref, ownerId) async {
   if (ref.watch(currentUserIdProvider) == null) return const <ApproverDoc>[];
   return ref.watch(approverInboxRepositoryProvider).ownerDocuments(ownerId);
+});
+
+/// Per-document meta for a member's Documents tab (migration 0370), keyed by
+/// document id. Empty on error or a legacy database (the cards simply omit it).
+final approverOwnerDocMetaProvider =
+    FutureProvider.autoDispose.family<Map<String, dynamic>, String>((ref, ownerId) async {
+  if (ref.watch(currentUserIdProvider) == null) return const <String, dynamic>{};
+  try {
+    return await ref.watch(approverInboxRepositoryProvider).ownerDocumentMeta(ownerId);
+  } catch (_) {
+    return const <String, dynamic>{};
+  }
 });
 
 /// One covered member's GET.wallet balance (My Team member screen, 0359);

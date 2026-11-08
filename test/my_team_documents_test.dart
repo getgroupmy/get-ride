@@ -41,6 +41,12 @@ class _FakeRepo extends ApproverInboxRepository {
   Future<void> review(ApproverDoc doc, String action, {String? note}) async {
     reviewed = (doc.id, action);
   }
+
+  @override
+  Future<Map<String, dynamic>> ownerDocumentMeta(String ownerId) async => {
+        'd1': {'changed_by': 'Insyirah Inani'},
+        'd2': {'provider': 'Etiqa General Insurance Berhad'},
+      };
 }
 
 Future<_FakeRepo> _open(WidgetTester tester, {required ApproverGrant grant}) async {
@@ -52,6 +58,10 @@ Future<_FakeRepo> _open(WidgetTester tester, {required ApproverGrant grant}) asy
         approverSelfProvider.overrideWith((ref) async => grant),
         approverMemberWalletProvider.overrideWith((ref, id) async => null),
         approverOwnerDocumentsProvider.overrideWith((ref, id) async => _docs),
+        approverOwnerDocMetaProvider.overrideWith((ref, id) async => <String, dynamic>{
+              'd1': {'changed_by': 'Insyirah Inani'},
+              'd2': {'provider': 'Etiqa General Insurance Berhad'},
+            }),
       ],
       child: MaterialApp(theme: appTheme(Brightness.light), home: const MyTeamMemberScreen(member: _member)),
     ),
@@ -69,6 +79,9 @@ void main() {
     expect(find.text('VEHICLE DOCUMENTS'), findsOneWidget);
     expect(find.text("Driver's Licence"), findsOneWidget);
     expect(find.text('Vehicle Insurance'), findsOneWidget);
+    // Per-doc meta (migration 0370): changed-by on the driver doc, insurance on the vehicle doc.
+    expect(find.text('Changed by: Insyirah Inani'), findsOneWidget);
+    expect(find.text('Insurance: Etiqa General Insurance Berhad'), findsOneWidget);
   });
 
   testWidgets('a pending doc shows Approve/Reject and approving calls review', (tester) async {
