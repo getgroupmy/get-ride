@@ -977,28 +977,54 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
           ),
         ),
       ),
-      data: (list) => list.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.all(24),
-              child: EmptyState(
-                icon: Icons.description_outlined,
-                title: 'No documents',
-                message: 'This person has no documents on file in your scope.',
-              ),
-            )
-          : Column(
-              children: [
-                for (final d in list)
-                  _DocTile(
-                    doc: d,
-                    onTap: () => openApproverDocument(
-                      context,
-                      d,
-                      onChanged: () => ref.invalidate(approverOwnerDocumentsProvider(member.id)),
-                    ),
-                  ),
-              ],
+      data: (list) {
+        if (list.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(24),
+            child: EmptyState(
+              icon: Icons.description_outlined,
+              title: 'No documents',
+              message: 'This person has no documents on file in your scope.',
             ),
+          );
+        }
+        final driver = [for (final d in list) if (d.source != 'vehicle') d];
+        final vehicle = [for (final d in list) if (d.source == 'vehicle') d];
+        void onChanged() => ref.invalidate(approverOwnerDocumentsProvider(member.id));
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (driver.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+                child: Text('DRIVER DOCUMENTS',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: cs.onSurfaceVariant, letterSpacing: 0.6, fontWeight: FontWeight.w700)),
+              ),
+              for (final d in driver) _DocCard(doc: d, onChanged: onChanged),
+            ],
+            if (vehicle.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 14, 8, 2),
+                child: Text('VEHICLE DOCUMENTS',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: cs.onSurfaceVariant, letterSpacing: 0.6, fontWeight: FontWeight.w700)),
+              ),
+              for (final d in vehicle) _DocCard(doc: d, onChanged: onChanged),
+            ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 14, 10, 4),
+              child: Text(
+                'Approve / Reject review the document; Upload or Rescan adds a new image '
+                'on the driver’s behalf as a pending replacement, and the previous approved '
+                'image stays live until it is approved. Every action re-checks your grant’s '
+                'scope and permission on the server before any change.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1197,57 +1223,157 @@ class _AddCreditSheetState extends ConsumerState<_AddCreditSheet> {
 }
 
 /// One of a member's documents, with its status.
-class _DocTile extends StatelessWidget {
-  const _DocTile({required this.doc, required this.onTap});
+/// A rich document card for the My Team → Documents tab (the mockup's cards):
+/// thumbnail, title, status, expiry and captured number, with inline actions
+/// gated by the approver's grant. Approve / Reject review the document inline;
+/// Details / Rescan / Upload / Remove open the full viewer, where the capture,
+/// edit and delete flows (and their confirmations) already live.
+class _DocCard extends ConsumerStatefulWidget {
+  const _DocCard({required this.doc, required this.onChanged});
   final ApproverDoc doc;
-  final VoidCallback onTap;
+  final VoidCallback onChanged;
+
+  @override
+  ConsumerState<_DocCard> createState() => _DocCardState();
+}
+
+class _DocCardState extends ConsumerState<_DocCard> {
+  bool _busy = false;
+
+  ApproverDoc get doc => widget.doc;
+
+  Future<void> _review(String action) async {
+    setState(() => _busy = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).review(doc, action);
+      widget.onChanged();
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc', context: context,
+        message: action == 'approve' ? 'Document approved.' : 'Document rejected.',
+        kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc', context: context,
+        message: m.contains('not_allowed') || m.contains('not_authorized')
+            ? "You can't review this document."
+            : "Couldn't update the document. Try again.",
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _openViewer() => openApproverDocument(context, doc, onChanged: widget.onChanged);
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    final grant = ref.watch(approverSelfProvider).asData?.value;
+    final canApprove = grant?.canApprove == true;
+    final canUpload = grant?.canUpload == true;
+    final canDelete = grant?.canDelete == true;
+    final editable = doc.source != 'identity';
+
+    final status = doc.status ?? 'Pending Review';
+    final (statusColor, _) = switch (status) {
+      'Approved' => (Colors.green.shade700, Icons.check_circle),
+      'Rejected' => (cs.error, Icons.cancel),
+      'Expired' => (cs.error, Icons.error_outline),
+      _ => (Colors.orange.shade800, Icons.schedule),
+    };
+
+    Widget btn(String label, VoidCallback? onTap, {Color? fg, bool filled = false, IconData? icon, Key? key}) {
+      final child = Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[Icon(icon, size: 15), const SizedBox(width: 5)],
+        Text(label),
+      ]);
+      return filled
+          ? FilledButton(key: key, style: FilledButton.styleFrom(
+              backgroundColor: fg, visualDensity: VisualDensity.compact), onPressed: onTap, child: child)
+          : OutlinedButton(key: key, style: OutlinedButton.styleFrom(
+              foregroundColor: fg, visualDensity: VisualDensity.compact), onPressed: onTap, child: child);
+    }
+
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        key: ValueKey('my-team-doc-${doc.id}'),
-        leading: CircleAvatar(
-          backgroundColor: cs.surfaceContainerHighest,
-          foregroundColor: cs.onSurfaceVariant,
-          child: Icon(ApproverInboxScreen.iconFor(doc.source)),
+      key: ValueKey('my-team-doc-${doc.id}'),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      child: Padding(
+        padding: const EdgeInsets.all(13),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    width: 56, height: 72,
+                    child: doc.fileUrl != null
+                        ? StorageImage(doc.fileUrl!, fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => _thumbFallback(cs))
+                        : _thumbFallback(cs),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(doc.docLabel, style: t.textTheme.titleSmall, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 3),
+                      Row(children: [
+                        Text('Status: ', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        Text(status == 'Pending Review' ? 'Pending review' : status,
+                            style: t.textTheme.bodySmall?.copyWith(color: statusColor, fontWeight: FontWeight.w700)),
+                      ]),
+                      if (doc.expiryDate != null)
+                        Text('Expiry: ${doc.expiryDate}',
+                            style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      if (doc.documentNumber != null)
+                        Text('No. ${doc.documentNumber}',
+                            style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                      if (doc.plate != null)
+                        Text('Plate ${doc.plate}',
+                            style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 11),
+            Wrap(
+              spacing: 8, runSpacing: 8,
+              children: [
+                btn('Details', _busy ? null : _openViewer, key: ValueKey('doc-details-${doc.id}')),
+                if (canUpload && editable) ...[
+                  btn('Rescan', _busy ? null : _openViewer),
+                  btn('Upload', _busy ? null : _openViewer, icon: Icons.upload_outlined),
+                ],
+                if (doc.source == 'vehicle' && canDelete)
+                  btn('Remove', _busy ? null : _openViewer, fg: cs.error),
+                if (doc.isPending && canApprove) ...[
+                  btn('Approve', _busy ? null : () => _review('approve'),
+                      filled: true, fg: const Color(0xFF1F2B48), key: ValueKey('doc-approve-${doc.id}')),
+                  btn('Reject', _busy ? null : () => _review('reject'),
+                      filled: true, fg: cs.error, key: ValueKey('doc-reject-${doc.id}')),
+                ],
+              ],
+            ),
+          ],
         ),
-        title: Text(doc.docLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
-        subtitle: Text(ApproverInboxScreen.sourceLabel(doc.source)),
-        trailing: _DocStatus(status: doc.status ?? 'Pending Review'),
-        onTap: onTap,
       ),
     );
   }
-}
 
-class _DocStatus extends StatelessWidget {
-  const _DocStatus({required this.status});
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final (color, icon) = switch (status) {
-      'Approved' => (cs.primary, Icons.check_circle),
-      'Rejected' => (cs.error, Icons.cancel),
-      'Expired' => (cs.error, Icons.error_outline),
-      _ => (cs.tertiary, Icons.schedule),
-    };
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, size: 20, color: color),
-        const SizedBox(height: 2),
-        Text(status == 'Pending Review' ? 'Pending' : status,
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color)),
-      ],
-    );
-  }
+  Widget _thumbFallback(ColorScheme cs) => ColoredBox(
+        color: cs.surfaceContainerHighest,
+        child: Icon(ApproverInboxScreen.iconFor(doc.source), color: cs.onSurfaceVariant),
+      );
 }
 
 /// Edit a covered member's profile (migration 0360). Pre-filled from
