@@ -174,6 +174,11 @@ class TeamMember {
     this.plate,
     this.vehicleLabel,
     this.pendingDocs = 0,
+    this.walletBalance,
+    this.serviceCity,
+    this.registeredAt,
+    this.updatedAt,
+    this.online = false,
   });
 
   final String id;
@@ -199,9 +204,28 @@ class TeamMember {
   /// How many of this person's documents are waiting for review right now.
   final int pendingDocs;
 
+  /// The member's GET.wallet balance in RM, shown on the list card beside their
+  /// account number; null when they have no wallet row yet (migration 0368).
+  final double? walletBalance;
+
+  /// Where the member drives — their first service city (else state/country) —
+  /// and when their account was registered and last changed (migration 0368).
+  final String? serviceCity;
+  final DateTime? registeredAt;
+  final DateTime? updatedAt;
+
+  /// Whether the member is online right now (a live vehicle session with a
+  /// fresh heartbeat, migration 0368).
+  final bool online;
+
   static String? _s(Object? v) {
     final t = (v as String?)?.trim() ?? '';
     return t.isEmpty ? null : t;
+  }
+
+  static DateTime? _date(Object? v) {
+    final t = (v as String?)?.trim() ?? '';
+    return t.isEmpty ? null : DateTime.tryParse(t)?.toLocal();
   }
 
   static TeamMember fromJson(Map<String, dynamic> j) => TeamMember(
@@ -217,6 +241,11 @@ class TeamMember {
         plate: _s(j['plate']),
         vehicleLabel: _s(j['vehicle_label']),
         pendingDocs: (j['pending_docs'] as num?)?.toInt() ?? 0,
+        walletBalance: (j['wallet_balance'] as num?)?.toDouble(),
+        serviceCity: _s(j['service_city']),
+        registeredAt: _date(j['registered_at']),
+        updatedAt: _date(j['updated_at']),
+        online: j['online'] == true,
       );
 }
 

@@ -238,10 +238,38 @@ class _TeamCard extends StatelessWidget {
   final TeamMember member;
   final VoidCallback onTap;
 
+  static String _money(double v) {
+    final neg = v < 0;
+    final parts = v.abs().toStringAsFixed(2).split('.');
+    final digits = parts[0];
+    final buf = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buf.write(',');
+      buf.write(digits[i]);
+    }
+    return '${neg ? '-' : ''}RM $buf.${parts[1]}';
+  }
+
+  /// A short, locale-neutral day stamp for the card grid (e.g. "4 Feb 2027").
+  static String _shortDate(DateTime d) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${d.day} ${months[d.month - 1]} ${d.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
+
+    // The subtitle under the name: GET.wallet balance · account number.
+    final subtitleParts = <String>[
+      if (member.walletBalance != null) _money(member.walletBalance!),
+      if (member.displayId != null) '#${member.displayId}',
+    ];
+
     return Card(
       key: ValueKey('my-team-member-${member.id}'),
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -249,7 +277,7 @@ class _TeamCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -263,13 +291,27 @@ class _TeamCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(member.name, style: text.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        if (member.displayId != null)
-                          Text('No. ${member.displayId}',
-                              style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        if (subtitleParts.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Text(subtitleParts.join(' · '),
+                                style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
                       ],
                     ),
                   ),
-                  if (member.status != null) _StatusChip(status: member.status!),
+                  const SizedBox(width: 8),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (member.status != null) _StatusChip(status: member.status!),
+                      if (member.online) ...[
+                        const SizedBox(height: 6),
+                        const _OnlineChip(),
+                      ],
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -277,10 +319,16 @@ class _TeamCard extends StatelessWidget {
               if (member.plate != null || member.vehicleLabel != null)
                 _line(context, Icons.directions_car_outlined,
                     [member.vehicleLabel, member.plate].where((e) => e != null).join(' · ')),
-              if (member.ic != null)
-                _line(context, Icons.badge_outlined,
-                    member.nationality != null ? '${member.ic} · ${member.nationality}' : member.ic!),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
+              _InfoGrid(rows: [
+                ('ID NO.', member.nationality != null && member.ic != null
+                    ? '${member.ic} · ${member.nationality}'
+                    : (member.ic ?? '—')),
+                ('SERVICE CITY', member.serviceCity ?? '—'),
+                ('REGISTERED', member.registeredAt != null ? _shortDate(member.registeredAt!) : '—'),
+                ('LAST UPDATED', member.updatedAt != null ? _shortDate(member.updatedAt!) : '—'),
+              ]),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   if (member.pendingDocs > 0)
@@ -320,6 +368,85 @@ class _TeamCard extends StatelessWidget {
             child: Text(value,
                 style: Theme.of(context).textTheme.bodyMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A small green "Online" pill for a member who is driving right now.
+class _OnlineChip extends StatelessWidget {
+  const _OnlineChip();
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    const green = Color(0xFF1B8A4B);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+        color: green.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7, height: 7,
+            decoration: const BoxDecoration(color: green, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 5),
+          Text('Online', style: text.labelSmall?.copyWith(color: green, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The 2×2 label/value grid on a team card (ID NO. / SERVICE CITY /
+/// REGISTERED / LAST UPDATED).
+class _InfoGrid extends StatelessWidget {
+  const _InfoGrid({required this.rows});
+  final List<(String, String)> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+
+    Widget cell((String, String) r) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(r.$1, style: text.labelSmall?.copyWith(
+                color: cs.onSurfaceVariant, letterSpacing: 0.4, fontSize: 10)),
+            const SizedBox(height: 1),
+            Text(r.$2, style: text.bodyMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ],
+        );
+
+    Widget pair(int a, int b) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: cell(rows[a])),
+              const SizedBox(width: 12),
+              Expanded(child: cell(rows[b])),
+            ],
+          ),
+        );
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          pair(0, 1),
+          Divider(height: 1, color: cs.outlineVariant.withValues(alpha: 0.5)),
+          pair(2, 3),
         ],
       ),
     );
