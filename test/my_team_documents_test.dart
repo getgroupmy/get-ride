@@ -47,6 +47,17 @@ class _FakeRepo extends ApproverInboxRepository {
         'd1': {'changed_by': 'Insyirah Inani'},
         'd2': {'provider': 'Etiqa General Insurance Berhad'},
       };
+
+  (String, String)? created; // (memberId, docId)
+
+  @override
+  Future<String> createDocument(String memberId, String docId, String docName) async {
+    created = (memberId, docId);
+    return 'new-doc-id';
+  }
+
+  @override
+  Future<List<ApproverDoc>> ownerDocuments(String ownerId) async => _docs;
 }
 
 Future<_FakeRepo> _open(WidgetTester tester, {required ApproverGrant grant}) async {
@@ -103,6 +114,36 @@ void main() {
     expect(find.byKey(const ValueKey('doc-reject-d1')), findsNothing);
     // Details is always available.
     expect(find.byKey(const ValueKey('doc-details-d1')), findsOneWidget);
+  });
+
+  testWidgets('a missing doc shows No Document and uploads on behalf', (tester) async {
+    final repo = _FakeRepo();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          approverInboxRepositoryProvider.overrideWithValue(repo),
+          approverSelfProvider.overrideWith((ref) async => _grant()),
+          approverMemberWalletProvider.overrideWith((ref, id) async => null),
+          approverOwnerDocumentsProvider.overrideWith((ref, id) async => _docs),
+          approverOwnerDocMetaProvider.overrideWith((ref, id) async => const <String, dynamic>{}),
+          approverAddableDocsProvider.overrideWith((ref, id) async =>
+              const [AddableDoc(docId: 'pwd-type', name: 'PWD Card (OKU)', required: false)]),
+        ],
+        child: MaterialApp(theme: appTheme(Brightness.light), home: const MyTeamMemberScreen(member: _member)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('member-tab-documents')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('PWD Card (OKU)'), findsOneWidget);
+    expect(find.text('Status: No Document'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('doc-upload-onbehalf-pwd-type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('doc-upload-onbehalf-pwd-type')), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(repo.created, ('m1', 'pwd-type'));
   });
 
   testWidgets('a pending replacement shows the New/Live two-image state', (tester) async {
