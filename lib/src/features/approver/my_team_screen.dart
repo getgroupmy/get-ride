@@ -393,12 +393,12 @@ class MyTeamMemberScreen extends ConsumerStatefulWidget {
   ConsumerState<MyTeamMemberScreen> createState() => _MyTeamMemberScreenState();
 }
 
-/// The member tabs, in the order the mockup shows them. Statistics is reserved
-/// (its KPI aggregation lands next) so the tab order stays stable.
-enum _MemberTab { profile, vehicle, documents }
+/// The member tabs, in the order the mockup shows them.
+enum _MemberTab { profile, statistics, vehicle, documents }
 
 class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
   _MemberTab _tab = _MemberTab.profile;
+  String _statsPeriod = 'month';
   TeamMember get member => widget.member;
 
   @override
@@ -440,6 +440,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                 maxWidth: 760,
                 child: switch (_tab) {
                   _MemberTab.profile => _profileTab(cs, canCredit: canCredit, canEditProfile: canEditProfile, wallet: wallet),
+                  _MemberTab.statistics => _statisticsTab(cs),
                   _MemberTab.vehicle => _vehicleTab(cs),
                   _MemberTab.documents => _documentsTab(cs),
                 },
@@ -510,6 +511,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Row(children: [
         pill(_MemberTab.profile, 'Profile'),
+        pill(_MemberTab.statistics, 'Statistics'),
         pill(_MemberTab.vehicle, 'Vehicle'),
         pill(_MemberTab.documents, 'Documents'),
       ]),
@@ -579,6 +581,124 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         ),
       ),
     );
+  }
+
+  // ---- Statistics tab (migration 0367) --------------------------------------
+
+  Widget _statisticsTab(ColorScheme cs) {
+    const bg = Color(0xFF0E0E10);
+    const tile = Color(0xFF1C1C1F);
+    const muted = Color(0xFF9A9AA0);
+    final stats = ref.watch(approverMemberStatsProvider((member: member.id, period: _statsPeriod)));
+    const periodLabels = {'month': 'This month', 'last_month': 'Last month', 'all': 'All time'};
+
+    Widget kpiTile(String label, String value) => Container(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+          decoration: BoxDecoration(color: tile, borderRadius: BorderRadius.circular(14)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: const TextStyle(color: muted, fontSize: 13)),
+              const SizedBox(height: 10),
+              Text(value, style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w700)),
+            ],
+          ),
+        );
+
+    Widget grid(List<(String, String)> items) => GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 1.55,
+          children: [for (final (l, v) in items) kpiTile(l, v)],
+        );
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(18)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text('Driver statistics',
+                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+              ),
+              PopupMenuButton<String>(
+                key: const ValueKey('stats-period'),
+                initialValue: _statsPeriod,
+                onSelected: (v) => setState(() => _statsPeriod = v),
+                color: tile,
+                itemBuilder: (_) => [
+                  for (final e in periodLabels.entries)
+                    PopupMenuItem(value: e.key, child: Text(e.value, style: const TextStyle(color: Colors.white))),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(color: tile, borderRadius: BorderRadius.circular(20)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.expand_more, color: Colors.white, size: 18),
+                    const SizedBox(width: 6),
+                    Text(periodLabels[_statsPeriod] ?? 'This month',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  ]),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          stats.when(
+            loading: () => const Padding(
+                padding: EdgeInsets.all(28),
+                child: Center(child: CircularProgressIndicator(color: Colors.white))),
+            error: (e, _) => Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text("Couldn't load statistics.\n${errorText(e)}", style: const TextStyle(color: muted)),
+            ),
+            data: (s) {
+              if (s == null) {
+                return const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text('This member is no longer in your scope.', style: TextStyle(color: muted)));
+              }
+              return grid([
+                ('Total in-app jobs', _grp(s.inAppJobs)),
+                ('Total myGiG jobs', _grp(s.mygigJobs)),
+                ('My earning', 'RM ${_money(s.earning)}'),
+                ('Avg. earning / KM', s.avgPerKm == null ? '—' : 'RM ${_money(s.avgPerKm!)}'),
+                ('Total minutes online', _grp(s.minutesOnline)),
+                ('Online KM travelled', _grp(s.onlineKm)),
+                ('Total KM job done', _grp(s.totalKm)),
+                ('Cancelled by driver', _grp(s.cancelledByDriver)),
+                ('Cancelled by user', _grp(s.cancelledByUser)),
+              ]);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 1234567 → "1,234,567".
+  static String _grp(int n) {
+    final s = n.abs().toString();
+    final b = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      if (i > 0 && (s.length - i) % 3 == 0) b.write(',');
+      b.write(s[i]);
+    }
+    return '${n < 0 ? '-' : ''}$b';
+  }
+
+  /// A money amount with thousands separators and 2 decimals.
+  static String _money(double v) {
+    final whole = v.truncate();
+    final cents = ((v - whole).abs() * 100).round().toString().padLeft(2, '0');
+    return '${_grp(whole)}.$cents';
   }
 
   // ---- Vehicle tab (migration 0364) -----------------------------------------

@@ -307,6 +307,45 @@ class MemberVehicles {
   final List<MemberVehicle> allowed;
 }
 
+/// A covered member's driver statistics for a period (migration 0367).
+class MemberStats {
+  const MemberStats({
+    required this.inAppJobs,
+    required this.mygigJobs,
+    required this.earning,
+    this.avgPerKm,
+    required this.minutesOnline,
+    required this.onlineKm,
+    required this.totalKm,
+    required this.cancelledByDriver,
+    required this.cancelledByUser,
+  });
+  final int inAppJobs;
+  final int mygigJobs;
+  final double earning;
+  final double? avgPerKm;
+  final int minutesOnline;
+  final int onlineKm;
+  final int totalKm;
+  final int cancelledByDriver;
+  final int cancelledByUser;
+
+  static int _i(Object? v) => (v as num?)?.round() ?? 0;
+  static double _d(Object? v) => (v as num?)?.toDouble() ?? 0;
+
+  static MemberStats fromJson(Map<String, dynamic> j) => MemberStats(
+        inAppJobs: _i(j['in_app_jobs']),
+        mygigJobs: _i(j['mygig_jobs']),
+        earning: _d(j['earning']),
+        avgPerKm: j['avg_per_km'] == null ? null : _d(j['avg_per_km']),
+        minutesOnline: _i(j['minutes_online']),
+        onlineKm: _i(j['online_km']),
+        totalKm: _i(j['total_km']),
+        cancelledByDriver: _i(j['cancelled_by_driver']),
+        cancelledByUser: _i(j['cancelled_by_user']),
+      );
+}
+
 /// A driver who can drive a vehicle (migration 0366).
 class VehicleDriver {
   const VehicleDriver({
@@ -557,6 +596,13 @@ class ApproverInboxRepository {
     return r == null ? null : Map<String, dynamic>.from(r as Map);
   }
 
+  /// A covered member's driver statistics for a period (migration 0367).
+  /// [period] is 'month' | 'last_month' | 'all'. Null when out of scope.
+  Future<MemberStats?> memberStats(String memberId, String period) async {
+    final r = await _db.rpc('approver_member_stats', params: {'p_member': memberId, 'p_period': period});
+    return r == null ? null : MemberStats.fromJson(Map<String, dynamic>.from(r as Map));
+  }
+
   /// The Vehicle detail sheet for one vehicle (migration 0366): who can drive
   /// it and its documents. Null when out of scope.
   Future<VehicleDetail?> vehicleDetail(String vehicleId) async {
@@ -760,6 +806,14 @@ final approverMemberVehiclesProvider =
     FutureProvider.autoDispose.family<MemberVehicles?, String>((ref, memberId) async {
   if (ref.watch(currentUserIdProvider) == null) return null;
   return ref.watch(approverInboxRepositoryProvider).memberVehicles(memberId);
+});
+
+/// A covered member's driver statistics for a period (My Team → Statistics,
+/// 0367), keyed by (member, period).
+final approverMemberStatsProvider =
+    FutureProvider.autoDispose.family<MemberStats?, ({String member, String period})>((ref, key) async {
+  if (ref.watch(currentUserIdProvider) == null) return null;
+  return ref.watch(approverInboxRepositoryProvider).memberStats(key.member, key.period);
 });
 
 /// The Vehicle detail sheet for one vehicle (My Team, 0366).
