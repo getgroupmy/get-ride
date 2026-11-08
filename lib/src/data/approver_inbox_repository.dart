@@ -405,6 +405,10 @@ class VehicleDetail {
   const VehicleDetail({
     required this.id,
     required this.plate,
+    this.make,
+    this.model,
+    this.color,
+    this.year,
     this.descriptor,
     this.status,
     this.ownerName,
@@ -414,6 +418,13 @@ class VehicleDetail {
   });
   final String id;
   final String plate;
+
+  /// The vehicle's own fields, kept individually so the Edit vehicle form can
+  /// pre-fill them; [descriptor] is the joined "Make · Model · Colour · Year".
+  final String? make;
+  final String? model;
+  final String? color;
+  final String? year;
   final String? descriptor;
   final String? status;
   final String? ownerName;
@@ -434,6 +445,10 @@ class VehicleDetail {
     return VehicleDetail(
       id: '${j['id']}',
       plate: _s(j['plate']) ?? '—',
+      make: _s(j['make']),
+      model: _s(j['model']),
+      color: _s(j['color']),
+      year: _s(j['year']),
       descriptor: parts.isEmpty ? null : parts,
       status: _s(j['status']),
       ownerName: _s(j['owner_name']),
@@ -643,6 +658,18 @@ class ApproverInboxRepository {
   /// (migration 0366). [action] is 'approve' or 'revoke'; needs can_manage_vehicle.
   Future<void> setVehicleAccess(String assignmentId, String action) async {
     await _db.rpc('approver_set_vehicle_access', params: {'p_assignment': assignmentId, 'p_action': action});
+  }
+
+  /// Assign a covered member as an approved, active driver of a covered
+  /// member's vehicle (migration 0369). Idempotent; needs can_manage_vehicle.
+  Future<void> assignVehicleDriver(String vehicleId, String memberId) async {
+    await _db.rpc('approver_assign_vehicle_driver', params: {'p_vehicle': vehicleId, 'p_member': memberId});
+  }
+
+  /// Edit a covered member's vehicle (migration 0369): plate / make / model /
+  /// colour / year. Only the given keys are changed; needs can_manage_vehicle.
+  Future<void> updateVehicle(String vehicleId, Map<String, String?> patch) async {
+    await _db.rpc('approver_update_vehicle', params: {'p_vehicle': vehicleId, 'p_patch': patch});
   }
 
   /// The rich detail for one of a covered member's documents (migration 0365):

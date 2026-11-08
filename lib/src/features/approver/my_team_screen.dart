@@ -1768,6 +1768,7 @@ class _VehicleDetailSheet extends ConsumerStatefulWidget {
 
 class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
   String? _busyAssignment;
+  bool _busyAction = false;
 
   Future<void> _setAccess(String assignmentId, String action) async {
     setState(() => _busyAssignment = assignmentId);
@@ -1838,12 +1839,134 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                 if (v.documents.isEmpty)
                   Text('No documents on file.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                 for (final d in v.documents) _docRow(t, cs, d),
+                if (v.canManage) ...[
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const ValueKey('vehicle-assign-driver'),
+                          onPressed: _busyAction ? null : () => _assignDriver(v),
+                          icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+                          label: const Text('Assign driver'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          key: const ValueKey('vehicle-edit'),
+                          onPressed: _busyAction ? null : () => _editVehicle(v),
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: const Text('Edit vehicle'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           );
         },
       ),
     );
+  }
+
+  /// Pick a covered member and assign them as a driver of this vehicle.
+  Future<void> _assignDriver(VehicleDetail v) async {
+    final List<TeamMember> members;
+    try {
+      final page = await ref.read(approverInboxRepositoryProvider).coveredPartners(limit: 100);
+      members = page.members;
+    } catch (_) {
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: "Couldn't load your team. Try again.", kind: NoticeKind.error));
+      return;
+    }
+    if (!mounted) return;
+    if (members.isEmpty) {
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'No one in your team to assign yet.', kind: NoticeKind.info));
+      return;
+    }
+    final choices = <SearchChoice<String>>[
+      for (final m in members)
+        (
+          value: m.id,
+          label: m.name,
+          subtitle: [
+            if (m.displayId != null) '#${m.displayId}',
+            if (m.phone != null) m.phone,
+          ].whereType<String>().join(' · '),
+          leading: null,
+        ),
+    ];
+    final memberId = await showSearchPicker<String>(
+      context, title: 'Assign a driver', choices: choices);
+    if (memberId == null || !mounted) return;
+
+    setState(() => _busyAction = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(v.id, memberId);
+      ref.invalidate(approverVehicleDetailProvider(widget.vehicleId));
+      ref.invalidate(approverMemberVehiclesProvider(widget.memberId));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Driver assigned.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't manage this vehicle's drivers."
+            : (m.contains('member_out_of_scope')
+                ? "That person isn't in your team."
+                : (m.contains('out_of_scope')
+                    ? "This vehicle isn't in your scope."
+                    : "Couldn't assign the driver. Try again.")),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyAction = false);
+    }
+  }
+
+  /// Open the edit form for this vehicle's plate / make / model / colour / year.
+  Future<void> _editVehicle(VehicleDetail v) async {
+    final patch = await showAppSheet<Map<String, String?>>(
+      id: 'approver.vehicle-edit',
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _VehicleEditSheet(vehicle: v),
+    );
+    if (patch == null || patch.isEmpty || !mounted) return;
+
+    setState(() => _busyAction = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).updateVehicle(v.id, patch);
+      ref.invalidate(approverVehicleDetailProvider(widget.vehicleId));
+      ref.invalidate(approverMemberVehiclesProvider(widget.memberId));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Vehicle updated.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't edit this vehicle."
+            : (m.contains('out_of_scope')
+                ? "This vehicle isn't in your scope."
+                : "Couldn't update the vehicle. Try again."),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyAction = false);
+    }
   }
 
   Widget _driverRow(ThemeData t, ColorScheme cs, bool canManage, VehicleDriver dr) {
@@ -1926,6 +2049,137 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                   color: d.status == 'Approved' ? Colors.green.shade800 : cs.onSurfaceVariant,
                   fontWeight: FontWeight.w600)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The Edit vehicle form (migration 0369): plate / make / model / colour /
+/// year. Returns the patch map to the Vehicle detail sheet on save, or null
+/// when cancelled. Plate, make and model are required (they are NOT NULL on
+/// the row); colour and year may be cleared.
+class _VehicleEditSheet extends StatefulWidget {
+  const _VehicleEditSheet({required this.vehicle});
+  final VehicleDetail vehicle;
+
+  @override
+  State<_VehicleEditSheet> createState() => _VehicleEditSheetState();
+}
+
+class _VehicleEditSheetState extends State<_VehicleEditSheet> {
+  final _formKey = GlobalKey<FormState>();
+  late final _plate = TextEditingController(text: widget.vehicle.plate == '—' ? '' : widget.vehicle.plate);
+  late final _make = TextEditingController(text: widget.vehicle.make ?? '');
+  late final _model = TextEditingController(text: widget.vehicle.model ?? '');
+  late final _color = TextEditingController(text: widget.vehicle.color ?? '');
+  late final _year = TextEditingController(text: widget.vehicle.year ?? '');
+
+  @override
+  void dispose() {
+    _plate.dispose();
+    _make.dispose();
+    _model.dispose();
+    _color.dispose();
+    _year.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    // Only the keys present are applied server-side. Colour and year are always
+    // sent (so clearing them works); plate/make/model are required and trimmed.
+    Navigator.of(context).pop(<String, String?>{
+      'plate': _plate.text.trim(),
+      'make': _make.text.trim(),
+      'model': _model.text.trim(),
+      'color': _color.text.trim(),
+      'year': _year.text.trim(),
+    });
+  }
+
+  String? _required(String? v) => (v == null || v.trim().isEmpty) ? 'Required' : null;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Edit vehicle', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+              const SizedBox(height: 14),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-plate'),
+                controller: _plate,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'Plate', border: OutlineInputBorder()),
+                validator: _required,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-make'),
+                controller: _make,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Make', border: OutlineInputBorder()),
+                validator: _required,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-model'),
+                controller: _model,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Model', border: OutlineInputBorder()),
+                validator: _required,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      key: const ValueKey('vehicle-edit-color'),
+                      controller: _color,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Colour', border: OutlineInputBorder()),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      key: const ValueKey('vehicle-edit-year'),
+                      controller: _year,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(labelText: 'Year', border: OutlineInputBorder()),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      key: const ValueKey('vehicle-edit-save'),
+                      onPressed: _save,
+                      child: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

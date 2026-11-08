@@ -622,6 +622,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:approver.payout', SurfaceKind.sheet, 'Approver · Payout', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('sheet:approver.propose-phone', SurfaceKind.sheet, 'Approver · Propose phone', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('sheet:approver.vehicle-detail', SurfaceKind.sheet, 'Approver · Vehicle detail', 'lib/src/features/approver/my_team_screen.dart'),
+  SurfaceEntry('sheet:approver.vehicle-edit', SurfaceKind.sheet, 'Approver · Vehicle edit', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('sheet:ble-report.trips-card', SurfaceKind.sheet, 'Ble report · Trips card', 'lib/src/admin/screens/security/ble_report_screen.dart'),
   SurfaceEntry('sheet:book-for.show-book-for-sheet', SurfaceKind.sheet, 'Book for · Book for sheet', 'lib/src/features/ride/book_for_sheet.dart'),
   SurfaceEntry('sheet:business.invite', SurfaceKind.sheet, 'Business · Invite', 'lib/src/features/business/business_screen.dart'),
