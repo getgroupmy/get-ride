@@ -228,6 +228,79 @@ class PayoutProvider {
   final String type; // 'bank' | 'ewallet'
 }
 
+/// One of a member's vehicles (migration 0364), owned by them or shared to them.
+class MemberVehicle {
+  const MemberVehicle({
+    required this.id,
+    this.displayId,
+    required this.plate,
+    this.make,
+    this.model,
+    this.year,
+    this.color,
+    this.status,
+    required this.ownerSelf,
+    this.ownerName,
+    this.ownerIc,
+    this.registeredAt,
+    this.accessApproval,
+    this.accessActive,
+  });
+
+  final String id;
+  final String? displayId;
+  final String plate;
+  final String? make;
+  final String? model;
+  final String? year;
+  final String? color;
+  final String? status;
+
+  /// True when the member owns it (Registered under this ID); false when they
+  /// are only assigned to use it (Allowed to use).
+  final bool ownerSelf;
+  final String? ownerName;
+  final String? ownerIc;
+  final String? registeredAt;
+
+  /// For an allowed-to-use vehicle: the assignment's approval and whether it's
+  /// active.
+  final String? accessApproval;
+  final bool? accessActive;
+
+  /// "Perodua Myvi · Silver · 2021" — the parts that are present.
+  String get descriptor => [make, model, color, year].where((e) => (e ?? '').trim().isNotEmpty).join(' · ');
+
+  static String? _s(Object? v) {
+    final t = (v as String?)?.trim() ?? '';
+    return t.isEmpty ? null : t;
+  }
+
+  static MemberVehicle fromJson(Map<String, dynamic> j) => MemberVehicle(
+        id: '${j['id']}',
+        displayId: _s(j['display_id']),
+        plate: (j['plate'] as String?)?.trim().isNotEmpty == true ? (j['plate'] as String).trim() : '—',
+        make: _s(j['make']),
+        model: _s(j['model']),
+        year: _s(j['year']),
+        color: _s(j['color']),
+        status: _s(j['status']),
+        ownerSelf: j['owner_self'] == true,
+        ownerName: _s(j['owner_name']),
+        ownerIc: _s(j['owner_ic']),
+        registeredAt: _s(j['registered_at']),
+        accessApproval: _s(j['access_approval']),
+        accessActive: j['access_active'] is bool ? j['access_active'] as bool : null,
+      );
+}
+
+/// A member's vehicles split into the two lists the Vehicle tab shows.
+class MemberVehicles {
+  const MemberVehicles({required this.registered, required this.allowed});
+  final List<MemberVehicle> registered;
+  final List<MemberVehicle> allowed;
+}
+
 class ApproverInboxRepository {
   ApproverInboxRepository(this._db);
   final SupabaseClient _db;
@@ -285,6 +358,19 @@ class ApproverInboxRepository {
   Future<Map<String, dynamic>?> memberDetail(String memberId) async {
     final r = await _db.rpc('approver_member_detail', params: {'p_member': memberId});
     return r == null ? null : Map<String, dynamic>.from(r as Map);
+  }
+
+  /// A covered member's vehicles (migration 0364): the ones registered under
+  /// them and the ones they're assigned to use. Null when out of scope.
+  Future<MemberVehicles?> memberVehicles(String memberId) async {
+    final r = await _db.rpc('approver_member_vehicles', params: {'p_member': memberId});
+    if (r == null) return null;
+    final m = Map<String, dynamic>.from(r as Map);
+    List<MemberVehicle> list(Object? raw) => [
+          for (final e in (raw as List? ?? const []))
+            MemberVehicle.fromJson(Map<String, dynamic>.from(e as Map)),
+        ];
+    return MemberVehicles(registered: list(m['registered']), allowed: list(m['allowed']));
   }
 
   /// Edit a covered member's profile (migration 0360). [fields] carries only
@@ -449,6 +535,13 @@ final approverMemberDetailProvider =
     FutureProvider.autoDispose.family<Map<String, dynamic>?, String>((ref, memberId) async {
   if (ref.watch(currentUserIdProvider) == null) return null;
   return ref.watch(approverInboxRepositoryProvider).memberDetail(memberId);
+});
+
+/// One covered member's vehicles (My Team → Vehicle tab, 0364).
+final approverMemberVehiclesProvider =
+    FutureProvider.autoDispose.family<MemberVehicles?, String>((ref, memberId) async {
+  if (ref.watch(currentUserIdProvider) == null) return null;
+  return ref.watch(approverInboxRepositoryProvider).memberVehicles(memberId);
 });
 
 /// The admin-managed bank / e-wallet payout list (My Team → Payout, 0361).
