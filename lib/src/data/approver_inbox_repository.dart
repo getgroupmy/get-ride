@@ -649,6 +649,28 @@ class DocDetail {
   }
 }
 
+/// A driver document type a covered member hasn't uploaded yet, offered as
+/// "Upload on behalf" on the Documents tab (migration 0372).
+class AddableDoc {
+  const AddableDoc({
+    required this.docId,
+    required this.name,
+    this.required = false,
+    this.isPwd = false,
+  });
+  final String docId;
+  final String name;
+  final bool required;
+  final bool isPwd;
+
+  static AddableDoc fromJson(Map<String, dynamic> j) => AddableDoc(
+        docId: '${j['doc_id']}',
+        name: '${j['name'] ?? 'Document'}',
+        required: j['required'] == true,
+        isPwd: j['is_pwd'] == true,
+      );
+}
+
 class ApproverInboxRepository {
   ApproverInboxRepository(this._db);
   final SupabaseClient _db;
@@ -683,6 +705,22 @@ class ApproverInboxRepository {
   Future<Map<String, dynamic>> ownerDocumentMeta(String ownerId) async {
     final r = await _db.rpc('approver_owner_document_meta', params: {'p_owner': ownerId});
     return r is Map ? Map<String, dynamic>.from(r) : <String, dynamic>{};
+  }
+
+  /// The driver document types a covered member hasn't uploaded yet, so the
+  /// Documents tab can offer "Upload on behalf" (migration 0372). Needs
+  /// can_upload; empty on a legacy database.
+  Future<List<AddableDoc>> addableDocuments(String memberId) async {
+    final r = await _db.rpc('approver_addable_documents', params: {'p_member': memberId});
+    return [for (final e in (r as List? ?? const [])) AddableDoc.fromJson(Map<String, dynamic>.from(e as Map))];
+  }
+
+  /// Create a Pending Review driver document for a covered member (migration
+  /// 0372), ready for its image to be uploaded. Returns the new document id.
+  Future<String> createDocument(String memberId, String docId, String docName) async {
+    final r = await _db.rpc('approver_create_document',
+        params: {'p_member': memberId, 'p_doc_id': docId, 'p_doc_name': docName});
+    return '${(r as Map)['id']}';
   }
 
   /// One covered member's GET.wallet balance, for display (migration 0359);
@@ -934,6 +972,18 @@ final approverOwnerDocMetaProvider =
     return await ref.watch(approverInboxRepositoryProvider).ownerDocumentMeta(ownerId);
   } catch (_) {
     return const <String, dynamic>{};
+  }
+});
+
+/// The driver document types a covered member hasn't uploaded yet (My Team
+/// Documents tab, 0372). Empty on error or a legacy database.
+final approverAddableDocsProvider =
+    FutureProvider.autoDispose.family<List<AddableDoc>, String>((ref, memberId) async {
+  if (ref.watch(currentUserIdProvider) == null) return const <AddableDoc>[];
+  try {
+    return await ref.watch(approverInboxRepositoryProvider).addableDocuments(memberId);
+  } catch (_) {
+    return const <AddableDoc>[];
   }
 });
 

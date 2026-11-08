@@ -991,14 +991,16 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         final driver = [for (final d in list) if (d.source != 'vehicle') d];
         final vehicle = [for (final d in list) if (d.source == 'vehicle') d];
         final meta = ref.watch(approverOwnerDocMetaProvider(member.id)).asData?.value ?? const {};
+        final addable = ref.watch(approverAddableDocsProvider(member.id)).asData?.value ?? const <AddableDoc>[];
         void onChanged() {
           ref.invalidate(approverOwnerDocumentsProvider(member.id));
           ref.invalidate(approverOwnerDocMetaProvider(member.id));
+          ref.invalidate(approverAddableDocsProvider(member.id));
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (driver.isNotEmpty) ...[
+            if (driver.isNotEmpty || addable.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 6, 8, 2),
                 child: Text('DRIVER DOCUMENTS',
@@ -1006,6 +1008,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                         color: cs.onSurfaceVariant, letterSpacing: 0.6, fontWeight: FontWeight.w700)),
               ),
               for (final d in driver) _DocCard(doc: d, onChanged: onChanged, meta: meta[d.id] as Map?),
+              for (final ad in addable) _MissingDocCard(doc: ad, onUpload: () => _addDocumentOnBehalf(ad, onChanged)),
             ],
             if (vehicle.isNotEmpty) ...[
               Padding(
@@ -1030,6 +1033,46 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         );
       },
     );
+  }
+
+  /// Create a Pending Review driver document for the member on behalf, then
+  /// open its viewer so the approver uploads the image (migration 0372).
+  Future<void> _addDocumentOnBehalf(AddableDoc ad, VoidCallback onChanged) async {
+    final repo = ref.read(approverInboxRepositoryProvider);
+    String newId;
+    try {
+      newId = await repo.createDocument(member.id, ad.docId, ad.name);
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc', context: context,
+        message: m.contains('not_allowed') || m.contains('not_authorized')
+            ? "You can't add documents for this member."
+            : (m.contains('no_partner')
+                ? "This member has no partner record to attach the document to."
+                : (m.contains('already_exists')
+                    ? 'That document already exists.'
+                    : "Couldn't add the document. Try again.")),
+        kind: NoticeKind.error));
+      return;
+    }
+    onChanged();
+    if (!mounted) return;
+    // Open the new document so the approver can upload its image.
+    try {
+      final docs = await repo.ownerDocuments(member.id);
+      final created = docs.where((d) => d.id == newId).firstOrNull;
+      if (created != null && mounted) {
+        openApproverDocument(context, created, onChanged: onChanged);
+        return;
+      }
+    } catch (_) {/* fall through to the notice */}
+    if (mounted) {
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc', context: context,
+        message: 'Document added — open it to upload the image.', kind: NoticeKind.success));
+    }
   }
 
   /// "2025-02-04" → "04 Feb 2025"; leaves anything unparseable as-is.
@@ -1458,6 +1501,74 @@ class _DocCardState extends ConsumerState<_DocCard> {
         color: cs.surfaceContainerHighest,
         child: Icon(ApproverInboxScreen.iconFor(doc.source), color: cs.onSurfaceVariant),
       );
+}
+
+/// A driver document type the member hasn't uploaded, shown as "No Document"
+/// with an "Upload on behalf" action (migration 0372).
+class _MissingDocCard extends StatelessWidget {
+  const _MissingDocCard({required this.doc, required this.onUpload});
+  final AddableDoc doc;
+  final VoidCallback onUpload;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    return Card(
+      key: ValueKey('my-team-missing-doc-${doc.docId}'),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      child: Padding(
+        padding: const EdgeInsets.all(13),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    width: 56, height: 72,
+                    child: ColoredBox(
+                      color: cs.surfaceContainerHighest,
+                      child: Icon(Icons.image_outlined, color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Flexible(child: Text(doc.name, style: t.textTheme.titleSmall, maxLines: 2, overflow: TextOverflow.ellipsis)),
+                        if (doc.required) Text(' *', style: TextStyle(color: cs.error, fontWeight: FontWeight.w700)),
+                      ]),
+                      const SizedBox(height: 3),
+                      Text('Status: No Document',
+                          style: t.textTheme.bodySmall?.copyWith(color: cs.error, fontWeight: FontWeight.w700)),
+                      Text(doc.required ? 'Required — nothing uploaded.' : 'Optional — nothing uploaded.',
+                          style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 11),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: ValueKey('doc-upload-onbehalf-${doc.docId}'),
+                onPressed: onUpload,
+                icon: const Icon(Icons.upload_outlined, size: 18),
+                label: const Text('Upload on behalf'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Edit a covered member's profile (migration 0360). Pre-filled from
