@@ -381,88 +381,68 @@ class _StatusChip extends StatelessWidget {
 
 /// My Team → a person: their details header and their documents, with the
 /// same review actions the inbox offers (migration 0357). Reached by a
-/// GoRoute with the [TeamMember] as `extra`.
-class MyTeamMemberScreen extends ConsumerWidget {
+/// GoRoute with the [TeamMember] as `extra`. The member's full profile, split
+/// into tabs (Profile / Vehicle / Documents); Statistics follows with its own
+/// aggregation.
+class MyTeamMemberScreen extends ConsumerStatefulWidget {
   const MyTeamMemberScreen({super.key, required this.member});
 
   final TeamMember member;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<MyTeamMemberScreen> createState() => _MyTeamMemberScreenState();
+}
+
+/// The member tabs, in the order the mockup shows them. Statistics is reserved
+/// (its KPI aggregation lands next) so the tab order stays stable.
+enum _MemberTab { profile, vehicle, documents }
+
+class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
+  _MemberTab _tab = _MemberTab.profile;
+  TeamMember get member => widget.member;
+
+  @override
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final docs = ref.watch(approverOwnerDocumentsProvider(member.id));
     final grant = ref.watch(approverSelfProvider).value;
     final canCredit = grant?.canCredit ?? false;
     final canEditProfile = grant?.canEditProfile ?? false;
     final wallet = ref.watch(approverMemberWalletProvider(member.id)).value;
     return SecureScreen(
       child: Scaffold(
-        appBar: AppBar(title: Text(member.name)),
+        appBar: AppBar(
+          title: const Text('Member'),
+          actions: [
+            if (canEditProfile)
+              IconButton(
+                key: const ValueKey('my-team-edit-profile'),
+                tooltip: 'Edit profile',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: _openEditProfile,
+              ),
+          ],
+        ),
         body: OfflineStrip.over(RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(approverOwnerDocumentsProvider(member.id));
             ref.invalidate(approverMemberWalletProvider(member.id));
             ref.invalidate(approverMemberDetailProvider(member.id));
+            ref.invalidate(approverMemberVehiclesProvider(member.id));
           },
           child: ListView(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
             children: [
-              ResponsiveCenter(
-                maxWidth: 760,
-                child: _header(context, ref, cs,
-                    canCredit: canCredit, canEditProfile: canEditProfile, wallet: wallet),
-              ),
+              ResponsiveCenter(maxWidth: 760, child: _headerCard(cs)),
+              const SizedBox(height: 10),
+              ResponsiveCenter(maxWidth: 760, child: _tabBar(cs)),
               const SizedBox(height: 8),
               ResponsiveCenter(
                 maxWidth: 760,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
-                  child: Text('Documents',
-                      style: Theme.of(context).textTheme.titleMedium),
-                ),
-              ),
-              docs.when(
-                loading: () => const Padding(
-                  padding: EdgeInsets.all(28),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-                error: (e, _) => Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: EmptyState(
-                    icon: Icons.cloud_off,
-                    title: "Couldn't load documents",
-                    message: errorText(e),
-                    action: TextButton(
-                      onPressed: () => ref.invalidate(approverOwnerDocumentsProvider(member.id)),
-                      child: const Text('Retry'),
-                    ),
-                  ),
-                ),
-                data: (list) => list.isEmpty
-                    ? const Padding(
-                        padding: EdgeInsets.all(24),
-                        child: EmptyState(
-                          icon: Icons.description_outlined,
-                          title: 'No documents',
-                          message: 'This person has no documents on file in your scope.',
-                        ),
-                      )
-                    : Column(
-                        children: [
-                          for (final d in list)
-                            ResponsiveCenter(
-                              maxWidth: 760,
-                              child: _DocTile(
-                                doc: d,
-                                onTap: () => openApproverDocument(
-                                  context,
-                                  d,
-                                  onChanged: () => ref.invalidate(approverOwnerDocumentsProvider(member.id)),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
+                child: switch (_tab) {
+                  _MemberTab.profile => _profileTab(cs, canCredit: canCredit, canEditProfile: canEditProfile, wallet: wallet),
+                  _MemberTab.vehicle => _vehicleTab(cs),
+                  _MemberTab.documents => _documentsTab(cs),
+                },
               ),
             ],
           ),
@@ -471,8 +451,74 @@ class MyTeamMemberScreen extends ConsumerWidget {
     );
   }
 
-  Widget _header(BuildContext context, WidgetRef ref, ColorScheme cs,
-      {required bool canCredit, required bool canEditProfile, required double? wallet}) {
+  // ---- Header + tab bar -----------------------------------------------------
+
+  Widget _headerCard(ColorScheme cs) {
+    final text = Theme.of(context).textTheme;
+    final subtitle = [
+      if ((member.vehicleLabel ?? '').trim().isNotEmpty) member.vehicleLabel!.trim(),
+      if ((member.nationality ?? '').trim().isNotEmpty) member.nationality!.trim(),
+    ].join(' · ');
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Avatar(url: member.avatarUrl, name: member.name),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(member.name, style: text.titleLarge, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  if (subtitle.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(subtitle, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                    ),
+                ],
+              ),
+            ),
+            if (member.status != null) ...[
+              const SizedBox(width: 8),
+              _StatusChip(status: member.status!),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _tabBar(ColorScheme cs) {
+    Widget pill(_MemberTab tab, String label) {
+      final selected = _tab == tab;
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: ChoiceChip(
+          key: ValueKey('member-tab-${tab.name}'),
+          label: Text(label),
+          selected: selected,
+          onSelected: (_) => setState(() => _tab = tab),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Row(children: [
+        pill(_MemberTab.profile, 'Profile'),
+        pill(_MemberTab.vehicle, 'Vehicle'),
+        pill(_MemberTab.documents, 'Documents'),
+      ]),
+    );
+  }
+
+  // ---- Profile tab ----------------------------------------------------------
+
+  Widget _profileTab(ColorScheme cs, {required bool canCredit, required bool canEditProfile, required double? wallet}) {
     final text = Theme.of(context).textTheme;
     Widget row(IconData icon, String label, String value) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
@@ -487,37 +533,16 @@ class MyTeamMemberScreen extends ConsumerWidget {
           ),
         );
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: 8),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                _Avatar(url: member.avatarUrl, name: member.name),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(member.name, style: text.titleLarge, maxLines: 2, overflow: TextOverflow.ellipsis),
-                      if (member.displayId != null)
-                        Text('No. ${member.displayId}', style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                    ],
-                  ),
-                ),
-                if (member.status != null) _StatusChip(status: member.status!),
-              ],
-            ),
-            const SizedBox(height: 12),
             if (member.phone != null) row(Icons.phone_outlined, 'Mobile', member.phone!),
             if (member.ic != null) row(Icons.badge_outlined, 'ID No.', member.ic!),
             if (member.idVerified != null) row(Icons.verified_outlined, 'ID check', member.idVerified!),
             if (member.nationality != null) row(Icons.public_outlined, 'Nationality', member.nationality!),
-            if (member.plate != null || member.vehicleLabel != null)
-              row(Icons.directions_car_outlined, 'Vehicle',
-                  [member.vehicleLabel, member.plate].where((e) => e != null).join(' · ')),
             if (wallet != null)
               row(Icons.account_balance_wallet_outlined, 'GET.wallet', 'RM${wallet.toStringAsFixed(2)}'),
             if (canCredit || canEditProfile) ...[
@@ -528,39 +553,141 @@ class MyTeamMemberScreen extends ConsumerWidget {
                 children: [
                   if (canEditProfile)
                     OutlinedButton.icon(
-                      key: const ValueKey('my-team-edit-profile'),
-                      onPressed: () => _openEditProfile(context, ref),
-                      icon: const Icon(Icons.edit_outlined, size: 18),
-                      label: const Text('Edit profile'),
-                    ),
-                  if (canEditProfile)
-                    OutlinedButton.icon(
                       key: const ValueKey('my-team-payout'),
-                      onPressed: () => _openPayout(context, ref),
+                      onPressed: _openPayout,
                       icon: const Icon(Icons.account_balance_outlined, size: 18),
                       label: const Text('Payout'),
                     ),
                   if (canEditProfile)
                     OutlinedButton.icon(
                       key: const ValueKey('my-team-change-phone'),
-                      onPressed: () => _openChangePhone(context, ref),
+                      onPressed: _openChangePhone,
                       icon: const Icon(Icons.phone_iphone_outlined, size: 18),
                       label: const Text('Change mobile'),
                     ),
                   if (canCredit)
                     FilledButton.tonalIcon(
                       key: const ValueKey('my-team-add-credit'),
-                      onPressed: () => _openAddCredit(context, ref),
+                      onPressed: _openAddCredit,
                       icon: const Icon(Icons.add_card_outlined, size: 18),
                       label: const Text('Add credit'),
                     ),
                 ],
               ),
             ],
-            const SizedBox(height: 6),
-            Text(
-              'Vehicle and statistics are coming soon.',
-              style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontStyle: FontStyle.italic),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---- Vehicle tab (migration 0364) -----------------------------------------
+
+  Widget _vehicleTab(ColorScheme cs) {
+    final vehicles = ref.watch(approverMemberVehiclesProvider(member.id));
+    return vehicles.when(
+      loading: () => const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator())),
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: EmptyState(
+          icon: Icons.cloud_off,
+          title: "Couldn't load vehicles",
+          message: errorText(e),
+          action: TextButton(
+            onPressed: () => ref.invalidate(approverMemberVehiclesProvider(member.id)),
+            child: const Text('Retry'),
+          ),
+        ),
+      ),
+      data: (v) {
+        if (v == null) {
+          return const Padding(padding: EdgeInsets.all(20), child: Text('This member is no longer in your scope.'));
+        }
+        if (v.registered.isEmpty && v.allowed.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(24),
+            child: EmptyState(
+              icon: Icons.directions_car_outlined,
+              title: 'No vehicles',
+              message: 'This member has no vehicle registered or shared to them.',
+            ),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (v.registered.isNotEmpty) ...[
+              _vehicleSectionHeader(cs, 'REGISTERED UNDER THIS ID', v.registered.length,
+                  sub: member.ic == null ? null : 'National ID · ${member.ic}'),
+              for (final x in v.registered) _vehicleCard(cs, x),
+            ],
+            if (v.allowed.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              _vehicleSectionHeader(cs, 'ALLOWED TO USE', v.allowed.length),
+              for (final x in v.allowed) _vehicleCard(cs, x),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _vehicleSectionHeader(ColorScheme cs, String title, int count, {String? sub}) {
+    final text = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(title,
+                    style: text.labelMedium?.copyWith(color: cs.onSurfaceVariant, letterSpacing: 0.5)),
+              ),
+              CircleAvatar(
+                radius: 12,
+                backgroundColor: cs.surfaceContainerHighest,
+                child: Text('$count', style: text.labelSmall?.copyWith(color: cs.onSurface)),
+              ),
+            ],
+          ),
+          if (sub != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(sub, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _vehicleCard(ColorScheme cs, MemberVehicle v) {
+    final text = Theme.of(context).textTheme;
+    final ownerLine = v.ownerSelf
+        ? 'Owner: Self${v.registeredAt == null ? '' : ' · Registered ${_fmtDate(v.registeredAt!)}'}'
+        : 'Owner: ${v.ownerName ?? '—'}${v.ownerIc == null ? '' : ' · National ID ${v.ownerIc}'}';
+    return Card(
+      margin: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text(v.plate, style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
+                _VehicleStatusChip(ownerSelf: v.ownerSelf, status: v.status, accessActive: v.accessActive),
+              ],
+            ),
+            if (v.descriptor.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(v.descriptor, style: text.bodyMedium),
+              ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(ownerLine, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
             ),
           ],
         ),
@@ -568,33 +695,112 @@ class MyTeamMemberScreen extends ConsumerWidget {
     );
   }
 
-  Future<void> _openAddCredit(BuildContext context, WidgetRef ref) => showAppSheet<void>(
+  // ---- Documents tab --------------------------------------------------------
+
+  Widget _documentsTab(ColorScheme cs) {
+    final docs = ref.watch(approverOwnerDocumentsProvider(member.id));
+    return docs.when(
+      loading: () => const Padding(padding: EdgeInsets.all(28), child: Center(child: CircularProgressIndicator())),
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: EmptyState(
+          icon: Icons.cloud_off,
+          title: "Couldn't load documents",
+          message: errorText(e),
+          action: TextButton(
+            onPressed: () => ref.invalidate(approverOwnerDocumentsProvider(member.id)),
+            child: const Text('Retry'),
+          ),
+        ),
+      ),
+      data: (list) => list.isEmpty
+          ? const Padding(
+              padding: EdgeInsets.all(24),
+              child: EmptyState(
+                icon: Icons.description_outlined,
+                title: 'No documents',
+                message: 'This person has no documents on file in your scope.',
+              ),
+            )
+          : Column(
+              children: [
+                for (final d in list)
+                  _DocTile(
+                    doc: d,
+                    onTap: () => openApproverDocument(
+                      context,
+                      d,
+                      onChanged: () => ref.invalidate(approverOwnerDocumentsProvider(member.id)),
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  /// "2025-02-04" → "04 Feb 2025"; leaves anything unparseable as-is.
+  static String _fmtDate(String raw) {
+    final d = DateTime.tryParse(raw);
+    if (d == null) return raw.length >= 10 ? raw.substring(0, 10) : raw;
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${d.day.toString().padLeft(2, '0')} ${m[d.month - 1]} ${d.year}';
+  }
+
+  // ---- Action sheets --------------------------------------------------------
+
+  Future<void> _openAddCredit() => showAppSheet<void>(
         id: 'approver.add-credit',
         context: context,
         isScrollControlled: true,
         builder: (c) => _AddCreditSheet(member: member),
       );
 
-  Future<void> _openPayout(BuildContext context, WidgetRef ref) => showAppSheet<void>(
+  Future<void> _openPayout() => showAppSheet<void>(
         id: 'approver.payout',
         context: context,
         isScrollControlled: true,
         builder: (c) => _PayoutSheet(member: member),
       );
 
-  Future<void> _openEditProfile(BuildContext context, WidgetRef ref) => showAppSheet<void>(
+  Future<void> _openEditProfile() => showAppSheet<void>(
         id: 'approver.edit-profile',
         context: context,
         isScrollControlled: true,
         builder: (c) => _EditProfileSheet(member: member),
       );
 
-  Future<void> _openChangePhone(BuildContext context, WidgetRef ref) => showAppSheet<void>(
+  Future<void> _openChangePhone() => showAppSheet<void>(
         id: 'approver.propose-phone',
         context: context,
         isScrollControlled: true,
         builder: (c) => _ProposePhoneSheet(member: member),
       );
+}
+
+/// A small green status chip on a vehicle card (Active / Access active).
+class _VehicleStatusChip extends StatelessWidget {
+  const _VehicleStatusChip({required this.ownerSelf, this.status, this.accessActive});
+  final bool ownerSelf;
+  final String? status;
+  final bool? accessActive;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final label = ownerSelf
+        ? ((status ?? '').trim().isEmpty ? 'Registered' : _titleCase(status!))
+        : (accessActive == false ? 'Access ended' : 'Access active');
+    final ok = ownerSelf ? (status == null || status == 'active' || status == 'approved') : (accessActive != false);
+    final bg = ok ? Colors.green.withValues(alpha: 0.15) : cs.surfaceContainerHighest;
+    final fg = ok ? Colors.green.shade800 : cs.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: fg, fontWeight: FontWeight.w600)),
+    );
+  }
+
+  static String _titleCase(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 }
 
 /// Add credit to a member: an amount and the approver's PIN, paid from the
