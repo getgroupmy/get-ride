@@ -301,6 +301,110 @@ class MemberVehicles {
   final List<MemberVehicle> allowed;
 }
 
+/// One row of the read-from-document vs stored table (migration 0365).
+class DocReadRow {
+  const DocReadRow({required this.field, this.read, this.stored, required this.match});
+  final String field;
+  final String? read;
+  final String? stored;
+  final bool match;
+}
+
+/// The AI verification summary for a document (migration 0365).
+class DocAi {
+  const DocAi({this.genuine, this.matches, this.detectedTitle, this.confidence, this.country});
+  final bool? genuine;
+  final bool? matches;
+  final String? detectedTitle;
+  final String? confidence; // kept as read (e.g. "0.96")
+  final String? country;
+}
+
+/// The face-check summary for a document (migration 0365).
+class DocFace {
+  const DocFace({this.ok, this.score, this.label, this.reason});
+  final bool? ok;
+  final double? score;
+  final String? label;
+  final String? reason;
+}
+
+/// The rich detail for one document (migration 0365): everything the document
+/// detail sheet shows beyond the image and captured fields.
+class DocDetail {
+  const DocDetail({
+    this.status,
+    this.documentNumber,
+    this.startDate,
+    this.expiryDate,
+    this.reviewerNotes,
+    this.uploadedAt,
+    this.reviewedAt,
+    this.changedBy,
+    this.ai,
+    this.read = const [],
+    this.face,
+  });
+
+  final String? status;
+  final String? documentNumber;
+  final String? startDate;
+  final String? expiryDate;
+  final String? reviewerNotes;
+  final String? uploadedAt;
+  final String? reviewedAt;
+  final String? changedBy;
+  final DocAi? ai;
+  final List<DocReadRow> read;
+  final DocFace? face;
+
+  static String? _s(Object? v) {
+    final t = '${v ?? ''}'.trim();
+    return t.isEmpty || t == 'null' ? null : t;
+  }
+
+  static DocDetail fromJson(Map<String, dynamic> j) {
+    final aiRaw = j['ai'];
+    final faceRaw = j['face'];
+    return DocDetail(
+      status: _s(j['status']),
+      documentNumber: _s(j['document_number']),
+      startDate: _s(j['start_date']),
+      expiryDate: _s(j['expiry_date']),
+      reviewerNotes: _s(j['reviewer_notes']),
+      uploadedAt: _s(j['uploaded_at']),
+      reviewedAt: _s(j['reviewed_at']),
+      changedBy: _s(j['changed_by']),
+      ai: aiRaw is Map
+          ? DocAi(
+              genuine: aiRaw['genuine'] is bool ? aiRaw['genuine'] as bool : null,
+              matches: aiRaw['matches'] is bool ? aiRaw['matches'] as bool : null,
+              detectedTitle: _s(aiRaw['detected_title']),
+              confidence: _s(aiRaw['confidence']),
+              country: _s(aiRaw['country']),
+            )
+          : null,
+      read: [
+        for (final e in (j['read'] as List? ?? const []))
+          DocReadRow(
+            field: '${(e as Map)['field'] ?? ''}',
+            read: _s(e['read']),
+            stored: _s(e['stored']),
+            match: e['match'] == true,
+          ),
+      ],
+      face: faceRaw is Map
+          ? DocFace(
+              ok: faceRaw['ok'] is bool ? faceRaw['ok'] as bool : null,
+              score: (faceRaw['score'] as num?)?.toDouble(),
+              label: _s(faceRaw['label']),
+              reason: _s(faceRaw['reason']),
+            )
+          : null,
+    );
+  }
+}
+
 class ApproverInboxRepository {
   ApproverInboxRepository(this._db);
   final SupabaseClient _db;
@@ -358,6 +462,14 @@ class ApproverInboxRepository {
   Future<Map<String, dynamic>?> memberDetail(String memberId) async {
     final r = await _db.rpc('approver_member_detail', params: {'p_member': memberId});
     return r == null ? null : Map<String, dynamic>.from(r as Map);
+  }
+
+  /// The rich detail for one of a covered member's documents (migration 0365):
+  /// read-vs-stored, AI verification, face check and status/history. Null when
+  /// out of scope.
+  Future<DocDetail?> documentDetail(String source, String id) async {
+    final r = await _db.rpc('approver_document_detail', params: {'p_source': source, 'p_id': id});
+    return r == null ? null : DocDetail.fromJson(Map<String, dynamic>.from(r as Map));
   }
 
   /// A covered member's vehicles (migration 0364): the ones registered under
@@ -542,6 +654,18 @@ final approverMemberVehiclesProvider =
     FutureProvider.autoDispose.family<MemberVehicles?, String>((ref, memberId) async {
   if (ref.watch(currentUserIdProvider) == null) return null;
   return ref.watch(approverInboxRepositoryProvider).memberVehicles(memberId);
+});
+
+/// The rich detail for one document (My Team → document sheet, 0365), keyed by
+/// (source, id). Null (no extra detail) on error or a legacy database.
+final approverDocumentDetailProvider =
+    FutureProvider.autoDispose.family<DocDetail?, ({String source, String id})>((ref, key) async {
+  if (ref.watch(currentUserIdProvider) == null) return null;
+  try {
+    return await ref.watch(approverInboxRepositoryProvider).documentDetail(key.source, key.id);
+  } catch (_) {
+    return null;
+  }
 });
 
 /// The admin-managed bank / e-wallet payout list (My Team → Payout, 0361).

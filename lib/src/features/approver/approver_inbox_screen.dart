@@ -354,6 +354,7 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
                       ),
                     ),
                   if (doc.hasCapturedFields && _mode != _ViewerMode.edit) _capturedSummary(context, doc, cs),
+                  if (_mode != _ViewerMode.edit) _richDetail(context, cs),
                 ],
               ),
             ),
@@ -388,6 +389,129 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
         ],
       ),
     );
+  }
+
+  /// The rich detail (migration 0365): read-vs-stored, AI verification, the
+  /// face check and status/history. Each section shows only when it has data,
+  /// so a plain document with none of this simply shows nothing extra.
+  Widget _richDetail(BuildContext context, ColorScheme cs) {
+    final detail = ref.watch(approverDocumentDetailProvider((source: widget.doc.source, id: widget.doc.id))).value;
+    if (detail == null) return const SizedBox.shrink();
+    final text = Theme.of(context).textTheme;
+    final sections = <Widget>[];
+
+    Widget header(String t) => Padding(
+          padding: const EdgeInsets.fromLTRB(2, 14, 2, 6),
+          child: Text(t, style: text.labelMedium?.copyWith(color: cs.onSurfaceVariant, letterSpacing: 0.5)),
+        );
+    Widget chip(String label, {bool good = false, bool neutral = false}) {
+      final bg = good ? Colors.green.withValues(alpha: 0.15) : (neutral ? cs.surfaceContainerHighest : cs.surfaceContainerHighest);
+      final fg = good ? Colors.green.shade800 : cs.onSurface;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+        child: Text(label, style: text.labelMedium?.copyWith(color: fg, fontWeight: FontWeight.w600)),
+      );
+    }
+
+    // Read-from-document vs stored.
+    if (detail.read.isNotEmpty) {
+      sections.add(header('READ FROM DOCUMENT VS STORED'));
+      for (final r in detail.read) {
+        sections.add(Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: 92, child: Text(r.field, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant))),
+              Expanded(child: Text(r.read ?? '—', style: text.bodyMedium)),
+              const SizedBox(width: 8),
+              r.match
+                  ? Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.check, size: 15, color: Colors.green.shade700),
+                      const SizedBox(width: 2),
+                      Text('match', style: text.labelMedium?.copyWith(color: Colors.green.shade800, fontWeight: FontWeight.w600)),
+                    ])
+                  : Text('differs', style: text.labelMedium?.copyWith(color: cs.error, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ));
+      }
+    }
+
+    // AI verification.
+    final ai = detail.ai;
+    if (ai != null) {
+      sections.add(header('AI VERIFICATION'));
+      final chips = <Widget>[
+        if (ai.genuine != null) chip(ai.genuine! ? 'Genuine' : 'Not genuine', good: ai.genuine!),
+        if (ai.matches != null && (ai.detectedTitle ?? '').isNotEmpty)
+          chip('${ai.matches! ? 'Matches' : 'Does not match'} "${ai.detectedTitle}"', good: ai.matches!),
+        if ((ai.confidence ?? '').isNotEmpty) chip('Confidence ${ai.confidence}', neutral: true),
+        if ((ai.country ?? '').isNotEmpty) chip('Country ${ai.country}', neutral: true),
+      ];
+      if (chips.isNotEmpty) sections.add(Wrap(spacing: 8, runSpacing: 8, children: chips));
+    }
+
+    // Face check.
+    final face = detail.face;
+    if (face != null) {
+      sections.add(header('FACE CHECK'));
+      final scoreTxt = face.score == null ? '' : ' · ${face.score!.toStringAsFixed(2)}';
+      sections.add(Align(
+        alignment: Alignment.centerLeft,
+        child: chip(
+          (face.ok == true ? 'Portrait matches selfie' : (face.reason ?? face.label ?? 'Face check')) + scoreTxt,
+          good: face.ok == true,
+          neutral: face.ok != true,
+        ),
+      ));
+    }
+
+    // Status & history.
+    final rows = <Widget>[];
+    void hrow(String label, String? value, {Color? valueColor}) {
+      if ((value ?? '').trim().isEmpty) return;
+      rows.add(Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Expanded(child: Text(label, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant))),
+            Flexible(
+              child: Text(value!, textAlign: TextAlign.end,
+                  style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w600, color: valueColor)),
+            ),
+          ],
+        ),
+      ));
+    }
+
+    final statusColor = switch (detail.status) {
+      'Approved' => Colors.green.shade800,
+      'Rejected' => cs.error,
+      _ => null,
+    };
+    hrow('Status', detail.status, valueColor: statusColor);
+    hrow('Reviewer notes', detail.reviewerNotes);
+    hrow('Changed by', detail.changedBy);
+    hrow('Uploaded', _fmtDay(detail.uploadedAt));
+    hrow('Reviewed', _fmtDay(detail.reviewedAt));
+    if (rows.isNotEmpty) {
+      sections.add(header('STATUS & HISTORY'));
+      sections.addAll(rows);
+    }
+
+    if (sections.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: sections);
+  }
+
+  /// "2026-10-12T…" → "12 Oct 2026"; null/blank → null.
+  static String? _fmtDay(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final d = DateTime.tryParse(raw);
+    if (d == null) return raw.length >= 10 ? raw.substring(0, 10) : raw;
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${d.day.toString().padLeft(2, '0')} ${m[d.month - 1]} ${d.year}';
   }
 
   /// The fields the owner captured, read-only, so an approver can check them
