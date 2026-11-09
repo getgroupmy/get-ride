@@ -77,6 +77,22 @@ Future<void> settle(WidgetTester tester) async {
   }
 }
 
+/// Pumps until [finder] matches (or [max] frames pass), with a real delay each
+/// frame so the screen's real async — the geo route, the wallet providers, the
+/// stream event just added — resolves. Fixed-count pumping raced those under
+/// load, which is what made this file flaky in the full suite.
+Future<void> pumpUntilFound(
+  WidgetTester tester,
+  Finder finder, {
+  Duration step = const Duration(milliseconds: 50),
+  int max = 100,
+}) async {
+  for (var i = 0; i < max; i++) {
+    if (finder.evaluate().isNotEmpty) return;
+    await tester.pump(step);
+  }
+}
+
 void main() {
   group('131 the driver cancelled', () {
     Future<(ProviderContainer, StreamController<RideRequest>)> pumpRider(WidgetTester tester) async {
@@ -111,7 +127,10 @@ void main() {
       rows.add(ride('arrived'));
       await settle(tester);
       rows.add(ride('cancelled', extra: {'cancel_requested_by': 'partner', 'cancel_reason': 'passenger_no_show'}));
-      await settle(tester);
+      // Wait for the cancelled state to finish rendering (its rebook buttons)
+      // rather than a fixed number of pumps, so a slow async resolve under load
+      // can't leave the screen mid-update.
+      await pumpUntilFound(tester, find.byKey(const ValueKey('ride-book-again')));
       return (container, rows);
     }
 
