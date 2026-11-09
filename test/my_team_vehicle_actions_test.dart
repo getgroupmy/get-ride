@@ -90,7 +90,16 @@ class _FakeRepo extends ApproverInboxRepository {
       const TeamPage(members: [TeamMember(id: 'm2', displayId: 'GR-0002', name: 'Rajesh')], hasMore: false);
 }
 
+/// Give the modal sheets room so their buttons are on-screen and tappable.
+void _bigWindow(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1200, 3200);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 Future<_FakeRepo> _openSheet(WidgetTester tester, {required bool canManage}) async {
+  _bigWindow(tester);
   final repo = _FakeRepo();
   await tester.pumpWidget(
     ProviderScope(
@@ -131,6 +140,7 @@ MemberVehicles _vehiclesWithAllowed({required String approval, bool active = tru
 /// Pump the member screen straight onto the Vehicle tab (no detail sheet), with
 /// the given allowed-vehicle list. Returns the fake repo.
 Future<_FakeRepo> _pumpVehicleTab(WidgetTester tester, {required MemberVehicles vehicles}) async {
+  _bigWindow(tester);
   final repo = _FakeRepo();
   await tester.pumpWidget(
     ProviderScope(

@@ -3133,7 +3133,8 @@ class _AssignVehicleSheetState extends ConsumerState<_AssignVehicleSheet> {
     final hit = _hit;
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
-      child: Column(
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -3142,27 +3143,21 @@ class _AssignVehicleSheetState extends ConsumerState<_AssignVehicleSheet> {
           Text('Find a registered vehicle by plate, then grant ${widget.memberName} access to drive it.',
               style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  key: const ValueKey('assign-vehicle-plate'),
-                  controller: _plate,
-                  enabled: !_busy,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(labelText: 'Plate number', border: OutlineInputBorder()),
-                  onSubmitted: (_) => _find(),
-                ),
-              ),
-              const SizedBox(width: 10),
-              FilledButton(
-                key: const ValueKey('assign-vehicle-find'),
-                onPressed: _busy ? null : _find,
-                child: _busy
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Find'),
-              ),
-            ],
+          TextField(
+            key: const ValueKey('assign-vehicle-plate'),
+            controller: _plate,
+            enabled: !_busy,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(labelText: 'Plate number', border: OutlineInputBorder()),
+            onSubmitted: (_) => _find(),
+          ),
+          const SizedBox(height: 10),
+          FilledButton(
+            key: const ValueKey('assign-vehicle-find'),
+            onPressed: _busy ? null : _find,
+            child: _busy
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Find vehicle'),
           ),
           const SizedBox(height: 14),
           if (_searched && hit != null) ...[
@@ -3217,6 +3212,7 @@ class _AssignVehicleSheetState extends ConsumerState<_AssignVehicleSheet> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
