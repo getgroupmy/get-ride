@@ -1147,7 +1147,9 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         id: 'approver.vehicle-detail',
         context: context,
         isScrollControlled: true,
-        builder: (c) => _VehicleDetailSheet(vehicleId: v.id, memberId: member.id, memberName: member.name),
+        builder: (c) => _VehicleDetailSheet(
+          vehicleId: v.id, memberId: member.id, memberName: member.name,
+          ownerSelf: v.ownerSelf, memberAssignmentId: v.assignmentId),
       );
 
   // ---- Documents tab --------------------------------------------------------
@@ -2295,10 +2297,22 @@ String? _proposePhoneErrorText(Object e) {
 /// driver or revoke another driver's access; the member's own access is shown
 /// but not revocable from here.
 class _VehicleDetailSheet extends ConsumerStatefulWidget {
-  const _VehicleDetailSheet({required this.vehicleId, required this.memberId, required this.memberName});
+  const _VehicleDetailSheet({
+    required this.vehicleId,
+    required this.memberId,
+    required this.memberName,
+    this.ownerSelf = true,
+    this.memberAssignmentId,
+  });
   final String vehicleId;
   final String memberId;
   final String memberName;
+
+  /// Whether the member owns this car (else it is one they are allowed to use),
+  /// and the assignment row that grants that access — used by the footer's
+  /// Revoke access button.
+  final bool ownerSelf;
+  final String? memberAssignmentId;
 
   @override
   ConsumerState<_VehicleDetailSheet> createState() => _VehicleDetailSheetState();
@@ -2424,6 +2438,21 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                       ),
                     ],
                   ),
+                  // Revoke this member's own access, but only on a car they are
+                  // merely allowed to use (not one registered under them).
+                  if (!widget.ownerSelf && widget.memberAssignmentId != null) ...[
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      key: const ValueKey('vehicle-revoke-access'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: cs.error,
+                        minimumSize: const Size.fromHeight(44),
+                      ),
+                      onPressed: _busyAction ? null : _revokeMemberAccess,
+                      icon: const Icon(Icons.block_outlined, size: 18),
+                      label: Text('Revoke ${widget.memberName.split(' ').first}’s access'),
+                    ),
+                  ],
                 ],
               ],
             ),
@@ -2431,6 +2460,32 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
         },
       ),
     );
+  }
+
+  /// Revoke the member's access to this (allowed-to-use) vehicle, then close.
+  Future<void> _revokeMemberAccess() async {
+    final id = widget.memberAssignmentId;
+    if (id == null) return;
+    setState(() => _busyAction = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).setVehicleAccess(id, 'revoke');
+      ref.invalidate(approverMemberVehiclesProvider(widget.memberId));
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Access revoked.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't manage this vehicle."
+            : (m.contains('out_of_scope') ? "This vehicle isn't in your scope." : "Couldn't revoke access. Try again."),
+        kind: NoticeKind.error));
+      if (mounted) setState(() => _busyAction = false);
+    }
   }
 
   /// Pick a covered member and assign them as a driver of this vehicle.
@@ -2890,23 +2945,7 @@ class _PermitsSectionState extends ConsumerState<_PermitsSection> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (age != null)
-              Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(13),
-                decoration: BoxDecoration(
-                  border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Row(
-                  children: [
-                    Text('Vehicle age', style: t.textTheme.titleSmall),
-                    const Spacer(),
-                    Text('$age yr${age == 1 ? '' : 's'} · reg. $year',
-                        style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
+            if (age != null) _ageCard(t, cs, age, year!),
             if (vp.permits.isEmpty)
               Text('No permits configured for this vehicle.',
                   style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant))
@@ -2916,6 +2955,54 @@ class _PermitsSectionState extends ConsumerState<_PermitsSection> {
           ],
         );
       },
+    );
+  }
+
+  /// Vehicle age against the e-hailing age limit, with a bar and years left
+  /// (the mockup's age card). TEKSI (taxi) has no age limit.
+  Widget _ageCard(ThemeData t, ColorScheme cs, int age, int year) {
+    const limit = 10; // e-hailing vehicle age limit (years)
+    final left = limit - age;
+    final over = left < 0;
+    final frac = (age / limit).clamp(0.0, 1.0);
+    final barColor = over ? cs.error : (left <= 1 ? Colors.amber.shade800 : cs.primary);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('Vehicle age', style: t.textTheme.titleSmall),
+              const Spacer(),
+              Text('$age yr${age == 1 ? '' : 's'} · reg. $year',
+                  style: t.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: frac,
+              minHeight: 8,
+              backgroundColor: cs.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation(barColor),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            over
+                ? 'Over the e-hailing $limit-year limit by ${-left} yr${left == -1 ? '' : 's'}. TEKSI (taxi): no limit.'
+                : 'e-Hailing limit $limit years · $left year${left == 1 ? '' : 's'} left (until ${year + limit}). TEKSI (taxi): no limit.',
+            style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ],
+      ),
     );
   }
 

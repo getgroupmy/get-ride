@@ -161,7 +161,7 @@ MemberVehicles _vehiclesWithAllowed({required String approval, bool active = tru
 
 /// Pump the member screen straight onto the Vehicle tab (no detail sheet), with
 /// the given allowed-vehicle list. Returns the fake repo.
-Future<_FakeRepo> _pumpVehicleTab(WidgetTester tester, {required MemberVehicles vehicles}) async {
+Future<_FakeRepo> _pumpVehicleTab(WidgetTester tester, {required MemberVehicles vehicles, VehicleDetail? detail}) async {
   _bigWindow(tester);
   final repo = _FakeRepo();
   await tester.pumpWidget(
@@ -173,6 +173,7 @@ Future<_FakeRepo> _pumpVehicleTab(WidgetTester tester, {required MemberVehicles 
         approverOwnerDocumentsProvider.overrideWith((ref, id) async => const <ApproverDoc>[]),
         approverMemberWalletProvider.overrideWith((ref, id) async => null),
         approverMemberVehiclesProvider.overrideWith((ref, id) async => vehicles),
+        if (detail != null) approverVehicleDetailProvider.overrideWith((ref, id) async => detail),
       ],
       child: MaterialApp(theme: appTheme(Brightness.light), home: const MyTeamMemberScreen(member: _member)),
     ),
@@ -364,6 +365,28 @@ void main() {
 
     expect(repo.assigned, ('v-found', 'm1'));
     expect(find.textContaining('owner was notified'), findsOneWidget);
+  });
+
+  testWidgets('Revoke access shows on an allowed vehicle and revokes the member', (tester) async {
+    final repo = await _pumpVehicleTab(
+      tester,
+      vehicles: _vehiclesWithAllowed(approval: 'approved'),
+      detail: _detail(canManage: true),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('vehicle-view-v9')));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-revoke-access')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('vehicle-revoke-access')));
+    await tester.pumpAndSettle();
+    expect(repo.accessSet, ('a9', 'revoke'));
+  });
+
+  testWidgets('a self-owned vehicle shows no Revoke access button', (tester) async {
+    await _openSheet(tester, canManage: true); // v1 is owner_self
+    expect(find.byKey(const ValueKey('vehicle-revoke-access')), findsNothing);
   });
 
   testWidgets('permits section: a manager can revoke an on-file permit', (tester) async {
