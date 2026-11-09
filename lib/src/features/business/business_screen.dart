@@ -10,6 +10,7 @@ import '../../core/business_accounts.dart';
 import '../../data/business_repository.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/phone_number_field.dart';
 import '../../widgets/search_select.dart';
 import 'business_invoice_files.dart';
 import 'business_widgets.dart';
@@ -367,7 +368,7 @@ class _InviteSheet extends ConsumerStatefulWidget {
 }
 
 class _InviteSheetState extends ConsumerState<_InviteSheet> {
-  final _phone = TextEditingController();
+  String _phone = '';
   final _name = TextEditingController();
   final _team = TextEditingController();
   BusinessRole _role = BusinessRole.rider;
@@ -375,22 +376,21 @@ class _InviteSheetState extends ConsumerState<_InviteSheet> {
 
   @override
   void dispose() {
-    _phone.dispose();
     _name.dispose();
     _team.dispose();
     super.dispose();
   }
 
   Future<void> _send() async {
-    if (_phone.text.replaceAll(RegExp(r'\D'), '').length < 6) {
-      showInfo(context, "Enter the person's phone number with its country code.");
+    if (_phone.replaceAll(RegExp(r'\D'), '').length < 8) {
+      showInfo(context, "Enter the person's phone number.");
       return;
     }
     setState(() => _busy = true);
     try {
       await ref.read(businessRepositoryProvider).invite(
         widget.accountId,
-        phone: _phone.text.trim(),
+        phone: _phone,
         name: _name.text.trim().isEmpty ? null : _name.text.trim(),
         role: _role,
         team: _team.text.trim().isEmpty ? null : _team.text.trim(),
@@ -410,11 +410,10 @@ class _InviteSheetState extends ConsumerState<_InviteSheet> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
         Text('Invite by phone', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 12),
-        TextField(
-          key: const ValueKey('business-invite-phone'),
-          controller: _phone,
-          keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(labelText: 'Phone number', hintText: '+60 12 345 6789', border: OutlineInputBorder()),
+        PhoneNumberField(
+          keyPrefix: 'business-invite-phone',
+          label: 'Phone number',
+          onChanged: (v) => _phone = v,
         ),
         const SizedBox(height: 12),
         TextField(
