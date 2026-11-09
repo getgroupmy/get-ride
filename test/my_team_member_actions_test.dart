@@ -102,4 +102,35 @@ void main() {
     // The edit actions still render regardless of the wallet.
     expect(find.byKey(_editKey), findsOneWidget);
   });
+
+  testWidgets('add credit: amount step then a PIN keypad', (tester) async {
+    tester.view.physicalSize = const Size(1200, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _pump(tester, grant: _grant(credit: true));
+
+    await tester.tap(find.byKey(_creditKey));
+    await tester.pumpAndSettle();
+
+    // Amount step: a quick pick fills the amount; Continue moves to the keypad.
+    await tester.tap(find.byKey(const ValueKey('add-credit-quick-20')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('add-credit-continue')));
+    await tester.pumpAndSettle();
+
+    // PIN step: the keypad is shown.
+    expect(find.byKey(const ValueKey('pin-key-1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pin-key-del')), findsOneWidget);
+    expect(find.byKey(const ValueKey('add-credit-submit')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('pin-key-1')));
+    await tester.tap(find.byKey(const ValueKey('pin-key-2')));
+    await tester.tap(find.byKey(const ValueKey('pin-key-3')));
+    await tester.tap(find.byKey(const ValueKey('pin-key-4')));
+    await tester.pumpAndSettle();
+    // Back returns to the amount step.
+    await tester.tap(find.text('Back'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('add-credit-amount')), findsOneWidget);
+  });
 }
