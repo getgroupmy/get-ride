@@ -98,7 +98,16 @@ void main() {
 
     expect(find.text('Rajesh'), findsOneWidget);
     expect(find.text('Online'), findsNothing);
+    // An offline member now shows a grey "Offline" pill (migration-free UI).
+    expect(find.text('Offline'), findsOneWidget);
     // With no wallet balance the subtitle is the account number alone.
     expect(find.text('#GR-0003'), findsOneWidget);
+  });
+
+  testWidgets('the list shows a scope banner at the top', (tester) async {
+    await _pump(tester, const [
+      TeamMember(id: 'u4', displayId: 'GR-0004', name: 'Lim', status: 'approved'),
+    ]);
+    expect(find.textContaining('Showing'), findsOneWidget);
   });
 }

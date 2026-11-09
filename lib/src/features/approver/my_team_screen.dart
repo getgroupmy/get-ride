@@ -196,18 +196,53 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
       child: ListView.builder(
         controller: _scroll,
         padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
-        // One extra row for the bottom spinner / "that's everyone" line.
-        itemCount: _members.length + 1,
+        // A scope banner at the top, then the members, then the bottom
+        // spinner / "that's everyone" line.
+        itemCount: _members.length + 2,
         itemBuilder: (context, i) {
-          if (i == _members.length) return _footer(context);
+          if (i == 0) {
+            return ResponsiveCenter(maxWidth: 760, child: _scopeBanner(context));
+          }
+          final idx = i - 1;
+          if (idx == _members.length) return _footer(context);
           return ResponsiveCenter(
             maxWidth: 760,
             child: _TeamCard(
-              member: _members[i],
-              onTap: () => context.push('/my-team/member', extra: _members[i]),
+              member: _members[idx],
+              onTap: () => context.push('/my-team/member', extra: _members[idx]),
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _scopeBanner(BuildContext context) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    final scope = ref.watch(approverSelfProvider).value?.scope;
+    final scopeText = (scope == null || scope.isEmpty || scope == 'all')
+        ? 'everyone your approver access covers'
+        : 'scope — $scope';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.groups_2_outlined, size: 18, color: cs.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Showing $scopeText. Your own and your referrals’ records are hidden.',
+              style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -307,10 +342,8 @@ class _TeamCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       if (member.status != null) _StatusChip(status: member.status!),
-                      if (member.online) ...[
-                        const SizedBox(height: 6),
-                        const _OnlineChip(),
-                      ],
+                      const SizedBox(height: 6),
+                      _PresenceChip(online: member.online),
                     ],
                   ),
                 ],
@@ -376,28 +409,27 @@ class _TeamCard extends StatelessWidget {
 }
 
 /// A small green "Online" pill for a member who is driving right now.
-class _OnlineChip extends StatelessWidget {
-  const _OnlineChip();
+class _PresenceChip extends StatelessWidget {
+  const _PresenceChip({required this.online});
+  final bool online;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     const green = Color(0xFF1B8A4B);
+    final dot = online ? green : cs.onSurfaceVariant;
+    final bg = online ? green.withValues(alpha: 0.14) : cs.surfaceContainerHighest;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: green.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(20),
-      ),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 7, height: 7,
-            decoration: const BoxDecoration(color: green, shape: BoxShape.circle),
-          ),
+          Container(width: 7, height: 7, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
           const SizedBox(width: 5),
-          Text('Online', style: text.labelSmall?.copyWith(color: green, fontWeight: FontWeight.w600)),
+          Text(online ? 'Online' : 'Offline',
+              style: text.labelSmall?.copyWith(color: dot, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -1408,6 +1440,20 @@ class _AddCreditSheetState extends ConsumerState<_AddCreditSheet> {
               border: OutlineInputBorder(),
             ),
             onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final amt in const [10, 20, 50, 100])
+                ActionChip(
+                  key: ValueKey('add-credit-quick-$amt'),
+                  label: Text('RM $amt'),
+                  onPressed: _busy
+                      ? null
+                      : () => setState(() => _amount.text = amt.toStringAsFixed(2)),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
           TextField(
