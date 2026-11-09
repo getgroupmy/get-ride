@@ -221,10 +221,11 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('vehicle-edit')));
     await tester.pumpAndSettle();
 
-    // Pre-filled from the vehicle.
+    // Plate pre-fills as a text field; make/model are catalogue pickers seeded
+    // with the vehicle's current values.
     expect(find.widgetWithText(TextFormField, 'BMT4420'), findsOneWidget);
-    expect(find.widgetWithText(TextFormField, 'Perodua'), findsOneWidget);
-    expect(find.widgetWithText(TextFormField, 'Myvi'), findsOneWidget);
+    expect(find.text('Perodua'), findsWidgets);
+    expect(find.text('Myvi'), findsWidgets);
 
     // Change the colour and save.
     await tester.enterText(find.byKey(const ValueKey('vehicle-edit-color')), 'Blue');
@@ -255,7 +256,6 @@ void main() {
     }
 
     await fill('vehicle-edit-type', 'MPV');
-    await fill('vehicle-edit-energy', 'Petrol');
     await fill('vehicle-edit-vin', 'MHFXW9F3XM1234567');
     await fill('vehicle-edit-engine', '2GD1234567');
     await fill('vehicle-edit-owner-name', 'Nurul Shahida');
@@ -270,7 +270,6 @@ void main() {
     final p = repo.updatedPatch;
     expect(repo.updatedVehicle, 'v1');
     expect(p?['vehicle_type'], 'MPV');
-    expect(p?['energy_type'], 'Petrol');
     expect(p?['vin'], 'MHFXW9F3XM1234567');
     expect(p?['engine_number'], '2GD1234567');
     expect(p?['owner_name'], 'Nurul Shahida');
