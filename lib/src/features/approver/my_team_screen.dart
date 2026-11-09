@@ -515,6 +515,10 @@ class _TeamCard extends StatelessWidget {
                   else
                     Text('No documents waiting',
                         style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  if (member.docsExpiring > 0) ...[
+                    const SizedBox(width: 8),
+                    _ExpiringChip(count: member.docsExpiring),
+                  ],
                   const Spacer(),
                   Text('Open', style: text.labelLarge?.copyWith(color: cs.primary)),
                   Icon(Icons.chevron_right, color: cs.primary),
@@ -590,6 +594,33 @@ class _PresenceChip extends StatelessWidget {
           const SizedBox(width: 5),
           Text(online ? 'Online' : 'Offline',
               style: text.labelSmall?.copyWith(color: dot, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+/// An amber badge for a member whose approved documents are within 30 days of
+/// expiry (or already past). Hidden by the caller when the count is zero.
+class _ExpiringChip extends StatelessWidget {
+  const _ExpiringChip({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    const amber = Color(0xFFB4690E);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+          color: amber.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.schedule_outlined, size: 14, color: amber),
+          const SizedBox(width: 5),
+          Text('$count expiring',
+              style: text.labelSmall?.copyWith(color: amber, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -851,8 +882,14 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
   String _statsPeriod = 'month';
   String? _busyVehicleAccess;
   bool _busyStatus = false;
+  bool _busyPresence = false;
   String? _busyVehicleStatus;
+  /// Optimistic availability after the approver toggles it, so the header chip
+  /// reflects the change without a list refresh.
+  bool? _presenceOverride;
   TeamMember get member => widget.member;
+
+  bool get _memberOnline => _presenceOverride ?? member.online;
 
   /// Tap a registered vehicle's status badge: approve only when every required
   /// vehicle document is approved (0379) — otherwise open the vehicle sheet to
@@ -981,6 +1018,53 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
     }
   }
 
+  /// Approver sets a member's availability (migration 0383). Force-offline is
+  /// real; back-online is best-effort — it re-activates a live session the
+  /// driver's device already opened but can't conjure one. Needs
+  /// can_edit_profile; confirmed because it changes the driver's own state.
+  Future<void> _onPresenceTap() async {
+    final toOnline = !_memberOnline;
+    final first = member.name.split(' ').first;
+    final ok = await showAppDialog<bool>(
+      id: 'dialog.approver-presence', context: context,
+      builder: (c) => AlertDialog(
+        title: Text(toOnline ? 'Set $first online?' : 'Set $first offline?'),
+        content: Text(toOnline
+            ? "This marks $first available for dispatch and re-activates their live session if their device has one open. It can't start a session their device never opened."
+            : "This ends $first's live session and takes them off dispatch. They stay offline until they go back online."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('member-presence-confirm'),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(toOnline ? 'Set online' : 'Set offline')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busyPresence = true);
+    try {
+      final applied = await ref.read(approverInboxRepositoryProvider).setMemberPresence(member.id, toOnline);
+      if (!mounted) return;
+      setState(() => _presenceOverride = applied);
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: applied ? '$first set online.' : '$first set offline.',
+        kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't change this member's availability."
+            : (m.contains('out_of_scope') ? "This member isn't in your scope." : "Couldn't update availability. Try again."),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyPresence = false);
+    }
+  }
+
   /// Approve / decline / revoke an allowed-to-use assignment from its card
   /// (migration 0376). Refreshes the member's vehicle lists on success.
   Future<void> _setMemberVehicleAccess(MemberVehicle v, String action) async {
@@ -1052,7 +1136,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
             children: [
-              ResponsiveCenter(maxWidth: 760, child: _headerCard(cs)),
+              ResponsiveCenter(maxWidth: 760, child: _headerCard(cs, canEditProfile: canEditProfile)),
               const SizedBox(height: 10),
               ResponsiveCenter(maxWidth: 760, child: _tabBar(cs)),
               const SizedBox(height: 8),
@@ -1074,7 +1158,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
 
   // ---- Header + tab bar -----------------------------------------------------
 
-  Widget _headerCard(ColorScheme cs) {
+  Widget _headerCard(ColorScheme cs, {required bool canEditProfile}) {
     final text = Theme.of(context).textTheme;
     final subtitle = [
       if ((member.vehicleLabel ?? '').trim().isNotEmpty) member.vehicleLabel!.trim(),
@@ -1099,6 +1183,27 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(subtitle, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
                     ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Builder(builder: (context) {
+                          final chip = _PresenceChip(online: _memberOnline);
+                          if (!canEditProfile) return chip;
+                          return InkWell(
+                            key: const ValueKey('member-presence-chip'),
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: _busyPresence ? null : _onPresenceTap,
+                            child: Opacity(opacity: _busyPresence ? 0.5 : 1, child: chip),
+                          );
+                        }),
+                        if (member.docsExpiring > 0) _ExpiringChip(count: member.docsExpiring),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1245,11 +1350,11 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
             tile(
               'Current status',
               Row(children: [
-                Icon(Icons.circle, size: 10, color: member.online ? Colors.green : cs.onSurfaceVariant),
+                Icon(Icons.circle, size: 10, color: _memberOnline ? Colors.green : cs.onSurfaceVariant),
                 const SizedBox(width: 6),
-                Text(member.online ? 'Online' : 'Offline',
+                Text(_memberOnline ? 'Online' : 'Offline',
                     style: text.bodyMedium?.copyWith(
-                        color: member.online ? Colors.green.shade800 : cs.onSurfaceVariant,
+                        color: _memberOnline ? Colors.green.shade800 : cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600)),
               ]),
             ),
