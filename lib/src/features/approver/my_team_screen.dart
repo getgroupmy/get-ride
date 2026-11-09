@@ -1375,9 +1375,24 @@ class _AddCreditSheetState extends ConsumerState<_AddCreditSheet> {
     return (v * 100).roundToDouble() / 100;
   }
 
-  bool get _canSubmit {
+  bool _onPinStep = false;
+
+  bool get _amountValid {
     final a = _parsedAmount;
-    return a != null && a >= 1 && a <= 10000 && _pin.text.trim().length >= 4 && !_busy;
+    return a != null && a >= 1 && a <= 10000;
+  }
+
+  bool get _canSubmit => _amountValid && _pin.text.length >= 4 && !_busy;
+
+  void _tapKey(String d) {
+    if (_busy) return;
+    setState(() {
+      if (d == 'del') {
+        if (_pin.text.isNotEmpty) _pin.text = _pin.text.substring(0, _pin.text.length - 1);
+      } else if (_pin.text.length < 6) {
+        _pin.text = _pin.text + d;
+      }
+    });
   }
 
   Future<void> _submit() async {
@@ -1415,75 +1430,138 @@ class _AddCreditSheetState extends ConsumerState<_AddCreditSheet> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final wallet = ref.watch(approverMemberWalletProvider(widget.member.id)).asData?.value;
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Add credit', style: t.textTheme.titleLarge),
-          const SizedBox(height: 4),
-          Text(
-            'Top up ${widget.member.name}’s GET.wallet from your own GET.wallet. Confirm with your sign-in PIN.',
-            style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+        children: _onPinStep ? _pinStepChildren(t) : _amountStepChildren(t, wallet),
+      ),
+    );
+  }
+
+  List<Widget> _amountStepChildren(ThemeData t, double? wallet) => [
+        Text('Add credit', style: t.textTheme.titleLarge),
+        const SizedBox(height: 4),
+        Text(
+          'Top up ${widget.member.name}’s GET.wallet from your own GET.wallet.',
+          style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          key: const ValueKey('add-credit-amount'),
+          controller: _amount,
+          enabled: !_busy,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+          decoration: const InputDecoration(
+            labelText: 'Amount',
+            prefixText: 'RM ',
+            hintText: '0.00',
+            border: OutlineInputBorder(),
           ),
-          const SizedBox(height: 16),
-          TextField(
-            key: const ValueKey('add-credit-amount'),
-            controller: _amount,
-            enabled: !_busy,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-            decoration: const InputDecoration(
-              labelText: 'Amount',
-              prefixText: 'RM ',
-              hintText: '0.00',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final amt in const [10, 20, 50, 100])
+              ActionChip(
+                key: ValueKey('add-credit-quick-$amt'),
+                label: Text('RM $amt'),
+                onPressed: _busy ? null : () => setState(() => _amount.text = amt.toStringAsFixed(2)),
+              ),
+          ],
+        ),
+        if (wallet != null) ...[
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
+          Text('To ${widget.member.name}’s wallet · from your GET.wallet (RM ${wallet.toStringAsFixed(2)})',
+              style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+        ],
+        const SizedBox(height: 14),
+        FilledButton(
+          key: const ValueKey('add-credit-continue'),
+          onPressed: _amountValid && !_busy ? () => setState(() => _onPinStep = true) : null,
+          child: const Text('Continue'),
+        ),
+      ];
+
+  List<Widget> _pinStepChildren(ThemeData t) {
+    final cs = t.colorScheme;
+    final amount = _parsedAmount ?? 0;
+    return [
+      Text('Confirm with PIN', style: t.textTheme.titleLarge),
+      const SizedBox(height: 4),
+      Text('Sending RM ${amount.toStringAsFixed(2)} to ${widget.member.name} from your GET.wallet.',
+          style: t.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+      const SizedBox(height: 18),
+      // Six dots filled as the PIN is typed on the keypad below.
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (var i = 0; i < 6; i++)
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 8),
+              width: 14, height: 14,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: i < _pin.text.length ? cs.primary : cs.surfaceContainerHighest,
+              ),
+            ),
+        ],
+      ),
+      const SizedBox(height: 20),
+      for (final row in const [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['', '0', 'del']])
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
             children: [
-              for (final amt in const [10, 20, 50, 100])
-                ActionChip(
-                  key: ValueKey('add-credit-quick-$amt'),
-                  label: Text('RM $amt'),
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() => _amount.text = amt.toStringAsFixed(2)),
+              for (final d in row)
+                Expanded(
+                  child: d.isEmpty
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: OutlinedButton(
+                            key: ValueKey('pin-key-$d'),
+                            onPressed: _busy ? null : () => _tapKey(d),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: Text(d == 'del' ? '⌫' : d,
+                                style: t.textTheme.titleLarge),
+                          ),
+                        ),
                 ),
             ],
           ),
-          const SizedBox(height: 12),
-          TextField(
-            key: const ValueKey('add-credit-pin'),
-            controller: _pin,
-            enabled: !_busy,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            maxLength: 6,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              labelText: 'Your sign-in PIN',
-              border: OutlineInputBorder(),
-              counterText: '',
+        ),
+      const SizedBox(height: 14),
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _busy ? null : () => setState(() => _onPinStep = false),
+              child: const Text('Back'),
             ),
-            onChanged: (_) => setState(() {}),
           ),
-          const SizedBox(height: 12),
-          FilledButton(
-            key: const ValueKey('add-credit-submit'),
-            onPressed: _canSubmit ? _submit : null,
-            child: _busy
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Add credit'),
+          const SizedBox(width: 12),
+          Expanded(
+            child: FilledButton(
+              key: const ValueKey('add-credit-submit'),
+              onPressed: _canSubmit ? _submit : null,
+              child: _busy
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Confirm'),
+            ),
           ),
         ],
       ),
-    );
+    ];
   }
 }
 
