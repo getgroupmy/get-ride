@@ -17,6 +17,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 final _db = SupabaseClient('http://localhost', 'anon', authOptions: const AuthClientOptions(autoRefreshToken: false));
 
+/// The deletion date the fake reports — always 7 days out, captured once so the
+/// fake's value and the date the test asserts come from the same instant and
+/// match the screen's own formatting. (A fixed calendar date here expired after
+/// noon on that day and failed every run.)
+final _deleteAfter = DateTime.now().add(const Duration(days: 7));
+final _deleteAfterIso = _deleteAfter.toIso8601String();
+const _monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+String get _deleteAfterLong => '${_deleteAfter.day} ${_monthsShort[_deleteAfter.month - 1]} ${_deleteAfter.year}';
+
 /// The page's server calls, answered here.
 class _FakeRepo extends AccountDeletionRepository {
   _FakeRepo({this.hasAccount = true}) : super(_db);
@@ -35,7 +44,10 @@ class _FakeRepo extends AccountDeletionRepository {
   Future<Object?> confirmRequest(String phone, String code, {String? reason}) async {
     tries.add(code);
     if (!hasAccount || code != '123456') return {'error': 'wrong_code'};
-    return {'ok': true, 'graceDays': 7, 'deleteAfter': DateTime(2026, 11, 9, 12).toUtc().toIso8601String()};
+    // Always 7 days out, so the "Request received" state (shown only when the
+    // deletion date is still in the future) is reached whatever today is — a
+    // fixed date here became a past date after noon and failed every run.
+    return {'ok': true, 'graceDays': 7, 'deleteAfter': _deleteAfterIso};
   }
 }
 
@@ -221,7 +233,7 @@ void main() {
       await tester.enterText(find.byKey(const ValueKey('delete-web-code')), '123456');
       await tester.pumpAndSettle();
       expect(find.text('Request received'), findsOneWidget);
-      expect(find.textContaining('9 Nov 2026'), findsOneWidget);
+      expect(find.textContaining(_deleteAfterLong), findsOneWidget);
     });
 
     testWidgets('a number with no account: the same words, the same wrong-code answer (dark)', (tester) async {
