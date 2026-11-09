@@ -106,6 +106,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:delete-account.run', SurfaceKind.modal, 'Delete account · Run', 'lib/src/features/settings/delete_account_screen.dart'),
   SurfaceEntry('modal:dialog.approver-approve-member', SurfaceKind.modal, 'Dialog · Approver approve member', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:dialog.approver-approve-vehicle', SurfaceKind.modal, 'Dialog · Approver approve vehicle', 'lib/src/features/approver/my_team_screen.dart'),
+  SurfaceEntry('modal:dialog.approver-reset-pin', SurfaceKind.modal, 'Dialog · Approver reset pin', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:dispatch.cancel', SurfaceKind.modal, 'Dispatch · Cancel', 'lib/src/features/dispatch/dispatch_console.dart'),
   SurfaceEntry('modal:dispatch.edit-time', SurfaceKind.modal, 'Dispatch · Edit time', 'lib/src/features/dispatch/dispatch_console.dart'),
   SurfaceEntry('modal:dispatch.meter-fare', SurfaceKind.modal, 'Dispatch · Meter fare', 'lib/src/features/dispatch/dispatch_console.dart'),

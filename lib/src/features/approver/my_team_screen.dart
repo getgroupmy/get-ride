@@ -976,10 +976,61 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                 label: const Text('Add credit'),
               ),
             ],
+            if (canEditProfile) ...[
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                key: const ValueKey('my-team-reset-pin'),
+                onPressed: _busyStatus ? null : _resetPin,
+                style: OutlinedButton.styleFrom(foregroundColor: cs.error),
+                icon: const Icon(Icons.lock_reset_outlined, size: 18),
+                label: const Text('Reset PIN'),
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  /// Reset the member's sign-in PIN to the default 123456; they must set a new
+  /// one at next sign-in (migration 0381).
+  Future<void> _resetPin() async {
+    final ok = await showAppDialog<bool>(
+      id: 'dialog.approver-reset-pin', context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Reset ${member.name}’s PIN?'),
+        content: const Text(
+            'Their sign-in PIN becomes 123456. They will be required to set a new '
+            'PIN the next time they sign in.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('reset-pin-confirm'),
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(c).colorScheme.error),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Reset PIN')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busyStatus = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).resetMemberPin(member.id);
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: '${member.name}’s PIN was reset to 123456. They must set a new one at next sign-in.',
+        kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: m.contains('not_allowed') ? "You can't reset this member's PIN." : "Couldn't reset the PIN. Try again.",
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyStatus = false);
+    }
   }
 
   Widget _idBadge(ColorScheme cs, TextTheme text, bool verified) {
