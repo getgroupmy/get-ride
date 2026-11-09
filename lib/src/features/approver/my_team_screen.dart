@@ -2361,13 +2361,16 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
 
     setState(() => _busyAction = true);
     try {
-      await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(v.id, memberId);
+      final pending = await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(v.id, memberId);
       ref.invalidate(approverVehicleDetailProvider(widget.vehicleId));
       ref.invalidate(approverMemberVehiclesProvider(widget.memberId));
       if (!mounted) return;
       unawaited(showAppNotice(
         id: 'notice.approver-vehicle', context: context,
-        message: 'Driver assigned.', kind: NoticeKind.success));
+        message: pending
+            ? "Request sent — the vehicle owner was notified and must approve it."
+            : 'Driver assigned.',
+        kind: NoticeKind.success));
     } catch (e) {
       if (!mounted) return;
       final m = e is PostgrestException ? e.message : e.toString();
@@ -3107,12 +3110,15 @@ class _AssignVehicleSheetState extends ConsumerState<_AssignVehicleSheet> {
     if (hit?.id == null) return;
     setState(() => _busy = true);
     try {
-      await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(hit!.id!, widget.memberId);
+      final pending = await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(hit!.id!, widget.memberId);
       if (!mounted) return;
       Navigator.of(context).pop(true);
       unawaited(showAppNotice(
         id: 'notice.approver-vehicle', context: context,
-        message: 'Access granted to ${widget.memberName}.', kind: NoticeKind.success));
+        message: pending
+            ? "Request sent — the vehicle owner was notified and must approve it."
+            : 'Access granted to ${widget.memberName}.',
+        kind: NoticeKind.success));
     } catch (e) {
       if (!mounted) return;
       final m = e is PostgrestException ? e.message : e.toString();

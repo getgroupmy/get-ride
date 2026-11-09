@@ -50,9 +50,12 @@ class _FakeRepo extends ApproverInboxRepository {
     updatedPatch = patch;
   }
 
+  bool assignPending = false;
+
   @override
-  Future<void> assignVehicleDriver(String vehicleId, String memberId) async {
+  Future<bool> assignVehicleDriver(String vehicleId, String memberId) async {
     assigned = (vehicleId, memberId);
+    return assignPending;
   }
 
   (String, String)? accessSet; // (assignmentId, action)
@@ -317,5 +320,29 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('assign-vehicle-grant')));
     await tester.pumpAndSettle();
     expect(repo.assigned, ('v-found', 'm1'));
+  });
+
+  testWidgets('a third-party vehicle grant reports owner approval is pending', (tester) async {
+    final repo = await _pumpVehicleTab(tester, vehicles: _vehiclesWithAllowed(approval: 'approved'));
+    repo.assignPending = true; // the server returns pending for a third-party car
+    repo.plateHit = const VehiclePlateHit(
+      found: true, inScope: true, id: 'v-found', plate: 'WXY1180', make: 'Honda', model: 'City',
+    );
+
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-assign-another')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('vehicle-assign-another')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('assign-vehicle-plate')), 'WXY1180');
+    await tester.tap(find.byKey(const ValueKey('assign-vehicle-find')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('assign-vehicle-grant')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('assign-vehicle-grant')));
+    await tester.pumpAndSettle();
+
+    expect(repo.assigned, ('v-found', 'm1'));
+    expect(find.textContaining('owner was notified'), findsOneWidget);
   });
 }
