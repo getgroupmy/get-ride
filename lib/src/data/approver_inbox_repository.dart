@@ -1235,6 +1235,33 @@ class ApproverInboxRepository {
       'data': base64Encode(bytes),
     });
   }
+
+  /// Put a vehicle permit (the EVP / APAD permit, or any other) on file with a
+  /// typed/scanned number and expiry (migration 0386). Upserts the permit's
+  /// vehicle_documents row and returns its id, so a scanned image can then be
+  /// attached with [uploadVehicleDocImage]. Needs can_manage_vehicle; the
+  /// server re-checks scope. [expiry] is `yyyy-mm-dd` or null.
+  Future<String> setVehiclePermit(String vehicleId, String permitTypeId,
+      {String? number, String? expiry}) async {
+    final r = await _db.rpc('approver_set_vehicle_permit', params: {
+      'p_vehicle': vehicleId,
+      'p_permit_type_id': permitTypeId,
+      'p_number': number,
+      'p_expiry': expiry,
+    });
+    return '${(r as Map)['id']}';
+  }
+
+  /// Attach an image to a vehicle_documents row by id (via the approver-upload
+  /// edge function). Used after [setVehiclePermit] to store a scanned permit.
+  Future<void> uploadVehicleDocImage(String docId, {required Uint8List bytes, required String contentType}) async {
+    await _db.functions.invoke('approver-upload', body: {
+      'source': 'vehicle',
+      'id': docId,
+      'contentType': contentType,
+      'data': base64Encode(bytes),
+    });
+  }
 }
 
 final approverInboxRepositoryProvider = Provider((ref) => ApproverInboxRepository(ref.watch(supabaseProvider)));
