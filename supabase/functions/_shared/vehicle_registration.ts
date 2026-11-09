@@ -31,7 +31,7 @@ export const REGISTRATION_PROMPT = [
 
 function str(v: unknown, max = 120): string | null {
   const t = `${v ?? ""}`.trim();
-  if (!t || t.toLowerCase() === "null" || t === "-") return null;
+  if (!t || t === "0" || t.toLowerCase() === "null" || t === "-") return null;
   return t.slice(0, max);
 }
 
