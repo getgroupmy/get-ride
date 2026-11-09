@@ -64,7 +64,7 @@ const OPENAI_COMPATIBLE: Partial<Record<VisionProvider, string>> = {
 /** Largest image accepted, after base64 decoding. */
 export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
-const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export interface InlineImage {
   mime: string;
@@ -87,6 +87,29 @@ export function parseImage(input: unknown): InlineImage | string {
   if (bytes <= 0) return "image is empty";
   if (bytes > MAX_IMAGE_BYTES) return "image is too large";
   return { mime, base64 };
+}
+
+/**
+ * Validates a URL the function may fetch an already-stored document image
+ * from — a re-scan of a document the caller cannot re-photograph (the approver
+ * flow). Only `https://` URLs on the project's own storage host and a
+ * `/storage/v1/object/` path are allowed, so this can never be talked into
+ * fetching an arbitrary or internal address (no SSRF): the signed URL the
+ * client passes is itself its time-limited, RLS-scoped read capability.
+ * Returns the normalised URL or an error string. Pure.
+ */
+export function parseStorageImageUrl(input: unknown, allowedHost: string): string {
+  if (typeof input !== "string" || input.trim().length === 0) return "url missing";
+  let u: URL;
+  try {
+    u = new URL(input.trim());
+  } catch {
+    return "url is not valid";
+  }
+  if (u.protocol !== "https:") return "url must be https";
+  if (u.host !== allowedHost) return "url host is not allowed";
+  if (!u.pathname.startsWith("/storage/v1/object/")) return "url is not a storage object";
+  return u.toString();
 }
 
 /** One field of a permit type (Admin > Vehicle permits) the AI is asked to read. */

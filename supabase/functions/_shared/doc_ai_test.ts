@@ -17,6 +17,7 @@ import {
   normDate,
   parseContext,
   parseImage,
+  parseStorageImageUrl,
   responseText,
   TAXI_PERMIT_INSTRUCTIONS,
   visionRequest,
@@ -33,6 +34,27 @@ Deno.test("images: only small base64 data URLs of photo types", () => {
   assertEquals(parseImage(42), "image missing");
   const big = "data:image/jpeg;base64," + "A".repeat(Math.ceil((MAX_IMAGE_BYTES + 10) * 4 / 3));
   assertEquals(parseImage(big), "image is too large");
+});
+
+Deno.test("storage image url: only https on the project's own storage host", () => {
+  const host = "rqlavogkgywxspuxgiwk.supabase.co";
+  const ok = `https://${host}/storage/v1/object/sign/driver-docs/u1/permit.jpg?token=abc`;
+  assertEquals(parseStorageImageUrl(ok, host), ok);
+  // Not a storage object path.
+  assertEquals(
+    parseStorageImageUrl(`https://${host}/rest/v1/secret`, host),
+    "url is not a storage object",
+  );
+  // Another host (SSRF / exfiltration attempt) is refused.
+  assertEquals(
+    parseStorageImageUrl(`https://evil.example.com/storage/v1/object/sign/x`, host),
+    "url host is not allowed",
+  );
+  // Internal metadata address, plain http, and junk are all refused.
+  assertEquals(parseStorageImageUrl("http://169.254.169.254/storage/v1/object/x", host), "url must be https");
+  assertEquals(parseStorageImageUrl("not a url", host), "url is not valid");
+  assertEquals(parseStorageImageUrl("", host), "url missing");
+  assertEquals(parseStorageImageUrl(42, host), "url missing");
 });
 
 Deno.test("context: needs a title, keeps only the prompt's fields, bounded", () => {

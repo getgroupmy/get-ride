@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -1844,22 +1843,18 @@ class _DocCardState extends ConsumerState<_DocCard> {
     }
     setState(() => _busy = true);
     try {
+      // Hand the scanner the stored image's signed URL and let it fetch the
+      // bytes server-side — the browser blocks a client-side read of that
+      // cross-origin image, which is why the in-place re-scan failed on web.
       final link = await signedStorageUrl(d.fileUrl!);
-      final resp = await http.get(Uri.parse(link));
-      if (resp.statusCode != 200) {
-        throw Exception('image ${resp.statusCode}');
-      }
       final repo = ref.read(documentAiRepositoryProvider);
-      final url = await repo.prepare(resp.bodyBytes, d.fileUrl!.split('/').last);
-      final outcome = url == null
-          ? (result: null, reason: 'image_too_large')
-          : await repo.verify(docAiRequestBody(
-              frontDataUrl: url,
-              docName: d.docLabel,
-              documentNumber: d.requiresNumber ? d.documentNumber : null,
-              startDate: d.requiresStart ? d.startDate : null,
-              expiryDate: d.requiresExpiry ? d.expiryDate : null,
-            ));
+      final outcome = await repo.verify(docAiRequestBody(
+        frontUrl: link,
+        docName: d.docLabel,
+        documentNumber: d.requiresNumber ? d.documentNumber : null,
+        startDate: d.requiresStart ? d.startDate : null,
+        expiryDate: d.requiresExpiry ? d.expiryDate : null,
+      ));
       final r = outcome.result;
       if (r == null) {
         if (!mounted) return;
