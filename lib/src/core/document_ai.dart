@@ -109,10 +109,17 @@ String? imageMimeFor(String name) {
 
 String imageDataUrl(Uint8List bytes, String mime) => 'data:$mime;base64,${base64Encode(bytes)}';
 
-/// The function's request body (only the fields the prompt uses).
+/// The function's request body (only the fields the prompt uses). The image is
+/// sent inline as a data URL ([frontDataUrl], what the capture flow builds) or,
+/// for a re-scan of an already-stored document, as a storage URL the function
+/// fetches server-side ([frontUrl]) — which avoids the browser's CORS block on
+/// reading the stored image's bytes in the web build. Pass exactly one of the
+/// two for each side.
 Map<String, dynamic> docAiRequestBody({
-  required String frontDataUrl,
+  String? frontDataUrl,
   String? backDataUrl,
+  String? frontUrl,
+  String? backUrl,
   required String docName,
   String? documentNumber,
   String? insuranceProviderName,
@@ -124,8 +131,10 @@ Map<String, dynamic> docAiRequestBody({
 }) {
   String? blank(String? v) => v == null || v.trim().isEmpty ? null : v.trim();
   return {
-    'front': frontDataUrl,
+    'front': ?frontDataUrl,
     'back': ?backDataUrl,
+    'front_url': ?frontUrl,
+    'back_url': ?backUrl,
     'context': {
       'docName': docName,
       'documentNumber': blank(documentNumber),

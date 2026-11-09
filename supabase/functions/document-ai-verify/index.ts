@@ -41,10 +41,13 @@ import {
   buildUserText,
   DEFAULT_VISION_MODELS,
   type InlineImage,
+  IMAGE_TYPES,
   isVisionProvider,
+  MAX_IMAGE_BYTES,
   normalizeResult,
   parseContext,
   parseImage,
+  parseStorageImageUrl,
   responseText,
   visionRequest,
 } from "../_shared/doc_ai.ts";
@@ -80,6 +83,47 @@ interface Config {
 }
 
 const PROVIDER_TIMEOUT_MS = 45_000;
+/** How long to wait for a stored image when re-scanning from a storage URL. */
+const IMAGE_FETCH_TIMEOUT_MS = 15_000;
+
+/** Base64 of raw bytes, chunked so a large image doesn't blow the call stack. */
+function base64FromBytes(bytes: Uint8Array): string {
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+/**
+ * Fetches a stored document image server-side (so a browser's CORS policy
+ * never blocks a re-scan) and returns it inline, or an error string. The URL
+ * was already host-guarded by [parseStorageImageUrl]; redirects are refused so
+ * it can't be bounced to another host, and the content type / size are checked
+ * the same way an inline image is.
+ */
+async function fetchInlineImage(url: string): Promise<InlineImage | string> {
+  let res: Response;
+  try {
+    res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(IMAGE_FETCH_TIMEOUT_MS) });
+  } catch (e) {
+    return `could not fetch image (${e instanceof Error ? e.message : e})`;
+  }
+  if (!res.ok) {
+    await res.body?.cancel();
+    return `image ${res.status}`;
+  }
+  const ct = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  if (!IMAGE_TYPES.includes(ct)) {
+    await res.body?.cancel();
+    return `unsupported image type ${ct || "unknown"}`;
+  }
+  const bytes = new Uint8Array(await res.arrayBuffer());
+  if (bytes.byteLength === 0) return "image is empty";
+  if (bytes.byteLength > MAX_IMAGE_BYTES) return "image is too large";
+  return { mime: ct, base64: base64FromBytes(bytes) };
+}
 /** A partner checks a handful of documents, a couple of tries each. */
 const DOC_CHECKS_PER_HOUR = 10;
 const DOC_CHECKS_PER_HOUR_ADMIN = 60;
@@ -118,7 +162,7 @@ Deno.serve(async (req: Request) => {
   if (rateErr || typeof wait !== "number") return json({ ok: false, error: "unavailable" }, 503);
   if (wait > 0) return json({ ok: false, error: "rate_limited", retry_after: wait }, 429);
 
-  let body: { front?: unknown; back?: unknown; context?: unknown };
+  let body: { front?: unknown; back?: unknown; front_url?: unknown; back_url?: unknown; context?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -126,13 +170,29 @@ Deno.serve(async (req: Request) => {
   }
   const ctx = parseContext(body.context);
   if (!ctx) return json({ ok: false, error: "context.docName is required" }, 400);
-  const front = parseImage(body.front);
+
+  // An image comes inline (a data URL, what the capture flow sends) or — for a
+  // re-scan of a document that can't be re-photographed — as a storage URL the
+  // function fetches server-side, so a browser's CORS policy never blocks it.
+  const storageHost = new URL(supabaseUrl).host;
+  async function image(dataField: unknown, urlField: unknown): Promise<InlineImage | string | null> {
+    if (dataField != null) return parseImage(dataField);
+    if (urlField != null) {
+      const url = parseStorageImageUrl(urlField, storageHost);
+      if (!url.startsWith("https://")) return url; // an error string
+      return await fetchInlineImage(url);
+    }
+    return null; // this side was not provided
+  }
+
+  const front = await image(body.front, body.front_url);
+  if (front == null) return json({ ok: false, error: "front image or front_url is required" }, 400);
   if (typeof front === "string") return json({ ok: false, error: `front: ${front}` }, 400);
   const images: InlineImage[] = [front];
-  if (body.back != null) {
-    const back = parseImage(body.back);
+  if (body.back != null || body.back_url != null) {
+    const back = await image(body.back, body.back_url);
     if (typeof back === "string") return json({ ok: false, error: `back: ${back}` }, 400);
-    images.push(back);
+    if (back != null) images.push(back);
   }
 
   const { data: row, error: rowErr } = await admin
