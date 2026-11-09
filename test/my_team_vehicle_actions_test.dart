@@ -55,6 +55,22 @@ class _FakeRepo extends ApproverInboxRepository {
     assigned = (vehicleId, memberId);
   }
 
+  (String, String)? accessSet; // (assignmentId, action)
+
+  @override
+  Future<void> setVehicleAccess(String assignmentId, String action) async {
+    accessSet = (assignmentId, action);
+  }
+
+  VehiclePlateHit? plateHit;
+  String? searchedPlate;
+
+  @override
+  Future<VehiclePlateHit?> findVehicleByPlate(String plate) async {
+    searchedPlate = plate;
+    return plateHit;
+  }
+
   @override
   Future<VehiclePermits?> vehiclePermitCard(String vehicleId) async => null;
 
@@ -74,7 +90,16 @@ class _FakeRepo extends ApproverInboxRepository {
       const TeamPage(members: [TeamMember(id: 'm2', displayId: 'GR-0002', name: 'Rajesh')], hasMore: false);
 }
 
+/// Give the modal sheets room so their buttons are on-screen and tappable.
+void _bigWindow(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1200, 3200);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 Future<_FakeRepo> _openSheet(WidgetTester tester, {required bool canManage}) async {
+  _bigWindow(tester);
   final repo = _FakeRepo();
   await tester.pumpWidget(
     ProviderScope(
@@ -95,6 +120,42 @@ Future<_FakeRepo> _openSheet(WidgetTester tester, {required bool canManage}) asy
   await tester.tap(find.byKey(const ValueKey('member-tab-vehicle')));
   await tester.pumpAndSettle();
   await tester.tap(find.byKey(const ValueKey('vehicle-view-v1')));
+  await tester.pumpAndSettle();
+  return repo;
+}
+
+/// A member with one allowed-to-use vehicle in the given access state, plus the
+/// self-registered car, for the Vehicle tab action tests (migration 0376).
+MemberVehicles _vehiclesWithAllowed({required String approval, bool active = true}) => MemberVehicles(
+      registered: _vehicles.registered,
+      allowed: [
+        MemberVehicle(
+          id: 'v9', plate: 'VAC7679', make: 'Toyota', model: 'Innova', color: 'Black', year: '2021',
+          status: 'active', ownerSelf: false, ownerName: 'Nurul Shahida',
+          accessApproval: approval, accessActive: active, assignmentId: 'a9',
+        ),
+      ],
+    );
+
+/// Pump the member screen straight onto the Vehicle tab (no detail sheet), with
+/// the given allowed-vehicle list. Returns the fake repo.
+Future<_FakeRepo> _pumpVehicleTab(WidgetTester tester, {required MemberVehicles vehicles}) async {
+  _bigWindow(tester);
+  final repo = _FakeRepo();
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        approverInboxRepositoryProvider.overrideWithValue(repo),
+        approverSelfProvider.overrideWith((ref) async => _grant()),
+        approverOwnerDocumentsProvider.overrideWith((ref, id) async => const <ApproverDoc>[]),
+        approverMemberWalletProvider.overrideWith((ref, id) async => null),
+        approverMemberVehiclesProvider.overrideWith((ref, id) async => vehicles),
+      ],
+      child: MaterialApp(theme: appTheme(Brightness.light), home: const MyTeamMemberScreen(member: _member)),
+    ),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey('member-tab-vehicle')));
   await tester.pumpAndSettle();
   return repo;
 }
@@ -127,6 +188,8 @@ void main() {
 
     // Change the colour and save.
     await tester.enterText(find.byKey(const ValueKey('vehicle-edit-color')), 'Blue');
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-edit-save')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('vehicle-edit-save')));
     await tester.pumpAndSettle();
 
@@ -134,6 +197,47 @@ void main() {
     expect(repo.updatedPatch?['plate'], 'BMT4420');
     expect(repo.updatedPatch?['make'], 'Perodua');
     expect(repo.updatedPatch?['color'], 'Blue');
+  });
+
+  testWidgets('Edit vehicle sends the full spec and owner patch', (tester) async {
+    final repo = await _openSheet(tester, canManage: true);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-edit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('vehicle-edit')));
+    await tester.pumpAndSettle();
+
+    // Fill the spec and owner text fields (status pre-fills from the vehicle).
+    Future<void> fill(String key, String value) async {
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(ValueKey(key)), value);
+    }
+
+    await fill('vehicle-edit-type', 'MPV');
+    await fill('vehicle-edit-energy', 'Petrol');
+    await fill('vehicle-edit-vin', 'MHFXW9F3XM1234567');
+    await fill('vehicle-edit-engine', '2GD1234567');
+    await fill('vehicle-edit-owner-name', 'Nurul Shahida');
+    await fill('vehicle-edit-owner-ic', '831103085914');
+    await fill('vehicle-edit-owner-phone', '+60126640912');
+
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-edit-save')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('vehicle-edit-save')));
+    await tester.pumpAndSettle();
+
+    final p = repo.updatedPatch;
+    expect(repo.updatedVehicle, 'v1');
+    expect(p?['vehicle_type'], 'MPV');
+    expect(p?['energy_type'], 'Petrol');
+    expect(p?['vin'], 'MHFXW9F3XM1234567');
+    expect(p?['engine_number'], '2GD1234567');
+    expect(p?['owner_name'], 'Nurul Shahida');
+    expect(p?['owner_ic'], '831103085914');
+    expect(p?['owner_phone'], '+60126640912');
+    // Status pre-filled from the vehicle detail ('approved') and is sent.
+    expect(p?['status'], 'approved');
   });
 
   testWidgets('a missing vehicle doc offers Upload on behalf and creates it', (tester) async {
@@ -162,5 +266,56 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repo.assigned, ('v1', 'm2'));
+  });
+
+  testWidgets('a pending allowed vehicle shows Approve/Decline and approves', (tester) async {
+    final repo = await _pumpVehicleTab(tester, vehicles: _vehiclesWithAllowed(approval: 'pending'));
+
+    expect(find.byKey(const ValueKey('vehicle-approve-a9')), findsOneWidget);
+    expect(find.byKey(const ValueKey('vehicle-decline-a9')), findsOneWidget);
+    // An active self-registered car shows no access buttons.
+    expect(find.byKey(const ValueKey('vehicle-revoke-a9')), findsNothing);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-approve-a9')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('vehicle-approve-a9')));
+    await tester.pumpAndSettle();
+    expect(repo.accessSet, ('a9', 'approve'));
+  });
+
+  testWidgets('an active allowed vehicle shows Revoke and revokes', (tester) async {
+    final repo = await _pumpVehicleTab(tester, vehicles: _vehiclesWithAllowed(approval: 'approved'));
+
+    expect(find.byKey(const ValueKey('vehicle-revoke-a9')), findsOneWidget);
+    expect(find.byKey(const ValueKey('vehicle-approve-a9')), findsNothing);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-revoke-a9')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('vehicle-revoke-a9')));
+    await tester.pumpAndSettle();
+    expect(repo.accessSet, ('a9', 'revoke'));
+  });
+
+  testWidgets('Assign another vehicle finds by plate and grants access', (tester) async {
+    final repo = await _pumpVehicleTab(tester, vehicles: _vehiclesWithAllowed(approval: 'approved'));
+    repo.plateHit = const VehiclePlateHit(
+      found: true, inScope: true, id: 'v-found', plate: 'WXY1180', make: 'Honda', model: 'City',
+    );
+
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-assign-another')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('vehicle-assign-another')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byKey(const ValueKey('assign-vehicle-plate')), 'WXY1180');
+    await tester.tap(find.byKey(const ValueKey('assign-vehicle-find')));
+    await tester.pumpAndSettle();
+    expect(repo.searchedPlate, 'WXY1180');
+
+    await tester.ensureVisible(find.byKey(const ValueKey('assign-vehicle-grant')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('assign-vehicle-grant')));
+    await tester.pumpAndSettle();
+    expect(repo.assigned, ('v-found', 'm1'));
   });
 }

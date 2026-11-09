@@ -620,6 +620,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:admin.media-picker', SurfaceKind.sheet, 'Admin · Media picker', 'lib/src/admin/screens/meterapp/media_picker_sheet.dart'),
   SurfaceEntry('sheet:airport-areas.guide-preview', SurfaceKind.sheet, 'Airport areas · Guide preview', 'lib/src/features/ride/airport_door_sheet.dart'),
   SurfaceEntry('sheet:approver.add-credit', SurfaceKind.sheet, 'Approver · Add credit', 'lib/src/features/approver/my_team_screen.dart'),
+  SurfaceEntry('sheet:approver.assign-vehicle', SurfaceKind.sheet, 'Approver · Assign vehicle', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('sheet:approver.edit-profile', SurfaceKind.sheet, 'Approver · Edit profile', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('sheet:approver.payout', SurfaceKind.sheet, 'Approver · Payout', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('sheet:approver.propose-phone', SurfaceKind.sheet, 'Approver · Propose phone', 'lib/src/features/approver/my_team_screen.dart'),

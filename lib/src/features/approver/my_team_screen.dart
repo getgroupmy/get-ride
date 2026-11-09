@@ -527,7 +527,48 @@ enum _MemberTab { profile, statistics, vehicle, documents }
 class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
   _MemberTab _tab = _MemberTab.profile;
   String _statsPeriod = 'month';
+  String? _busyVehicleAccess;
   TeamMember get member => widget.member;
+
+  /// Approve / decline / revoke an allowed-to-use assignment from its card
+  /// (migration 0376). Refreshes the member's vehicle lists on success.
+  Future<void> _setMemberVehicleAccess(MemberVehicle v, String action) async {
+    final id = v.assignmentId;
+    if (id == null) return;
+    setState(() => _busyVehicleAccess = id);
+    try {
+      await ref.read(approverInboxRepositoryProvider).setVehicleAccess(id, action);
+      ref.invalidate(approverMemberVehiclesProvider(member.id));
+      if (!mounted) return;
+      const labels = {'approve': 'Access approved.', 'decline': 'Request declined.', 'revoke': 'Access revoked.'};
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: labels[action] ?? 'Done.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't manage this vehicle."
+            : (m.contains('out_of_scope') ? "This vehicle isn't in your scope." : "Couldn't update access. Try again."),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyVehicleAccess = null);
+    }
+  }
+
+  /// "Assign / approve another vehicle": find a vehicle by plate and grant this
+  /// member access to it (migration 0376).
+  Future<void> _openAssignVehicle() async {
+    final granted = await showAppSheet<bool>(
+      id: 'approver.assign-vehicle',
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _AssignVehicleSheet(memberId: member.id, memberName: member.name),
+    );
+    if (granted == true) ref.invalidate(approverMemberVehiclesProvider(member.id));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -874,6 +915,23 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
               _vehicleSectionHeader(cs, 'ALLOWED TO USE', v.allowed.length),
               for (final x in v.allowed) _vehicleCard(cs, x),
             ],
+            if (ref.watch(approverSelfProvider).value?.canManageVehicle ?? false) ...[
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: OutlinedButton.icon(
+                  key: const ValueKey('vehicle-assign-another'),
+                  onPressed: _openAssignVehicle,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Assign / approve another vehicle'),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(48),
+                    side: BorderSide(color: cs.primary.withValues(alpha: 0.5)),
+                    foregroundColor: cs.primary,
+                  ),
+                ),
+              ),
+            ],
           ],
         );
       },
@@ -925,7 +983,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
             Row(
               children: [
                 Expanded(child: Text(v.plate, style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
-                _VehicleStatusChip(ownerSelf: v.ownerSelf, status: v.status, accessActive: v.accessActive),
+                _VehicleStatusChip(ownerSelf: v.ownerSelf, status: v.status, accessActive: v.accessActive, accessApproval: v.accessApproval),
               ],
             ),
             if (v.descriptor.isNotEmpty)
@@ -938,17 +996,54 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
               child: Text(ownerLine, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
             ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: OutlinedButton(
-                key: ValueKey('vehicle-view-${v.id}'),
-                onPressed: () => _openVehicleDetail(v),
-                child: const Text('View'),
-              ),
-            ),
+            _vehicleCardActions(cs, v),
           ],
         ),
       ),
+    );
+  }
+
+  /// View, plus — for an allowed-to-use vehicle with the manage grant — the
+  /// access actions the mockup shows on the card: Approve/Decline a pending
+  /// request, or Revoke an active one (migration 0376).
+  Widget _vehicleCardActions(ColorScheme cs, MemberVehicle v) {
+    final canManage = ref.watch(approverSelfProvider).value?.canManageVehicle ?? false;
+    final busy = _busyVehicleAccess == v.assignmentId && v.assignmentId != null;
+    final showAccess = canManage && !v.ownerSelf && v.assignmentId != null;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        OutlinedButton(
+          key: ValueKey('vehicle-view-${v.id}'),
+          onPressed: () => _openVehicleDetail(v),
+          child: const Text('View'),
+        ),
+        if (showAccess && v.accessPending) ...[
+          FilledButton(
+            key: ValueKey('vehicle-approve-${v.assignmentId}'),
+            onPressed: busy ? null : () => _setMemberVehicleAccess(v, 'approve'),
+            child: busy
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Approve access'),
+          ),
+          OutlinedButton(
+            key: ValueKey('vehicle-decline-${v.assignmentId}'),
+            onPressed: busy ? null : () => _setMemberVehicleAccess(v, 'decline'),
+            child: const Text('Decline'),
+          ),
+        ] else if (showAccess && v.accessActive != false) ...[
+          OutlinedButton(
+            key: ValueKey('vehicle-revoke-${v.assignmentId}'),
+            style: OutlinedButton.styleFrom(foregroundColor: cs.error),
+            onPressed: busy ? null : () => _setMemberVehicleAccess(v, 'revoke'),
+            child: busy
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Revoke access'),
+          ),
+        ],
+      ],
     );
   }
 
@@ -1116,14 +1211,25 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
 
 /// A small green status chip on a vehicle card (Active / Access active).
 class _VehicleStatusChip extends StatelessWidget {
-  const _VehicleStatusChip({required this.ownerSelf, this.status, this.accessActive});
+  const _VehicleStatusChip({required this.ownerSelf, this.status, this.accessActive, this.accessApproval});
   final bool ownerSelf;
   final String? status;
   final bool? accessActive;
+  final String? accessApproval;
+
+  bool get _pending => accessApproval == 'pending' || accessApproval == 'requested';
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    if (!ownerSelf && _pending) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(20)),
+        child: Text('Pending approval',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Colors.amber.shade900, fontWeight: FontWeight.w600)),
+      );
+    }
     final label = ownerSelf
         ? ((status ?? '').trim().isEmpty ? 'Registered' : _titleCase(status!))
         : (accessActive == false ? 'Access ended' : 'Access active');
@@ -2162,7 +2268,7 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                   _sectionLabel(t, cs, 'OWNER'),
                   const SizedBox(height: 8),
                   if (v.ownerName != null) _ownerRow(t, cs, 'Owner name', v.ownerName!),
-                  if (v.ownerIc != null) _ownerRow(t, cs, 'Owner ID', '${v.ownerIc!} · National ID'),
+                  if (v.ownerIc != null) _ownerRow(t, cs, 'Owner ID', '${v.ownerIc!} · ${v.ownerIdType ?? 'National ID'}'),
                   if (v.ownerPhone != null) _ownerRow(t, cs, 'Owner phone', v.ownerPhone!),
                 ],
                 const SizedBox(height: 16),
@@ -2683,13 +2789,32 @@ class _PermitsSection extends ConsumerWidget {
   }
 }
 
-/// The Edit vehicle form (migration 0369): plate / make / model / colour /
-/// year. Returns the patch map to the Vehicle detail sheet on save, or null
-/// when cancelled. Plate, make and model are required (they are NOT NULL on
-/// the row); colour and year may be cleared.
+/// The Edit vehicle form (migrations 0369, 0375): the full spec — plate, make,
+/// model, colour, year, type, energy, status, VIN, engine no. — plus the
+/// registered-owner block (name, ID type + number, phone). Returns the patch
+/// map to the Vehicle detail sheet on save, or null when cancelled. Plate, make
+/// and model are required (make/model are NOT NULL on the row); the rest may be
+/// cleared.
 class _VehicleEditSheet extends StatefulWidget {
   const _VehicleEditSheet({required this.vehicle});
   final VehicleDetail vehicle;
+
+  /// The partner_status labels the DB accepts, with a friendly caption each.
+  static const List<(String, String)> statusOptions = [
+    ('approved', 'Approved'),
+    ('unapproved', 'Unapproved'),
+    ('unapproved-docs', 'Unapproved · docs'),
+    ('permit-pending', 'Permit pending'),
+    ('permit-non-verified', 'Permit not verified'),
+    ('permit-verified', 'Permit verified'),
+    ('changes-needed', 'Changes needed'),
+    ('blocked', 'Blocked'),
+    ('rejected', 'Rejected'),
+  ];
+
+  static const List<String> ownerIdTypeOptions = [
+    'National ID', 'Passport', 'Business Registration', 'Other',
+  ];
 
   @override
   State<_VehicleEditSheet> createState() => _VehicleEditSheetState();
@@ -2702,6 +2827,18 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
   late final _model = TextEditingController(text: widget.vehicle.model ?? '');
   late final _color = TextEditingController(text: widget.vehicle.color ?? '');
   late final _year = TextEditingController(text: widget.vehicle.year ?? '');
+  late final _type = TextEditingController(text: widget.vehicle.vehicleType ?? '');
+  late final _energy = TextEditingController(text: widget.vehicle.energy ?? '');
+  late final _vin = TextEditingController(text: widget.vehicle.vin ?? '');
+  late final _engine = TextEditingController(text: widget.vehicle.engineNumber ?? '');
+  late final _ownerName = TextEditingController(text: widget.vehicle.ownerName ?? '');
+  late final _ownerIc = TextEditingController(text: widget.vehicle.ownerIc ?? '');
+  late final _ownerPhone = TextEditingController(text: widget.vehicle.ownerPhone ?? '');
+
+  late String? _status = _VehicleEditSheet.statusOptions.any((o) => o.$1 == widget.vehicle.status)
+      ? widget.vehicle.status
+      : null;
+  late String? _ownerIdType = widget.vehicle.ownerIdType;
 
   @override
   void dispose() {
@@ -2710,20 +2847,38 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
     _model.dispose();
     _color.dispose();
     _year.dispose();
+    _type.dispose();
+    _energy.dispose();
+    _vin.dispose();
+    _engine.dispose();
+    _ownerName.dispose();
+    _ownerIc.dispose();
+    _ownerPhone.dispose();
     super.dispose();
   }
 
   void _save() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    // Only the keys present are applied server-side. Colour and year are always
-    // sent (so clearing them works); plate/make/model are required and trimmed.
-    Navigator.of(context).pop(<String, String?>{
+    // Every key present is applied server-side; a present-but-empty value clears
+    // that (nullable) column. Plate/make/model are required and trimmed. Status
+    // is only sent when one is picked (it is NOT NULL on the row).
+    final patch = <String, String?>{
       'plate': _plate.text.trim(),
       'make': _make.text.trim(),
       'model': _model.text.trim(),
       'color': _color.text.trim(),
       'year': _year.text.trim(),
-    });
+      'vehicle_type': _type.text.trim(),
+      'energy_type': _energy.text.trim(),
+      'vin': _vin.text.trim(),
+      'engine_number': _engine.text.trim(),
+      'owner_name': _ownerName.text.trim(),
+      'owner_ic': _ownerIc.text.trim(),
+      'owner_phone': _ownerPhone.text.trim(),
+      if (_ownerIdType != null) 'owner_id_type': _ownerIdType,
+      if (_status != null) 'status': _status,
+    };
+    Navigator.of(context).pop(patch);
   }
 
   String? _required(String? v) => (v == null || v.trim().isEmpty) ? 'Required' : null;
@@ -2731,6 +2886,10 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final ownerIdTypes = {
+      ..._VehicleEditSheet.ownerIdTypeOptions,
+      if (widget.vehicle.ownerIdType != null) widget.vehicle.ownerIdType!,
+    }.toList();
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
       child: SingleChildScrollView(
@@ -2741,7 +2900,10 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text('Edit vehicle', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 14),
+              const SizedBox(height: 4),
+              Text('Vehicle', style: t.textTheme.labelMedium?.copyWith(
+                  color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
               TextFormField(
                 key: const ValueKey('vehicle-edit-plate'),
                 controller: _plate,
@@ -2787,6 +2949,86 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      key: const ValueKey('vehicle-edit-type'),
+                      controller: _type,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Type', border: OutlineInputBorder()),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      key: const ValueKey('vehicle-edit-energy'),
+                      controller: _energy,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Energy', border: OutlineInputBorder()),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SearchableDropdownFormField<String>(
+                key: const ValueKey('vehicle-edit-status'),
+                initialValue: _status,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
+                items: [
+                  for (final o in _VehicleEditSheet.statusOptions)
+                    DropdownMenuItem(value: o.$1, child: Text(o.$2)),
+                ],
+                onChanged: (v) => setState(() => _status = v),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-vin'),
+                controller: _vin,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'VIN', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-engine'),
+                controller: _engine,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'Engine no.', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 18),
+              Text('Owner', style: t.textTheme.labelMedium?.copyWith(
+                  color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-owner-name'),
+                controller: _ownerName,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Owner name', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              SearchableDropdownFormField<String>(
+                key: const ValueKey('vehicle-edit-owner-id-type'),
+                initialValue: ownerIdTypes.contains(_ownerIdType) ? _ownerIdType : null,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Owner ID type', border: OutlineInputBorder()),
+                items: [for (final o in ownerIdTypes) DropdownMenuItem(value: o, child: Text(o))],
+                onChanged: (v) => setState(() => _ownerIdType = v),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-owner-ic'),
+                controller: _ownerIc,
+                decoration: const InputDecoration(labelText: 'Owner ID', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-owner-phone'),
+                controller: _ownerPhone,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'Owner phone', border: OutlineInputBorder()),
+              ),
               const SizedBox(height: 18),
               Row(
                 children: [
@@ -2808,6 +3050,168 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// "Assign / approve another vehicle" (migration 0376): find a vehicle by plate
+/// and grant this member access to drive it. Pops `true` once access is granted
+/// so the Vehicle tab refreshes. Needs the manage-vehicle grant (re-checked
+/// server-side); a plate outside the approver's scope returns no vehicle facts.
+class _AssignVehicleSheet extends ConsumerStatefulWidget {
+  const _AssignVehicleSheet({required this.memberId, required this.memberName});
+  final String memberId;
+  final String memberName;
+
+  @override
+  ConsumerState<_AssignVehicleSheet> createState() => _AssignVehicleSheetState();
+}
+
+class _AssignVehicleSheetState extends ConsumerState<_AssignVehicleSheet> {
+  final _plate = TextEditingController();
+  bool _busy = false;
+  bool _searched = false;
+  VehiclePlateHit? _hit;
+
+  @override
+  void dispose() {
+    _plate.dispose();
+    super.dispose();
+  }
+
+  Future<void> _find() async {
+    final plate = _plate.text.trim();
+    if (plate.isEmpty) return;
+    FocusScope.of(context).unfocus();
+    setState(() => _busy = true);
+    try {
+      final hit = await ref.read(approverInboxRepositoryProvider).findVehicleByPlate(plate);
+      if (!mounted) return;
+      setState(() { _hit = hit; _searched = true; });
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed') ? "You can't assign vehicles." : "Couldn't search. Try again.",
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _grant() async {
+    final hit = _hit;
+    if (hit?.id == null) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(hit!.id!, widget.memberId);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Access granted to ${widget.memberName}.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't assign vehicles."
+            : (m.contains('out_of_scope') ? "This vehicle isn't in your scope." : "Couldn't grant access. Try again."),
+        kind: NoticeKind.error));
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    final hit = _hit;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Assign a vehicle', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text('Find a registered vehicle by plate, then grant ${widget.memberName} access to drive it.',
+              style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 14),
+          TextField(
+            key: const ValueKey('assign-vehicle-plate'),
+            controller: _plate,
+            enabled: !_busy,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(labelText: 'Plate number', border: OutlineInputBorder()),
+            onSubmitted: (_) => _find(),
+          ),
+          const SizedBox(height: 10),
+          FilledButton(
+            key: const ValueKey('assign-vehicle-find'),
+            onPressed: _busy ? null : _find,
+            child: _busy
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('Find vehicle'),
+          ),
+          const SizedBox(height: 14),
+          if (_searched && hit != null) ...[
+            if (hit.found && hit.inScope)
+              Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(hit.plate ?? '—', style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                      if (hit.descriptor.isNotEmpty)
+                        Padding(padding: const EdgeInsets.only(top: 4), child: Text(hit.descriptor)),
+                      if (hit.ownerName != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text('Owner: ${hit.ownerName}${hit.ownerIc == null ? '' : ' · ${hit.ownerIc}'}',
+                              style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                        ),
+                      const SizedBox(height: 10),
+                      FilledButton(
+                        key: const ValueKey('assign-vehicle-grant'),
+                        onPressed: _busy ? null : _grant,
+                        child: const Text('Grant access'),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  hit.found
+                      ? "A vehicle with that plate exists, but it isn't in your scope to assign."
+                      : "No vehicle found with that plate.",
+                  style: t.textTheme.bodyMedium,
+                ),
+              ),
+          ],
+          const SizedBox(height: 16),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton(
+              onPressed: _busy ? null : () => Navigator.of(context).pop(false),
+              child: const Text('Done'),
+            ),
+          ),
+        ],
         ),
       ),
     );
