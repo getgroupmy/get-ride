@@ -7,8 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/data/approver_inbox_repository.dart';
+import 'package:get_ride/src/core/permits.dart' show PermitItem;
 import 'package:get_ride/src/data/permits_repository.dart' show VehiclePermits;
 import 'package:get_ride/src/features/approver/my_team_screen.dart';
+import 'package:get_ride/src/providers.dart' show currentUserIdProvider;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 ApproverGrant _grant() => const ApproverGrant(
@@ -74,8 +76,24 @@ class _FakeRepo extends ApproverInboxRepository {
     return plateHit;
   }
 
+  VehiclePermits? permitCard;
+
   @override
-  Future<VehiclePermits?> vehiclePermitCard(String vehicleId) async => null;
+  Future<VehiclePermits?> vehiclePermitCard(String vehicleId) async => permitCard;
+
+  (String, bool)? bypassSet; // (vehicleId, on)
+  (String, String)? revokedPermit; // (vehicleId, permitTypeId)
+
+  @override
+  Future<DateTime?> vehiclePermitBypass(String vehicleId, bool on) async {
+    bypassSet = (vehicleId, on);
+    return on ? DateTime.now().add(const Duration(days: 3)) : null;
+  }
+
+  @override
+  Future<void> revokeVehiclePermit(String vehicleId, String permitTypeId) async {
+    revokedPermit = (vehicleId, permitTypeId);
+  }
 
   (String, String)? createdVehicleDoc; // (vehicleId, docId)
 
@@ -101,13 +119,14 @@ void _bigWindow(WidgetTester tester) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-Future<_FakeRepo> _openSheet(WidgetTester tester, {required bool canManage}) async {
+Future<_FakeRepo> _openSheet(WidgetTester tester, {required bool canManage, VehiclePermits? permitCard}) async {
   _bigWindow(tester);
-  final repo = _FakeRepo();
+  final repo = _FakeRepo()..permitCard = permitCard;
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         approverInboxRepositoryProvider.overrideWithValue(repo),
+        currentUserIdProvider.overrideWith((ref) => 'me'),
         approverSelfProvider.overrideWith((ref) async => _grant()),
         approverOwnerDocumentsProvider.overrideWith((ref, id) async => const <ApproverDoc>[]),
         approverMemberWalletProvider.overrideWith((ref, id) async => null),
@@ -149,6 +168,7 @@ Future<_FakeRepo> _pumpVehicleTab(WidgetTester tester, {required MemberVehicles 
     ProviderScope(
       overrides: [
         approverInboxRepositoryProvider.overrideWithValue(repo),
+        currentUserIdProvider.overrideWith((ref) => 'me'),
         approverSelfProvider.overrideWith((ref) async => _grant()),
         approverOwnerDocumentsProvider.overrideWith((ref, id) async => const <ApproverDoc>[]),
         approverMemberWalletProvider.overrideWith((ref, id) async => null),
@@ -344,5 +364,49 @@ void main() {
 
     expect(repo.assigned, ('v-found', 'm1'));
     expect(find.textContaining('owner was notified'), findsOneWidget);
+  });
+
+  testWidgets('permits section: a manager can revoke an on-file permit', (tester) async {
+    final repo = await _openSheet(
+      tester,
+      canManage: true,
+      permitCard: const VehiclePermits(
+        permits: [PermitItem(typeId: 'evp-type', name: 'EVP', state: 'with', fileUrl: 'u')],
+      ),
+    );
+
+    expect(find.text('EVP'), findsOneWidget); // the permit row rendered
+    await tester.ensureVisible(find.byKey(const ValueKey('permit-revoke-evp-type')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('permit-revoke-evp-type')));
+    await tester.pumpAndSettle();
+    expect(repo.revokedPermit, ('v1', 'evp-type'));
+  });
+
+  testWidgets('permits section: a manager can turn on the e-hailing bypass', (tester) async {
+    // No permits, so the bypass row sits high and the Switch is easy to reach.
+    final repo = await _openSheet(
+      tester,
+      canManage: true,
+      permitCard: const VehiclePermits(permits: []),
+    );
+
+    await tester.ensureVisible(find.byKey(const ValueKey('permit-bypass-toggle')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('permit-bypass-toggle')));
+    await tester.pumpAndSettle();
+    expect(repo.bypassSet, ('v1', true));
+  });
+
+  testWidgets('permits section: without the manage grant, no permit actions show', (tester) async {
+    await _openSheet(
+      tester,
+      canManage: false,
+      permitCard: const VehiclePermits(
+        permits: [PermitItem(typeId: 'evp-type', name: 'EVP', state: 'with', fileUrl: 'u')],
+      ),
+    );
+    expect(find.byKey(const ValueKey('permit-revoke-evp-type')), findsNothing);
+    expect(find.byKey(const ValueKey('permit-bypass-toggle')), findsNothing);
   });
 }
