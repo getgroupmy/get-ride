@@ -50,8 +50,8 @@ class VehicleCatalogRepository {
         .from('vehicle_make_models')
         .select('make, model, energy_type, vehicle_type, seats')
         .eq('status', true)
-        .order('make')
-        .order('model') as List;
+        .order('make', ascending: true)
+        .order('model', ascending: true) as List;
     return [
       for (final r in rows) ?VehicleCatalogEntry.fromJson(Map<String, dynamic>.from(r as Map)),
     ];
