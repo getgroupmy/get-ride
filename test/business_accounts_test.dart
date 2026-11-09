@@ -362,10 +362,11 @@ void main() {
     final repo = await _pump(tester, const BusinessAccountScreen(id: 'acc'), size: const Size(400, 1600));
     await _tap(tester, find.byKey(const ValueKey('business-tab-Members')));
     await _tap(tester, find.byKey(const ValueKey('business-invite')));
-    await tester.enterText(find.byKey(const ValueKey('business-invite-phone')), '+60 12 345 6789');
+    // The national number goes beside the +60 country picker; it composes to E.164.
+    await tester.enterText(find.byKey(const ValueKey('business-invite-phone-number')), '123456789');
     await _tap(tester, find.text('Booker'));
     await _tap(tester, find.byKey(const ValueKey('business-invite-send')));
-    expect(repo.calls, ['invite +60 12 345 6789 booker']);
+    expect(repo.calls, ['invite +60123456789 booker']);
   });
 
   testWidgets('applying: the document, then the details', (tester) async {
