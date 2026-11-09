@@ -180,6 +180,7 @@ class TeamMember {
     this.registeredAt,
     this.updatedAt,
     this.online = false,
+    this.docsExpiring = 0,
   });
 
   final String id;
@@ -219,6 +220,10 @@ class TeamMember {
   /// fresh heartbeat, migration 0368).
   final bool online;
 
+  /// How many of the member's approved documents expire within 30 days (or are
+  /// already past), for the expiring badge (migration 0383).
+  final int docsExpiring;
+
   static String? _s(Object? v) {
     final t = (v as String?)?.trim() ?? '';
     return t.isEmpty ? null : t;
@@ -247,6 +252,7 @@ class TeamMember {
         registeredAt: _date(j['registered_at']),
         updatedAt: _date(j['updated_at']),
         online: j['online'] == true,
+        docsExpiring: (j['docs_expiring'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -1053,6 +1059,14 @@ class ApproverInboxRepository {
   /// can_edit_profile.
   Future<void> resetMemberPin(String memberId) async {
     await _db.rpc('approver_reset_member_pin', params: {'p_member': memberId});
+  }
+
+  /// Set a covered member offline (ends their live session + clears dispatch
+  /// presence) or back online (best-effort, migration 0383). Needs
+  /// can_edit_profile. Returns the online state the server applied.
+  Future<bool> setMemberPresence(String memberId, bool online) async {
+    final r = await _db.rpc('approver_set_member_presence', params: {'p_member': memberId, 'p_online': online});
+    return r is Map ? r['online'] == true : online;
   }
 
   Future<void> editProfile(String memberId, Map<String, dynamic> fields) async {
