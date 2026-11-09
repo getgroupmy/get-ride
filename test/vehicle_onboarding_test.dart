@@ -206,6 +206,84 @@ void main() {
     });
   });
 
+  // The vehicle ownership certificate (migration 0388) is a globally compulsory
+  // vehicle document, so it rides the existing completion gate: the owner can't
+  // submit a vehicle for review until it's uploaded (compulsoryDocsComplete),
+  // and the approver can't approve until it's Approved (server
+  // approver_vehicle_doc_readiness, covered by SQL). This locks the owner half
+  // so a change to required-document resolution can't silently drop the gate.
+  group('vehicle ownership certificate gate (VOC, migration 0388)', () {
+    const vehicleType = 'a7d71867-ac2a-4c0c-ae07-87e5d500693c'; // the Vehicle doc type
+    // The required_document.values row exactly as migration 0388 inserts it.
+    final voc = (
+      id: 'voc',
+      values: <String, dynamic>{
+        'name': 'Vehicle Ownership Certificate',
+        'readAs': 'voc',
+        'active': true,
+        'required': true,
+        'regions': '[]',
+        'regionsGlobal': true,
+        'regionsGlobalCompulsory': true,
+        'docTypes': '["$vehicleType"]',
+        'partnerTypes': '[]',
+        'requireDocumentNumber': true,
+        'requireExpiryDate': false,
+      },
+    );
+    // An ordinary optional vehicle doc, to prove the gate is about the VOC.
+    final optional = (
+      id: 'brochure',
+      values: <String, dynamic>{
+        'name': 'Vehicle Brochure', 'active': true, 'docTypes': '["$vehicleType"]',
+        'regionsGlobal': true, 'regionsGlobalCompulsory': false, 'required': false,
+      },
+    );
+    const area = ServiceArea(countries: ['Malaysia']);
+
+    List<RequiredDoc> docs() => vehicleRequiredDocs(
+          requiredDocuments: [optional, voc],
+          vehicleTypeIds: const {vehicleType},
+          partnerTypes: const ['Teksi'],
+          area: area,
+        );
+
+    test('the VOC is a compulsory vehicle document everywhere', () {
+      final vocDoc = docs().firstWhere((d) => d.id == 'voc');
+      expect(vocDoc.name, 'Vehicle Ownership Certificate');
+      expect(vocDoc.compulsory, isTrue);
+      expect(vocDoc.scope, 'global');
+      // The optional doc is listed but not compulsory.
+      expect(docs().firstWhere((d) => d.id == 'brochure').compulsory, isFalse);
+    });
+
+    test('a vehicle cannot be submitted until the VOC is uploaded', () {
+      // Nothing uploaded → the gate is closed.
+      expect(compulsoryDocsComplete(docs(), const {}), isFalse);
+      // Only the optional doc uploaded → still closed (the VOC is what blocks).
+      expect(
+        compulsoryDocsComplete(docs(), {
+          'brochure': {'status': 'Approved'},
+        }),
+        isFalse,
+      );
+      // VOC uploaded (pending review is enough to submit) → the gate opens.
+      expect(
+        compulsoryDocsComplete(docs(), {
+          'voc': {'status': 'Pending Review'},
+        }),
+        isTrue,
+      );
+      // A rejected VOC does not satisfy the gate.
+      expect(
+        compulsoryDocsComplete(docs(), {
+          'voc': {'status': 'Rejected'},
+        }),
+        isFalse,
+      );
+    });
+  });
+
   group('wizard checks', () {
     final now = DateTime(2026, 10, 9);
 
