@@ -33,8 +33,8 @@ const _member = TeamMember(
 );
 
 final _editKey = const ValueKey('my-team-edit-profile');
-final _payoutKey = const ValueKey('my-team-payout');
-final _phoneKey = const ValueKey('my-team-change-phone');
+final _payoutKey = const ValueKey('profile-edit-payout');
+final _phoneKey = const ValueKey('profile-edit-mobile');
 final _creditKey = const ValueKey('my-team-add-credit');
 
 Future<void> _pump(WidgetTester tester, {required ApproverGrant grant, double? wallet = 12.5}) async {
@@ -65,7 +65,7 @@ void main() {
     // Name in the app bar and the header card.
     expect(find.text('Test Member'), findsWidgets);
     // The member's GET.wallet balance, read via approverMemberWalletProvider.
-    expect(find.text('RM12.50'), findsOneWidget);
+    expect(find.text('RM 12.50'), findsOneWidget);
   });
 
   testWidgets('no grants: no action buttons', (tester) async {

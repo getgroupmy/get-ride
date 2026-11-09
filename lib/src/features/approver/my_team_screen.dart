@@ -691,18 +691,41 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
 
   Widget _profileTab(ColorScheme cs, {required bool canCredit, required bool canEditProfile, required double? wallet}) {
     final text = Theme.of(context).textTheme;
-    Widget row(IconData icon, String label, String value) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
+    // The editable fields (email, address, services, ID-verified) come from the
+    // member-detail map; everything else is on the list card's TeamMember.
+    final detail = ref.watch(approverMemberDetailProvider(member.id)).asData?.value;
+    final email = (detail?['email'] as String?)?.trim();
+    final address = (detail?['address'] as String?)?.trim();
+    final isPartner = detail?['is_partner'] == true;
+    final idVerified = ((detail?['id_verified'] as String?) ?? member.idVerified) == 'Verified';
+    final services = [for (final e in (detail?['partner_types'] as List? ?? const [])) '$e'.trim()]
+      ..removeWhere((e) => e.isEmpty);
+
+    Widget tile(String label, Widget value, {VoidCallback? onEdit, String? editKey}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 16, color: cs.onSurfaceVariant),
-              const SizedBox(width: 10),
-              SizedBox(width: 92, child: Text(label, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant))),
-              Expanded(child: Text(value, style: text.bodyMedium)),
+              SizedBox(
+                width: 96,
+                child: Text(label, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+              ),
+              Expanded(child: DefaultTextStyle.merge(style: text.bodyMedium!, child: value)),
+              if (onEdit != null && canEditProfile)
+                InkWell(
+                  key: editKey == null ? null : ValueKey(editKey),
+                  onTap: onEdit,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: Icon(Icons.edit_outlined, size: 16, color: cs.primary),
+                  ),
+                ),
             ],
           ),
         );
+    Widget txt(String? v) => Text((v == null || v.isEmpty) ? '—' : v);
+    String? fmt(DateTime? d) => d?.toIso8601String().split('T').first;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8),
       child: Padding(
@@ -710,45 +733,86 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (member.phone != null) row(Icons.phone_outlined, 'Mobile', member.phone!),
-            if (member.ic != null) row(Icons.badge_outlined, 'ID No.', member.ic!),
-            if (member.idVerified != null) row(Icons.verified_outlined, 'ID check', member.idVerified!),
-            if (member.nationality != null) row(Icons.public_outlined, 'Nationality', member.nationality!),
+            tile('Name', txt(member.name), onEdit: _openEditProfile, editKey: 'profile-edit-name'),
+            if (isPartner)
+              tile('Services',
+                  services.isEmpty
+                      ? txt(null)
+                      : Wrap(spacing: 6, runSpacing: 4, children: [
+                          for (final s in services)
+                            Chip(
+                              label: Text(s),
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                        ]),
+                  onEdit: _openEditProfile, editKey: 'profile-edit-services'),
+            const Divider(height: 18),
             if (wallet != null)
-              row(Icons.account_balance_wallet_outlined, 'GET.wallet', 'RM${wallet.toStringAsFixed(2)}'),
-            if (canCredit || canEditProfile) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                children: [
-                  if (canEditProfile)
-                    OutlinedButton.icon(
-                      key: const ValueKey('my-team-payout'),
-                      onPressed: _openPayout,
-                      icon: const Icon(Icons.account_balance_outlined, size: 18),
-                      label: const Text('Payout'),
-                    ),
-                  if (canEditProfile)
-                    OutlinedButton.icon(
-                      key: const ValueKey('my-team-change-phone'),
-                      onPressed: _openChangePhone,
-                      icon: const Icon(Icons.phone_iphone_outlined, size: 18),
-                      label: const Text('Change mobile'),
-                    ),
-                  if (canCredit)
-                    FilledButton.tonalIcon(
-                      key: const ValueKey('my-team-add-credit'),
-                      onPressed: _openAddCredit,
-                      icon: const Icon(Icons.add_card_outlined, size: 18),
-                      label: const Text('Add credit'),
-                    ),
-                ],
+              tile('GET.wallet', Text('RM ${wallet.toStringAsFixed(2)}',
+                  style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
+            if (member.displayId != null) tile('Driver no.', txt('#${member.displayId}')),
+            tile('Mobile', txt(member.phone), onEdit: _openChangePhone, editKey: 'profile-edit-mobile'),
+            tile('Email', txt(email), onEdit: _openEditProfile, editKey: 'profile-edit-email'),
+            tile(
+              'ID no.',
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Flexible(child: txt(member.ic)),
+                const SizedBox(width: 8),
+                _idBadge(cs, text, idVerified),
+              ]),
+              onEdit: _openEditProfile, editKey: 'profile-edit-id',
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const ValueKey('profile-view-id'),
+                onPressed: () => setState(() => _tab = _MemberTab.documents),
+                icon: const Icon(Icons.image_outlined, size: 18),
+                label: const Text('View / edit ID details'),
+              ),
+            ),
+            tile('Address', txt(address), onEdit: _openEditProfile, editKey: 'profile-edit-address'),
+            tile('Payout', const Text('Bank / e-wallet'), onEdit: _openPayout, editKey: 'profile-edit-payout'),
+            if (member.nationality != null) tile('Nationality', txt(member.nationality)),
+            const Divider(height: 18),
+            tile('Registered', txt(fmt(member.registeredAt))),
+            tile('Last updated', txt(fmt(member.updatedAt))),
+            if (member.serviceCity != null) tile('Service city', txt(member.serviceCity)),
+            tile(
+              'Current status',
+              Row(children: [
+                Icon(Icons.circle, size: 10, color: member.online ? Colors.green : cs.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Text(member.online ? 'Online' : 'Offline',
+                    style: text.bodyMedium?.copyWith(
+                        color: member.online ? Colors.green.shade800 : cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600)),
+              ]),
+            ),
+            if (canCredit) ...[
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                key: const ValueKey('my-team-add-credit'),
+                onPressed: _openAddCredit,
+                icon: const Icon(Icons.add_card_outlined, size: 18),
+                label: const Text('Add credit'),
               ),
             ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _idBadge(ColorScheme cs, TextTheme text, bool verified) {
+    final color = verified ? Colors.green.shade800 : Colors.amber.shade900;
+    final bg = (verified ? Colors.green : Colors.amber).withValues(alpha: 0.18);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(verified ? 'Verified' : 'Not verified',
+          style: text.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w700)),
     );
   }
 
