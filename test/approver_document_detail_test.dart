@@ -8,6 +8,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/data/approver_inbox_repository.dart';
 import 'package:get_ride/src/features/approver/approver_inbox_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Records the edit the "Fix" button sends, so the test can check which fields
+/// it wrote without touching the network.
+class _FakeRepo extends ApproverInboxRepository {
+  _FakeRepo()
+      : super(SupabaseClient('http://localhost', 'test-anon-key',
+            authOptions: const AuthClientOptions(autoRefreshToken: false)));
+  Map<String, String?>? lastEdit;
+  @override
+  Future<void> editFields(ApproverDoc doc, {String? documentNumber, String? startDate, String? expiryDate}) async {
+    lastEdit = {'number': documentNumber, 'start': startDate, 'expiry': expiryDate};
+  }
+}
 
 ApproverGrant _grant() => const ApproverGrant(
       canApprove: true, canUpload: true, canDelete: false, deleteHard: false,
@@ -79,5 +93,46 @@ void main() {
     await _pump(tester, detail: null);
     expect(find.text('AI VERIFICATION'), findsNothing);
     expect(find.text('STATUS & HISTORY'), findsNothing);
+  });
+
+  testWidgets('a differing editable row shows the stored value and a Fix that applies the read value', (tester) async {
+    final repo = _FakeRepo();
+    const editDoc = ApproverDoc(
+      source: 'partner', id: 'd2', ownerId: 'm1', ownerName: 'X', ownerPhone: '+60',
+      docKey: 'driver_licence', docLabel: "Driver's Licence",
+      fileUrl: 'https://example.invalid/f.jpg', fileUrlBack: null, status: 'Pending Review',
+      requiresNumber: true, requiresExpiry: true,
+    );
+    const editDetail = DocDetail(
+      status: 'Pending Review', documentNumber: 'A999', expiryDate: '2026-12-31',
+      read: [
+        DocReadRow(field: 'Document no.', read: 'A123', stored: 'A999', match: false),
+        DocReadRow(field: 'Expiry', read: '2027-06-01', stored: '2026-12-31', match: false),
+        // Not an editable field — no Fix, just "differs".
+        DocReadRow(field: 'Country', read: 'MY', stored: 'SG', match: false),
+      ],
+    );
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        approverSelfProvider.overrideWith((ref) async => _grant()),
+        approverInboxRepositoryProvider.overrideWithValue(repo),
+        approverDocumentDetailProvider.overrideWith((ref, key) async => editDetail),
+      ],
+      child: MaterialApp(theme: appTheme(Brightness.light), home: const Scaffold(body: ApproverDocumentViewer(doc: editDoc))),
+    ));
+    await tester.pumpAndSettle();
+
+    // Stored value is shown on a differing row; editable rows get a Fix button.
+    expect(find.text('stored: A999'), findsOneWidget);
+    expect(find.byKey(const ValueKey('doc-fix-number')), findsOneWidget);
+    expect(find.byKey(const ValueKey('doc-fix-expiry')), findsOneWidget);
+    // The non-editable Country row differs but has no Fix.
+    expect(find.text('differs'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('doc-fix-number')));
+    await tester.pumpAndSettle();
+    // Only the document number changed; the other required field is resent as-is.
+    expect(repo.lastEdit?['number'], 'A123');
+    expect(repo.lastEdit?['expiry'], '2026-12-31');
   });
 }

@@ -185,6 +185,62 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
     );
   }
 
+  /// Which editable captured field a read-vs-stored row maps to, or null when
+  /// it is not one the approver can correct here (identity-check rows, Country,
+  /// or a document type that does not capture that field).
+  ({String kind, bool required})? _editableFor(DocReadRow r) {
+    final doc = widget.doc;
+    if (doc.source != 'partner' && doc.source != 'vehicle') return null;
+    return switch (r.field) {
+      'Document no.' => (kind: 'number', required: doc.requiresNumber),
+      'Start date' => (kind: 'start', required: doc.requiresStart),
+      'Expiry' => (kind: 'expiry', required: doc.requiresExpiry),
+      _ => null,
+    };
+  }
+
+  /// Apply what the scan read for one field to the stored value (the "Fix"
+  /// button on a differing read-vs-stored row). The edit RPC rewrites every
+  /// captured field the type requires, so the other fields are resent at their
+  /// current stored values and only this one changes. Stays on the sheet and
+  /// refreshes the detail rather than closing it (unlike a save).
+  Future<void> _fixField(DocDetail detail, DocReadRow r) async {
+    final doc = widget.doc;
+    final val = r.read;
+    final map = _editableFor(r);
+    if (val == null || map == null || !map.required) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).editFields(
+            doc,
+            documentNumber: doc.requiresNumber ? (map.kind == 'number' ? val : detail.documentNumber) : null,
+            startDate: doc.requiresStart ? (map.kind == 'start' ? val : detail.startDate) : null,
+            expiryDate: doc.requiresExpiry ? (map.kind == 'expiry' ? val : detail.expiryDate) : null,
+          );
+      if (!mounted) return;
+      // Keep the edit controllers in step, so opening Edit shows the new value.
+      if (map.kind == 'number') _number.text = val;
+      if (map.kind == 'start') _start.text = val;
+      if (map.kind == 'expiry') _expiry.text = val;
+      ref.invalidate(approverDocumentDetailProvider((source: doc.source, id: doc.id)));
+      widget.onChanged?.call();
+      setState(() => _busy = false);
+      unawaited(showAppNotice(
+        id: 'notice.approver', context: context,
+        message: 'Updated ${r.field} to what the document reads.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      final m = e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver', context: context,
+        message: m.contains('APPROVER_EXPIRED')
+            ? "The document reads an expiry in the past — it can't be applied."
+            : "Couldn't apply that. Try again.",
+        kind: NoticeKind.error));
+    }
+  }
+
   /// Re-scan the document to re-read the captured fields: capture or pick a
   /// photo, run the same AI reader the upload form uses, and fill in what it
   /// reads (overwriting, since a rescan is a correction). The approver still
@@ -414,25 +470,50 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
       );
     }
 
-    // Read-from-document vs stored.
+    // Read-from-document vs stored. A differing row that maps to an editable
+    // captured field gets a "Fix" button that writes the read value into it.
     if (detail.read.isNotEmpty) {
       sections.add(header('READ FROM DOCUMENT VS STORED'));
       for (final r in detail.read) {
+        final canFix = !r.match && r.read != null && (_editableFor(r)?.required ?? false);
         sections.add(Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(width: 92, child: Text(r.field, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant))),
-              Expanded(child: Text(r.read ?? '—', style: text.bodyMedium)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(r.read ?? '—', style: text.bodyMedium),
+                    // The stored value only matters when it differs from the read.
+                    if (!r.match)
+                      Text('stored: ${r.stored ?? '—'}',
+                          style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  ],
+                ),
+              ),
               const SizedBox(width: 8),
-              r.match
-                  ? Row(mainAxisSize: MainAxisSize.min, children: [
-                      Icon(Icons.check, size: 15, color: Colors.green.shade700),
-                      const SizedBox(width: 2),
-                      Text('match', style: text.labelMedium?.copyWith(color: Colors.green.shade800, fontWeight: FontWeight.w600)),
-                    ])
-                  : Text('differs', style: text.labelMedium?.copyWith(color: cs.error, fontWeight: FontWeight.w600)),
+              if (r.match)
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.check, size: 15, color: Colors.green.shade700),
+                  const SizedBox(width: 2),
+                  Text('match', style: text.labelMedium?.copyWith(color: Colors.green.shade800, fontWeight: FontWeight.w600)),
+                ])
+              else if (canFix)
+                TextButton(
+                  key: ValueKey('doc-fix-${_editableFor(r)!.kind}'),
+                  onPressed: _busy ? null : () => _fixField(detail, r),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: const Text('Fix'),
+                )
+              else
+                Text('differs', style: text.labelMedium?.copyWith(color: cs.error, fontWeight: FontWeight.w600)),
             ],
           ),
         ));
