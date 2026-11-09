@@ -622,7 +622,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: '/my-team', builder: (_, _) => const MyTeamScreen()),
           GoRoute(
             path: '/my-team/member',
-            builder: (_, state) => MyTeamMemberScreen(member: state.extra! as TeamMember),
+            builder: (_, state) => MyTeamMemberScreen(
+              member: state.extra! as TeamMember,
+              initialTab: state.uri.queryParameters['tab'],
+            ),
           ),
           // Team (0358): the member's team directory (Profile → Team → View members).
           GoRoute(path: '/team/members', builder: (_, _) => const TeamMembersScreen()),

@@ -45,6 +45,13 @@ String? _creditErrorText(Object e) {
 /// their member screen, where the approver manages that person's documents
 /// with the same actions the inbox uses. Profile, vehicle and statistics come
 /// in later phases.
+/// The two My Team lists (migration 0382): the people the approver covers, or
+/// every vehicle those people own.
+enum _TeamMode { partners, vehicles }
+
+/// Sentinel so [_setFilters] can tell "leave as is" from "set to null (All)".
+const Object _unset = Object();
+
 class MyTeamScreen extends ConsumerStatefulWidget {
   const MyTeamScreen({super.key});
 
@@ -59,10 +66,20 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
 
   String _query = '';
   final List<TeamMember> _members = [];
+  final List<CoveredVehicle> _vehicles = [];
   bool _loading = false;
   bool _hasMore = true;
   bool _firstLoadDone = false;
   Object? _error;
+
+  // Filter bullets (migration 0382).
+  _TeamMode _mode = _TeamMode.partners;
+  String? _status; // null | 'approved' | 'unapproved' (both lists)
+  String? _presence; // null | 'online' | 'offline' (partners)
+  String? _usage; // null | 'unassigned' | 'online' | 'offline' (vehicles)
+
+  bool get _isVehicles => _mode == _TeamMode.vehicles;
+  int get _count => _isVehicles ? _vehicles.length : _members.length;
 
   @override
   void initState() {
@@ -94,10 +111,12 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     });
   }
 
-  /// Fresh search / first load: clear the list and fetch the first page.
+  /// Fresh search / filter change / first load: clear the list and fetch the
+  /// first page.
   Future<void> _reload() async {
     setState(() {
       _members.clear();
+      _vehicles.clear();
       _hasMore = true;
       _error = null;
       _firstLoadDone = false;
@@ -105,27 +124,57 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     await _loadMore(fresh: true);
   }
 
+  /// Switch the filter bullets and reload. Null clears (All).
+  void _setFilters({_TeamMode? mode, Object? status = _unset, Object? presence = _unset, Object? usage = _unset}) {
+    setState(() {
+      if (mode != null) _mode = mode;
+      if (!identical(status, _unset)) _status = status as String?;
+      if (!identical(presence, _unset)) _presence = presence as String?;
+      if (!identical(usage, _unset)) _usage = usage as String?;
+    });
+    _reload();
+  }
+
   Future<void> _loadMore({bool fresh = false}) async {
     if (_loading || (!_hasMore && !fresh)) return;
     setState(() => _loading = true);
     try {
-      final page = await ref.read(approverInboxRepositoryProvider).coveredPartners(
-            query: _query,
-            after: fresh ? null : _members.lastOrNull,
-          );
-      if (!mounted) return;
-      setState(() {
-        _members.addAll(page.members);
-        _hasMore = page.hasMore;
-        _loading = false;
-        _firstLoadDone = true;
-      });
+      final repo = ref.read(approverInboxRepositoryProvider);
+      if (_isVehicles) {
+        final page = await repo.coveredVehicles(
+          query: _query,
+          after: fresh ? null : _vehicles.lastOrNull,
+          status: _status,
+          usage: _usage,
+        );
+        if (!mounted) return;
+        setState(() {
+          _vehicles.addAll(page.vehicles);
+          _hasMore = page.hasMore;
+          _loading = false;
+          _firstLoadDone = true;
+        });
+      } else {
+        final page = await repo.coveredPartners(
+          query: _query,
+          after: fresh ? null : _members.lastOrNull,
+          status: _status,
+          presence: _presence,
+        );
+        if (!mounted) return;
+        setState(() {
+          _members.addAll(page.members);
+          _hasMore = page.hasMore;
+          _loading = false;
+          _firstLoadDone = true;
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _firstLoadDone = true;
-        if (_members.isEmpty) _error = e;
+        if (_count == 0) _error = e;
       });
     }
   }
@@ -149,7 +198,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
                   onChanged: _onSearchChanged,
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
-                    hintText: 'Search name, phone, plate or ID',
+                    hintText: _isVehicles ? 'Search plate, make, model or owner' : 'Search name, phone, plate or ID',
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: _searchCtrl.text.isEmpty
                         ? null
@@ -166,6 +215,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
                 ),
               ),
             ),
+            _filterBar(context),
             Expanded(child: _body(context)),
           ],
         )),
@@ -173,8 +223,72 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     );
   }
 
+  /// The filter bullets: which list (Partners / Vehicles), the approval status,
+  /// and presence (partners) or usage (vehicles).
+  Widget _filterBar(BuildContext context) {
+    Widget chips(List<Widget> cs) => SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(children: [
+            for (var i = 0; i < cs.length; i++) ...[
+              if (i > 0) const SizedBox(width: 8),
+              cs[i],
+            ],
+          ]),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: ResponsiveCenter(
+        maxWidth: 760,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            chips([
+              _chip('team-mode-partners', 'All Partners', _mode == _TeamMode.partners,
+                  () => _setFilters(mode: _TeamMode.partners)),
+              _chip('team-mode-vehicles', 'All Vehicles', _mode == _TeamMode.vehicles,
+                  () => _setFilters(mode: _TeamMode.vehicles)),
+            ]),
+            const SizedBox(height: 6),
+            chips([
+              _chip('team-status-all', 'All', _status == null, () => _setFilters(status: null)),
+              _chip('team-status-approved', 'Approved', _status == 'approved', () => _setFilters(status: 'approved')),
+              _chip('team-status-unapproved', 'Unapproved', _status == 'unapproved',
+                  () => _setFilters(status: 'unapproved')),
+            ]),
+            const SizedBox(height: 6),
+            if (_isVehicles)
+              chips([
+                _chip('team-usage-all', 'Any usage', _usage == null, () => _setFilters(usage: null)),
+                _chip('team-usage-unassigned', 'Un-assigned', _usage == 'unassigned',
+                    () => _setFilters(usage: 'unassigned')),
+                _chip('team-usage-online', 'In use · online', _usage == 'online', () => _setFilters(usage: 'online')),
+                _chip('team-usage-offline', 'In use · offline', _usage == 'offline',
+                    () => _setFilters(usage: 'offline')),
+              ])
+            else
+              chips([
+                _chip('team-presence-all', 'Any presence', _presence == null, () => _setFilters(presence: null)),
+                _chip('team-presence-online', 'Online', _presence == 'online', () => _setFilters(presence: 'online')),
+                _chip('team-presence-offline', 'Offline', _presence == 'offline',
+                    () => _setFilters(presence: 'offline')),
+              ]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(String key, String label, bool selected, VoidCallback onTap) => ChoiceChip(
+        key: ValueKey(key),
+        label: Text(label),
+        selected: selected,
+        onSelected: (_) => onTap(),
+      );
+
   Widget _body(BuildContext context) {
-    if (_error != null && _members.isEmpty) {
+    if (_error != null && _count == 0) {
       return EmptyState(
         icon: Icons.cloud_off,
         title: 'Something went wrong',
@@ -183,16 +297,19 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
         action: TextButton(onPressed: _reload, child: const Text('Retry')),
       );
     }
-    if (!_firstLoadDone && _members.isEmpty) {
+    if (!_firstLoadDone && _count == 0) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_members.isEmpty) {
+    if (_count == 0) {
+      final filtered = _query.isNotEmpty || _status != null || _presence != null || _usage != null;
       return EmptyState(
-        icon: Icons.groups_outlined,
-        title: _query.isEmpty ? 'No one in your team yet' : 'No matches',
-        message: _query.isEmpty
-            ? 'People within the scope your admin set appear here.'
-            : 'No one in your scope matches "$_query".',
+        icon: _isVehicles ? Icons.directions_car_outlined : Icons.groups_outlined,
+        title: filtered ? 'No matches' : (_isVehicles ? 'No vehicles yet' : 'No one in your team yet'),
+        message: filtered
+            ? 'No ${_isVehicles ? 'vehicles' : 'one'} in your scope matches these filters.'
+            : (_isVehicles
+                ? "Vehicles owned by people in your scope appear here."
+                : 'People within the scope your admin set appear here.'),
       );
     }
     return RefreshIndicator(
@@ -200,20 +317,35 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
       child: ListView.builder(
         controller: _scroll,
         padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
-        // A scope banner at the top, then the members, then the bottom
+        // A scope banner at the top, then the rows, then the bottom
         // spinner / "that's everyone" line.
-        itemCount: _members.length + 2,
+        itemCount: _count + 2,
         itemBuilder: (context, i) {
           if (i == 0) {
             return ResponsiveCenter(maxWidth: 760, child: _scopeBanner(context));
           }
           final idx = i - 1;
-          if (idx == _members.length) return _footer(context);
+          if (idx == _count) return _footer(context);
+          if (_isVehicles) {
+            final v = _vehicles[idx];
+            return ResponsiveCenter(
+              maxWidth: 760,
+              child: _VehicleListCard(
+                vehicle: v,
+                onTap: () => context.push(
+                  '/my-team/member?tab=vehicle',
+                  extra: TeamMember(id: v.ownerId, name: v.ownerName, displayId: v.ownerDisplayId),
+                ),
+              ),
+            );
+          }
           return ResponsiveCenter(
             maxWidth: 760,
             child: _TeamCard(
               member: _members[idx],
               onTap: () => context.push('/my-team/member', extra: _members[idx]),
+              onDocs: () => context.push('/my-team/member?tab=documents', extra: _members[idx]),
+              onStats: () => context.push('/my-team/member?tab=statistics', extra: _members[idx]),
             ),
           );
         },
@@ -273,10 +405,12 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
 
 /// One person's card in the My Team list.
 class _TeamCard extends StatelessWidget {
-  const _TeamCard({required this.member, required this.onTap});
+  const _TeamCard({required this.member, required this.onTap, required this.onDocs, required this.onStats});
 
   final TeamMember member;
   final VoidCallback onTap;
+  final VoidCallback onDocs;
+  final VoidCallback onStats;
 
   static String _money(double v) {
     final neg = v < 0;
@@ -385,6 +519,29 @@ class _TeamCard extends StatelessWidget {
                   const Spacer(),
                   Text('Open', style: text.labelLarge?.copyWith(color: cs.primary)),
                   Icon(Icons.chevron_right, color: cs.primary),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // Quick shortcuts straight into this member's Documents / Statistics.
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: ValueKey('my-team-docs-${member.id}'),
+                      onPressed: onDocs,
+                      icon: const Icon(Icons.description_outlined, size: 18),
+                      label: Text(member.pendingDocs > 0 ? 'Documents (${member.pendingDocs})' : 'Documents'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: ValueKey('my-team-stats-${member.id}'),
+                      onPressed: onStats,
+                      icon: const Icon(Icons.bar_chart_outlined, size: 18),
+                      label: const Text('Statistics'),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -543,15 +700,138 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
+/// A vehicle's live-usage chip on the All Vehicles list (migration 0382):
+/// green "In use · online", amber "In use · offline", or a grey "Un-assigned".
+class _UsageChip extends StatelessWidget {
+  const _UsageChip({required this.usage});
+  final String usage; // 'online' | 'offline' | 'unassigned'
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    const green = Color(0xFF1B8A4B);
+    const amber = Color(0xFFB26A00);
+    final (dot, label, dim) = switch (usage) {
+      'online' => (green, 'In use · online', false),
+      'offline' => (amber, 'In use · offline', false),
+      _ => (cs.onSurfaceVariant, 'Un-assigned', true),
+    };
+    final bg = dim ? cs.surfaceContainerHighest : dot.withValues(alpha: 0.14);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(width: 7, height: 7, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+          const SizedBox(width: 5),
+          Text(label, style: text.labelSmall?.copyWith(color: dot, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+/// One row of the "All Vehicles" list (migration 0382): plate, spec, owner,
+/// approval status and live usage. Tapping opens the owner's Vehicle tab.
+class _VehicleListCard extends StatelessWidget {
+  const _VehicleListCard({required this.vehicle, required this.onTap});
+
+  final CoveredVehicle vehicle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final v = vehicle;
+    return Card(
+      key: ValueKey('my-team-vehicle-${v.id}'),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.directions_car_outlined, color: cs.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(v.plate, style: text.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        if (v.descriptor.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Text(v.descriptor,
+                                style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (v.status != null) _StatusChip(status: v.status!),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _line(context, Icons.person_outline,
+                  [v.ownerName, if (v.ownerDisplayId != null) '#${v.ownerDisplayId}'].join(' · ')),
+              if (v.serviceCity != null) _line(context, Icons.place_outlined, v.serviceCity!),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  _UsageChip(usage: v.usage ?? 'unassigned'),
+                  const Spacer(),
+                  Text('Open', style: text.labelLarge?.copyWith(color: cs.primary)),
+                  Icon(Icons.chevron_right, color: cs.primary),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _line(BuildContext context, IconData icon, String value) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: cs.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(value,
+                style: Theme.of(context).textTheme.bodyMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// My Team → a person: their details header and their documents, with the
 /// same review actions the inbox offers (migration 0357). Reached by a
 /// GoRoute with the [TeamMember] as `extra`. The member's full profile, split
 /// into tabs (Profile / Vehicle / Documents); Statistics follows with its own
 /// aggregation.
 class MyTeamMemberScreen extends ConsumerStatefulWidget {
-  const MyTeamMemberScreen({super.key, required this.member});
+  const MyTeamMemberScreen({super.key, required this.member, this.initialTab});
 
   final TeamMember member;
+
+  /// Which tab to open on ('profile' | 'statistics' | 'vehicle' | 'documents'),
+  /// so a list-card shortcut can land straight on Documents or Statistics.
+  final String? initialTab;
 
   @override
   ConsumerState<MyTeamMemberScreen> createState() => _MyTeamMemberScreenState();
@@ -560,8 +840,15 @@ class MyTeamMemberScreen extends ConsumerStatefulWidget {
 /// The member tabs, in the order the mockup shows them.
 enum _MemberTab { profile, statistics, vehicle, documents }
 
+_MemberTab _memberTabFromName(String? name) => switch (name) {
+      'statistics' => _MemberTab.statistics,
+      'vehicle' => _MemberTab.vehicle,
+      'documents' => _MemberTab.documents,
+      _ => _MemberTab.profile,
+    };
+
 class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
-  _MemberTab _tab = _MemberTab.profile;
+  late _MemberTab _tab = _memberTabFromName(widget.initialTab);
   String _statsPeriod = 'month';
   String? _busyVehicleAccess;
   bool _busyStatus = false;
