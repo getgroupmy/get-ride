@@ -9,9 +9,11 @@ import 'package:uuid/uuid.dart';
 
 import '../../admin/screens/people/people_logic.dart' show partnerTypeOptions;
 import '../../admin/screens/people/people_widgets.dart' show PartnerTypeField;
+import '../../admin/screens/meterapp/pick_image.dart' show pickDocumentImage, PickedImage;
 import '../../core/document_ai.dart' show docAiRequestBody, docAiAutofill, docAiUnavailableText;
 import '../../core/ic_info.dart' show malaysianIcInfo;
 import '../../core/permits.dart' show PermitItem, PermitStatus;
+import '../../widgets/date_boxes.dart' show DateBoxesField;
 import '../../core/secure_screen.dart';
 import '../../data/approver_inbox_repository.dart';
 import '../../data/document_ai_repository.dart' show documentAiRepositoryProvider;
@@ -886,6 +888,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
   String? _busyVehicleAccess;
   bool _busyStatus = false;
   bool _busyPresence = false;
+  bool _busyCourier = false;
   String? _busyVehicleStatus;
   /// Optimistic availability after the approver toggles it, so the header chip
   /// reflects the change without a list refresh.
@@ -1065,6 +1068,32 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         kind: NoticeKind.error));
     } finally {
       if (mounted) setState(() => _busyPresence = false);
+    }
+  }
+
+  /// Add or remove the Courier service type in the member's partner_types
+  /// (loose end 3) via the profile edit — a quick toggle instead of opening the
+  /// full edit sheet. Needs can_edit_profile. [services] is the current list.
+  Future<void> _toggleCourier(List<String> services, bool enable) async {
+    setState(() => _busyCourier = true);
+    final next = [for (final s in services) if (s.toLowerCase() != 'courier') s];
+    if (enable) next.add('Courier');
+    try {
+      await ref.read(approverInboxRepositoryProvider).editProfile(member.id, {'partner_types': next});
+      ref.invalidate(approverMemberDetailProvider(member.id));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: enable ? 'Courier enabled.' : 'Courier removed.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: m.contains('not_allowed') ? "You can't change this member's services." : "Couldn't update. Try again.",
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyCourier = false);
     }
   }
 
@@ -1318,6 +1347,39 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                             ),
                         ]),
                   onEdit: _openEditProfile, editKey: 'profile-edit-services'),
+            if (isPartner && canEditProfile)
+              Padding(
+                padding: const EdgeInsets.only(left: 96, bottom: 2),
+                child: Builder(builder: (_) {
+                  final hasCourier = services.any((s) => s.toLowerCase() == 'courier');
+                  if (_busyCourier) {
+                    return const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 6),
+                        child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                      ),
+                    );
+                  }
+                  return Align(
+                    alignment: Alignment.centerLeft,
+                    child: hasCourier
+                        ? TextButton.icon(
+                            key: const ValueKey('courier-remove'),
+                            style: TextButton.styleFrom(foregroundColor: cs.error),
+                            onPressed: () => _toggleCourier(services, false),
+                            icon: const Icon(Icons.check_circle, size: 16),
+                            label: const Text('Courier enabled · remove'),
+                          )
+                        : FilledButton.tonalIcon(
+                            key: const ValueKey('courier-enable'),
+                            onPressed: () => _toggleCourier(services, true),
+                            icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                            label: const Text('Enable Courier'),
+                          ),
+                  );
+                }),
+              ),
             const Divider(height: 18),
             if (wallet != null)
               tile('GET.wallet', Text('RM ${wallet.toStringAsFixed(2)}',
@@ -4183,6 +4245,16 @@ class _PermitsSectionState extends ConsumerState<_PermitsSection> {
     }
   }
 
+  Future<void> _openPermitSheet(PermitItem p) async {
+    final saved = await showAppSheet<bool>(
+      id: 'approver.vehicle-permit',
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => _VehiclePermitSheet(vehicleId: widget.vehicleId, permit: p),
+    );
+    if (saved == true) ref.invalidate(approverVehiclePermitCardProvider(widget.vehicleId));
+  }
+
   String _permitError(Object e) {
     final m = e is PostgrestException ? e.message : e.toString();
     if (m.contains('not_allowed')) return "You can't manage this vehicle's permits.";
@@ -4352,21 +4424,209 @@ class _PermitsSectionState extends ConsumerState<_PermitsSection> {
                 ),
               ],
             ),
-            if (widget.canManage && onFile)
+            if (widget.canManage)
               Align(
                 alignment: Alignment.centerRight,
                 child: Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: TextButton(
-                    key: ValueKey('permit-revoke-${p.typeId}'),
-                    style: TextButton.styleFrom(foregroundColor: cs.error),
-                    onPressed: busy ? null : () => _revoke(p),
-                    child: busy
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Text('Revoke'),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton.icon(
+                        key: ValueKey('permit-upload-${p.typeId}'),
+                        onPressed: busy ? null : () => _openPermitSheet(p),
+                        icon: const Icon(Icons.upload_outlined, size: 16),
+                        label: Text(onFile ? 'Replace' : 'Upload'),
+                      ),
+                      if (onFile)
+                        TextButton(
+                          key: ValueKey('permit-revoke-${p.typeId}'),
+                          style: TextButton.styleFrom(foregroundColor: cs.error),
+                          onPressed: busy ? null : () => _revoke(p),
+                          child: busy
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Text('Revoke'),
+                        ),
+                    ],
                   ),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Put a vehicle permit (the EVP / APAD e-hailing permit, or any other) on file
+/// (migration 0386): type or scan its number and expiry. "Scan a photo" runs
+/// the same AI reader the upload forms use and fills the fields; the chosen
+/// image is attached after saving. Pops `true` when the permit was written.
+class _VehiclePermitSheet extends ConsumerStatefulWidget {
+  const _VehiclePermitSheet({required this.vehicleId, required this.permit});
+  final String vehicleId;
+  final PermitItem permit;
+
+  @override
+  ConsumerState<_VehiclePermitSheet> createState() => _VehiclePermitSheetState();
+}
+
+class _VehiclePermitSheetState extends ConsumerState<_VehiclePermitSheet> {
+  final _number = TextEditingController();
+  final _expiry = TextEditingController();
+  PickedImage? _image;
+  bool _busy = false;
+  bool _scanning = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final until = widget.permit.validUntil;
+    if (until != null) _expiry.text = until.toIso8601String().split('T').first;
+  }
+
+  @override
+  void dispose() {
+    _number.dispose();
+    _expiry.dispose();
+    super.dispose();
+  }
+
+  String get _permitName =>
+      widget.permit.name.isEmpty ? (widget.permit.shortName.isEmpty ? 'Permit' : widget.permit.shortName) : widget.permit.name;
+
+  Future<void> _scan() async {
+    final picked = await pickDocumentImage(context);
+    if (picked == null || !mounted) return;
+    setState(() {
+      _image = picked;
+      _scanning = true;
+    });
+    try {
+      final repo = ref.read(documentAiRepositoryProvider);
+      final url = await repo.prepare(picked.bytes, picked.name);
+      final outcome = url == null
+          ? (result: null, reason: 'image_too_large')
+          : await repo.verify(docAiRequestBody(
+              frontDataUrl: url, docName: _permitName,
+              documentNumber: _number.text, expiryDate: _expiry.text));
+      final r = outcome.result;
+      if (r == null) {
+        if (!mounted) return;
+        unawaited(showAppNotice(
+          id: 'notice.approver-permit', context: context,
+          message: docAiUnavailableText(outcome.reason), kind: NoticeKind.error));
+        return;
+      }
+      final fill = docAiAutofill(
+        r,
+        requireDocumentNumber: true, requireStartDate: false, requireExpiryDate: true,
+        requireInsuranceProvider: false, pwdFlag: false,
+        documentNumber: '', startDate: '', expiryDate: '',
+        insurerId: null, isPwd: false, insurers: const [],
+      );
+      if (!mounted) return;
+      setState(() {
+        if (fill.documentNumber != null) _number.text = fill.documentNumber!;
+        if (fill.expiryDate != null) _expiry.text = fill.expiryDate!;
+      });
+      unawaited(showAppNotice(
+        id: 'notice.approver-permit', context: context,
+        message: fill.filled.isEmpty
+            ? 'Scanned, but nothing matched — type the details.'
+            : 'Read from the document. Check the details before saving.',
+        kind: fill.filled.isEmpty ? NoticeKind.info : NoticeKind.success));
+    } catch (_) {
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-permit', context: context,
+        message: "Couldn't read the document. Type the details instead.", kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _busy = true);
+    try {
+      final repo = ref.read(approverInboxRepositoryProvider);
+      final expiry = _expiry.text.trim().isEmpty ? null : _expiry.text.trim();
+      final docId = await repo.setVehiclePermit(
+        widget.vehicleId, widget.permit.typeId,
+        number: _number.text.trim(), expiry: expiry);
+      if (_image != null) {
+        await repo.uploadVehicleDocImage(docId, bytes: _image!.bytes, contentType: _image!.contentType);
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      unawaited(showAppNotice(
+        id: 'notice.approver-permit', context: context,
+        message: '$_permitName saved.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-permit', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't manage this vehicle's permits."
+            : (m.contains('out_of_scope') ? "This vehicle isn't in your scope." : "Couldn't save the permit. Try again."),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final today = DateTime.now();
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 18, right: 18, top: 14,
+          bottom: 18 + MediaQuery.of(context).viewInsets.bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(_permitName, style: text.titleLarge),
+            const SizedBox(height: 2),
+            Text('Put the permit on file for this vehicle.',
+                style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              key: const ValueKey('permit-scan'),
+              onPressed: (_busy || _scanning) ? null : _scan,
+              icon: _scanning
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.document_scanner_outlined, size: 18),
+              label: Text(_image == null ? 'Scan a photo' : 'Photo selected · scan again'),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              key: const ValueKey('permit-number'),
+              controller: _number,
+              enabled: !_busy,
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(labelText: 'Permit number', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 14),
+            DateBoxesField(
+              key: const ValueKey('permit-expiry'),
+              label: 'Expiry date',
+              controller: _expiry,
+              firstDate: DateTime(today.year - 1),
+              lastDate: DateTime(today.year + 30),
+            ),
+            const SizedBox(height: 18),
+            FilledButton(
+              key: const ValueKey('permit-save'),
+              onPressed: _busy ? null : _save,
+              child: _busy
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : Text(widget.permit.fileUrl != null ? 'Save permit' : 'Put on file'),
+            ),
           ],
         ),
       ),
