@@ -122,7 +122,8 @@ class _FakeRepo extends ApproverInboxRepository {
   Future<List<ApproverDoc>> ownerDocuments(String ownerId) async => const <ApproverDoc>[];
 
   @override
-  Future<TeamPage> coveredPartners({String? query, TeamMember? after, int limit = ApproverInboxRepository.teamPageSize}) async =>
+  Future<TeamPage> coveredPartners(
+          {String? query, TeamMember? after, int limit = ApproverInboxRepository.teamPageSize, String? status, String? presence}) async =>
       const TeamPage(members: [TeamMember(id: 'm2', displayId: 'GR-0002', name: 'Rajesh')], hasMore: false);
 }
 

@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../admin/screens/meterapp/display_logic.dart' show approverMenuItemId;
 import '../core/inbox.dart' show inboxBadgeText;
 import '../core/side_menu.dart';
+import '../data/approver_inbox_repository.dart' show approverPendingCountProvider;
 import '../data/notifications_repository.dart' show unreadNotificationsProvider;
 import 'common.dart' show mutedTextColor;
 import 'media_image.dart';
@@ -159,6 +161,9 @@ class SideMenuTile extends StatelessWidget {
   /// The built-in Notifications row carries its unread count.
   bool get _counts => !entry.custom && !entry.comingSoon && entry.id == notificationsMenuItemId;
 
+  /// The built-in Approvals row carries its "waiting to review" count + NEW tag.
+  bool get _countsApprovals => !entry.custom && !entry.comingSoon && entry.id == approverMenuItemId;
+
   @override
   Widget build(BuildContext context) {
     if (plain) {
@@ -174,6 +179,8 @@ class SideMenuTile extends StatelessWidget {
             ? Text('Soon', style: TextStyle(fontSize: 12, color: SideMenuColors.of(context).muted))
             : _counts
             ? const UnreadNotificationsBadge()
+            : _countsApprovals
+            ? const ApprovalsPendingBadge()
             : null,
         onTap: () => _tap(context),
       );
@@ -200,6 +207,11 @@ class SideMenuTile extends StatelessWidget {
           ? const Row(
               mainAxisSize: MainAxisSize.min,
               children: [UnreadNotificationsBadge(), Icon(Icons.chevron_right)],
+            )
+          : _countsApprovals
+          ? const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [ApprovalsPendingBadge(), Icon(Icons.chevron_right)],
             )
           : const Icon(Icons.chevron_right),
       onTap: () => _tap(context),
@@ -229,6 +241,44 @@ class UnreadNotificationsBadge extends ConsumerWidget {
         textAlign: TextAlign.center,
         style: TextStyle(color: cs.onError, fontSize: 12, fontWeight: FontWeight.w700),
       ),
+    );
+  }
+}
+
+/// The Approvals row's trailing: a "NEW" tag and a count pill of documents
+/// waiting to review. Nothing when the inbox is empty (or still loading).
+class ApprovalsPendingBadge extends ConsumerWidget {
+  const ApprovalsPendingBadge({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pending = ref.watch(approverPendingCountProvider);
+    if (pending == 0) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+    return Row(
+      key: const ValueKey('menu-approvals-badge'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(color: cs.tertiary, borderRadius: BorderRadius.circular(9)),
+          child: Text(
+            'NEW',
+            style: TextStyle(color: cs.onTertiary, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Container(
+          constraints: const BoxConstraints(minWidth: 22),
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+          decoration: BoxDecoration(color: cs.error, borderRadius: BorderRadius.circular(11)),
+          child: Text(
+            inboxBadgeText(pending),
+            textAlign: TextAlign.center,
+            style: TextStyle(color: cs.onError, fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        ),
+      ],
     );
   }
 }

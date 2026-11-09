@@ -257,6 +257,73 @@ class TeamPage {
   final bool hasMore;
 }
 
+/// One vehicle in the approver's "All Vehicles" list (migration 0382): its
+/// plate and spec, approval [status], live [usage], and the owner it belongs to.
+class CoveredVehicle {
+  const CoveredVehicle({
+    required this.id,
+    required this.plate,
+    this.make,
+    this.model,
+    this.year,
+    this.color,
+    this.status,
+    this.usage,
+    required this.ownerId,
+    required this.ownerName,
+    this.ownerDisplayId,
+    this.serviceCity,
+  });
+
+  final String id;
+  final String plate;
+  final String? make;
+  final String? model;
+  final String? year;
+  final String? color;
+
+  /// Approval status (partner_status): 'approved', 'pending', …
+  final String? status;
+
+  /// Live state from the vehicle session: 'online' | 'offline' | 'unassigned'.
+  final String? usage;
+
+  final String ownerId;
+  final String ownerName;
+  final String? ownerDisplayId;
+  final String? serviceCity;
+
+  /// "Toyota · Corolla Cross · Grey · 2024" — the parts that are present.
+  String get descriptor =>
+      [make, model, color, year].where((e) => (e ?? '').trim().isNotEmpty).join(' · ');
+
+  static String? _s(Object? v) {
+    final t = (v as String?)?.trim() ?? '';
+    return t.isEmpty ? null : t;
+  }
+
+  static CoveredVehicle fromJson(Map<String, dynamic> j) => CoveredVehicle(
+        id: '${j['id']}',
+        plate: (j['plate'] as String?)?.trim().isNotEmpty == true ? (j['plate'] as String).trim() : '—',
+        make: _s(j['make']),
+        model: _s(j['model']),
+        year: _s(j['year']),
+        color: _s(j['color']),
+        status: _s(j['status']),
+        usage: _s(j['usage']),
+        ownerId: '${j['owner_id']}',
+        ownerName: _s(j['owner_name']) ?? 'User',
+        ownerDisplayId: _s(j['owner_display_id']),
+        serviceCity: _s(j['service_city']),
+      );
+}
+
+class CoveredVehiclePage {
+  const CoveredVehiclePage({required this.vehicles, required this.hasMore});
+  final List<CoveredVehicle> vehicles;
+  final bool hasMore;
+}
+
 /// A bank or e-wallet from the admin-managed payout list (migration 0361).
 class PayoutProvider {
   const PayoutProvider({required this.name, required this.type});
@@ -758,15 +825,46 @@ class ApproverInboxRepository {
   /// One keyset-paginated, searchable page of the people this approver covers
   /// (migration 0357). Pass [query] to search name / phone / plate / ID, and
   /// the last member of the previous page as [after] to get the next one.
-  Future<TeamPage> coveredPartners({String? query, TeamMember? after, int limit = teamPageSize}) async {
+  Future<TeamPage> coveredPartners({
+    String? query,
+    TeamMember? after,
+    int limit = teamPageSize,
+    String? status,
+    String? presence,
+  }) async {
     final rows = await _db.rpc('approver_covered_partners', params: {
       'p_query': (query ?? '').trim().isEmpty ? null : query!.trim(),
       'p_after_name': after?.name,
       'p_after_id': after?.id,
       'p_limit': limit,
+      'p_status': status,
+      'p_presence': presence,
     }) as List;
     final members = [for (final r in rows) TeamMember.fromJson(Map<String, dynamic>.from(r as Map))];
     return TeamPage(members: members, hasMore: members.length >= limit);
+  }
+
+  /// One keyset-paginated page of the vehicles owned by the people this approver
+  /// covers (migration 0382) — the "All Vehicles" list. [status] filters the
+  /// approval ('approved' / 'unapproved'); [usage] the live state
+  /// ('unassigned' / 'online' / 'offline').
+  Future<CoveredVehiclePage> coveredVehicles({
+    String? query,
+    CoveredVehicle? after,
+    int limit = teamPageSize,
+    String? status,
+    String? usage,
+  }) async {
+    final rows = await _db.rpc('approver_covered_vehicles', params: {
+      'p_query': (query ?? '').trim().isEmpty ? null : query!.trim(),
+      'p_after_plate': after?.plate,
+      'p_after_id': after?.id,
+      'p_limit': limit,
+      'p_status': status,
+      'p_usage': usage,
+    }) as List;
+    final vehicles = [for (final r in rows) CoveredVehicle.fromJson(Map<String, dynamic>.from(r as Map))];
+    return CoveredVehiclePage(vehicles: vehicles, hasMore: vehicles.length >= limit);
   }
 
   /// Every document of one covered person, across all three stores and every
@@ -1093,6 +1191,11 @@ final approverPendingProvider = FutureProvider.autoDispose<List<ApproverDoc>>((r
   if (ref.watch(currentUserIdProvider) == null) return const <ApproverDoc>[];
   return ref.watch(approverInboxRepositoryProvider).pending();
 });
+
+/// How many documents wait in the approver's inbox — the side-menu Approvals
+/// count (0 while loading or on error, so the row never shows a stale number).
+final approverPendingCountProvider = Provider.autoDispose<int>((ref) =>
+    ref.watch(approverPendingProvider).maybeWhen(data: (d) => d.length, orElse: () => 0));
 
 /// Every document of one covered team member (My Team → member → Documents,
 /// migration 0357).

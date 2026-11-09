@@ -12,20 +12,40 @@ import 'package:get_ride/src/features/approver/my_team_screen.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _FakeRepo extends ApproverInboxRepository {
-  _FakeRepo(this._page)
+  _FakeRepo(this._page, {this.vehicles = const []})
       : super(SupabaseClient('http://localhost', 'test-anon-key',
             authOptions: const AuthClientOptions(autoRefreshToken: false)));
   final TeamPage _page;
+  final List<CoveredVehicle> vehicles;
+
+  // Records the filters the screen asked with, for assertions.
+  String? lastStatus;
+  String? lastPresence;
+  String? lastUsage;
+
   @override
-  Future<TeamPage> coveredPartners({String? query, TeamMember? after, int limit = ApproverInboxRepository.teamPageSize}) async => _page;
+  Future<TeamPage> coveredPartners(
+      {String? query, TeamMember? after, int limit = ApproverInboxRepository.teamPageSize, String? status, String? presence}) async {
+    lastStatus = status;
+    lastPresence = presence;
+    return _page;
+  }
+
+  @override
+  Future<CoveredVehiclePage> coveredVehicles(
+      {String? query, CoveredVehicle? after, int limit = ApproverInboxRepository.teamPageSize, String? status, String? usage}) async {
+    lastStatus = status;
+    lastUsage = usage;
+    return CoveredVehiclePage(vehicles: vehicles, hasMore: false);
+  }
 }
 
-Future<void> _pump(WidgetTester tester, List<TeamMember> members) async {
+Future<void> _pump(WidgetTester tester, List<TeamMember> members, {List<CoveredVehicle> vehicles = const [], _FakeRepo? repo}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
         approverInboxRepositoryProvider.overrideWithValue(
-          _FakeRepo(TeamPage(members: members, hasMore: false)),
+          repo ?? _FakeRepo(TeamPage(members: members, hasMore: false), vehicles: vehicles),
         ),
       ],
       child: MaterialApp(theme: appTheme(Brightness.light), home: const MyTeamScreen()),
@@ -86,9 +106,27 @@ void main() {
     // Service city in the info grid, and its label.
     expect(find.text('Kuala Lumpur'), findsOneWidget);
     expect(find.text('SERVICE CITY'), findsOneWidget);
-    // The online pill and the pending-docs chip.
-    expect(find.text('Online'), findsOneWidget);
+    // The online pill (scoped to the card — a presence filter chip also reads
+    // "Online") and the pending-docs chip.
+    expect(
+      find.descendant(of: find.byKey(const ValueKey('my-team-member-u1')), matching: find.text('Online')),
+      findsOneWidget,
+    );
     expect(find.text('2 to review'), findsOneWidget);
+    // Docs / Stats shortcuts; the Documents one carries the pending count.
+    expect(find.byKey(const ValueKey('my-team-docs-u1')), findsOneWidget);
+    expect(find.byKey(const ValueKey('my-team-stats-u1')), findsOneWidget);
+    expect(find.text('Documents (2)'), findsOneWidget);
+    expect(find.text('Statistics'), findsOneWidget);
+  });
+
+  testWidgets('shortcuts show a plain Documents label when nothing is waiting', (tester) async {
+    await _pump(tester, const [
+      TeamMember(id: 'u5', displayId: 'GR-0005', name: 'Siti', status: 'approved'),
+    ]);
+    expect(find.byKey(const ValueKey('my-team-docs-u5')), findsOneWidget);
+    expect(find.text('Documents'), findsOneWidget);
+    expect(find.byKey(const ValueKey('my-team-stats-u5')), findsOneWidget);
   });
 
   testWidgets('offline member shows no Online pill', (tester) async {
@@ -97,9 +135,11 @@ void main() {
     ]);
 
     expect(find.text('Rajesh'), findsOneWidget);
-    expect(find.text('Online'), findsNothing);
+    final card = find.byKey(const ValueKey('my-team-member-u3'));
+    // No online pill on the card (a presence filter chip reads "Online").
+    expect(find.descendant(of: card, matching: find.text('Online')), findsNothing);
     // An offline member now shows a grey "Offline" pill (migration-free UI).
-    expect(find.text('Offline'), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text('Offline')), findsOneWidget);
     // With no wallet balance the subtitle is the account number alone.
     expect(find.text('#GR-0003'), findsOneWidget);
   });
@@ -109,5 +149,48 @@ void main() {
       TeamMember(id: 'u4', displayId: 'GR-0004', name: 'Lim', status: 'approved'),
     ]);
     expect(find.textContaining('Showing'), findsOneWidget);
+  });
+
+  testWidgets('filter bullets render; a status filter reloads with it', (tester) async {
+    final repo = _FakeRepo(const TeamPage(
+      members: [TeamMember(id: 'u6', displayId: 'GR-0006', name: 'Faiz', status: 'approved')],
+      hasMore: false,
+    ));
+    await _pump(tester, const [], repo: repo);
+    // The mode + status + presence bullets are all present.
+    expect(find.byKey(const ValueKey('team-mode-partners')), findsOneWidget);
+    expect(find.byKey(const ValueKey('team-mode-vehicles')), findsOneWidget);
+    expect(find.byKey(const ValueKey('team-status-approved')), findsOneWidget);
+    expect(find.byKey(const ValueKey('team-presence-online')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('team-status-unapproved')));
+    await tester.pumpAndSettle();
+    expect(repo.lastStatus, 'unapproved');
+  });
+
+  testWidgets('switching to Vehicles shows vehicle cards and usage bullets', (tester) async {
+    final repo = _FakeRepo(
+      const TeamPage(members: [], hasMore: false),
+      vehicles: const [
+        CoveredVehicle(
+          id: 'v1', plate: 'JXB7484', make: 'Toyota', model: 'Corolla Cross',
+          status: 'approved', usage: 'online', ownerId: 'u1', ownerName: 'Anwar', ownerDisplayId: 'GR-0001',
+        ),
+      ],
+    );
+    await _pump(tester, const [], repo: repo);
+    await tester.tap(find.byKey(const ValueKey('team-mode-vehicles')));
+    await tester.pumpAndSettle();
+
+    // The vehicle card and its usage chip show; usage bullets replace presence.
+    expect(find.byKey(const ValueKey('my-team-vehicle-v1')), findsOneWidget);
+    expect(find.text('JXB7484'), findsOneWidget);
+    expect(find.text('In use · online'), findsWidgets);
+    expect(find.byKey(const ValueKey('team-usage-unassigned')), findsOneWidget);
+    expect(find.byKey(const ValueKey('team-presence-online')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('team-usage-unassigned')));
+    await tester.pumpAndSettle();
+    expect(repo.lastUsage, 'unassigned');
   });
 }
