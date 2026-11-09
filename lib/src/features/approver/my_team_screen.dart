@@ -516,6 +516,10 @@ class _TeamCard extends StatelessWidget {
                   else
                     Text('No documents waiting',
                         style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  if (member.docsExpiring > 0) ...[
+                    const SizedBox(width: 8),
+                    _ExpiringChip(count: member.docsExpiring),
+                  ],
                   const Spacer(),
                   Text('Open', style: text.labelLarge?.copyWith(color: cs.primary)),
                   Icon(Icons.chevron_right, color: cs.primary),
@@ -591,6 +595,33 @@ class _PresenceChip extends StatelessWidget {
           const SizedBox(width: 5),
           Text(online ? 'Online' : 'Offline',
               style: text.labelSmall?.copyWith(color: dot, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+}
+
+/// An amber badge for a member whose approved documents are within 30 days of
+/// expiry (or already past). Hidden by the caller when the count is zero.
+class _ExpiringChip extends StatelessWidget {
+  const _ExpiringChip({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    const amber = Color(0xFFB4690E);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+      decoration: BoxDecoration(
+          color: amber.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.schedule_outlined, size: 14, color: amber),
+          const SizedBox(width: 5),
+          Text('$count expiring',
+              style: text.labelSmall?.copyWith(color: amber, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -852,8 +883,14 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
   String _statsPeriod = 'month';
   String? _busyVehicleAccess;
   bool _busyStatus = false;
+  bool _busyPresence = false;
   String? _busyVehicleStatus;
+  /// Optimistic availability after the approver toggles it, so the header chip
+  /// reflects the change without a list refresh.
+  bool? _presenceOverride;
   TeamMember get member => widget.member;
+
+  bool get _memberOnline => _presenceOverride ?? member.online;
 
   /// Tap a registered vehicle's status badge: approve only when every required
   /// vehicle document is approved (0379) — otherwise open the vehicle sheet to
@@ -982,6 +1019,53 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
     }
   }
 
+  /// Approver sets a member's availability (migration 0383). Force-offline is
+  /// real; back-online is best-effort — it re-activates a live session the
+  /// driver's device already opened but can't conjure one. Needs
+  /// can_edit_profile; confirmed because it changes the driver's own state.
+  Future<void> _onPresenceTap() async {
+    final toOnline = !_memberOnline;
+    final first = member.name.split(' ').first;
+    final ok = await showAppDialog<bool>(
+      id: 'dialog.approver-presence', context: context,
+      builder: (c) => AlertDialog(
+        title: Text(toOnline ? 'Set $first online?' : 'Set $first offline?'),
+        content: Text(toOnline
+            ? "This marks $first available for dispatch and re-activates their live session if their device has one open. It can't start a session their device never opened."
+            : "This ends $first's live session and takes them off dispatch. They stay offline until they go back online."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('member-presence-confirm'),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(toOnline ? 'Set online' : 'Set offline')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busyPresence = true);
+    try {
+      final applied = await ref.read(approverInboxRepositoryProvider).setMemberPresence(member.id, toOnline);
+      if (!mounted) return;
+      setState(() => _presenceOverride = applied);
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: applied ? '$first set online.' : '$first set offline.',
+        kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't change this member's availability."
+            : (m.contains('out_of_scope') ? "This member isn't in your scope." : "Couldn't update availability. Try again."),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyPresence = false);
+    }
+  }
+
   /// Approve / decline / revoke an allowed-to-use assignment from its card
   /// (migration 0376). Refreshes the member's vehicle lists on success.
   Future<void> _setMemberVehicleAccess(MemberVehicle v, String action) async {
@@ -1053,7 +1137,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
             children: [
-              ResponsiveCenter(maxWidth: 760, child: _headerCard(cs)),
+              ResponsiveCenter(maxWidth: 760, child: _headerCard(cs, canEditProfile: canEditProfile)),
               const SizedBox(height: 10),
               ResponsiveCenter(maxWidth: 760, child: _tabBar(cs)),
               const SizedBox(height: 8),
@@ -1075,7 +1159,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
 
   // ---- Header + tab bar -----------------------------------------------------
 
-  Widget _headerCard(ColorScheme cs) {
+  Widget _headerCard(ColorScheme cs, {required bool canEditProfile}) {
     final text = Theme.of(context).textTheme;
     final subtitle = [
       if ((member.vehicleLabel ?? '').trim().isNotEmpty) member.vehicleLabel!.trim(),
@@ -1100,6 +1184,27 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                       padding: const EdgeInsets.only(top: 2),
                       child: Text(subtitle, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
                     ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Builder(builder: (context) {
+                          final chip = _PresenceChip(online: _memberOnline);
+                          if (!canEditProfile) return chip;
+                          return InkWell(
+                            key: const ValueKey('member-presence-chip'),
+                            borderRadius: BorderRadius.circular(20),
+                            onTap: _busyPresence ? null : _onPresenceTap,
+                            child: Opacity(opacity: _busyPresence ? 0.5 : 1, child: chip),
+                          );
+                        }),
+                        if (member.docsExpiring > 0) _ExpiringChip(count: member.docsExpiring),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1246,11 +1351,11 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
             tile(
               'Current status',
               Row(children: [
-                Icon(Icons.circle, size: 10, color: member.online ? Colors.green : cs.onSurfaceVariant),
+                Icon(Icons.circle, size: 10, color: _memberOnline ? Colors.green : cs.onSurfaceVariant),
                 const SizedBox(width: 6),
-                Text(member.online ? 'Online' : 'Offline',
+                Text(_memberOnline ? 'Online' : 'Offline',
                     style: text.bodyMedium?.copyWith(
-                        color: member.online ? Colors.green.shade800 : cs.onSurfaceVariant,
+                        color: _memberOnline ? Colors.green.shade800 : cs.onSurfaceVariant,
                         fontWeight: FontWeight.w600)),
               ]),
             ),
@@ -1698,7 +1803,10 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                         color: cs.onSurfaceVariant, letterSpacing: 0.6, fontWeight: FontWeight.w700)),
               ),
               for (final d in driver) _DocCard(doc: d, onChanged: onChanged, meta: meta[d.id] as Map?),
-              for (final ad in addable) _MissingDocCard(doc: ad, onUpload: () => _addDocumentOnBehalf(ad, onChanged)),
+              for (final ad in addable)
+                _MissingDocCard(
+                  doc: ad, onUpload: () => _addDocumentOnBehalf(ad, onChanged),
+                  memberId: member.id, source: 'partner'),
             ],
             if (vehicle.isNotEmpty) ...[
               Padding(
@@ -2331,6 +2439,19 @@ class _DocCardState extends ConsumerState<_DocCard> {
                 ],
               ],
             ),
+            // Nudge the member to (re)upload while the document isn't approved.
+            if (canUpload && status != 'Approved') ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _RequestUploadButton(
+                  memberId: doc.ownerId,
+                  source: doc.source,
+                  docKey: doc.id,
+                  label: doc.docLabel,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -2376,9 +2497,18 @@ class _DocCardState extends ConsumerState<_DocCard> {
 /// A driver document type the member hasn't uploaded, shown as "No Document"
 /// with an "Upload on behalf" action (migration 0372).
 class _MissingDocCard extends StatelessWidget {
-  const _MissingDocCard({required this.doc, required this.onUpload});
+  const _MissingDocCard({
+    required this.doc,
+    required this.onUpload,
+    required this.memberId,
+    required this.source,
+    this.vehicleId,
+  });
   final AddableDoc doc;
   final VoidCallback onUpload;
+  final String memberId;
+  final String source;
+  final String? vehicleId;
 
   @override
   Widget build(BuildContext context) {
@@ -2434,9 +2564,126 @@ class _MissingDocCard extends StatelessWidget {
                 label: const Text('Upload on behalf'),
               ),
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _RequestUploadButton(
+                memberId: memberId,
+                source: source,
+                docKey: doc.docId,
+                label: doc.name,
+                vehicleId: vehicleId,
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "just now" / "5m ago" / "3h ago" / "2d ago" / "04 Feb" for an approver's
+/// last upload reminder. Pure, so it is unit-tested.
+String approverRelativeTime(DateTime t, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  final d = n.difference(t);
+  if (d.inSeconds < 60) return 'just now';
+  if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+  if (d.inHours < 24) return '${d.inHours}h ago';
+  if (d.inDays < 7) return '${d.inDays}d ago';
+  const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return '${t.day.toString().padLeft(2, '0')} ${m[t.month - 1]}';
+}
+
+/// "Request upload" — an approver nudges a covered member to upload a pending or
+/// missing document with a push, and the button then shows how many reminders
+/// have gone and when the last one was (migration 0384). Shown only with
+/// can_upload (the server requires it). Works for every document source.
+class _RequestUploadButton extends ConsumerStatefulWidget {
+  const _RequestUploadButton({
+    required this.memberId,
+    required this.source,
+    required this.docKey,
+    required this.label,
+    this.vehicleId,
+  });
+
+  final String memberId;
+  final String source;
+  final String docKey;
+  final String label;
+  final String? vehicleId;
+
+  @override
+  ConsumerState<_RequestUploadButton> createState() => _RequestUploadButtonState();
+}
+
+class _RequestUploadButtonState extends ConsumerState<_RequestUploadButton> {
+  bool _busy = false;
+  DocRequestStat? _override;
+
+  String get _key => ref
+      .read(approverInboxRepositoryProvider)
+      .docRequestKey(widget.source, widget.docKey, vehicleId: widget.vehicleId);
+
+  Future<void> _send() async {
+    setState(() => _busy = true);
+    try {
+      final stat = await ref.read(approverInboxRepositoryProvider).requestDocumentUpload(
+            widget.memberId, widget.source, widget.docKey,
+            label: widget.label, vehicleId: widget.vehicleId,
+          );
+      if (!mounted) return;
+      setState(() => _override = stat);
+      ref.invalidate(approverDocumentRequestStatsProvider(widget.memberId));
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc-request', context: context,
+        message: 'Upload request sent to ${widget.label}.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc-request', context: context,
+        message: m.contains('not_allowed') || m.contains('not_authorized')
+            ? "You can't request uploads for this member."
+            : (m.contains('out_of_scope') ? "This member isn't in your scope." : "Couldn't send the request. Try again."),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final stats = ref.watch(approverDocumentRequestStatsProvider(widget.memberId)).asData?.value ?? const {};
+    final stat = _override ?? stats[_key];
+    final count = stat?.count ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        OutlinedButton.icon(
+          key: ValueKey('doc-request-${widget.source}-${widget.docKey}'),
+          style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+          onPressed: _busy ? null : _send,
+          icon: _busy
+              ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.notifications_active_outlined, size: 16),
+          label: Text(count > 0 ? 'Request again' : 'Request upload'),
+        ),
+        if (count > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 3, left: 2),
+            child: Text(
+              'Requested $count×'
+              '${stat?.lastSentAt != null ? ' · last ${approverRelativeTime(stat!.lastSentAt!)}' : ''}',
+              key: ValueKey('doc-request-count-${widget.source}-${widget.docKey}'),
+              style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -3408,11 +3655,13 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                 const SizedBox(height: 6),
                 if (v.documents.isEmpty && !v.canManage)
                   Text('No documents on file.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                for (final d in v.documents) _docRow(t, cs, d),
+                for (final d in v.documents) _docRow(t, cs, d, canManage: v.canManage),
                 if (v.canManage)
                   for (final ad in (ref.watch(approverAddableVehicleDocsProvider(widget.vehicleId)).asData?.value
                       ?? const <AddableDoc>[]))
-                    _MissingDocCard(doc: ad, onUpload: () => _addVehicleDocument(ad)),
+                    _MissingDocCard(
+                      doc: ad, onUpload: () => _addVehicleDocument(ad),
+                      memberId: widget.memberId, source: 'vehicle', vehicleId: widget.vehicleId),
                 if (v.canManage) ...[
                   const SizedBox(height: 18),
                   Row(
@@ -3825,7 +4074,7 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
     );
   }
 
-  Widget _docRow(ThemeData t, ColorScheme cs, VehicleDoc d) {
+  Widget _docRow(ThemeData t, ColorScheme cs, VehicleDoc d, {required bool canManage}) {
     final sub = [
       if (d.expiry != null) 'Exp ${d.expiry}',
       if (d.provider != null) d.provider,
@@ -3834,22 +4083,41 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(d.name, style: t.textTheme.titleSmall),
-                  if (sub.isNotEmpty)
-                    Text(sub, style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                ],
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(d.name, style: t.textTheme.titleSmall),
+                      if (sub.isNotEmpty)
+                        Text(sub, style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+                if (d.status != null)
+                  Text(d.status!, style: t.textTheme.labelMedium?.copyWith(
+                      color: d.status == 'Approved' ? Colors.green.shade800 : cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600)),
+              ],
             ),
-            if (d.status != null)
-              Text(d.status!, style: t.textTheme.labelMedium?.copyWith(
-                  color: d.status == 'Approved' ? Colors.green.shade800 : cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w600)),
+            // Nudge the member while a vehicle document isn't approved.
+            if (canManage && d.status != 'Approved') ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _RequestUploadButton(
+                  memberId: widget.memberId,
+                  source: 'vehicle',
+                  docKey: d.id,
+                  label: d.name,
+                  vehicleId: widget.vehicleId,
+                ),
+              ),
+            ],
           ],
         ),
       ),

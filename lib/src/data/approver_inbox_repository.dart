@@ -180,6 +180,7 @@ class TeamMember {
     this.registeredAt,
     this.updatedAt,
     this.online = false,
+    this.docsExpiring = 0,
   });
 
   final String id;
@@ -219,6 +220,10 @@ class TeamMember {
   /// fresh heartbeat, migration 0368).
   final bool online;
 
+  /// How many of the member's approved documents expire within 30 days (or are
+  /// already past), for the expiring badge (migration 0383).
+  final int docsExpiring;
+
   static String? _s(Object? v) {
     final t = (v as String?)?.trim() ?? '';
     return t.isEmpty ? null : t;
@@ -247,6 +252,7 @@ class TeamMember {
         registeredAt: _date(j['registered_at']),
         updatedAt: _date(j['updated_at']),
         online: j['online'] == true,
+        docsExpiring: (j['docs_expiring'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -815,6 +821,14 @@ class AddableDoc {
       );
 }
 
+/// How many times an approver has nudged a member to upload a document, and
+/// when the last reminder was sent (migration 0384).
+class DocRequestStat {
+  const DocRequestStat({required this.count, this.lastSentAt});
+  final int count;
+  final DateTime? lastSentAt;
+}
+
 class ApproverInboxRepository {
   ApproverInboxRepository(this._db);
   final SupabaseClient _db;
@@ -910,6 +924,52 @@ class ApproverInboxRepository {
     final r = await _db.rpc('approver_create_vehicle_document',
         params: {'p_vehicle': vehicleId, 'p_doc_id': docId, 'p_doc_name': docName}) as Map;
     return (id: '${r['id']}', ownerId: '${r['owner_id']}');
+  }
+
+  /// The composite key a document-upload request is counted under: its source,
+  /// the document's id (for an existing doc) or type id (for a missing one),
+  /// and the vehicle for a vehicle document. Must match what the server stores.
+  String docRequestKey(String source, String docKey, {String? vehicleId}) =>
+      '$source|$docKey|${vehicleId ?? ''}';
+
+  /// The per-document reminder counters for a covered member (migration 0384),
+  /// keyed by [docRequestKey]. Empty on a legacy database or out of scope.
+  Future<Map<String, DocRequestStat>> documentRequestStats(String memberId) async {
+    final rows = await _db.rpc('approver_document_request_stats', params: {'p_member': memberId}) as List? ?? const [];
+    final out = <String, DocRequestStat>{};
+    for (final e in rows) {
+      final m = Map<String, dynamic>.from(e as Map);
+      final key = docRequestKey('${m['source']}', '${m['doc_key']}', vehicleId: m['vehicle_id'] as String?);
+      out[key] = DocRequestStat(
+        count: (m['sent_count'] as num?)?.toInt() ?? 0,
+        lastSentAt: m['last_sent_at'] == null ? null : DateTime.tryParse('${m['last_sent_at']}')?.toLocal(),
+      );
+    }
+    return out;
+  }
+
+  /// Nudge a covered member to upload a pending or missing document, sending a
+  /// push (migration 0384). Returns the running count and the time this
+  /// reminder was sent. Needs can_upload; throws on scope/permission failures.
+  Future<DocRequestStat> requestDocumentUpload(
+    String memberId,
+    String source,
+    String docKey, {
+    String? label,
+    String? vehicleId,
+  }) async {
+    final r = await _db.rpc('approver_request_document_upload', params: {
+      'p_member': memberId,
+      'p_source': source,
+      'p_doc_key': docKey,
+      'p_label': label,
+      'p_vehicle': vehicleId,
+    });
+    final m = r is Map ? Map<String, dynamic>.from(r) : const <String, dynamic>{};
+    return DocRequestStat(
+      count: (m['sent_count'] as num?)?.toInt() ?? 1,
+      lastSentAt: m['last_sent_at'] == null ? null : DateTime.tryParse('${m['last_sent_at']}')?.toLocal(),
+    );
   }
 
   /// One covered member's GET.wallet balance, for display (migration 0359);
@@ -1053,6 +1113,14 @@ class ApproverInboxRepository {
   /// can_edit_profile.
   Future<void> resetMemberPin(String memberId) async {
     await _db.rpc('approver_reset_member_pin', params: {'p_member': memberId});
+  }
+
+  /// Set a covered member offline (ends their live session + clears dispatch
+  /// presence) or back online (best-effort, migration 0383). Needs
+  /// can_edit_profile. Returns the online state the server applied.
+  Future<bool> setMemberPresence(String memberId, bool online) async {
+    final r = await _db.rpc('approver_set_member_presence', params: {'p_member': memberId, 'p_online': online});
+    return r is Map ? r['online'] == true : online;
   }
 
   Future<void> editProfile(String memberId, Map<String, dynamic> fields) async {
@@ -1246,6 +1314,19 @@ final approverAddableVehicleDocsProvider =
     return await ref.watch(approverInboxRepositoryProvider).addableVehicleDocuments(vehicleId);
   } catch (_) {
     return const <AddableDoc>[];
+  }
+});
+
+/// The per-document upload-reminder counters for a covered member (My Team,
+/// 0384), keyed by [ApproverInboxRepository.docRequestKey]. Empty on a legacy
+/// database or out of scope.
+final approverDocumentRequestStatsProvider =
+    FutureProvider.autoDispose.family<Map<String, DocRequestStat>, String>((ref, memberId) async {
+  if (ref.watch(currentUserIdProvider) == null) return const <String, DocRequestStat>{};
+  try {
+    return await ref.watch(approverInboxRepositoryProvider).documentRequestStats(memberId);
+  } catch (_) {
+    return const <String, DocRequestStat>{};
   }
 });
 
