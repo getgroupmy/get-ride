@@ -148,7 +148,9 @@ class _PendingUploadTab extends ConsumerWidget {
                 separatorBuilder: (_, _) => const Divider(height: 1, indent: 16),
                 itemBuilder: (context, i) => ResponsiveCenter(
                   maxWidth: 760,
-                  child: _PendingUploadRow(item: items[i]),
+                  child: _PendingUploadRow(
+                    key: ValueKey('pending-upload-row-${items[i].memberId}-${items[i].source}-${items[i].vehicleId ?? ''}-${items[i].docKey}'),
+                    item: items[i]),
                 ),
               ),
             ),
@@ -160,7 +162,7 @@ class _PendingUploadTab extends ConsumerWidget {
 /// count / time from the row and updates them on each nudge, so the list need
 /// not reload after a reminder.
 class _PendingUploadRow extends ConsumerStatefulWidget {
-  const _PendingUploadRow({required this.item});
+  const _PendingUploadRow({super.key, required this.item});
   final PendingUpload item;
 
   @override
@@ -177,7 +179,7 @@ class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
     setState(() => _busy = true);
     try {
       final stat = await ref.read(approverInboxRepositoryProvider).requestDocumentUpload(
-            item.memberId, item.source, item.docKey, label: item.name,
+            item.memberId, item.source, item.docKey, label: item.name, vehicleId: item.vehicleId,
           );
       if (!mounted) return;
       setState(() {
@@ -209,11 +211,20 @@ class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
     return '${_two(t.day)} ${m[t.month - 1]} ${t.year}, ${_two(t.hour)}:${_two(t.minute)}';
   }
 
+  /// Distinct per member + document + (for a vehicle doc) vehicle, so two cars
+  /// missing the same document each get their own row and notify button.
+  String get _rowId => '${widget.item.memberId}-${widget.item.source}-${widget.item.vehicleId ?? ''}-${widget.item.docKey}';
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final item = widget.item;
+    // A vehicle document names its car by plate; a driver/partner document
+    // stands alone.
+    final docLine = item.isVehicle
+        ? '${(item.plate?.isNotEmpty ?? false) ? '${item.plate} · ' : ''}${item.name}'
+        : item.name;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
@@ -222,7 +233,7 @@ class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
           CircleAvatar(
             backgroundColor: cs.surfaceContainerHighest,
             foregroundColor: cs.onSurfaceVariant,
-            child: const Icon(Icons.badge_outlined),
+            child: Icon(item.isVehicle ? Icons.directions_car_outlined : Icons.badge_outlined),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -230,14 +241,14 @@ class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.memberName, style: text.titleSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
-                Text(item.name, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                Text(docLine, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                     maxLines: 2, overflow: TextOverflow.ellipsis),
                 if (_count > 0)
                   Padding(
                     padding: const EdgeInsets.only(top: 3),
                     child: Text(
                       'Requested $_count×${_lastSentAt != null ? ' · last ${_fmtDateTime(_lastSentAt!)}' : ''}',
-                      key: ValueKey('pending-upload-count-${item.memberId}-${item.docKey}'),
+                      key: ValueKey('pending-upload-count-$_rowId'),
                       style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                     ),
                   ),
@@ -246,7 +257,7 @@ class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
           ),
           const SizedBox(width: 8),
           OutlinedButton.icon(
-            key: ValueKey('pending-upload-notify-${item.memberId}-${item.docKey}'),
+            key: ValueKey('pending-upload-notify-$_rowId'),
             style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
             onPressed: _busy ? null : _send,
             icon: _busy

@@ -175,6 +175,33 @@ void main() {
     expect(find.byKey(const ValueKey('doc-request-partner-lic-type')), findsOneWidget);
   });
 
+  testWidgets('a verify/approve-only approver (no can_upload) can see and nudge, but not upload on behalf', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          approverInboxRepositoryProvider.overrideWithValue(_FakeRepo()),
+          // Can review but NOT upload.
+          approverSelfProvider.overrideWith((ref) async => _grant(upload: false)),
+          approverMemberWalletProvider.overrideWith((ref, id) async => null),
+          approverOwnerDocumentsProvider.overrideWith((ref, id) async => const <ApproverDoc>[]),
+          approverOwnerDocMetaProvider.overrideWith((ref, id) async => const <String, dynamic>{}),
+          approverAddableDocsProvider.overrideWith((ref, id) async =>
+              const [AddableDoc(docId: 'lic-type', name: "Driver's Licence", required: true)]),
+        ],
+        child: MaterialApp(theme: appTheme(Brightness.light), home: const MyTeamMemberScreen(member: _member)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('member-tab-documents')));
+    await tester.pumpAndSettle();
+
+    // The missing doc is visible and can be nudged…
+    expect(find.text("Driver's Licence"), findsOneWidget);
+    expect(find.byKey(const ValueKey('doc-request-partner-lic-type')), findsOneWidget);
+    // …but Upload-on-behalf is hidden without can_upload.
+    expect(find.byKey(const ValueKey('doc-upload-onbehalf-lic-type')), findsNothing);
+  });
+
   testWidgets('a pending replacement shows the New/Live two-image state', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

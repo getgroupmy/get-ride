@@ -14,7 +14,7 @@ import 'package:get_ride/src/providers.dart' show currentUserIdProvider;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 ApproverGrant _grant() => const ApproverGrant(
-      canApprove: true, canUpload: false, canDelete: false, deleteHard: false,
+      canApprove: true, canUpload: true, canDelete: false, deleteHard: false,
       canCredit: false, canEditProfile: true, canVerifyId: false, canManageVehicle: true,
       scope: 'all', docTypes: [],
     );

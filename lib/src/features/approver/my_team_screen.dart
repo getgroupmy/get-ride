@@ -1842,6 +1842,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         final vehicle = [for (final d in list) if (d.source == 'vehicle') d];
         final meta = ref.watch(approverOwnerDocMetaProvider(member.id)).asData?.value ?? const {};
         final addable = ref.watch(approverAddableDocsProvider(member.id)).asData?.value ?? const <AddableDoc>[];
+        final canUpload = ref.watch(approverSelfProvider).value?.canUpload ?? false;
         // Only truly empty when nothing is uploaded AND nothing is still
         // required — otherwise show the missing required docs so the approver
         // can upload on behalf or send an upload request.
@@ -1874,7 +1875,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
               for (final ad in addable)
                 _MissingDocCard(
                   doc: ad, onUpload: () => _addDocumentOnBehalf(ad, onChanged),
-                  memberId: member.id, source: 'partner'),
+                  memberId: member.id, source: 'partner', canUpload: canUpload),
             ],
             if (vehicle.isNotEmpty) ...[
               Padding(
@@ -2507,8 +2508,9 @@ class _DocCardState extends ConsumerState<_DocCard> {
                 ],
               ],
             ),
-            // Nudge the member to (re)upload while the document isn't approved.
-            if (canUpload && status != 'Approved') ...[
+            // Nudge the member to (re)upload while the document isn't approved —
+            // any covering approver may nudge, not only one who can upload.
+            if (status != 'Approved') ...[
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerLeft,
@@ -2571,12 +2573,17 @@ class _MissingDocCard extends StatelessWidget {
     required this.memberId,
     required this.source,
     this.vehicleId,
+    this.canUpload = true,
   });
   final AddableDoc doc;
   final VoidCallback onUpload;
   final String memberId;
   final String source;
   final String? vehicleId;
+
+  /// Whether this approver may upload the document on the member's behalf.
+  /// Without it the card still shows (and can nudge), just without the upload.
+  final bool canUpload;
 
   @override
   Widget build(BuildContext context) {
@@ -2623,16 +2630,18 @@ class _MissingDocCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 11),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                key: ValueKey('doc-upload-onbehalf-${doc.docId}'),
-                onPressed: onUpload,
-                icon: const Icon(Icons.upload_outlined, size: 18),
-                label: const Text('Upload on behalf'),
+            if (canUpload) ...[
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  key: ValueKey('doc-upload-onbehalf-${doc.docId}'),
+                  onPressed: onUpload,
+                  icon: const Icon(Icons.upload_outlined, size: 18),
+                  label: const Text('Upload on behalf'),
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
+              const SizedBox(height: 8),
+            ],
             Align(
               alignment: Alignment.centerLeft,
               child: _RequestUploadButton(
@@ -3729,7 +3738,8 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                       ?? const <AddableDoc>[]))
                     _MissingDocCard(
                       doc: ad, onUpload: () => _addVehicleDocument(ad),
-                      memberId: widget.memberId, source: 'vehicle', vehicleId: widget.vehicleId),
+                      memberId: widget.memberId, source: 'vehicle', vehicleId: widget.vehicleId,
+                      canUpload: ref.watch(approverSelfProvider).value?.canUpload ?? false),
                 if (v.canManage) ...[
                   const SizedBox(height: 18),
                   Row(
