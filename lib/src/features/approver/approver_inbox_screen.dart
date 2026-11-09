@@ -46,56 +46,218 @@ class ApproverInboxScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final value = ref.watch(approverPendingProvider);
     // Other people's ID and licence images: keep them out of screenshots and
     // screen recordings while they are on screen (Android fully; iOS hides
     // during recording — a screenshot can't be blocked there).
     return SecureScreen(
-      child: Scaffold(
-      appBar: AppBar(title: const Text('Approvals')),
-      body: OfflineStrip.over(AsyncView<List<ApproverDoc>>(
-        value: value,
-        onRetry: () => ref.invalidate(approverPendingProvider),
-        data: (docs) => docs.isEmpty
-            ? const EmptyState(
-                icon: Icons.fact_check_outlined,
-                title: 'Nothing to review',
-                message: 'Documents waiting for your review appear here, within the scope your admin set.',
-              )
-            : RefreshIndicator(
-                onRefresh: () async => ref.invalidate(approverPendingProvider),
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: docs.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
-                  itemBuilder: (context, i) {
-                    final d = docs[i];
-                    final cs = Theme.of(context).colorScheme;
-                    return ResponsiveCenter(
-                      maxWidth: 760,
-                      child: ListTile(
-                        key: ValueKey('approver-doc-${d.id}'),
-                        leading: CircleAvatar(
-                          backgroundColor: cs.surfaceContainerHighest,
-                          foregroundColor: cs.onSurfaceVariant,
-                          child: Icon(iconFor(d.source)),
-                        ),
-                        title: Text(d.docLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(ownerLine(d),
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => _openDocument(context, d),
-                      ),
-                    );
-                  },
-                ),
-              ),
-      )),
-    ),
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Approvals'),
+            bottom: const TabBar(
+              tabs: [
+                Tab(key: ValueKey('approvals-tab-review'), text: 'To review'),
+                Tab(key: ValueKey('approvals-tab-pending'), text: 'Pending Upload'),
+              ],
+            ),
+          ),
+          body: TabBarView(
+            children: [
+              _reviewTab(context, ref),
+              const _PendingUploadTab(),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
+  /// The documents waiting for this approver's review (the original Approvals
+  /// list).
+  Widget _reviewTab(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(approverPendingProvider);
+    return OfflineStrip.over(AsyncView<List<ApproverDoc>>(
+      value: value,
+      onRetry: () => ref.invalidate(approverPendingProvider),
+      data: (docs) => docs.isEmpty
+          ? const EmptyState(
+              icon: Icons.fact_check_outlined,
+              title: 'Nothing to review',
+              message: 'Documents waiting for your review appear here, within the scope your admin set.',
+            )
+          : RefreshIndicator(
+              onRefresh: () async => ref.invalidate(approverPendingProvider),
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: docs.length,
+                separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
+                itemBuilder: (context, i) {
+                  final d = docs[i];
+                  final cs = Theme.of(context).colorScheme;
+                  return ResponsiveCenter(
+                    maxWidth: 760,
+                    child: ListTile(
+                      key: ValueKey('approver-doc-${d.id}'),
+                      leading: CircleAvatar(
+                        backgroundColor: cs.surfaceContainerHighest,
+                        foregroundColor: cs.onSurfaceVariant,
+                        child: Icon(iconFor(d.source)),
+                      ),
+                      title: Text(d.docLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(ownerLine(d),
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _openDocument(context, d),
+                    ),
+                  );
+                },
+              ),
+            ),
+    ));
+  }
+
   Future<void> _openDocument(BuildContext context, ApproverDoc d) => openApproverDocument(context, d);
+}
+
+/// "Pending Upload" tab (migration 0389): every required document still missing
+/// across the people this approver covers, each with a button to nudge the
+/// member to upload it and the count / time of the last reminder. Needs
+/// can_upload (the RPC returns nothing otherwise, so the tab reads empty).
+class _PendingUploadTab extends ConsumerWidget {
+  const _PendingUploadTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final value = ref.watch(approverPendingUploadsProvider);
+    return OfflineStrip.over(AsyncView<List<PendingUpload>>(
+      value: value,
+      onRetry: () => ref.invalidate(approverPendingUploadsProvider),
+      data: (items) => items.isEmpty
+          ? const EmptyState(
+              icon: Icons.cloud_upload_outlined,
+              title: 'Nothing pending upload',
+              message: 'Required documents your people still need to upload appear here, within '
+                  'the scope your admin set. You can nudge each one from this list.',
+            )
+          : RefreshIndicator(
+              onRefresh: () async => ref.invalidate(approverPendingUploadsProvider),
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: items.length,
+                separatorBuilder: (_, _) => const Divider(height: 1, indent: 16),
+                itemBuilder: (context, i) => ResponsiveCenter(
+                  maxWidth: 760,
+                  child: _PendingUploadRow(item: items[i]),
+                ),
+              ),
+            ),
+    ));
+  }
+}
+
+/// One member + missing document, with the nudge button. Seeds its reminder
+/// count / time from the row and updates them on each nudge, so the list need
+/// not reload after a reminder.
+class _PendingUploadRow extends ConsumerStatefulWidget {
+  const _PendingUploadRow({required this.item});
+  final PendingUpload item;
+
+  @override
+  ConsumerState<_PendingUploadRow> createState() => _PendingUploadRowState();
+}
+
+class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
+  bool _busy = false;
+  late int _count = widget.item.sentCount;
+  late DateTime? _lastSentAt = widget.item.lastSentAt;
+
+  Future<void> _send() async {
+    final item = widget.item;
+    setState(() => _busy = true);
+    try {
+      final stat = await ref.read(approverInboxRepositoryProvider).requestDocumentUpload(
+            item.memberId, item.source, item.docKey, label: item.name,
+          );
+      if (!mounted) return;
+      setState(() {
+        _count = stat.count;
+        _lastSentAt = stat.lastSentAt;
+      });
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc-request', context: context,
+        message: 'Upload request sent to ${item.memberName}.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc-request', context: context,
+        message: m.contains('not_allowed') || m.contains('not_authorized')
+            ? "You can't request uploads for this member."
+            : (m.contains('out_of_scope') ? "This member isn't in your scope." : "Couldn't send the request. Try again."),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  static String _two(int n) => n.toString().padLeft(2, '0');
+
+  /// "09 Nov 2026, 18:52" from a local DateTime.
+  static String _fmtDateTime(DateTime t) {
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${_two(t.day)} ${m[t.month - 1]} ${t.year}, ${_two(t.hour)}:${_two(t.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final item = widget.item;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            backgroundColor: cs.surfaceContainerHighest,
+            foregroundColor: cs.onSurfaceVariant,
+            child: const Icon(Icons.badge_outlined),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.memberName, style: text.titleSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(item.name, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                    maxLines: 2, overflow: TextOverflow.ellipsis),
+                if (_count > 0)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text(
+                      'Requested $_count×${_lastSentAt != null ? ' · last ${_fmtDateTime(_lastSentAt!)}' : ''}',
+                      key: ValueKey('pending-upload-count-${item.memberId}-${item.docKey}'),
+                      style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            key: ValueKey('pending-upload-notify-${item.memberId}-${item.docKey}'),
+            style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+            onPressed: _busy ? null : _send,
+            icon: _busy
+                ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.notifications_active_outlined, size: 16),
+            label: Text(_count > 0 ? 'Notify again' : 'Notify'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Opens the shared document viewer for [doc]. [onChanged] runs after a
