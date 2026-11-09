@@ -16,6 +16,8 @@ import '../../core/secure_screen.dart';
 import '../../data/approver_inbox_repository.dart';
 import '../../data/document_ai_repository.dart' show documentAiRepositoryProvider;
 import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
+import '../../data/vehicle_catalog_repository.dart'
+    show VehicleCatalogEntry, vehicleCatalogProvider, vehicleCatalogRepositoryProvider;
 import '../../data/storage_links.dart' show signedStorageUrl;
 import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
@@ -4378,7 +4380,7 @@ class _PermitsSectionState extends ConsumerState<_PermitsSection> {
 /// map to the Vehicle detail sheet on save, or null when cancelled. Plate, make
 /// and model are required (make/model are NOT NULL on the row); the rest may be
 /// cleared.
-class _VehicleEditSheet extends StatefulWidget {
+class _VehicleEditSheet extends ConsumerStatefulWidget {
   const _VehicleEditSheet({required this.vehicle});
   final VehicleDetail vehicle;
 
@@ -4400,38 +4402,43 @@ class _VehicleEditSheet extends StatefulWidget {
   ];
 
   @override
-  State<_VehicleEditSheet> createState() => _VehicleEditSheetState();
+  ConsumerState<_VehicleEditSheet> createState() => _VehicleEditSheetState();
 }
 
-class _VehicleEditSheetState extends State<_VehicleEditSheet> {
+class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
   final _formKey = GlobalKey<FormState>();
   late final _plate = TextEditingController(text: widget.vehicle.plate == '—' ? '' : widget.vehicle.plate);
-  late final _make = TextEditingController(text: widget.vehicle.make ?? '');
-  late final _model = TextEditingController(text: widget.vehicle.model ?? '');
   late final _color = TextEditingController(text: widget.vehicle.color ?? '');
   late final _year = TextEditingController(text: widget.vehicle.year ?? '');
   late final _type = TextEditingController(text: widget.vehicle.vehicleType ?? '');
-  late final _energy = TextEditingController(text: widget.vehicle.energy ?? '');
+  late final _seats = TextEditingController(text: widget.vehicle.seats?.toString() ?? '');
   late final _vin = TextEditingController(text: widget.vehicle.vin ?? '');
   late final _engine = TextEditingController(text: widget.vehicle.engineNumber ?? '');
   late final _ownerName = TextEditingController(text: widget.vehicle.ownerName ?? '');
   late final _ownerIc = TextEditingController(text: widget.vehicle.ownerIc ?? '');
   late final _ownerPhone = TextEditingController(text: widget.vehicle.ownerPhone ?? '');
 
+  // Make / Model / Energy are chosen from the catalogue (vehicle_make_models);
+  // the vehicle's current values seed the options so legacy data isn't lost.
+  late String? _make = _nn(widget.vehicle.make);
+  late String? _model = _nn(widget.vehicle.model);
+  late String? _energy = _nn(widget.vehicle.energy);
+  bool _busyAi = false;
+
   late String? _status = _VehicleEditSheet.statusOptions.any((o) => o.$1 == widget.vehicle.status)
       ? widget.vehicle.status
       : null;
   late String? _ownerIdType = widget.vehicle.ownerIdType;
 
+  static String? _nn(String? v) => (v == null || v.trim().isEmpty) ? null : v.trim();
+
   @override
   void dispose() {
     _plate.dispose();
-    _make.dispose();
-    _model.dispose();
     _color.dispose();
     _year.dispose();
     _type.dispose();
-    _energy.dispose();
+    _seats.dispose();
     _vin.dispose();
     _engine.dispose();
     _ownerName.dispose();
@@ -4440,19 +4447,154 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
     super.dispose();
   }
 
+  // ---- Catalogue shaping ----------------------------------------------------
+
+  List<VehicleCatalogEntry> get _catalog =>
+      ref.watch(vehicleCatalogProvider).asData?.value ?? const [];
+
+  /// Distinct makes, with the vehicle's current make kept even if the catalogue
+  /// hasn't got it (so editing a legacy vehicle never drops its make).
+  List<String> get _makes {
+    final set = <String>{for (final e in _catalog) e.make};
+    if (_make != null) set.add(_make!);
+    final list = set.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
+
+  List<String> _modelsFor(String? make) {
+    final set = <String>{
+      for (final e in _catalog) if (make != null && e.make == make) e.model,
+    };
+    if (_model != null && make == _make) set.add(_model!);
+    return set.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+
+  List<String> _energiesFor(String? make, String? model) {
+    final set = <String>{
+      for (final e in _catalog)
+        if (make != null && e.make == make && (model == null || e.model == model))
+          if (e.energyType != null) e.energyType!,
+    };
+    if (_energy != null) set.add(_energy!);
+    return set.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  }
+
+  VehicleCatalogEntry? _entryFor(String? make, String? model) {
+    for (final e in _catalog) {
+      if (e.make == make && e.model == model) return e;
+    }
+    return null;
+  }
+
+  void _onMakeChanged(String? v) {
+    setState(() {
+      _make = v;
+      if (!_modelsFor(v).contains(_model)) _model = null;
+      if (!_energiesFor(_make, _model).contains(_energy)) _energy = null;
+    });
+  }
+
+  void _onModelChanged(String? v) {
+    setState(() {
+      _model = v;
+      final energies = _energiesFor(_make, _model);
+      if (!energies.contains(_energy)) _energy = energies.length == 1 ? energies.first : null;
+      // Suggest the model's usual seat count when seats is blank.
+      final seats = _entryFor(_make, _model)?.seats;
+      if (seats != null && _seats.text.trim().isEmpty) _seats.text = '$seats';
+    });
+  }
+
+  /// "Can't find it?" — ask the AI lookup to add the typed make/model to the
+  /// catalogue, then select it (migration 0387, vehicle-catalog-lookup).
+  Future<void> _aiLookup() async {
+    final makeCtrl = TextEditingController(text: _make ?? '');
+    final modelCtrl = TextEditingController(text: _model ?? '');
+    final go = await showAppDialog<bool>(
+      id: 'dialog.vehicle-catalog-ai', context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Find a make / model'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              key: const ValueKey('ai-make'), controller: makeCtrl, autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Make', border: OutlineInputBorder())),
+            const SizedBox(height: 10),
+            TextField(
+              key: const ValueKey('ai-model'), controller: modelCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(labelText: 'Model (optional)', border: OutlineInputBorder())),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('ai-search'),
+            onPressed: () => Navigator.pop(ctx, true), child: const Text('Search')),
+        ],
+      ),
+    );
+    final make = makeCtrl.text.trim();
+    final model = modelCtrl.text.trim();
+    makeCtrl.dispose();
+    modelCtrl.dispose();
+    if (go != true || make.isEmpty) return;
+    setState(() => _busyAi = true);
+    try {
+      final found = await ref.read(vehicleCatalogRepositoryProvider).lookup(make: make, model: model.isEmpty ? null : model);
+      ref.invalidate(vehicleCatalogProvider);
+      await ref.read(vehicleCatalogProvider.future);
+      if (!mounted) return;
+      if (found.isEmpty) {
+        unawaited(showAppNotice(
+          id: 'notice.approver-vehicle', context: context,
+          message: "Couldn't find that make/model. Check the spelling.", kind: NoticeKind.info));
+        return;
+      }
+      final pick = found.firstWhere((e) => model.isEmpty || e.model.toLowerCase() == model.toLowerCase(),
+          orElse: () => found.first);
+      setState(() {
+        _make = pick.make;
+        _model = pick.model;
+        _energy = pick.energyType;
+        if (pick.seats != null && _seats.text.trim().isEmpty) _seats.text = '${pick.seats}';
+      });
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Added ${pick.make} ${pick.model} to the catalogue.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed') ? "You can't add to the catalogue." : "Couldn't search. Try again.",
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyAi = false);
+    }
+  }
+
   void _save() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
+    if (_make == null || _model == null) {
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Pick a make and model from the list.', kind: NoticeKind.info));
+      return;
+    }
     // Every key present is applied server-side; a present-but-empty value clears
-    // that (nullable) column. Plate/make/model are required and trimmed. Status
-    // is only sent when one is picked (it is NOT NULL on the row).
+    // that (nullable) column. Status is only sent when one is picked.
     final patch = <String, String?>{
       'plate': _plate.text.trim(),
-      'make': _make.text.trim(),
-      'model': _model.text.trim(),
+      'make': _make,
+      'model': _model,
       'color': _color.text.trim(),
       'year': _year.text.trim(),
       'vehicle_type': _type.text.trim(),
-      'energy_type': _energy.text.trim(),
+      'energy_type': _energy ?? '',
+      'seats': _seats.text.trim(),
       'vin': _vin.text.trim(),
       'engine_number': _engine.text.trim(),
       'owner_name': _ownerName.text.trim(),
@@ -4495,22 +4637,38 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
                 validator: _required,
               ),
               const SizedBox(height: 12),
-              TextFormField(
+              SearchableDropdownFormField<String>(
                 key: const ValueKey('vehicle-edit-make'),
-                controller: _make,
-                textCapitalization: TextCapitalization.words,
+                initialValue: _make,
+                isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Make', border: OutlineInputBorder()),
-                validator: _required,
+                items: [for (final m in _makes) DropdownMenuItem(value: m, child: Text(m))],
+                onChanged: _onMakeChanged,
+                validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
               ),
               const SizedBox(height: 12),
-              TextFormField(
-                key: const ValueKey('vehicle-edit-model'),
-                controller: _model,
-                textCapitalization: TextCapitalization.words,
+              SearchableDropdownFormField<String>(
+                key: ValueKey('vehicle-edit-model-${_make ?? ''}'),
+                initialValue: _model,
+                isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Model', border: OutlineInputBorder()),
-                validator: _required,
+                items: [for (final m in _modelsFor(_make)) DropdownMenuItem(value: m, child: Text(m))],
+                onChanged: _make == null ? null : _onModelChanged,
+                validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
               ),
-              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _busyAi
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                        child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)))
+                    : TextButton.icon(
+                        key: const ValueKey('vehicle-edit-ai'),
+                        onPressed: _aiLookup,
+                        icon: const Icon(Icons.auto_awesome, size: 16),
+                        label: const Text("Can't find it? Search with AI")),
+              ),
+              const SizedBox(height: 4),
               Row(
                 children: [
                   Expanded(
@@ -4545,14 +4703,25 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: TextFormField(
-                      key: const ValueKey('vehicle-edit-energy'),
-                      controller: _energy,
-                      textCapitalization: TextCapitalization.words,
+                    child: SearchableDropdownFormField<String>(
+                      key: ValueKey('vehicle-edit-energy-${_make ?? ''}-${_model ?? ''}'),
+                      initialValue: _energy,
+                      isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Energy', border: OutlineInputBorder()),
+                      items: [for (final e in _energiesFor(_make, _model)) DropdownMenuItem(value: e, child: Text(e))],
+                      onChanged: (v) => setState(() => _energy = v),
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-seats'),
+                controller: _seats,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Seats', border: OutlineInputBorder(),
+                  helperText: 'From the vehicle ownership certificate'),
               ),
               const SizedBox(height: 12),
               SearchableDropdownFormField<String>(
