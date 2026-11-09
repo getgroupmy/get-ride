@@ -613,6 +613,7 @@ class VehicleDetail {
     this.year,
     this.vehicleType,
     this.energy,
+    this.seats,
     this.vin,
     this.engineNumber,
     this.registrationDate,
@@ -643,6 +644,7 @@ class VehicleDetail {
   /// The rest of the spec grid shown on the detail sheet (migration 0369).
   final String? vehicleType;
   final String? energy;
+  final int? seats;
   final String? vin;
   final String? engineNumber;
   final String? registrationDate;
@@ -693,6 +695,7 @@ class VehicleDetail {
       year: _s(j['year']),
       vehicleType: _s(j['vehicle_type']),
       energy: _s(j['energy_type']),
+      seats: (j['seats'] as num?)?.toInt(),
       vin: _s(j['vin']),
       engineNumber: _s(j['engine_number']),
       registrationDate: _s(j['registration_date']),

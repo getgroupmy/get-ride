@@ -109,6 +109,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:dialog.approver-id-reject', SurfaceKind.modal, 'Dialog · Approver id reject', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:dialog.approver-presence', SurfaceKind.modal, 'Dialog · Approver presence', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:dialog.approver-reset-pin', SurfaceKind.modal, 'Dialog · Approver reset pin', 'lib/src/features/approver/my_team_screen.dart'),
+  SurfaceEntry('modal:dialog.vehicle-catalog-ai', SurfaceKind.modal, 'Dialog · Vehicle catalog ai', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:dispatch.cancel', SurfaceKind.modal, 'Dispatch · Cancel', 'lib/src/features/dispatch/dispatch_console.dart'),
   SurfaceEntry('modal:dispatch.edit-time', SurfaceKind.modal, 'Dispatch · Edit time', 'lib/src/features/dispatch/dispatch_console.dart'),
   SurfaceEntry('modal:dispatch.meter-fare', SurfaceKind.modal, 'Dispatch · Meter fare', 'lib/src/features/dispatch/dispatch_console.dart'),
