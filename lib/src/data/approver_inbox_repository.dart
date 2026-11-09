@@ -950,6 +950,13 @@ class ApproverInboxRepository {
     return r is Map ? DocReadiness.fromJson(r.cast<String, dynamic>()) : null;
   }
 
+  /// Reset a covered member's sign-in PIN to the default 123456 and require
+  /// them to set a new one at next sign-in (migration 0381). Needs
+  /// can_edit_profile.
+  Future<void> resetMemberPin(String memberId) async {
+    await _db.rpc('approver_reset_member_pin', params: {'p_member': memberId});
+  }
+
   Future<void> editProfile(String memberId, Map<String, dynamic> fields) async {
     await _db.rpc('approver_edit_profile', params: {'p_member': memberId, 'p_fields': fields});
   }

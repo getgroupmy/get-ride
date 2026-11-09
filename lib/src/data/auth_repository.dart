@@ -173,6 +173,9 @@ class AuthRepository {
         await _db.auth.setSession(refreshToken);
         await guard.claim();
         offerPasskeyAfterSignIn = true;
+        // If an approver reset this PIN to the default, force a change now: the
+        // router's existing set-pin gate sends them to choose a new one.
+        if (await _pinMustChange()) pinSetupPending = true;
         return const PinSignInOk();
       case PinLoginWrongPin(:final attemptsLeft):
         final policy = attemptsLeft == null ? PinPolicy.standard : await pinPolicy();
@@ -308,6 +311,24 @@ class AuthRepository {
       rethrow;
     }
     await retireDerivedPassword();
+    // The member has now chosen a new PIN, so clear any reset-to-default flag.
+    await _clearMustChangePin();
+  }
+
+  /// True when the signed-in account's PIN was reset to the default by an
+  /// approver and a new one must be chosen (migration 0381). Best-effort.
+  Future<bool> _pinMustChange() async {
+    try {
+      return (await _db.rpc('pin_must_change')) == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _clearMustChangePin() async {
+    try {
+      await _db.rpc('clear_must_change_pin');
+    } catch (_) {/* best-effort */}
   }
 
   /// Whether the signed-in account has a sign-in PIN (Settings offers
