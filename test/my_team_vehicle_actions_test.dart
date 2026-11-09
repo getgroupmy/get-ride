@@ -76,6 +76,21 @@ class _FakeRepo extends ApproverInboxRepository {
     return plateHit;
   }
 
+  DocReadiness? memberReadiness;
+  DocReadiness? vehicleReadiness;
+  Map<String, dynamic>? editedProfile;
+
+  @override
+  Future<DocReadiness?> memberDocReadiness(String memberId) async => memberReadiness;
+
+  @override
+  Future<DocReadiness?> vehicleDocReadiness(String vehicleId) async => vehicleReadiness;
+
+  @override
+  Future<void> editProfile(String memberId, Map<String, dynamic> fields) async {
+    editedProfile = fields;
+  }
+
   VehiclePermits? permitCard;
 
   @override
@@ -365,6 +380,40 @@ void main() {
 
     expect(repo.assigned, ('v-found', 'm1'));
     expect(find.textContaining('owner was notified'), findsOneWidget);
+  });
+
+  testWidgets('vehicle status: ready → confirm → approves', (tester) async {
+    final repo = await _pumpVehicleTab(tester, vehicles: _vehicles);
+    repo.vehicleReadiness = const DocReadiness(total: 2, approved: 2, allApproved: true);
+
+    await tester.tap(find.byKey(const ValueKey('vehicle-status-chip-v1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('vehicle-status-confirm')));
+    await tester.pumpAndSettle();
+    expect(repo.updatedVehicle, 'v1');
+    expect(repo.updatedPatch?['status'], 'approved');
+  });
+
+  testWidgets('vehicle status: docs not ready → opens the sheet, no approve', (tester) async {
+    final repo = await _pumpVehicleTab(tester, vehicles: _vehicles, detail: _detail(canManage: true));
+    repo.vehicleReadiness = const DocReadiness(total: 2, approved: 1, allApproved: false);
+
+    await tester.tap(find.byKey(const ValueKey('vehicle-status-chip-v1')));
+    await tester.pumpAndSettle();
+    // No confirm dialog; the vehicle detail sheet opens instead and nothing is approved.
+    expect(find.byKey(const ValueKey('vehicle-status-confirm')), findsNothing);
+    expect(repo.updatedVehicle, isNull);
+  });
+
+  testWidgets('member status: an approved member can be toggled to unapproved', (tester) async {
+    final repo = await _pumpVehicleTab(tester, vehicles: _vehicles);
+    // _member is 'approved', so a tap offers to set it unapproved (no doc gate).
+
+    await tester.tap(find.byKey(const ValueKey('member-status-chip')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('member-status-confirm')));
+    await tester.pumpAndSettle();
+    expect(repo.editedProfile?['status'], 'unapproved');
   });
 
   testWidgets('Revoke access shows on an allowed vehicle and revokes the member', (tester) async {

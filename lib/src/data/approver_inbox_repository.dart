@@ -394,6 +394,23 @@ class MemberVehicles {
   final List<MemberVehicle> allowed;
 }
 
+/// Whether all required documents are approved (migration 0379), gating the
+/// member / vehicle status badges. [allApproved] is true when there are
+/// required docs and all are Approved, or when there are none at all.
+class DocReadiness {
+  const DocReadiness({required this.total, required this.approved, required this.allApproved});
+  final int total;
+  final int approved;
+  final bool allApproved;
+  int get notApproved => total - approved;
+
+  static DocReadiness fromJson(Map<String, dynamic> j) => DocReadiness(
+        total: (j['total'] as num?)?.toInt() ?? 0,
+        approved: (j['approved'] as num?)?.toInt() ?? 0,
+        allApproved: j['all_approved'] == true,
+      );
+}
+
 /// A covered member's driver statistics for a period (migration 0367).
 class MemberStats {
   const MemberStats({
@@ -919,6 +936,20 @@ class ApproverInboxRepository {
   /// the keys to change: name / email / ic / nationality / address / status /
   /// partner_types (needs can_edit_profile) and id_verified (needs
   /// can_verify_id). The server validates and re-checks the scope.
+  /// Whether every required DRIVER document of a covered member is Approved
+  /// (migration 0379), gating the member status badge. Null when out of scope.
+  Future<DocReadiness?> memberDocReadiness(String memberId) async {
+    final r = await _db.rpc('approver_member_doc_readiness', params: {'p_member': memberId});
+    return r is Map ? DocReadiness.fromJson(r.cast<String, dynamic>()) : null;
+  }
+
+  /// Whether every required VEHICLE document is Approved (migration 0379),
+  /// gating the vehicle status badge. Null when out of scope.
+  Future<DocReadiness?> vehicleDocReadiness(String vehicleId) async {
+    final r = await _db.rpc('approver_vehicle_doc_readiness', params: {'p_vehicle': vehicleId});
+    return r is Map ? DocReadiness.fromJson(r.cast<String, dynamic>()) : null;
+  }
+
   Future<void> editProfile(String memberId, Map<String, dynamic> fields) async {
     await _db.rpc('approver_edit_profile', params: {'p_member': memberId, 'p_fields': fields});
   }
