@@ -281,6 +281,7 @@ class MemberVehicle {
     this.registeredAt,
     this.accessApproval,
     this.accessActive,
+    this.assignmentId,
   });
 
   final String id;
@@ -300,9 +301,13 @@ class MemberVehicle {
   final String? registeredAt;
 
   /// For an allowed-to-use vehicle: the assignment's approval and whether it's
-  /// active.
+  /// active, plus the assignment row id so the card can approve/decline/revoke.
   final String? accessApproval;
   final bool? accessActive;
+  final String? assignmentId;
+
+  /// True when this allowed-to-use assignment is waiting for approval.
+  bool get accessPending => accessApproval == 'pending' || accessApproval == 'requested';
 
   /// "Perodua Myvi · Silver · 2021" — the parts that are present.
   String get descriptor => [make, model, color, year].where((e) => (e ?? '').trim().isNotEmpty).join(' · ');
@@ -327,6 +332,58 @@ class MemberVehicle {
         registeredAt: _s(j['registered_at']),
         accessApproval: _s(j['access_approval']),
         accessActive: j['access_active'] is bool ? j['access_active'] as bool : null,
+        assignmentId: _s(j['assignment_id']),
+      );
+}
+
+/// The result of looking a vehicle up by plate (migration 0376) for the
+/// "Assign / approve another vehicle" flow. [found] false = no such plate;
+/// [inScope] false = a vehicle exists but its owner is outside the approver's
+/// scope (only the plate comes back, never its facts).
+class VehiclePlateHit {
+  const VehiclePlateHit({
+    required this.found,
+    required this.inScope,
+    this.id,
+    this.plate,
+    this.make,
+    this.model,
+    this.year,
+    this.color,
+    this.ownerName,
+    this.ownerIc,
+  });
+
+  final bool found;
+  final bool inScope;
+  final String? id;
+  final String? plate;
+  final String? make;
+  final String? model;
+  final String? year;
+  final String? color;
+  final String? ownerName;
+  final String? ownerIc;
+
+  String get descriptor =>
+      [make, model, color, year].where((e) => (e ?? '').trim().isNotEmpty).join(' · ');
+
+  static String? _s(Object? v) {
+    final t = '${v ?? ''}'.trim();
+    return t.isEmpty || t == 'null' ? null : t;
+  }
+
+  static VehiclePlateHit fromJson(Map<String, dynamic> j) => VehiclePlateHit(
+        found: j['found'] == true,
+        inScope: j['in_scope'] == true,
+        id: _s(j['id']),
+        plate: _s(j['plate']),
+        make: _s(j['make']),
+        model: _s(j['model']),
+        year: _s(j['year']),
+        color: _s(j['color']),
+        ownerName: _s(j['owner_name']),
+        ownerIc: _s(j['owner_ic']),
       );
 }
 
@@ -802,6 +859,15 @@ class ApproverInboxRepository {
   /// member's vehicle (migration 0369). Idempotent; needs can_manage_vehicle.
   Future<void> assignVehicleDriver(String vehicleId, String memberId) async {
     await _db.rpc('approver_assign_vehicle_driver', params: {'p_vehicle': vehicleId, 'p_member': memberId});
+  }
+
+  /// Find a vehicle by plate for "Assign / approve another vehicle" (migration
+  /// 0376). Returns a hit describing whether a vehicle exists and whether it is
+  /// in the approver's scope (its facts come back only when it is). Needs
+  /// can_manage_vehicle. Null only when the caller isn't an approver at all.
+  Future<VehiclePlateHit?> findVehicleByPlate(String plate) async {
+    final r = await _db.rpc('approver_find_vehicle_by_plate', params: {'p_plate': plate});
+    return r is Map ? VehiclePlateHit.fromJson(r.cast<String, dynamic>()) : null;
   }
 
   /// Edit a covered member's vehicle (migration 0369): plate / make / model /
