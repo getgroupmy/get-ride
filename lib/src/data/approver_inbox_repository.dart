@@ -855,10 +855,28 @@ class ApproverInboxRepository {
     return r is Map ? VehiclePermits.fromJson(r.cast<String, dynamic>()) : null;
   }
 
-  /// Assign a covered member as an approved, active driver of a covered
-  /// member's vehicle (migration 0369). Idempotent; needs can_manage_vehicle.
-  Future<void> assignVehicleDriver(String vehicleId, String memberId) async {
-    await _db.rpc('approver_assign_vehicle_driver', params: {'p_vehicle': vehicleId, 'p_member': memberId});
+  /// Set or clear the e-hailing permit bypass for a covered member's vehicle
+  /// (migration 0378). Returns the bypass expiry while on, null while off.
+  /// Needs can_manage_vehicle.
+  Future<DateTime?> vehiclePermitBypass(String vehicleId, bool on) async {
+    final r = await _db.rpc('approver_vehicle_permit_bypass', params: {'p_vehicle': vehicleId, 'p_on': on});
+    return r == null ? null : DateTime.tryParse('$r');
+  }
+
+  /// Revoke (remove) a covered member's vehicle permit (migration 0378).
+  /// Needs can_manage_vehicle.
+  Future<void> revokeVehiclePermit(String vehicleId, String permitTypeId) async {
+    await _db.rpc('approver_revoke_vehicle_permit',
+        params: {'p_vehicle': vehicleId, 'p_permit_type_id': permitTypeId});
+  }
+
+  /// Assign a covered member as a driver of a covered member's vehicle
+  /// (migrations 0369, 0377). A self-owned car activates at once; a third-party
+  /// car creates a pending request and notifies the owner. Returns true when the
+  /// assignment is pending the owner's approval. Needs can_manage_vehicle.
+  Future<bool> assignVehicleDriver(String vehicleId, String memberId) async {
+    final r = await _db.rpc('approver_assign_vehicle_driver', params: {'p_vehicle': vehicleId, 'p_member': memberId});
+    return r is Map && r['pending'] == true;
   }
 
   /// Find a vehicle by plate for "Assign / approve another vehicle" (migration

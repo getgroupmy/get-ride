@@ -2274,7 +2274,7 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                 const SizedBox(height: 16),
                 _sectionLabel(t, cs, 'SERVICES & PERMITS'),
                 const SizedBox(height: 8),
-                _PermitsSection(vehicleId: widget.vehicleId, regYear: v.year),
+                _PermitsSection(vehicleId: widget.vehicleId, regYear: v.year, canManage: v.canManage),
                 const SizedBox(height: 16),
                 _sectionLabel(t, cs, 'WHO CAN DRIVE THIS · ${v.drivers.length}'),
                 const SizedBox(height: 6),
@@ -2361,13 +2361,16 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
 
     setState(() => _busyAction = true);
     try {
-      await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(v.id, memberId);
+      final pending = await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(v.id, memberId);
       ref.invalidate(approverVehicleDetailProvider(widget.vehicleId));
       ref.invalidate(approverMemberVehiclesProvider(widget.memberId));
       if (!mounted) return;
       unawaited(showAppNotice(
         id: 'notice.approver-vehicle', context: context,
-        message: 'Driver assigned.', kind: NoticeKind.success));
+        message: pending
+            ? "Request sent — the vehicle owner was notified and must approve it."
+            : 'Driver assigned.',
+        kind: NoticeKind.success));
     } catch (e) {
       if (!mounted) return;
       final m = e is PostgrestException ? e.message : e.toString();
@@ -2694,16 +2697,72 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
 /// The Services & Permits section of the Vehicle sheet (migration 0369):
 /// reads the same permit card the admin screen uses, approver-scoped. Shows
 /// the vehicle's age and each permit's state; hidden on a legacy database.
-class _PermitsSection extends ConsumerWidget {
-  const _PermitsSection({required this.vehicleId, this.regYear});
+class _PermitsSection extends ConsumerStatefulWidget {
+  const _PermitsSection({required this.vehicleId, this.regYear, this.canManage = false});
   final String vehicleId;
   final String? regYear;
+  final bool canManage;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PermitsSection> createState() => _PermitsSectionState();
+}
+
+class _PermitsSectionState extends ConsumerState<_PermitsSection> {
+  bool _busyBypass = false;
+  String? _busyRevoke; // permit typeId being revoked
+
+  Future<void> _toggleBypass(bool on) async {
+    setState(() => _busyBypass = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).vehiclePermitBypass(widget.vehicleId, on);
+      ref.invalidate(approverVehiclePermitCardProvider(widget.vehicleId));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: on ? 'E-hailing bypass turned on.' : 'E-hailing bypass turned off.',
+        kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: _permitError(e), kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyBypass = false);
+    }
+  }
+
+  Future<void> _revoke(PermitItem p) async {
+    setState(() => _busyRevoke = p.typeId);
+    try {
+      await ref.read(approverInboxRepositoryProvider).revokeVehiclePermit(widget.vehicleId, p.typeId);
+      ref.invalidate(approverVehiclePermitCardProvider(widget.vehicleId));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Permit revoked.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: _permitError(e), kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyRevoke = null);
+    }
+  }
+
+  String _permitError(Object e) {
+    final m = e is PostgrestException ? e.message : e.toString();
+    if (m.contains('not_allowed')) return "You can't manage this vehicle's permits.";
+    if (m.contains('out_of_scope')) return "This vehicle isn't in your scope.";
+    if (m.contains('permit_not_found')) return 'That permit is no longer on file.';
+    return "Couldn't update the permit. Try again.";
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final t = Theme.of(context);
     final cs = t.colorScheme;
-    final card = ref.watch(approverVehiclePermitCardProvider(vehicleId));
+    final card = ref.watch(approverVehiclePermitCardProvider(widget.vehicleId));
     return card.when(
       loading: () => const Padding(
         padding: EdgeInsets.symmetric(vertical: 10),
@@ -2715,8 +2774,9 @@ class _PermitsSection extends ConsumerWidget {
           return Text('Permit details are unavailable here.',
               style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant));
         }
-        final year = int.tryParse(regYear ?? '');
+        final year = int.tryParse(widget.regYear ?? '');
         final age = year == null ? null : (DateTime.now().year - year);
+        final bypassOn = vp.bypassUntil != null && vp.bypassUntil!.isAfter(DateTime.now());
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -2742,46 +2802,106 @@ class _PermitsSection extends ConsumerWidget {
                   style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant))
             else
               for (final p in vp.permits) _permitRow(t, cs, p),
+            if (widget.canManage) _bypassRow(t, cs, bypassOn, vp.bypassUntil),
           ],
         );
       },
     );
   }
 
-  Widget _permitRow(ThemeData t, ColorScheme cs, PermitItem p) {
-    final (label, color) = switch (p.status ?? p.state) {
-      'with' || 'withPermit' => ('On file', Colors.green.shade800),
-      'bypass' => ('Bypass', cs.tertiary),
-      'expired' => ('Expired', cs.error),
-      'without' => ('Missing', cs.error),
-      _ => (PermitStatus.parse(p.status ?? p.state).label, cs.onSurfaceVariant),
-    };
-    final sub = [
-      if (p.validUntil != null) 'Valid to ${p.validUntil!.toIso8601String().split('T').first}',
-      if (p.issuer.isNotEmpty) p.issuer,
-    ].join(' · ');
+  Widget _bypassRow(ThemeData t, ColorScheme cs, bool on, DateTime? until) {
+    final sub = on && until != null
+        ? 'Bypassed until ${until.toIso8601String().split('T').first}'
+        : 'Let this vehicle take e-hailing jobs without a valid permit.';
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin: const EdgeInsets.only(top: 10),
+      color: cs.tertiaryContainer.withValues(alpha: 0.4),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        padding: const EdgeInsets.fromLTRB(14, 6, 10, 6),
         child: Row(
           children: [
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(p.name.isEmpty ? (p.shortName.isEmpty ? 'Permit' : p.shortName) : p.name,
-                      style: t.textTheme.titleSmall),
-                  if (sub.isNotEmpty)
-                    Text(sub, style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  Text('E-hailing permit bypass', style: t.textTheme.titleSmall),
+                  Text(sub, style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
-              child: Text(label, style: t.textTheme.labelMedium?.copyWith(color: color, fontWeight: FontWeight.w700)),
+            if (_busyBypass)
+              const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            else
+              Switch(
+                key: const ValueKey('permit-bypass-toggle'),
+                value: on,
+                onChanged: (v) => _toggleBypass(v),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _permitRow(ThemeData t, ColorScheme cs, PermitItem p) {
+    final state = p.status ?? p.state;
+    final (label, color) = switch (state) {
+      'with' || 'withPermit' => ('On file', Colors.green.shade800),
+      'bypass' => ('Bypass', cs.tertiary),
+      'expired' => ('Expired', cs.error),
+      'without' => ('Missing', cs.error),
+      _ => (PermitStatus.parse(state).label, cs.onSurfaceVariant),
+    };
+    final sub = [
+      if (p.validUntil != null) 'Valid to ${p.validUntil!.toIso8601String().split('T').first}',
+      if (p.issuer.isNotEmpty) p.issuer,
+    ].join(' · ');
+    // A permit can be revoked when it is actually on file (has a file/number).
+    final onFile = (p.fileUrl != null && p.fileUrl!.isNotEmpty) ||
+        state == 'with' || state == 'withPermit' || state == 'expired';
+    final busy = _busyRevoke == p.typeId;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(p.name.isEmpty ? (p.shortName.isEmpty ? 'Permit' : p.shortName) : p.name,
+                          style: t.textTheme.titleSmall),
+                      if (sub.isNotEmpty)
+                        Text(sub, style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(20)),
+                  child: Text(label, style: t.textTheme.labelMedium?.copyWith(color: color, fontWeight: FontWeight.w700)),
+                ),
+              ],
             ),
+            if (widget.canManage && onFile)
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: TextButton(
+                    key: ValueKey('permit-revoke-${p.typeId}'),
+                    style: TextButton.styleFrom(foregroundColor: cs.error),
+                    onPressed: busy ? null : () => _revoke(p),
+                    child: busy
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Text('Revoke'),
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -3107,12 +3227,15 @@ class _AssignVehicleSheetState extends ConsumerState<_AssignVehicleSheet> {
     if (hit?.id == null) return;
     setState(() => _busy = true);
     try {
-      await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(hit!.id!, widget.memberId);
+      final pending = await ref.read(approverInboxRepositoryProvider).assignVehicleDriver(hit!.id!, widget.memberId);
       if (!mounted) return;
       Navigator.of(context).pop(true);
       unawaited(showAppNotice(
         id: 'notice.approver-vehicle', context: context,
-        message: 'Access granted to ${widget.memberName}.', kind: NoticeKind.success));
+        message: pending
+            ? "Request sent — the vehicle owner was notified and must approve it."
+            : 'Access granted to ${widget.memberName}.',
+        kind: NoticeKind.success));
     } catch (e) {
       if (!mounted) return;
       final m = e is PostgrestException ? e.message : e.toString();
