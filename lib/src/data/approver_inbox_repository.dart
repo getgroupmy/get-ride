@@ -832,6 +832,47 @@ class DocRequestStat {
   final DateTime? lastSentAt;
 }
 
+/// One required document still missing for a covered member (Approvals →
+/// Pending Upload, migration 0389): who it's for, which document, and how many
+/// times / when last the approver has nudged them to upload it.
+class PendingUpload {
+  const PendingUpload({
+    required this.memberId,
+    required this.memberName,
+    this.memberPhone,
+    required this.source,
+    required this.docKey,
+    required this.name,
+    required this.sentCount,
+    this.lastSentAt,
+  });
+
+  final String memberId;
+  final String memberName;
+  final String? memberPhone;
+  final String source;
+  final String docKey;
+  final String name;
+  final int sentCount;
+  final DateTime? lastSentAt;
+
+  static String? _s(Object? v) {
+    final t = '${v ?? ''}'.trim();
+    return t.isEmpty ? null : t;
+  }
+
+  static PendingUpload fromJson(Map<String, dynamic> j) => PendingUpload(
+        memberId: '${j['member_id']}',
+        memberName: _s(j['member_name']) ?? 'User',
+        memberPhone: _s(j['member_phone']),
+        source: _s(j['source']) ?? 'partner',
+        docKey: '${j['doc_key']}',
+        name: _s(j['name']) ?? 'Document',
+        sentCount: (j['sent_count'] as num?)?.toInt() ?? 0,
+        lastSentAt: j['last_sent_at'] == null ? null : DateTime.tryParse('${j['last_sent_at']}')?.toLocal(),
+      );
+}
+
 class ApproverInboxRepository {
   ApproverInboxRepository(this._db);
   final SupabaseClient _db;
@@ -973,6 +1014,17 @@ class ApproverInboxRepository {
       count: (m['sent_count'] as num?)?.toInt() ?? 1,
       lastSentAt: m['last_sent_at'] == null ? null : DateTime.tryParse('${m['last_sent_at']}')?.toLocal(),
     );
+  }
+
+  /// Every required document still missing across the people this approver
+  /// covers (Approvals → Pending Upload, migration 0389), each with its nudge
+  /// stats, so the approver can request uploads from one list. Needs can_upload;
+  /// empty on a legacy database or out of scope. [query] filters by member name.
+  Future<List<PendingUpload>> pendingUploads({String? query}) async {
+    final rows = await _db.rpc('approver_pending_uploads', params: {
+      'p_query': (query ?? '').trim().isEmpty ? null : query!.trim(),
+    }) as List? ?? const [];
+    return [for (final e in rows) PendingUpload.fromJson(Map<String, dynamic>.from(e as Map))];
   }
 
   /// One covered member's GET.wallet balance, for display (migration 0359);
@@ -1302,6 +1354,19 @@ final approverPendingProvider = FutureProvider.autoDispose<List<ApproverDoc>>((r
 /// count (0 while loading or on error, so the row never shows a stale number).
 final approverPendingCountProvider = Provider.autoDispose<int>((ref) =>
     ref.watch(approverPendingProvider).maybeWhen(data: (d) => d.length, orElse: () => 0));
+
+/// Required documents still pending upload across everyone this approver covers
+/// (Approvals → Pending Upload, migration 0389). Empty on a legacy database, out
+/// of scope, or without can_upload.
+final approverPendingUploadsProvider =
+    FutureProvider.autoDispose<List<PendingUpload>>((ref) async {
+  if (ref.watch(currentUserIdProvider) == null) return const <PendingUpload>[];
+  try {
+    return await ref.watch(approverInboxRepositoryProvider).pendingUploads();
+  } catch (_) {
+    return const <PendingUpload>[];
+  }
+});
 
 /// Every document of one covered team member (My Team → member → Documents,
 /// migration 0357).
