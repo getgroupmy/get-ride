@@ -560,7 +560,136 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
   _MemberTab _tab = _MemberTab.profile;
   String _statsPeriod = 'month';
   String? _busyVehicleAccess;
+  bool _busyStatus = false;
+  String? _busyVehicleStatus;
   TeamMember get member => widget.member;
+
+  /// Tap a registered vehicle's status badge: approve only when every required
+  /// vehicle document is approved (0379) — otherwise open the vehicle sheet to
+  /// review them. An already-approved vehicle can be toggled back.
+  Future<void> _onVehicleStatusTap(MemberVehicle v) async {
+    final approved = v.status == 'approved';
+    setState(() => _busyVehicleStatus = v.id);
+    DocReadiness? r;
+    try {
+      r = await ref.read(approverInboxRepositoryProvider).vehicleDocReadiness(v.id);
+    } catch (_) {}
+    if (!mounted) return;
+
+    if (!approved && (r == null || !r.allApproved)) {
+      setState(() => _busyVehicleStatus = null);
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: r == null
+            ? "Couldn't check the documents. Try again."
+            : '${r.notApproved} required vehicle document${r.notApproved == 1 ? '' : 's'} still need approval. Opening the vehicle…',
+        kind: NoticeKind.info));
+      await _openVehicleDetail(v);
+      return;
+    }
+
+    final toApproved = !approved;
+    final ok = await showAppDialog<bool>(
+      id: 'dialog.approver-approve-vehicle', context: context,
+      builder: (c) => AlertDialog(
+        title: Text(toApproved ? 'Approve ${v.plate}?' : 'Set ${v.plate} to Unapproved?'),
+        content: Text(toApproved
+            ? 'All required vehicle documents are approved. Mark this vehicle Approved?'
+            : 'This vehicle will be marked Unapproved.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('vehicle-status-confirm'),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(toApproved ? 'Approve' : 'Unapprove')),
+        ],
+      ),
+    );
+    if (ok != true) { if (mounted) setState(() => _busyVehicleStatus = null); return; }
+
+    try {
+      await ref.read(approverInboxRepositoryProvider)
+          .updateVehicle(v.id, {'status': toApproved ? 'approved' : 'unapproved'});
+      ref.invalidate(approverMemberVehiclesProvider(member.id));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: toApproved ? '${v.plate} approved.' : '${v.plate} set to Unapproved.',
+        kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: m.contains('not_allowed') ? "You can't change this vehicle's status." : "Couldn't update status. Try again.",
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyVehicleStatus = null);
+    }
+  }
+
+  /// Tap the member's status badge: approve only when every required document
+  /// is approved (migration 0379) — otherwise jump to Documents to review them.
+  /// An already-approved member can be toggled back to unapproved.
+  Future<void> _onMemberStatusTap(String current) async {
+    final approved = current == 'approved';
+    setState(() => _busyStatus = true);
+    DocReadiness? r;
+    try {
+      r = await ref.read(approverInboxRepositoryProvider).memberDocReadiness(member.id);
+    } catch (_) {}
+    if (!mounted) return;
+
+    if (!approved && (r == null || !r.allApproved)) {
+      setState(() { _busyStatus = false; _tab = _MemberTab.documents; });
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: r == null
+            ? "Couldn't check the documents. Try again."
+            : '${r.notApproved} required document${r.notApproved == 1 ? '' : 's'} still need approval before ${member.name.split(' ').first} can be approved.',
+        kind: NoticeKind.info));
+      return;
+    }
+
+    final toApproved = !approved;
+    final ok = await showAppDialog<bool>(
+      id: 'dialog.approver-approve-member', context: context,
+      builder: (c) => AlertDialog(
+        title: Text(toApproved ? 'Approve ${member.name}?' : 'Set to Unapproved?'),
+        content: Text(toApproved
+            ? 'All required documents are approved. Mark this member Approved?'
+            : 'This member will be marked Unapproved.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('member-status-confirm'),
+            onPressed: () => Navigator.pop(c, true),
+            child: Text(toApproved ? 'Approve' : 'Unapprove')),
+        ],
+      ),
+    );
+    if (ok != true) { if (mounted) setState(() => _busyStatus = false); return; }
+
+    try {
+      await ref.read(approverInboxRepositoryProvider)
+          .editProfile(member.id, {'status': toApproved ? 'approved' : 'unapproved'});
+      ref.invalidate(approverMemberDetailProvider(member.id));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: toApproved ? '${member.name} approved.' : '${member.name} set to Unapproved.',
+        kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: m.contains('not_allowed') ? "You can't change this member's status." : "Couldn't update status. Try again.",
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyStatus = false);
+    }
+  }
 
   /// Approve / decline / revoke an allowed-to-use assignment from its card
   /// (migration 0376). Refreshes the member's vehicle lists on success.
@@ -685,7 +814,19 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
             ),
             if (member.status != null) ...[
               const SizedBox(width: 8),
-              _StatusChip(status: member.status!),
+              Builder(builder: (context) {
+                final live = (ref.watch(approverMemberDetailProvider(member.id)).asData?.value?['status']
+                        as String?) ?? member.status!;
+                final canEdit = ref.watch(approverSelfProvider).value?.canEditProfile ?? false;
+                final chip = _StatusChip(status: live);
+                if (!canEdit) return chip;
+                return InkWell(
+                  key: const ValueKey('member-status-chip'),
+                  borderRadius: BorderRadius.circular(20),
+                  onTap: _busyStatus ? null : () => _onMemberStatusTap(live),
+                  child: Opacity(opacity: _busyStatus ? 0.5 : 1, child: chip),
+                );
+              }),
             ],
           ],
         ),
@@ -1079,7 +1220,21 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
             Row(
               children: [
                 Expanded(child: Text(v.plate, style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
-                _VehicleStatusChip(ownerSelf: v.ownerSelf, status: v.status, accessActive: v.accessActive, accessApproval: v.accessApproval),
+                Builder(builder: (context) {
+                  final canManage = ref.watch(approverSelfProvider).value?.canManageVehicle ?? false;
+                  final chip = _VehicleStatusChip(
+                      ownerSelf: v.ownerSelf, status: v.status,
+                      accessActive: v.accessActive, accessApproval: v.accessApproval);
+                  // Only a registered (self-owned) vehicle's own status is approvable here.
+                  if (!canManage || !v.ownerSelf) return chip;
+                  final busy = _busyVehicleStatus == v.id;
+                  return InkWell(
+                    key: ValueKey('vehicle-status-chip-${v.id}'),
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: busy ? null : () => _onVehicleStatusTap(v),
+                    child: Opacity(opacity: busy ? 0.5 : 1, child: chip),
+                  );
+                }),
               ],
             ),
             if (v.descriptor.isNotEmpty)
