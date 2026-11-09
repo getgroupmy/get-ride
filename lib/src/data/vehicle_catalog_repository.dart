@@ -38,6 +38,49 @@ class VehicleCatalogEntry {
   }
 }
 
+/// What a scanned ownership certificate resolves to against the catalogue:
+/// make/model are kept only when they match a catalogue entry (so the strict
+/// pickers stay valid), energy is taken when the make+model has exactly one,
+/// and seats off the certificate wins over the matched model's usual count.
+typedef VehicleScanResolution = ({String? make, String? model, String? energy, int? seats});
+
+/// Constrain a scanned make/model/seats to [catalog]. A scanned make that isn't
+/// on file yields nothing (the approver can still use the AI lookup); a scanned
+/// model only sticks when it belongs to that make. [scannedSeats] wins when
+/// present, otherwise the matched model's seat count is suggested.
+VehicleScanResolution resolveScannedVehicle(
+  List<VehicleCatalogEntry> catalog, {
+  String? scannedMake,
+  String? scannedModel,
+  int? scannedSeats,
+}) {
+  String? match(String? raw, Iterable<String> options) {
+    final lc = raw?.trim().toLowerCase() ?? '';
+    if (lc.isEmpty) return null;
+    for (final o in options) {
+      if (o.toLowerCase() == lc) return o;
+    }
+    return null;
+  }
+
+  final make = match(scannedMake, {for (final e in catalog) e.make});
+  if (make == null) return (make: null, model: null, energy: null, seats: scannedSeats);
+
+  final models = {for (final e in catalog) if (e.make == make) e.model};
+  final model = match(scannedModel, models);
+  if (model == null) return (make: make, model: null, energy: null, seats: scannedSeats);
+
+  final energies = {
+    for (final e in catalog) if (e.make == make && e.model == model && e.energyType != null) e.energyType!,
+  };
+  final seats = scannedSeats ??
+      catalog.where((e) => e.make == make && e.model == model).map((e) => e.seats).firstWhere(
+            (s) => s != null,
+            orElse: () => null,
+          );
+  return (make: make, model: model, energy: energies.length == 1 ? energies.first : null, seats: seats);
+}
+
 /// Reads the active vehicle catalogue and, when asked, has an AI lookup
 /// (Gemini) add a make/model that isn't on file yet.
 class VehicleCatalogRepository {

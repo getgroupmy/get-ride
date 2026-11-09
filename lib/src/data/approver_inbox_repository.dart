@@ -561,6 +561,47 @@ class VehicleDoc {
   final bool hasFile;
 }
 
+/// The vehicle fields read off an ownership certificate by the
+/// vehicle-registration-read function (migration 0388). Every field is optional
+/// — a scan may read only some. The approver checks them before saving.
+class VehicleRegistration {
+  const VehicleRegistration({
+    this.plate, this.make, this.model, this.seats, this.color,
+    this.year, this.vin, this.engineNumber, this.documentNumber,
+  });
+
+  final String? plate;
+  final String? make;
+  final String? model;
+  final int? seats;
+  final String? color;
+  final String? year;
+  final String? vin;
+  final String? engineNumber;
+  final String? documentNumber;
+
+  bool get isEmpty =>
+      plate == null && make == null && model == null && seats == null && color == null &&
+      year == null && vin == null && engineNumber == null && documentNumber == null;
+
+  static String? _s(Object? v) {
+    final t = '${v ?? ''}'.trim();
+    return t.isEmpty || t == 'null' ? null : t;
+  }
+
+  static VehicleRegistration fromJson(Map<String, dynamic> j) => VehicleRegistration(
+        plate: _s(j['plate']),
+        make: _s(j['make']),
+        model: _s(j['model']),
+        seats: (j['seats'] as num?)?.toInt(),
+        color: _s(j['color']),
+        year: _s(j['year']),
+        vin: _s(j['vin']),
+        engineNumber: _s(j['engine_number']),
+        documentNumber: _s(j['document_number']),
+      );
+}
+
 /// The Vehicle detail sheet payload (migration 0366).
 class VehicleDetail {
   const VehicleDetail({
@@ -1272,6 +1313,18 @@ class ApproverInboxRepository {
       'contentType': contentType,
       'data': base64Encode(bytes),
     });
+  }
+
+  /// Read a vehicle ownership certificate photo (Malaysia: JPJ geran; named
+  /// differently per country) with the vehicle-registration-read function
+  /// (Gemini, migration 0388) and return the vehicle fields it could read, for
+  /// the approver to check before saving. [dataUrl] is a base64 image data URL.
+  Future<VehicleRegistration> readVehicleRegistration({required String dataUrl}) async {
+    final res = await _db.functions.invoke('vehicle-registration-read', body: {'front': dataUrl});
+    final data = res.data;
+    final fields = data is Map ? data['fields'] : null;
+    return VehicleRegistration.fromJson(
+        fields is Map ? Map<String, dynamic>.from(fields) : const <String, dynamic>{});
   }
 }
 

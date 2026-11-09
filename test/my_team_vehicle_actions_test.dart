@@ -260,7 +260,9 @@ void main() {
     await fill('vehicle-edit-engine', '2GD1234567');
     await fill('vehicle-edit-owner-name', 'Nurul Shahida');
     await fill('vehicle-edit-owner-ic', '831103085914');
-    await fill('vehicle-edit-owner-phone', '+60126640912');
+    // Owner phone is a country-code + number field (picker defaults to +60);
+    // the national number composes to E.164 with the trunk 0 dropped.
+    await fill('vehicle-edit-owner-phone-number', '0126640912');
 
     await tester.ensureVisible(find.byKey(const ValueKey('vehicle-edit-save')));
     await tester.pumpAndSettle();

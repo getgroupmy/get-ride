@@ -19,12 +19,13 @@ import '../../data/approver_inbox_repository.dart';
 import '../../data/document_ai_repository.dart' show documentAiRepositoryProvider;
 import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
 import '../../data/vehicle_catalog_repository.dart'
-    show VehicleCatalogEntry, vehicleCatalogProvider, vehicleCatalogRepositoryProvider;
+    show VehicleCatalogEntry, vehicleCatalogProvider, vehicleCatalogRepositoryProvider, resolveScannedVehicle;
 import '../../data/storage_links.dart' show signedStorageUrl;
 import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/offline_strip.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/phone_number_field.dart' show PhoneNumberField;
 import '../../widgets/search_select.dart';
 import '../../widgets/storage_image.dart';
 import 'approver_inbox_screen.dart' show ApproverInboxScreen, openApproverDocument;
@@ -4679,7 +4680,10 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
   late final _engine = TextEditingController(text: widget.vehicle.engineNumber ?? '');
   late final _ownerName = TextEditingController(text: widget.vehicle.ownerName ?? '');
   late final _ownerIc = TextEditingController(text: widget.vehicle.ownerIc ?? '');
-  late final _ownerPhone = TextEditingController(text: widget.vehicle.ownerPhone ?? '');
+  // The owner phone is a country-code + national-number field; it reports the
+  // composed E.164 (trunk 0 dropped). Seeded with the stored value so leaving it
+  // untouched writes it back unchanged.
+  late String _ownerPhone = widget.vehicle.ownerPhone ?? '';
 
   // Make / Model / Energy are chosen from the catalogue (vehicle_make_models);
   // the vehicle's current values seed the options so legacy data isn't lost.
@@ -4687,6 +4691,7 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
   late String? _model = _nn(widget.vehicle.model);
   late String? _energy = _nn(widget.vehicle.energy);
   bool _busyAi = false;
+  bool _scanning = false;
 
   late String? _status = _VehicleEditSheet.statusOptions.any((o) => o.$1 == widget.vehicle.status)
       ? widget.vehicle.status
@@ -4706,7 +4711,6 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
     _engine.dispose();
     _ownerName.dispose();
     _ownerIc.dispose();
-    _ownerPhone.dispose();
     super.dispose();
   }
 
@@ -4766,6 +4770,74 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
       final seats = _entryFor(_make, _model)?.seats;
       if (seats != null && _seats.text.trim().isEmpty) _seats.text = '$seats';
     });
+  }
+
+  /// Scan the vehicle ownership certificate (Malaysia: the JPJ geran; named
+  /// differently per country) and autofill the form with what it reads
+  /// (vehicle-registration-read, Gemini vision, migration 0388). Values are
+  /// filled for the approver to check before saving; make/model are only taken
+  /// when they're already in the catalogue.
+  Future<void> _scanCert() async {
+    final picked = await pickDocumentImage(context);
+    if (picked == null || !mounted) return;
+    setState(() => _scanning = true);
+    try {
+      final url = await ref.read(documentAiRepositoryProvider).prepare(picked.bytes, picked.name);
+      if (url == null) {
+        if (!mounted) return;
+        unawaited(showAppNotice(
+          id: 'notice.approver-vehicle', context: context,
+          message: 'That image is too large. Try a smaller photo.', kind: NoticeKind.error));
+        return;
+      }
+      final reg = await ref.read(approverInboxRepositoryProvider).readVehicleRegistration(dataUrl: url);
+      if (!mounted) return;
+      if (reg.isEmpty) {
+        unawaited(showAppNotice(
+          id: 'notice.approver-vehicle', context: context,
+          message: 'Scanned, but nothing matched — type the details.', kind: NoticeKind.info));
+        return;
+      }
+      setState(() => _applyRegistration(reg));
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: 'Read from the certificate. Check the details before saving.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-vehicle', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't scan certificates."
+            : "Couldn't read the certificate. Type the details instead.",
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
+  }
+
+  /// Fill the form from a scanned certificate. Text fields take the scanned
+  /// value when the scan read one; make/model are taken only when the scanned
+  /// value matches a catalogue entry (so the strict dropdowns stay valid), and
+  /// seats off the certificate wins over the model's usual count.
+  void _applyRegistration(VehicleRegistration r) {
+    if (r.plate != null) _plate.text = r.plate!;
+    if (r.color != null) _color.text = r.color!;
+    if (r.year != null) _year.text = r.year!;
+    if (r.vin != null) _vin.text = r.vin!;
+    if (r.engineNumber != null) _engine.text = r.engineNumber!;
+    final res = resolveScannedVehicle(_catalog,
+        scannedMake: r.make, scannedModel: r.model, scannedSeats: r.seats);
+    if (res.make != null) {
+      _make = res.make;
+      _model = res.model;
+      if (res.model != null) {
+        _energy = res.energy;
+      } else if (!_energiesFor(_make, _model).contains(_energy)) {
+        _energy = null;
+      }
+    }
+    if (res.seats != null) _seats.text = '${res.seats}';
   }
 
   /// "Can't find it?" — ask the AI lookup to add the typed make/model to the
@@ -4862,7 +4934,7 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
       'engine_number': _engine.text.trim(),
       'owner_name': _ownerName.text.trim(),
       'owner_ic': _ownerIc.text.trim(),
-      'owner_phone': _ownerPhone.text.trim(),
+      'owner_phone': _ownerPhone.trim(),
       if (_ownerIdType != null) 'owner_id_type': _ownerIdType,
       if (_status != null) 'status': _status,
     };
@@ -4892,6 +4964,15 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
               Text('Vehicle', style: t.textTheme.labelMedium?.copyWith(
                   color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w700)),
               const SizedBox(height: 10),
+              OutlinedButton.icon(
+                key: const ValueKey('vehicle-edit-scan-cert'),
+                onPressed: _scanning ? null : _scanCert,
+                icon: _scanning
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.document_scanner_outlined, size: 18),
+                label: Text(_scanning ? 'Reading…' : 'Scan ownership certificate'),
+              ),
+              const SizedBox(height: 12),
               TextFormField(
                 key: const ValueKey('vehicle-edit-plate'),
                 controller: _plate,
@@ -5038,11 +5119,12 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
                 decoration: const InputDecoration(labelText: 'Owner ID', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
-              TextFormField(
+              PhoneNumberField(
                 key: const ValueKey('vehicle-edit-owner-phone'),
-                controller: _ownerPhone,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Owner phone', border: OutlineInputBorder()),
+                keyPrefix: 'vehicle-edit-owner-phone',
+                label: 'Owner phone',
+                initialPhone: widget.vehicle.ownerPhone,
+                onChanged: (v) => _ownerPhone = v,
               ),
               const SizedBox(height: 18),
               Row(
