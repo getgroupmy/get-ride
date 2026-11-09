@@ -4,15 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../admin/screens/people/people_logic.dart' show partnerTypeOptions;
 import '../../admin/screens/people/people_widgets.dart' show PartnerTypeField;
+import '../../core/document_ai.dart' show docAiRequestBody, docAiAutofill, docAiUnavailableText;
 import '../../core/permits.dart' show PermitItem, PermitStatus;
 import '../../core/secure_screen.dart';
 import '../../data/approver_inbox_repository.dart';
+import '../../data/document_ai_repository.dart' show documentAiRepositoryProvider;
 import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
+import '../../data/storage_links.dart' show signedStorageUrl;
 import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/offline_strip.dart';
@@ -1776,6 +1780,80 @@ class _DocCardState extends ConsumerState<_DocCard> {
 
   void _openViewer() => openApproverDocument(context, doc, onChanged: widget.onChanged);
 
+  /// Re-submit the document's CURRENT stored image to the server scanner and
+  /// write back what it extracts — document number, start and expiry — without
+  /// capturing a new photo. Reuses the id-read reader and the edit-fields RPC.
+  Future<void> _rescanInPlace() async {
+    final d = doc;
+    if (d.fileUrl == null || d.fileUrl!.isEmpty) {
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc', context: context,
+        message: 'There is no uploaded image to re-scan yet.', kind: NoticeKind.info));
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final link = await signedStorageUrl(d.fileUrl!);
+      final resp = await http.get(Uri.parse(link));
+      if (resp.statusCode != 200) {
+        throw Exception('image ${resp.statusCode}');
+      }
+      final repo = ref.read(documentAiRepositoryProvider);
+      final url = await repo.prepare(resp.bodyBytes, d.fileUrl!.split('/').last);
+      final outcome = url == null
+          ? (result: null, reason: 'image_too_large')
+          : await repo.verify(docAiRequestBody(
+              frontDataUrl: url,
+              docName: d.docLabel,
+              documentNumber: d.requiresNumber ? d.documentNumber : null,
+              startDate: d.requiresStart ? d.startDate : null,
+              expiryDate: d.requiresExpiry ? d.expiryDate : null,
+            ));
+      final r = outcome.result;
+      if (r == null) {
+        if (!mounted) return;
+        setState(() => _busy = false);
+        unawaited(showAppNotice(
+          id: 'notice.approver-doc', context: context,
+          message: docAiUnavailableText(outcome.reason), kind: NoticeKind.error));
+        return;
+      }
+      // Overwrite the captured fields with what the scan read (a correction).
+      final fill = docAiAutofill(
+        r,
+        requireDocumentNumber: d.requiresNumber,
+        requireStartDate: d.requiresStart,
+        requireExpiryDate: d.requiresExpiry,
+        requireInsuranceProvider: false,
+        pwdFlag: false,
+        documentNumber: '', startDate: '', expiryDate: '',
+        insurerId: null, isPwd: false, insurers: const [],
+      );
+      await ref.read(approverInboxRepositoryProvider).editFields(
+            d,
+            documentNumber: fill.documentNumber,
+            startDate: fill.startDate,
+            expiryDate: fill.expiryDate,
+          );
+      if (!mounted) return;
+      widget.onChanged();
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc', context: context,
+        message: 'Re-scanned — the captured details were updated.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc', context: context,
+        message: m.contains('not_allowed')
+            ? "You can't re-scan this document."
+            : "Couldn't re-scan the document. Try again.",
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -1899,7 +1977,7 @@ class _DocCardState extends ConsumerState<_DocCard> {
               children: [
                 btn('Details', _busy ? null : _openViewer, key: ValueKey('doc-details-${doc.id}')),
                 if (canUpload && editable) ...[
-                  btn('Rescan', _busy ? null : _openViewer),
+                  btn('Rescan', _busy ? null : _rescanInPlace, key: ValueKey('doc-rescan-${doc.id}')),
                   btn('Upload', _busy ? null : _openViewer, icon: Icons.upload_outlined),
                 ],
                 if (doc.source == 'vehicle' && canDelete)
