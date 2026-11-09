@@ -25,6 +25,7 @@ import '../../widgets/app_notice.dart';
 import '../../widgets/common.dart';
 import '../../widgets/offline_strip.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/phone_number_field.dart' show PhoneNumberField;
 import '../../widgets/search_select.dart';
 import '../../widgets/storage_image.dart';
 import 'approver_inbox_screen.dart' show ApproverInboxScreen, openApproverDocument;
@@ -4679,7 +4680,10 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
   late final _engine = TextEditingController(text: widget.vehicle.engineNumber ?? '');
   late final _ownerName = TextEditingController(text: widget.vehicle.ownerName ?? '');
   late final _ownerIc = TextEditingController(text: widget.vehicle.ownerIc ?? '');
-  late final _ownerPhone = TextEditingController(text: widget.vehicle.ownerPhone ?? '');
+  // The owner phone is a country-code + national-number field; it reports the
+  // composed E.164 (trunk 0 dropped). Seeded with the stored value so leaving it
+  // untouched writes it back unchanged.
+  late String _ownerPhone = widget.vehicle.ownerPhone ?? '';
 
   // Make / Model / Energy are chosen from the catalogue (vehicle_make_models);
   // the vehicle's current values seed the options so legacy data isn't lost.
@@ -4707,7 +4711,6 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
     _engine.dispose();
     _ownerName.dispose();
     _ownerIc.dispose();
-    _ownerPhone.dispose();
     super.dispose();
   }
 
@@ -4931,7 +4934,7 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
       'engine_number': _engine.text.trim(),
       'owner_name': _ownerName.text.trim(),
       'owner_ic': _ownerIc.text.trim(),
-      'owner_phone': _ownerPhone.text.trim(),
+      'owner_phone': _ownerPhone.trim(),
       if (_ownerIdType != null) 'owner_id_type': _ownerIdType,
       if (_status != null) 'status': _status,
     };
@@ -5116,11 +5119,12 @@ class _VehicleEditSheetState extends ConsumerState<_VehicleEditSheet> {
                 decoration: const InputDecoration(labelText: 'Owner ID', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
-              TextFormField(
+              PhoneNumberField(
                 key: const ValueKey('vehicle-edit-owner-phone'),
-                controller: _ownerPhone,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(labelText: 'Owner phone', border: OutlineInputBorder()),
+                keyPrefix: 'vehicle-edit-owner-phone',
+                label: 'Owner phone',
+                initialPhone: widget.vehicle.ownerPhone,
+                onChanged: (v) => _ownerPhone = v,
               ),
               const SizedBox(height: 18),
               Row(
