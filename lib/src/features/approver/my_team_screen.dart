@@ -196,18 +196,53 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
       child: ListView.builder(
         controller: _scroll,
         padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
-        // One extra row for the bottom spinner / "that's everyone" line.
-        itemCount: _members.length + 1,
+        // A scope banner at the top, then the members, then the bottom
+        // spinner / "that's everyone" line.
+        itemCount: _members.length + 2,
         itemBuilder: (context, i) {
-          if (i == _members.length) return _footer(context);
+          if (i == 0) {
+            return ResponsiveCenter(maxWidth: 760, child: _scopeBanner(context));
+          }
+          final idx = i - 1;
+          if (idx == _members.length) return _footer(context);
           return ResponsiveCenter(
             maxWidth: 760,
             child: _TeamCard(
-              member: _members[i],
-              onTap: () => context.push('/my-team/member', extra: _members[i]),
+              member: _members[idx],
+              onTap: () => context.push('/my-team/member', extra: _members[idx]),
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _scopeBanner(BuildContext context) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    final scope = ref.watch(approverSelfProvider).value?.scope;
+    final scopeText = (scope == null || scope.isEmpty || scope == 'all')
+        ? 'everyone your approver access covers'
+        : 'scope — $scope';
+    return Container(
+      margin: const EdgeInsets.fromLTRB(8, 6, 8, 2),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.groups_2_outlined, size: 18, color: cs.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Showing $scopeText. Your own and your referrals’ records are hidden.',
+              style: t.textTheme.bodySmall?.copyWith(color: cs.onSurface),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -307,10 +342,8 @@ class _TeamCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       if (member.status != null) _StatusChip(status: member.status!),
-                      if (member.online) ...[
-                        const SizedBox(height: 6),
-                        const _OnlineChip(),
-                      ],
+                      const SizedBox(height: 6),
+                      _PresenceChip(online: member.online),
                     ],
                   ),
                 ],
@@ -376,28 +409,27 @@ class _TeamCard extends StatelessWidget {
 }
 
 /// A small green "Online" pill for a member who is driving right now.
-class _OnlineChip extends StatelessWidget {
-  const _OnlineChip();
+class _PresenceChip extends StatelessWidget {
+  const _PresenceChip({required this.online});
+  final bool online;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     const green = Color(0xFF1B8A4B);
+    final dot = online ? green : cs.onSurfaceVariant;
+    final bg = online ? green.withValues(alpha: 0.14) : cs.surfaceContainerHighest;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-      decoration: BoxDecoration(
-        color: green.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(20),
-      ),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 7, height: 7,
-            decoration: const BoxDecoration(color: green, shape: BoxShape.circle),
-          ),
+          Container(width: 7, height: 7, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
           const SizedBox(width: 5),
-          Text('Online', style: text.labelSmall?.copyWith(color: green, fontWeight: FontWeight.w600)),
+          Text(online ? 'Online' : 'Offline',
+              style: text.labelSmall?.copyWith(color: dot, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -691,18 +723,41 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
 
   Widget _profileTab(ColorScheme cs, {required bool canCredit, required bool canEditProfile, required double? wallet}) {
     final text = Theme.of(context).textTheme;
-    Widget row(IconData icon, String label, String value) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
+    // The editable fields (email, address, services, ID-verified) come from the
+    // member-detail map; everything else is on the list card's TeamMember.
+    final detail = ref.watch(approverMemberDetailProvider(member.id)).asData?.value;
+    final email = (detail?['email'] as String?)?.trim();
+    final address = (detail?['address'] as String?)?.trim();
+    final isPartner = detail?['is_partner'] == true;
+    final idVerified = ((detail?['id_verified'] as String?) ?? member.idVerified) == 'Verified';
+    final services = [for (final e in (detail?['partner_types'] as List? ?? const [])) '$e'.trim()]
+      ..removeWhere((e) => e.isEmpty);
+
+    Widget tile(String label, Widget value, {VoidCallback? onEdit, String? editKey}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 16, color: cs.onSurfaceVariant),
-              const SizedBox(width: 10),
-              SizedBox(width: 92, child: Text(label, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant))),
-              Expanded(child: Text(value, style: text.bodyMedium)),
+              SizedBox(
+                width: 96,
+                child: Text(label, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+              ),
+              Expanded(child: DefaultTextStyle.merge(style: text.bodyMedium!, child: value)),
+              if (onEdit != null && canEditProfile)
+                InkWell(
+                  key: editKey == null ? null : ValueKey(editKey),
+                  onTap: onEdit,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: Icon(Icons.edit_outlined, size: 16, color: cs.primary),
+                  ),
+                ),
             ],
           ),
         );
+    Widget txt(String? v) => Text((v == null || v.isEmpty) ? '—' : v);
+    String? fmt(DateTime? d) => d?.toIso8601String().split('T').first;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 8),
       child: Padding(
@@ -710,45 +765,86 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (member.phone != null) row(Icons.phone_outlined, 'Mobile', member.phone!),
-            if (member.ic != null) row(Icons.badge_outlined, 'ID No.', member.ic!),
-            if (member.idVerified != null) row(Icons.verified_outlined, 'ID check', member.idVerified!),
-            if (member.nationality != null) row(Icons.public_outlined, 'Nationality', member.nationality!),
+            tile('Name', txt(member.name), onEdit: _openEditProfile, editKey: 'profile-edit-name'),
+            if (isPartner)
+              tile('Services',
+                  services.isEmpty
+                      ? txt(null)
+                      : Wrap(spacing: 6, runSpacing: 4, children: [
+                          for (final s in services)
+                            Chip(
+                              label: Text(s),
+                              visualDensity: VisualDensity.compact,
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
+                        ]),
+                  onEdit: _openEditProfile, editKey: 'profile-edit-services'),
+            const Divider(height: 18),
             if (wallet != null)
-              row(Icons.account_balance_wallet_outlined, 'GET.wallet', 'RM${wallet.toStringAsFixed(2)}'),
-            if (canCredit || canEditProfile) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 8,
-                children: [
-                  if (canEditProfile)
-                    OutlinedButton.icon(
-                      key: const ValueKey('my-team-payout'),
-                      onPressed: _openPayout,
-                      icon: const Icon(Icons.account_balance_outlined, size: 18),
-                      label: const Text('Payout'),
-                    ),
-                  if (canEditProfile)
-                    OutlinedButton.icon(
-                      key: const ValueKey('my-team-change-phone'),
-                      onPressed: _openChangePhone,
-                      icon: const Icon(Icons.phone_iphone_outlined, size: 18),
-                      label: const Text('Change mobile'),
-                    ),
-                  if (canCredit)
-                    FilledButton.tonalIcon(
-                      key: const ValueKey('my-team-add-credit'),
-                      onPressed: _openAddCredit,
-                      icon: const Icon(Icons.add_card_outlined, size: 18),
-                      label: const Text('Add credit'),
-                    ),
-                ],
+              tile('GET.wallet', Text('RM ${wallet.toStringAsFixed(2)}',
+                  style: text.titleMedium?.copyWith(fontWeight: FontWeight.w700))),
+            if (member.displayId != null) tile('Driver no.', txt('#${member.displayId}')),
+            tile('Mobile', txt(member.phone), onEdit: _openChangePhone, editKey: 'profile-edit-mobile'),
+            tile('Email', txt(email), onEdit: _openEditProfile, editKey: 'profile-edit-email'),
+            tile(
+              'ID no.',
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Flexible(child: txt(member.ic)),
+                const SizedBox(width: 8),
+                _idBadge(cs, text, idVerified),
+              ]),
+              onEdit: _openEditProfile, editKey: 'profile-edit-id',
+            ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const ValueKey('profile-view-id'),
+                onPressed: () => setState(() => _tab = _MemberTab.documents),
+                icon: const Icon(Icons.image_outlined, size: 18),
+                label: const Text('View / edit ID details'),
+              ),
+            ),
+            tile('Address', txt(address), onEdit: _openEditProfile, editKey: 'profile-edit-address'),
+            tile('Payout', const Text('Bank / e-wallet'), onEdit: _openPayout, editKey: 'profile-edit-payout'),
+            if (member.nationality != null) tile('Nationality', txt(member.nationality)),
+            const Divider(height: 18),
+            tile('Registered', txt(fmt(member.registeredAt))),
+            tile('Last updated', txt(fmt(member.updatedAt))),
+            if (member.serviceCity != null) tile('Service city', txt(member.serviceCity)),
+            tile(
+              'Current status',
+              Row(children: [
+                Icon(Icons.circle, size: 10, color: member.online ? Colors.green : cs.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Text(member.online ? 'Online' : 'Offline',
+                    style: text.bodyMedium?.copyWith(
+                        color: member.online ? Colors.green.shade800 : cs.onSurfaceVariant,
+                        fontWeight: FontWeight.w600)),
+              ]),
+            ),
+            if (canCredit) ...[
+              const SizedBox(height: 12),
+              FilledButton.tonalIcon(
+                key: const ValueKey('my-team-add-credit'),
+                onPressed: _openAddCredit,
+                icon: const Icon(Icons.add_card_outlined, size: 18),
+                label: const Text('Add credit'),
               ),
             ],
           ],
         ),
       ),
+    );
+  }
+
+  Widget _idBadge(ColorScheme cs, TextTheme text, bool verified) {
+    final color = verified ? Colors.green.shade800 : Colors.amber.shade900;
+    final bg = (verified ? Colors.green : Colors.amber).withValues(alpha: 0.18);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(verified ? 'Verified' : 'Not verified',
+          style: text.labelSmall?.copyWith(color: color, fontWeight: FontWeight.w700)),
     );
   }
 
@@ -1344,6 +1440,20 @@ class _AddCreditSheetState extends ConsumerState<_AddCreditSheet> {
               border: OutlineInputBorder(),
             ),
             onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            children: [
+              for (final amt in const [10, 20, 50, 100])
+                ActionChip(
+                  key: ValueKey('add-credit-quick-$amt'),
+                  label: Text('RM $amt'),
+                  onPressed: _busy
+                      ? null
+                      : () => setState(() => _amount.text = amt.toStringAsFixed(2)),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
           TextField(
