@@ -1837,7 +1837,14 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         ),
       ),
       data: (list) {
-        if (list.isEmpty) {
+        final driver = [for (final d in list) if (d.source != 'vehicle') d];
+        final vehicle = [for (final d in list) if (d.source == 'vehicle') d];
+        final meta = ref.watch(approverOwnerDocMetaProvider(member.id)).asData?.value ?? const {};
+        final addable = ref.watch(approverAddableDocsProvider(member.id)).asData?.value ?? const <AddableDoc>[];
+        // Only truly empty when nothing is uploaded AND nothing is still
+        // required — otherwise show the missing required docs so the approver
+        // can upload on behalf or send an upload request.
+        if (list.isEmpty && addable.isEmpty) {
           return const Padding(
             padding: EdgeInsets.all(24),
             child: EmptyState(
@@ -1847,10 +1854,6 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
             ),
           );
         }
-        final driver = [for (final d in list) if (d.source != 'vehicle') d];
-        final vehicle = [for (final d in list) if (d.source == 'vehicle') d];
-        final meta = ref.watch(approverOwnerDocMetaProvider(member.id)).asData?.value ?? const {};
-        final addable = ref.watch(approverAddableDocsProvider(member.id)).asData?.value ?? const <AddableDoc>[];
         void onChanged() {
           ref.invalidate(approverOwnerDocumentsProvider(member.id));
           ref.invalidate(approverOwnerDocMetaProvider(member.id));

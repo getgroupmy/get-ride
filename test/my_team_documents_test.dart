@@ -146,6 +146,35 @@ void main() {
     expect(repo.created, ('m1', 'pwd-type'));
   });
 
+  testWidgets('with nothing uploaded but a required doc missing, the missing card (not "No documents") shows', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          approverInboxRepositoryProvider.overrideWithValue(_FakeRepo()),
+          approverSelfProvider.overrideWith((ref) async => _grant()),
+          approverMemberWalletProvider.overrideWith((ref, id) async => null),
+          // Nothing uploaded at all…
+          approverOwnerDocumentsProvider.overrideWith((ref, id) async => const <ApproverDoc>[]),
+          approverOwnerDocMetaProvider.overrideWith((ref, id) async => const <String, dynamic>{}),
+          // …but a required document type is still outstanding.
+          approverAddableDocsProvider.overrideWith((ref, id) async =>
+              const [AddableDoc(docId: 'lic-type', name: "Driver's Licence", required: true)]),
+        ],
+        child: MaterialApp(theme: appTheme(Brightness.light), home: const MyTeamMemberScreen(member: _member)),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('member-tab-documents')));
+    await tester.pumpAndSettle();
+
+    // The empty state is gone; the missing required doc is listed with its
+    // Upload-on-behalf and Request-upload actions.
+    expect(find.text('No documents'), findsNothing);
+    expect(find.text("Driver's Licence"), findsOneWidget);
+    expect(find.byKey(const ValueKey('doc-upload-onbehalf-lic-type')), findsOneWidget);
+    expect(find.byKey(const ValueKey('doc-request-partner-lic-type')), findsOneWidget);
+  });
+
   testWidgets('a pending replacement shows the New/Live two-image state', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
