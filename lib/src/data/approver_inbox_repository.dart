@@ -884,6 +884,8 @@ class PendingUpload {
     required this.source,
     required this.docKey,
     required this.name,
+    this.vehicleId,
+    this.plate,
     required this.sentCount,
     this.lastSentAt,
   });
@@ -894,8 +896,16 @@ class PendingUpload {
   final String source;
   final String docKey;
   final String name;
+
+  /// For a vehicle document (`source == 'vehicle'`): the vehicle it belongs to
+  /// and its plate, so the reminder is keyed to the right car.
+  final String? vehicleId;
+  final String? plate;
+
   final int sentCount;
   final DateTime? lastSentAt;
+
+  bool get isVehicle => source == 'vehicle';
 
   static String? _s(Object? v) {
     final t = '${v ?? ''}'.trim();
@@ -909,6 +919,8 @@ class PendingUpload {
         source: _s(j['source']) ?? 'partner',
         docKey: '${j['doc_key']}',
         name: _s(j['name']) ?? 'Document',
+        vehicleId: _s(j['vehicle_id']),
+        plate: _s(j['plate']),
         sentCount: (j['sent_count'] as num?)?.toInt() ?? 0,
         lastSentAt: j['last_sent_at'] == null ? null : DateTime.tryParse('${j['last_sent_at']}')?.toLocal(),
       );
