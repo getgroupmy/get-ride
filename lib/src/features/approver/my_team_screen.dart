@@ -2162,7 +2162,7 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                   _sectionLabel(t, cs, 'OWNER'),
                   const SizedBox(height: 8),
                   if (v.ownerName != null) _ownerRow(t, cs, 'Owner name', v.ownerName!),
-                  if (v.ownerIc != null) _ownerRow(t, cs, 'Owner ID', '${v.ownerIc!} · National ID'),
+                  if (v.ownerIc != null) _ownerRow(t, cs, 'Owner ID', '${v.ownerIc!} · ${v.ownerIdType ?? 'National ID'}'),
                   if (v.ownerPhone != null) _ownerRow(t, cs, 'Owner phone', v.ownerPhone!),
                 ],
                 const SizedBox(height: 16),
@@ -2683,13 +2683,32 @@ class _PermitsSection extends ConsumerWidget {
   }
 }
 
-/// The Edit vehicle form (migration 0369): plate / make / model / colour /
-/// year. Returns the patch map to the Vehicle detail sheet on save, or null
-/// when cancelled. Plate, make and model are required (they are NOT NULL on
-/// the row); colour and year may be cleared.
+/// The Edit vehicle form (migrations 0369, 0375): the full spec — plate, make,
+/// model, colour, year, type, energy, status, VIN, engine no. — plus the
+/// registered-owner block (name, ID type + number, phone). Returns the patch
+/// map to the Vehicle detail sheet on save, or null when cancelled. Plate, make
+/// and model are required (make/model are NOT NULL on the row); the rest may be
+/// cleared.
 class _VehicleEditSheet extends StatefulWidget {
   const _VehicleEditSheet({required this.vehicle});
   final VehicleDetail vehicle;
+
+  /// The partner_status labels the DB accepts, with a friendly caption each.
+  static const List<(String, String)> statusOptions = [
+    ('approved', 'Approved'),
+    ('unapproved', 'Unapproved'),
+    ('unapproved-docs', 'Unapproved · docs'),
+    ('permit-pending', 'Permit pending'),
+    ('permit-non-verified', 'Permit not verified'),
+    ('permit-verified', 'Permit verified'),
+    ('changes-needed', 'Changes needed'),
+    ('blocked', 'Blocked'),
+    ('rejected', 'Rejected'),
+  ];
+
+  static const List<String> ownerIdTypeOptions = [
+    'National ID', 'Passport', 'Business Registration', 'Other',
+  ];
 
   @override
   State<_VehicleEditSheet> createState() => _VehicleEditSheetState();
@@ -2702,6 +2721,18 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
   late final _model = TextEditingController(text: widget.vehicle.model ?? '');
   late final _color = TextEditingController(text: widget.vehicle.color ?? '');
   late final _year = TextEditingController(text: widget.vehicle.year ?? '');
+  late final _type = TextEditingController(text: widget.vehicle.vehicleType ?? '');
+  late final _energy = TextEditingController(text: widget.vehicle.energy ?? '');
+  late final _vin = TextEditingController(text: widget.vehicle.vin ?? '');
+  late final _engine = TextEditingController(text: widget.vehicle.engineNumber ?? '');
+  late final _ownerName = TextEditingController(text: widget.vehicle.ownerName ?? '');
+  late final _ownerIc = TextEditingController(text: widget.vehicle.ownerIc ?? '');
+  late final _ownerPhone = TextEditingController(text: widget.vehicle.ownerPhone ?? '');
+
+  late String? _status = _VehicleEditSheet.statusOptions.any((o) => o.$1 == widget.vehicle.status)
+      ? widget.vehicle.status
+      : null;
+  late String? _ownerIdType = widget.vehicle.ownerIdType;
 
   @override
   void dispose() {
@@ -2710,20 +2741,38 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
     _model.dispose();
     _color.dispose();
     _year.dispose();
+    _type.dispose();
+    _energy.dispose();
+    _vin.dispose();
+    _engine.dispose();
+    _ownerName.dispose();
+    _ownerIc.dispose();
+    _ownerPhone.dispose();
     super.dispose();
   }
 
   void _save() {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    // Only the keys present are applied server-side. Colour and year are always
-    // sent (so clearing them works); plate/make/model are required and trimmed.
-    Navigator.of(context).pop(<String, String?>{
+    // Every key present is applied server-side; a present-but-empty value clears
+    // that (nullable) column. Plate/make/model are required and trimmed. Status
+    // is only sent when one is picked (it is NOT NULL on the row).
+    final patch = <String, String?>{
       'plate': _plate.text.trim(),
       'make': _make.text.trim(),
       'model': _model.text.trim(),
       'color': _color.text.trim(),
       'year': _year.text.trim(),
-    });
+      'vehicle_type': _type.text.trim(),
+      'energy_type': _energy.text.trim(),
+      'vin': _vin.text.trim(),
+      'engine_number': _engine.text.trim(),
+      'owner_name': _ownerName.text.trim(),
+      'owner_ic': _ownerIc.text.trim(),
+      'owner_phone': _ownerPhone.text.trim(),
+      if (_ownerIdType != null) 'owner_id_type': _ownerIdType,
+      if (_status != null) 'status': _status,
+    };
+    Navigator.of(context).pop(patch);
   }
 
   String? _required(String? v) => (v == null || v.trim().isEmpty) ? 'Required' : null;
@@ -2731,6 +2780,10 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    final ownerIdTypes = {
+      ..._VehicleEditSheet.ownerIdTypeOptions,
+      if (widget.vehicle.ownerIdType != null) widget.vehicle.ownerIdType!,
+    }.toList();
     return Padding(
       padding: EdgeInsets.fromLTRB(20, 16, 20, 16 + MediaQuery.viewInsetsOf(context).bottom),
       child: SingleChildScrollView(
@@ -2741,7 +2794,10 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text('Edit vehicle', style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(height: 14),
+              const SizedBox(height: 4),
+              Text('Vehicle', style: t.textTheme.labelMedium?.copyWith(
+                  color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
               TextFormField(
                 key: const ValueKey('vehicle-edit-plate'),
                 controller: _plate,
@@ -2786,6 +2842,86 @@ class _VehicleEditSheetState extends State<_VehicleEditSheet> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      key: const ValueKey('vehicle-edit-type'),
+                      controller: _type,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Type', border: OutlineInputBorder()),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      key: const ValueKey('vehicle-edit-energy'),
+                      controller: _energy,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(labelText: 'Energy', border: OutlineInputBorder()),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SearchableDropdownFormField<String>(
+                key: const ValueKey('vehicle-edit-status'),
+                initialValue: _status,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
+                items: [
+                  for (final o in _VehicleEditSheet.statusOptions)
+                    DropdownMenuItem(value: o.$1, child: Text(o.$2)),
+                ],
+                onChanged: (v) => setState(() => _status = v),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-vin'),
+                controller: _vin,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'VIN', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-engine'),
+                controller: _engine,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(labelText: 'Engine no.', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 18),
+              Text('Owner', style: t.textTheme.labelMedium?.copyWith(
+                  color: t.colorScheme.onSurfaceVariant, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 10),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-owner-name'),
+                controller: _ownerName,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(labelText: 'Owner name', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              SearchableDropdownFormField<String>(
+                key: const ValueKey('vehicle-edit-owner-id-type'),
+                initialValue: ownerIdTypes.contains(_ownerIdType) ? _ownerIdType : null,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Owner ID type', border: OutlineInputBorder()),
+                items: [for (final o in ownerIdTypes) DropdownMenuItem(value: o, child: Text(o))],
+                onChanged: (v) => setState(() => _ownerIdType = v),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-owner-ic'),
+                controller: _ownerIc,
+                decoration: const InputDecoration(labelText: 'Owner ID', border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                key: const ValueKey('vehicle-edit-owner-phone'),
+                controller: _ownerPhone,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(labelText: 'Owner phone', border: OutlineInputBorder()),
               ),
               const SizedBox(height: 18),
               Row(

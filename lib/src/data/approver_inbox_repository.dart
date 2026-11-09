@@ -432,6 +432,7 @@ class VehicleDetail {
     this.status,
     this.ownerName,
     this.ownerIc,
+    this.ownerIdType,
     this.ownerPhone,
     this.photoFront,
     this.photoBack,
@@ -463,6 +464,7 @@ class VehicleDetail {
   /// The registered owner block (may be a third party, not the account holder).
   final String? ownerName;
   final String? ownerIc;
+  final String? ownerIdType;
   final String? ownerPhone;
 
   /// The four vehicle photos (storage paths; signed by StorageImage).
@@ -510,6 +512,7 @@ class VehicleDetail {
       status: _s(j['status']),
       ownerName: _s(j['owner_name']),
       ownerIc: _s(j['owner_ic']),
+      ownerIdType: _s(j['owner_id_type']),
       ownerPhone: _s(j['owner_phone']),
       photoFront: _s(photos['front']),
       photoBack: _s(photos['back']),

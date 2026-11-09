@@ -127,6 +127,8 @@ void main() {
 
     // Change the colour and save.
     await tester.enterText(find.byKey(const ValueKey('vehicle-edit-color')), 'Blue');
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-edit-save')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('vehicle-edit-save')));
     await tester.pumpAndSettle();
 
@@ -134,6 +136,47 @@ void main() {
     expect(repo.updatedPatch?['plate'], 'BMT4420');
     expect(repo.updatedPatch?['make'], 'Perodua');
     expect(repo.updatedPatch?['color'], 'Blue');
+  });
+
+  testWidgets('Edit vehicle sends the full spec and owner patch', (tester) async {
+    final repo = await _openSheet(tester, canManage: true);
+
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-edit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('vehicle-edit')));
+    await tester.pumpAndSettle();
+
+    // Fill the spec and owner text fields (status pre-fills from the vehicle).
+    Future<void> fill(String key, String value) async {
+      await tester.ensureVisible(find.byKey(ValueKey(key)));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(ValueKey(key)), value);
+    }
+
+    await fill('vehicle-edit-type', 'MPV');
+    await fill('vehicle-edit-energy', 'Petrol');
+    await fill('vehicle-edit-vin', 'MHFXW9F3XM1234567');
+    await fill('vehicle-edit-engine', '2GD1234567');
+    await fill('vehicle-edit-owner-name', 'Nurul Shahida');
+    await fill('vehicle-edit-owner-ic', '831103085914');
+    await fill('vehicle-edit-owner-phone', '+60126640912');
+
+    await tester.ensureVisible(find.byKey(const ValueKey('vehicle-edit-save')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('vehicle-edit-save')));
+    await tester.pumpAndSettle();
+
+    final p = repo.updatedPatch;
+    expect(repo.updatedVehicle, 'v1');
+    expect(p?['vehicle_type'], 'MPV');
+    expect(p?['energy_type'], 'Petrol');
+    expect(p?['vin'], 'MHFXW9F3XM1234567');
+    expect(p?['engine_number'], '2GD1234567');
+    expect(p?['owner_name'], 'Nurul Shahida');
+    expect(p?['owner_ic'], '831103085914');
+    expect(p?['owner_phone'], '+60126640912');
+    // Status pre-filled from the vehicle detail ('approved') and is sent.
+    expect(p?['status'], 'approved');
   });
 
   testWidgets('a missing vehicle doc offers Upload on behalf and creates it', (tester) async {
