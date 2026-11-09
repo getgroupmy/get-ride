@@ -1802,7 +1802,10 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                         color: cs.onSurfaceVariant, letterSpacing: 0.6, fontWeight: FontWeight.w700)),
               ),
               for (final d in driver) _DocCard(doc: d, onChanged: onChanged, meta: meta[d.id] as Map?),
-              for (final ad in addable) _MissingDocCard(doc: ad, onUpload: () => _addDocumentOnBehalf(ad, onChanged)),
+              for (final ad in addable)
+                _MissingDocCard(
+                  doc: ad, onUpload: () => _addDocumentOnBehalf(ad, onChanged),
+                  memberId: member.id, source: 'partner'),
             ],
             if (vehicle.isNotEmpty) ...[
               Padding(
@@ -2428,6 +2431,19 @@ class _DocCardState extends ConsumerState<_DocCard> {
                 ],
               ],
             ),
+            // Nudge the member to (re)upload while the document isn't approved.
+            if (canUpload && status != 'Approved') ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _RequestUploadButton(
+                  memberId: doc.ownerId,
+                  source: doc.source,
+                  docKey: doc.id,
+                  label: doc.docLabel,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -2473,9 +2489,18 @@ class _DocCardState extends ConsumerState<_DocCard> {
 /// A driver document type the member hasn't uploaded, shown as "No Document"
 /// with an "Upload on behalf" action (migration 0372).
 class _MissingDocCard extends StatelessWidget {
-  const _MissingDocCard({required this.doc, required this.onUpload});
+  const _MissingDocCard({
+    required this.doc,
+    required this.onUpload,
+    required this.memberId,
+    required this.source,
+    this.vehicleId,
+  });
   final AddableDoc doc;
   final VoidCallback onUpload;
+  final String memberId;
+  final String source;
+  final String? vehicleId;
 
   @override
   Widget build(BuildContext context) {
@@ -2531,9 +2556,126 @@ class _MissingDocCard extends StatelessWidget {
                 label: const Text('Upload on behalf'),
               ),
             ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _RequestUploadButton(
+                memberId: memberId,
+                source: source,
+                docKey: doc.docId,
+                label: doc.name,
+                vehicleId: vehicleId,
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// "just now" / "5m ago" / "3h ago" / "2d ago" / "04 Feb" for an approver's
+/// last upload reminder. Pure, so it is unit-tested.
+String approverRelativeTime(DateTime t, {DateTime? now}) {
+  final n = now ?? DateTime.now();
+  final d = n.difference(t);
+  if (d.inSeconds < 60) return 'just now';
+  if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+  if (d.inHours < 24) return '${d.inHours}h ago';
+  if (d.inDays < 7) return '${d.inDays}d ago';
+  const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return '${t.day.toString().padLeft(2, '0')} ${m[t.month - 1]}';
+}
+
+/// "Request upload" — an approver nudges a covered member to upload a pending or
+/// missing document with a push, and the button then shows how many reminders
+/// have gone and when the last one was (migration 0384). Shown only with
+/// can_upload (the server requires it). Works for every document source.
+class _RequestUploadButton extends ConsumerStatefulWidget {
+  const _RequestUploadButton({
+    required this.memberId,
+    required this.source,
+    required this.docKey,
+    required this.label,
+    this.vehicleId,
+  });
+
+  final String memberId;
+  final String source;
+  final String docKey;
+  final String label;
+  final String? vehicleId;
+
+  @override
+  ConsumerState<_RequestUploadButton> createState() => _RequestUploadButtonState();
+}
+
+class _RequestUploadButtonState extends ConsumerState<_RequestUploadButton> {
+  bool _busy = false;
+  DocRequestStat? _override;
+
+  String get _key => ref
+      .read(approverInboxRepositoryProvider)
+      .docRequestKey(widget.source, widget.docKey, vehicleId: widget.vehicleId);
+
+  Future<void> _send() async {
+    setState(() => _busy = true);
+    try {
+      final stat = await ref.read(approverInboxRepositoryProvider).requestDocumentUpload(
+            widget.memberId, widget.source, widget.docKey,
+            label: widget.label, vehicleId: widget.vehicleId,
+          );
+      if (!mounted) return;
+      setState(() => _override = stat);
+      ref.invalidate(approverDocumentRequestStatsProvider(widget.memberId));
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc-request', context: context,
+        message: 'Upload request sent to ${widget.label}.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-doc-request', context: context,
+        message: m.contains('not_allowed') || m.contains('not_authorized')
+            ? "You can't request uploads for this member."
+            : (m.contains('out_of_scope') ? "This member isn't in your scope." : "Couldn't send the request. Try again."),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final stats = ref.watch(approverDocumentRequestStatsProvider(widget.memberId)).asData?.value ?? const {};
+    final stat = _override ?? stats[_key];
+    final count = stat?.count ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        OutlinedButton.icon(
+          key: ValueKey('doc-request-${widget.source}-${widget.docKey}'),
+          style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+          onPressed: _busy ? null : _send,
+          icon: _busy
+              ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.notifications_active_outlined, size: 16),
+          label: Text(count > 0 ? 'Request again' : 'Request upload'),
+        ),
+        if (count > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 3, left: 2),
+            child: Text(
+              'Requested $count×'
+              '${stat?.lastSentAt != null ? ' · last ${approverRelativeTime(stat!.lastSentAt!)}' : ''}',
+              key: ValueKey('doc-request-count-${widget.source}-${widget.docKey}'),
+              style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -3159,11 +3301,13 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                 const SizedBox(height: 6),
                 if (v.documents.isEmpty && !v.canManage)
                   Text('No documents on file.', style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                for (final d in v.documents) _docRow(t, cs, d),
+                for (final d in v.documents) _docRow(t, cs, d, canManage: v.canManage),
                 if (v.canManage)
                   for (final ad in (ref.watch(approverAddableVehicleDocsProvider(widget.vehicleId)).asData?.value
                       ?? const <AddableDoc>[]))
-                    _MissingDocCard(doc: ad, onUpload: () => _addVehicleDocument(ad)),
+                    _MissingDocCard(
+                      doc: ad, onUpload: () => _addVehicleDocument(ad),
+                      memberId: widget.memberId, source: 'vehicle', vehicleId: widget.vehicleId),
                 if (v.canManage) ...[
                   const SizedBox(height: 18),
                   Row(
@@ -3576,7 +3720,7 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
     );
   }
 
-  Widget _docRow(ThemeData t, ColorScheme cs, VehicleDoc d) {
+  Widget _docRow(ThemeData t, ColorScheme cs, VehicleDoc d, {required bool canManage}) {
     final sub = [
       if (d.expiry != null) 'Exp ${d.expiry}',
       if (d.provider != null) d.provider,
@@ -3585,22 +3729,41 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(d.name, style: t.textTheme.titleSmall),
-                  if (sub.isNotEmpty)
-                    Text(sub, style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
-                ],
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(d.name, style: t.textTheme.titleSmall),
+                      if (sub.isNotEmpty)
+                        Text(sub, style: t.textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                    ],
+                  ),
+                ),
+                if (d.status != null)
+                  Text(d.status!, style: t.textTheme.labelMedium?.copyWith(
+                      color: d.status == 'Approved' ? Colors.green.shade800 : cs.onSurfaceVariant,
+                      fontWeight: FontWeight.w600)),
+              ],
             ),
-            if (d.status != null)
-              Text(d.status!, style: t.textTheme.labelMedium?.copyWith(
-                  color: d.status == 'Approved' ? Colors.green.shade800 : cs.onSurfaceVariant,
-                  fontWeight: FontWeight.w600)),
+            // Nudge the member while a vehicle document isn't approved.
+            if (canManage && d.status != 'Approved') ...[
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _RequestUploadButton(
+                  memberId: widget.memberId,
+                  source: 'vehicle',
+                  docKey: d.id,
+                  label: d.name,
+                  vehicleId: widget.vehicleId,
+                ),
+              ),
+            ],
           ],
         ),
       ),

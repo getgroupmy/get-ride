@@ -190,6 +190,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:notice.approver', SurfaceKind.modal, 'Notice · Approver', 'lib/src/features/approver/approver_inbox_screen.dart'),
   SurfaceEntry('modal:notice.approver-credit', SurfaceKind.modal, 'Notice · Approver credit', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:notice.approver-doc', SurfaceKind.modal, 'Notice · Approver doc', 'lib/src/features/approver/my_team_screen.dart'),
+  SurfaceEntry('modal:notice.approver-doc-request', SurfaceKind.modal, 'Notice · Approver doc request', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:notice.approver-edit', SurfaceKind.modal, 'Notice · Approver edit', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:notice.approver-payout', SurfaceKind.modal, 'Notice · Approver payout', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:notice.approver-phone', SurfaceKind.modal, 'Notice · Approver phone', 'lib/src/features/approver/my_team_screen.dart'),
