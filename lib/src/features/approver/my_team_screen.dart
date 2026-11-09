@@ -10,6 +10,7 @@ import 'package:uuid/uuid.dart';
 import '../../admin/screens/people/people_logic.dart' show partnerTypeOptions;
 import '../../admin/screens/people/people_widgets.dart' show PartnerTypeField;
 import '../../core/document_ai.dart' show docAiRequestBody, docAiAutofill, docAiUnavailableText;
+import '../../core/ic_info.dart' show malaysianIcInfo;
 import '../../core/permits.dart' show PermitItem, PermitStatus;
 import '../../core/secure_screen.dart';
 import '../../data/approver_inbox_repository.dart';
@@ -1335,8 +1336,8 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 key: const ValueKey('profile-view-id'),
-                onPressed: () => setState(() => _tab = _MemberTab.documents),
-                icon: const Icon(Icons.image_outlined, size: 18),
+                onPressed: _openIdDetail,
+                icon: const Icon(Icons.badge_outlined, size: 18),
                 label: const Text('View / edit ID details'),
               ),
             ),
@@ -1908,6 +1909,13 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         context: context,
         isScrollControlled: true,
         builder: (c) => _ProposePhoneSheet(member: member),
+      );
+
+  Future<void> _openIdDetail() => showAppSheet<void>(
+        id: 'approver.id-detail',
+        context: context,
+        isScrollControlled: true,
+        builder: (c) => _IdDetailSheet(member: member),
       );
 }
 
@@ -2676,6 +2684,352 @@ class _RequestUploadButtonState extends ConsumerState<_RequestUploadButton> {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// The dedicated ID sheet (migration 0385): the member's ID document with the
+/// birth date and gender read off the MyKad number, the ID's expiry, the
+/// read-from-document vs stored comparison with a Fix on each editable
+/// mismatch, and Verify / Reject for a pending check.
+class _IdDetailSheet extends ConsumerStatefulWidget {
+  const _IdDetailSheet({required this.member});
+  final TeamMember member;
+
+  @override
+  ConsumerState<_IdDetailSheet> createState() => _IdDetailSheetState();
+}
+
+class _IdDetailSheetState extends ConsumerState<_IdDetailSheet> {
+  bool _busy = false;
+  String? _fixing; // the field label currently being fixed
+
+  TeamMember get member => widget.member;
+
+  /// The member's ID document (not the selfie), if any.
+  ApproverDoc? _idDoc(List<ApproverDoc> docs) {
+    for (final d in docs) {
+      if (d.source != 'identity') continue;
+      final k = d.docKey.toLowerCase();
+      if (k == 'mykad' || k == 'passport' || k == 'id') return d;
+      if (d.docLabel == 'MyKad' || d.docLabel == 'Passport') return d;
+    }
+    return null;
+  }
+
+  void _refresh(ApproverDoc doc) {
+    ref.invalidate(approverDocumentDetailProvider((source: doc.source, id: doc.id)));
+    ref.invalidate(approverOwnerDocumentsProvider(member.id));
+    ref.invalidate(approverMemberDetailProvider(member.id));
+  }
+
+  /// Copy an OCR-read value into what's stored: a profile field (name / ID no.
+  /// / nationality) via the profile edit, or the ID's own expiry via the
+  /// identity-expiry RPC.
+  Future<void> _fix(ApproverDoc doc, DocReadRow row) async {
+    final read = row.read?.trim();
+    if (read == null || read.isEmpty) return;
+    setState(() => _fixing = row.field);
+    try {
+      final repo = ref.read(approverInboxRepositoryProvider);
+      switch (row.field) {
+        case 'Name':
+          await repo.editProfile(member.id, {'name': read});
+        case 'ID no.':
+          await repo.editProfile(member.id, {'ic': read});
+        case 'Nationality':
+          await repo.editProfile(member.id, {'nationality': read});
+        case 'Expiry':
+          await repo.editIdentityExpiry(doc.id, read.length >= 10 ? read.substring(0, 10) : read);
+        default:
+          return;
+      }
+      _refresh(doc);
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-id', context: context,
+        message: '${row.field} updated to the value read from the document.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-id', context: context,
+        message: m.contains('not_allowed') || m.contains('not_authorized')
+            ? "You can't edit this member's ID."
+            : (m.contains('out_of_scope') ? "This member isn't in your scope." : "Couldn't update. Try again."),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _fixing = null);
+    }
+  }
+
+  Future<void> _review(ApproverDoc doc, String action) async {
+    String? note;
+    if (action == 'reject') {
+      final c = TextEditingController();
+      note = await showAppDialog<String>(
+        id: 'dialog.approver-id-reject', context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Reject ID?'),
+          content: TextField(
+            key: const ValueKey('id-reject-note'),
+            controller: c,
+            autofocus: true,
+            minLines: 1, maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Reason (shown to the member)', hintText: 'e.g. Blurry photo, expired'),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            FilledButton(
+              key: const ValueKey('id-reject-confirm'),
+              onPressed: () => Navigator.pop(ctx, c.text.trim()),
+              child: const Text('Reject')),
+          ],
+        ),
+      );
+      if (note == null || note.isEmpty) return;
+    }
+    setState(() => _busy = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).review(doc, action, note: note);
+      _refresh(doc);
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-id', context: context,
+        message: action == 'approve' ? 'ID verified.' : 'ID rejected.', kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-id', context: context,
+        message: m.contains('APPROVER_REASON')
+            ? 'Add a reason when rejecting.'
+            : (m.contains('not_authorized') || m.contains('not_allowed')
+                ? "You can't review this ID."
+                : (m.contains('APPROVER_NOT_FOUND') ? 'This ID is no longer pending.' : "Couldn't update. Try again.")),
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  static const _editableFields = {'Name', 'ID no.', 'Nationality', 'Expiry'};
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final canEdit = ref.watch(approverSelfProvider).value?.canEditProfile ?? false;
+    final canApprove = ref.watch(approverSelfProvider).value?.canApprove ?? false;
+    final docsAsync = ref.watch(approverOwnerDocumentsProvider(member.id));
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: docsAsync.when(
+          loading: () => const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator())),
+          error: (e, _) => Padding(
+            padding: const EdgeInsets.all(24),
+            child: EmptyState(icon: Icons.cloud_off, title: "Couldn't load the ID", message: errorText(e)),
+          ),
+          data: (docs) {
+            final doc = _idDoc(docs);
+            if (doc == null) {
+              return const Padding(
+                padding: EdgeInsets.all(28),
+                child: EmptyState(
+                  icon: Icons.badge_outlined,
+                  title: 'No ID on file',
+                  message: 'This member has not uploaded an ID document in your scope.'),
+              );
+            }
+            final detail = ref.watch(approverDocumentDetailProvider((source: 'identity', id: doc.id))).value;
+            final ic = malaysianIcInfo(member.ic);
+            final status = detail?.status ?? doc.status ?? 'Pending Review';
+            final pending = status == 'Pending Review';
+            final expiry = detail?.expiryDate ?? doc.expiryDate;
+
+            return ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.fromLTRB(18, 12, 18, 20),
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: Text('Identity document', style: text.titleLarge)),
+                    _IdStatusChip(status: status),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(doc.docLabel, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    _idImage(cs, doc.fileUrl, 'Front'),
+                    if (doc.fileUrlBack != null) ...[const SizedBox(width: 10), _idImage(cs, doc.fileUrlBack, 'Back')],
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _infoRow(text, cs, 'Date of birth', _fmtDob(ic.dob)),
+                _infoRow(text, cs, 'Gender', ic.gender ?? '—'),
+                _infoRow(text, cs, 'Expiry', _fmtStored(expiry)),
+                const Divider(height: 26),
+                Text('READ FROM DOCUMENT vs STORED',
+                    style: text.labelMedium?.copyWith(
+                        color: cs.onSurfaceVariant, letterSpacing: 0.6, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                if (detail == null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text('No read-back on file for this document.',
+                        style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  )
+                else if (detail.read.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text('Nothing was read off this document.',
+                        style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+                  )
+                else
+                  for (final row in detail.read) _readRow(text, cs, doc, row, canEdit: canEdit),
+                if (canApprove && pending) ...[
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          key: const ValueKey('id-verify'),
+                          onPressed: _busy ? null : () => _review(doc, 'approve'),
+                          icon: const Icon(Icons.verified_outlined, size: 18),
+                          label: const Text('Verify'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const ValueKey('id-reject'),
+                          style: OutlinedButton.styleFrom(foregroundColor: cs.error),
+                          onPressed: _busy ? null : () => _review(doc, 'reject'),
+                          icon: const Icon(Icons.close, size: 18),
+                          label: const Text('Reject'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _idImage(ColorScheme cs, String? url, String label) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              width: 120, height: 78,
+              child: url != null
+                  ? StorageImage(url, fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => ColoredBox(
+                          color: cs.surfaceContainerHighest,
+                          child: Icon(Icons.badge_outlined, color: cs.onSurfaceVariant)))
+                  : ColoredBox(color: cs.surfaceContainerHighest, child: Icon(Icons.badge_outlined, color: cs.onSurfaceVariant)),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(label, style: Theme.of(context).textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+        ],
+      );
+
+  Widget _infoRow(TextTheme text, ColorScheme cs, String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(width: 110, child: Text(label, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant))),
+            Expanded(child: Text(value, style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w600))),
+          ],
+        ),
+      );
+
+  Widget _readRow(TextTheme text, ColorScheme cs, ApproverDoc doc, DocReadRow row, {required bool canEdit}) {
+    final differs = !row.match;
+    final canFix = canEdit && differs && _editableFields.contains(row.field) && (row.read?.trim().isNotEmpty ?? false);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(width: 90, child: Text(row.field, style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant))),
+              Expanded(child: Text(row.read ?? '—', style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w600))),
+              Icon(differs ? Icons.error_outline : Icons.check_circle,
+                  size: 16, color: differs ? cs.error : Colors.green.shade600),
+            ],
+          ),
+          if (differs)
+            Padding(
+              padding: const EdgeInsets.only(left: 90, top: 1),
+              child: Text('stored: ${row.stored ?? '—'}',
+                  style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+            ),
+          if (canFix)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 84),
+                child: TextButton(
+                  key: ValueKey('id-fix-${row.field}'),
+                  onPressed: _fixing != null ? null : () => _fix(doc, row),
+                  child: _fixing == row.field
+                      ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Text('Fix'),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static String _fmtDob(DateTime? d) {
+    if (d == null) return '—';
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${d.day.toString().padLeft(2, '0')} ${m[d.month - 1]} ${d.year}';
+  }
+
+  static String _fmtStored(String? raw) {
+    final s = (raw ?? '').trim();
+    if (s.isEmpty) return '—';
+    final d = DateTime.tryParse(s);
+    if (d == null) return s.length >= 10 ? s.substring(0, 10) : s;
+    const m = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${d.day.toString().padLeft(2, '0')} ${m[d.month - 1]} ${d.year}';
+  }
+}
+
+/// A small status chip (Pending / Verified / Rejected) for the ID sheet.
+class _IdStatusChip extends StatelessWidget {
+  const _IdStatusChip({required this.status});
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final (label, bg, fg) = switch (status) {
+      'Approved' => ('Verified', Colors.green.withValues(alpha: 0.15), Colors.green.shade800),
+      'Rejected' => ('Rejected', cs.errorContainer, cs.onErrorContainer),
+      _ => ('Pending review', Colors.orange.withValues(alpha: 0.15), Colors.orange.shade900),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+      child: Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: fg, fontWeight: FontWeight.w600)),
     );
   }
 }

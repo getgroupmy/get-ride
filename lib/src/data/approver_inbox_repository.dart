@@ -1224,6 +1224,14 @@ class ApproverInboxRepository {
     });
   }
 
+  /// Correct an ID check's own expiry date (migration 0385) — the dedicated ID
+  /// sheet's Fix for the Expiry row. Name / ID no. / nationality are profile
+  /// fields and go through [editProfile] instead. Needs can_edit_profile; the
+  /// server re-checks scope. [expiry] is `yyyy-mm-dd` or null to clear it.
+  Future<void> editIdentityExpiry(String checkId, String? expiry) async {
+    await _db.rpc('approver_edit_identity', params: {'p_check': checkId, 'p_expiry': expiry});
+  }
+
   /// Replace [doc]'s image with [bytes] (via the approver-upload edge
   /// function, which authorises and does the privileged storage write), then
   /// the document reopens for review. Throws on a non-2xx response.
