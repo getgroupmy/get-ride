@@ -28,6 +28,11 @@ final _items = [
   PendingUpload(
     memberId: 'm3', memberName: 'Zaid Noor', source: 'partner',
     docKey: 'doc-dl', name: 'Driving License', sentCount: 0, reachable: false),
+  // A plain user (not a partner): listed separately under the Users section
+  // (migration 0398).
+  PendingUpload(
+    memberId: 'm5', memberName: 'Nadia User', source: 'identity',
+    docKey: 'doc-id', name: 'ID / Passport', sentCount: 0, isPartner: false),
 ];
 
 class _FakeRepo extends ApproverInboxRepository {
@@ -98,6 +103,31 @@ void main() {
     expect(find.byKey(const ValueKey('pending-upload-nodevice-m3-partner--doc-dl')), findsOneWidget);
     expect(find.text('No device to notify'), findsOneWidget);
     expect(find.byKey(const ValueKey('pending-upload-nodevice-m1-partner--doc-dl')), findsNothing);
+  });
+
+  testWidgets('the Pending Upload tab splits Partners from Users under section headers', (tester) async {
+    await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('approvals-tab-pending')));
+    await tester.pumpAndSettle();
+
+    // Everyone (default): both section headers show, and the user row is listed.
+    expect(find.byKey(const ValueKey('pending-section-partners')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pending-section-users')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pending-upload-row-m5-identity--doc-id')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pending-upload-row-m1-partner--doc-dl')), findsOneWidget);
+
+    // Partners chip: the user row is hidden, the Users header gone.
+    await tester.tap(find.byKey(const ValueKey('pending-kind-partner')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pending-upload-row-m5-identity--doc-id')), findsNothing);
+    expect(find.byKey(const ValueKey('pending-section-users')), findsNothing);
+    expect(find.byKey(const ValueKey('pending-upload-row-m1-partner--doc-dl')), findsOneWidget);
+
+    // Users chip: only the user row, partners hidden.
+    await tester.tap(find.byKey(const ValueKey('pending-kind-user')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pending-upload-row-m5-identity--doc-id')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pending-upload-row-m1-partner--doc-dl')), findsNothing);
   });
 
   testWidgets('Notify on an unreachable member still records the request and keeps the badge', (tester) async {

@@ -35,6 +35,12 @@ values ('00000000-0000-0000-0000-0000039603e1', '00000000-0000-0000-0000-0000000
         'approved', '{Malaysia}', '{Malaysia|Selangor}', '{Malaysia|Selangor|Semenyih}')
 on conflict (id) do nothing;
 
+-- Uma is also a partner (so her missing partner document is listed, 0398); she
+-- just has no device, which is what this test is about.
+insert into public.partners (id, auth_user_id, name, phone) values
+  ('00000000-0000-0000-0000-0000039603e2', '00000000-0000-0000-0000-0000000396b2', 'Unreachable Uma', '+60100003963')
+on conflict (id) do nothing;
+
 -- A required partner document neither has uploaded.
 insert into public.required_document (id, values) values
   ('00000000-0000-0000-0000-0000039602d1',

@@ -22,12 +22,14 @@ class _FakeRepo extends ApproverInboxRepository {
   String? lastStatus;
   String? lastPresence;
   String? lastUsage;
+  String? lastKind;
 
   @override
   Future<TeamPage> coveredPartners(
-      {String? query, TeamMember? after, int limit = ApproverInboxRepository.teamPageSize, String? status, String? presence}) async {
+      {String? query, TeamMember? after, int limit = ApproverInboxRepository.teamPageSize, String? status, String? presence, String? kind}) async {
     lastStatus = status;
     lastPresence = presence;
+    lastKind = kind;
     return _page;
   }
 
@@ -81,6 +83,58 @@ void main() {
     expect(m.registeredAt, isNull);
     expect(m.updatedAt, isNull);
     expect(m.online, isFalse);
+  });
+
+  test('TeamMember.fromJson reads is_partner, partner_status and effectiveStatus (0398)', () {
+    final partner = TeamMember.fromJson({
+      'owner_id': 'u1', 'name': 'A', 'status': 'approved',
+      'is_partner': true, 'partner_status': 'unapproved',
+    });
+    expect(partner.isPartner, isTrue);
+    expect(partner.partnerStatus, 'unapproved');
+    // A partner shows the provider status, not the (approved) account status.
+    expect(partner.effectiveStatus, 'unapproved');
+
+    final user = TeamMember.fromJson({'owner_id': 'u2', 'name': 'B', 'status': 'approved'});
+    expect(user.isPartner, isFalse);
+    expect(user.partnerStatus, isNull);
+    expect(user.effectiveStatus, 'approved');
+  });
+
+  testWidgets("a partner card shows the partner status, not the account status", (tester) async {
+    await _pump(tester, const [
+      TeamMember(
+        id: 'p1', displayId: 'GR-0009', name: 'Zulfaqar',
+        status: 'approved', isPartner: true, partnerStatus: 'unapproved'),
+    ]);
+    expect(find.text('Zulfaqar'), findsOneWidget);
+    // The badge reads the partner status (Unapproved), matching the admin page.
+    // Scope to the card so the "Unapproved" status filter chip isn't counted.
+    final card = find.byKey(const ValueKey('my-team-member-p1'));
+    expect(find.descendant(of: card, matching: find.text('Unapproved')), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text('Approved')), findsNothing);
+  });
+
+  testWidgets('People split: section headers and the kind chips filter the list', (tester) async {
+    tester.view.physicalSize = const Size(1200, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repo = _FakeRepo(const TeamPage(members: [
+      TeamMember(id: 'p1', displayId: 'GR-1', name: 'Aaron Partner', status: 'approved', isPartner: true, partnerStatus: 'approved'),
+      TeamMember(id: 'u1', displayId: 'GR-2', name: 'Bella User', status: 'approved'),
+    ], hasMore: false));
+    await _pump(tester, const [], repo: repo);
+
+    // Everyone (default): both section headers render.
+    expect(find.byKey(const ValueKey('team-section-partners')), findsOneWidget);
+    expect(find.byKey(const ValueKey('team-section-users')), findsOneWidget);
+    expect(find.byKey(const ValueKey('team-kind-partner')), findsOneWidget);
+
+    // Tapping the Users chip reloads with kind=user.
+    await tester.tap(find.byKey(const ValueKey('team-kind-user')));
+    await tester.pumpAndSettle();
+    expect(repo.lastKind, 'user');
   });
 
   testWidgets('a team card shows balance, account number, service city and Online', (tester) async {
