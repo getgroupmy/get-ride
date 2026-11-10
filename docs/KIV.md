@@ -29,6 +29,7 @@ Missing or partly built:
 - 9.4 E-receipt sent to the rider at trip end (email or push), not only downloadable.
 - 10.1 E-hailing insurance required, checked on the server (the online check runs only in the app today and lets drivers through when it can't read the documents).
 - 6.2 Vehicle fields and checks: NCAP 3-star, doors and body type, 4 to 11 seats, colour rules, yearly PUSPAKOM after 3 years, JPJ e-hailing sticker.
+  - Shipped: the vehicle ownership certificate (VOC / geran) is a compulsory vehicle document (0388) and a hard gate — uploaded to submit, verified (an approver's Approved) to approve a vehicle, blocking refusable with an admin reason; legacy-exempt, with the soft "missing VOC" badge (0392, 0402). The rest of this 6.2 line (NCAP, body/doors, seat range, colour, PUSPAKOM, JPJ sticker) is still open.
 - 11.1 Permit check: off for Malaysia today (3-day grace when on); drivers without a valid eVP can go online.
 - 7.5b Airports: only drivers who dropped off may pick up. The queue exists (0249) and is on for KUL, BKI and KBR, but "must have dropped off" is off there; the owner wants no restriction for now, with the option kept.
 - 7.1 Peninsular Malaysia only, and taxis returning to their home area: region settings only, nothing enforced.
