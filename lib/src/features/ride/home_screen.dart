@@ -84,6 +84,7 @@ import '../../data/fare_coin_store.dart';
 import '../../data/fare_tariff_repository.dart';
 import '../../data/geo_service.dart';
 import '../../data/live_tables.dart';
+import '../../data/current_country_reporter.dart';
 import '../../data/location_source.dart';
 import '../../data/permission_probe.dart';
 import '../../core/app_permissions.dart' show PermState;
@@ -1012,6 +1013,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await for (final p in locateFastThenFine(ref.read(locationSourceProvider))) {
       if (!mounted) return;
       setState(() => _me = p);
+      // Record the country we're in, so the ID requirement + booking gate follow
+      // where the rider actually is (migration 0400). Fire-and-forget.
+      unawaited(ref.read(currentCountryReporterProvider).reportFrom(p));
       _checkPromoZone();
       if (recenter && recenterMap(_map, p, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(p);
       final place = await ref.read(geoServiceProvider).reverse(p);
