@@ -59,6 +59,7 @@ import '../../widgets/chat_photo.dart' show choosePhotoSource;
 import '../../widgets/common.dart' show showError, showInfo, showNotice;
 import '../../widgets/page_style_host.dart';
 import '../../widgets/media_image.dart' show MediaIcon;
+import '../../widgets/phone_number_field.dart' show PhoneNumberField;
 import '../../widgets/search_select.dart' show ListSearchFilter, searchSelectMatches;
 import '../../core/business_accounts.dart';
 import '../../data/business_repository.dart';
@@ -1711,18 +1712,19 @@ class FreightRecipientSheet extends StatefulWidget {
 
 class _FreightRecipientSheetState extends State<FreightRecipientSheet> {
   late final _name = TextEditingController(text: widget.initial?.name ?? '');
-  late final _phone = TextEditingController(text: widget.initial?.phone ?? '');
+  // A country-code + national-number field; holds the composed E.164 (trunk 0
+  // dropped). Seeded from the stored number so leaving it untouched keeps it.
+  late String _phone = widget.initial?.phone ?? '';
   String? _problem;
 
   @override
   void dispose() {
     _name.dispose();
-    _phone.dispose();
     super.dispose();
   }
 
   void _done() {
-    final phone = _phone.text.trim();
+    final phone = _phone.trim();
     if (phone.isEmpty && widget.phoneRequired) {
       return setState(() => _problem = "Enter the recipient's phone number.");
     }
@@ -1751,14 +1753,22 @@ class _FreightRecipientSheetState extends State<FreightRecipientSheet> {
         ),
         Padding(
           padding: const EdgeInsets.only(right: 8),
-          child: TextField(
+          child: PhoneNumberField(
             key: const ValueKey('freight-recipient-phone'),
-            controller: _phone,
-            keyboardType: TextInputType.phone,
-            onChanged: (_) => setState(() => _problem = null),
-            decoration: InputDecoration(labelText: "Recipient's phone", hintText: '+60 12 345 6789', errorText: _problem),
+            keyPrefix: 'freight-recipient-phone',
+            label: "Recipient's phone",
+            initialPhone: widget.initial?.phone,
+            onChanged: (v) {
+              _phone = v;
+              if (_problem != null) setState(() => _problem = null);
+            },
           ),
         ),
+        if (_problem != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 4, top: 4, right: 8),
+            child: Text(_problem!, style: TextStyle(color: t.colorScheme.error, fontSize: 12)),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(0, 8, 8, 12),
           child: Text(

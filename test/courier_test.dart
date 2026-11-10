@@ -466,10 +466,10 @@ void main() {
       expect(find.text("Enter the recipient's phone number."), findsOneWidget);
       expect(find.textContaining('the confirmation code when the courier picks up'), findsOneWidget);
       await tester.enterText(find.byKey(const ValueKey('freight-recipient-name')), 'Mei');
-      await tester.enterText(find.byKey(const ValueKey('freight-recipient-phone')), '+60 12 345 6789');
+      await tester.enterText(find.byKey(const ValueKey('freight-recipient-phone-number')), '012 345 6789');
       await tester.tap(find.byKey(const ValueKey('freight-recipient-done')));
       await tester.pumpAndSettle();
-      expect(find.text('Mei · +60 12 345 6789'), findsOneWidget);
+      expect(find.text('Mei · +60123456789'), findsOneWidget);
 
       // S: every vehicle; M: only the car.
       expect(find.byKey(const ValueKey('courier-vehicle-c1')), findsOneWidget);
@@ -524,7 +524,7 @@ void main() {
       expect(a[#cargoDescription], 'Documents. fragile');
       expect(a[#declaredValue], 200);
       expect(a[#prohibitedAck], isTrue);
-      expect(a[#recipient], (name: 'Mei', phone: '+60 12 345 6789'));
+      expect(a[#recipient], (name: 'Mei', phone: '+60123456789'));
       expect(a[#offerMe], isTrue);
       expect(a[#fare], double.parse(low));
       expect(a[#note], 'Courier: Documents. fragile · Size M · Recipient pays cash · Pickup: Block B, unit 3');
