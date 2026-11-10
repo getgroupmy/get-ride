@@ -24,6 +24,7 @@ import '../store_review/demo_flows.dart' show playDemoBooking;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show showError, showInfo;
 import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
+import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired;
 import '../../widgets/date_boxes.dart';
 import '../../widgets/page_style_host.dart';
 import 'city_to_city_parts.dart';
@@ -224,6 +225,8 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
     if (q == null || r == null || leave == null || fare == null || pay == null) return;
     // ID verification (0342–0344): an admin country rule may require it.
     if (!mounted || !await ensureRiderIdVerified(context, ref)) return;
+    // Live-selfie gate (0401): a fresh approver-verified selfie may be required.
+    if (!mounted || !await ensureLivenessOk(context, ref)) return;
     try {
       final b = await ref.read(cityToCityRepositoryProvider).book(c2cBookingRow(
         pickup: _pickup!,
@@ -260,6 +263,8 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
         if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
           showInfo(context, 'You can book now.');
         }
+      } else if (isLivenessRequired(e)) {
+        if (mounted) await ensureLivenessOk(context, ref);
       } else if (mounted) {
         showError(context, e);
       }
