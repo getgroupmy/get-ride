@@ -43,16 +43,18 @@ class CurrentCountryReporter {
   bool _busy = false;
 
   /// Reverse-geocode [p] to a country and record it, subject to the move gate
-  /// and de-dupe. Fire-and-forget; never throws.
+  /// and de-dupe. Fire-and-forget; never throws (everything, including reading
+  /// the Supabase client, is inside the guard so it is safe in tests and on a
+  /// legacy local-PIN session).
   Future<void> reportFrom(LatLng p) async {
     if (_busy) return;
-    // Only when we have a real Supabase session — a legacy local-PIN session
-    // has no server row to write to.
-    final client = _ref.read(supabaseProvider);
-    if (client.auth.currentUser == null) return;
-    if (!movedFar(_lastPoint, p) && _lastSent != null) return;
     _busy = true;
     try {
+      // Only when we have a real Supabase session — a legacy local-PIN session
+      // has no server row to write to.
+      final client = _ref.read(supabaseProvider);
+      if (client.auth.currentUser == null) return;
+      if (!movedFar(_lastPoint, p) && _lastSent != null) return;
       final area = await _ref.read(geoServiceProvider).reverseArea(p);
       _lastPoint = p;
       final country = normalizeReportedCountry(area?.country);
