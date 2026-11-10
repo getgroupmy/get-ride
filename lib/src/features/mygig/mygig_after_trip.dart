@@ -11,13 +11,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/mygig.dart' show mygigMoney;
+import '../../core/mygig.dart' show mygigMoney, mygigPhoneComplete;
 import '../../core/mygig_extras.dart';
 import '../../data/mygig_repository.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/phone_number_field.dart' show PhoneNumberField;
 
 typedef MygigAfterKey = ({String? ride, String? token});
 
@@ -56,14 +57,13 @@ class _MygigAfterBodyState extends ConsumerState<MygigAfterBody> {
   bool _otherTip = false;
   final _tipText = TextEditingController();
   int _split = 1;
-  final _phones = [TextEditingController(), TextEditingController()];
+  // The other people's phones are country-code + national-number fields; each
+  // holds the composed E.164 (trunk 0 dropped), passed straight to the split.
+  final List<String> _phones = ['', ''];
 
   @override
   void dispose() {
     _tipText.dispose();
-    for (final c in _phones) {
-      c.dispose();
-    }
     super.dispose();
   }
 
@@ -111,13 +111,13 @@ class _MygigAfterBodyState extends ConsumerState<MygigAfterBody> {
   });
 
   Future<void> _sendSplit() => _run(() async {
-    final phones = [for (var i = 0; i < _split - 1; i++) _phones[i].text.trim()];
-    if (phones.any((p) => p.replaceAll(RegExp(r'\D'), '').length < 9)) {
+    final phones = [for (var i = 0; i < _split - 1; i++) _phones[i]];
+    if (!phones.every(mygigPhoneComplete)) {
       showInfo(context, 'Enter a phone number for each other person.');
       return;
     }
     final v = await ref.read(mygigRepositoryProvider)
-        .split(ride: _link ? null : a.rideId, token: widget.token, parts: _split, phones: [for (final p in phones) '+60${p.replaceFirst(RegExp(r'^0+'), '')}']);
+        .split(ride: _link ? null : a.rideId, token: widget.token, parts: _split, phones: phones);
     final first = (v['parts'] is List && (v['parts'] as List).isNotEmpty) ? (v['parts'] as List).first : null;
     if (first is Map && first['id'] is String) await _openPay(first['id'] as String);
   });
@@ -223,12 +223,14 @@ class _MygigAfterBodyState extends ConsumerState<MygigAfterBody> {
             Text('Each pays about ${mygigMoney(mygigSplitShares(a.owed, _split).last)}. The others get a pay link by SMS.',
                 style: t.textTheme.bodySmall),
             for (var i = 0; i < _split - 1; i++)
-              TextField(
-                key: ValueKey('mygig-split-phone-$i'),
-                controller: _phones[i],
-                keyboardType: TextInputType.phone,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: InputDecoration(prefixText: '+60 ', labelText: 'Person ${i + 2}’s phone'),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: PhoneNumberField(
+                  key: ValueKey('mygig-split-phone-$i'),
+                  keyPrefix: 'mygig-split-phone-$i',
+                  label: 'Person ${i + 2}’s phone',
+                  onChanged: (v) => _phones[i] = v,
+                ),
               ),
             const SizedBox(height: 6),
             BusyButton.tonal(

@@ -420,18 +420,28 @@ class MygigLookup {
   };
 }
 
-/// The digits of a Malaysian number as typed after +60 (12 345 6789,
-/// 012-345 6789): 60123456789; null when there is nothing.
+/// The comparable digits of a phone number, mirroring the server's
+/// `mygig_phone_digits` (migration 0393): a composed international number — one
+/// the app built with its leading `+` — is trusted as-is (never force-prefixed),
+/// while a bare local number with no `+` keeps the Malaysian normalisation so
+/// legacy callers and already-stored local numbers are unchanged. Null when
+/// there is nothing. Example: `+65 8123 4567` → `6581234567`; `012 345 6789` →
+/// `60123456789`.
 String? mygigPhoneDigits(String typed) {
-  var d = typed.replaceAll(RegExp(r'\D'), '');
+  final hasPlus = typed.trimLeft().startsWith('+');
+  final d = typed.replaceAll(RegExp(r'\D'), '');
   if (d.isEmpty) return null;
+  if (hasPlus) return d; // already a composed E.164 number; trust it
   if (d.startsWith('0')) return '60${d.substring(1)}';
   if (d.length <= 10 && !d.startsWith('60')) return '60$d';
   return d;
 }
 
-/// The number is long enough to look up (9 digits after +60).
-bool mygigPhoneComplete(String typed) => (mygigPhoneDigits(typed)?.length ?? 0) >= 11;
+/// The composed number is long enough to look up / send to. The field now
+/// carries the country's dial code, so this counts the whole international
+/// number: ten digits admits the shorter-dial-code countries (e.g. +65 + 8) as
+/// well as a full Malaysian number (+60 + 9).
+bool mygigPhoneComplete(String typed) => (mygigPhoneDigits(typed)?.length ?? 0) >= 10;
 
 /// +60 12 345 6789 from 60123456789.
 String mygigPhoneText(String digits) {

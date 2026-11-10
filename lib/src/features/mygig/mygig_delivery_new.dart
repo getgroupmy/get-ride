@@ -25,6 +25,7 @@ import '../../providers.dart';
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/phone_number_field.dart' show PhoneNumberField;
 import '../partner/partner_trip_screen.dart' show tripFixProvider;
 import '../ride/place_search.dart';
 import 'mygig_delivery_settings.dart' show mygigDeliverySettingsPath;
@@ -37,14 +38,15 @@ const mygigDeliveryNewPath = '/drive/mygig/delivery';
 /// A drop-off as the driver enters it.
 class _Drop {
   MygigStop? place;
-  final phone = TextEditingController();
+  // The recipient's phone is a country-code + national-number field; it holds
+  // the composed E.164 (trunk 0 dropped).
+  String phone = '';
   final name = TextEditingController();
   MygigLookup lookup = const MygigLookup();
   Timer? timer;
 
   void dispose() {
     timer?.cancel();
-    phone.dispose();
     name.dispose();
   }
 }
@@ -71,7 +73,9 @@ class _MygigDeliveryNewScreenState extends ConsumerState<MygigDeliveryNewScreen>
   bool _uploading = false;
   // Who and where.
   MygigStop? _pickup;
-  final _senderPhone = TextEditingController();
+  // The sender's phone is a country-code + national-number field; it holds the
+  // composed E.164 (trunk 0 dropped).
+  String _senderPhone = '';
   final _senderName = TextEditingController();
   MygigLookup _sender = const MygigLookup();
   Timer? _senderTimer;
@@ -100,7 +104,6 @@ class _MygigDeliveryNewScreenState extends ConsumerState<MygigDeliveryNewScreen>
   @override
   void dispose() {
     _value.dispose();
-    _senderPhone.dispose();
     _senderName.dispose();
     _codAmount.dispose();
     _senderTimer?.cancel();
@@ -183,15 +186,17 @@ class _MygigDeliveryNewScreenState extends ConsumerState<MygigDeliveryNewScreen>
   }
 
   void _senderChanged(String v) {
+    _senderPhone = v;
     _senderTimer?.cancel();
     _senderTimer = Timer(const Duration(milliseconds: 450),
-        () => _lookup(v, (l) => _sender = l, () => _senderPhone.text == v));
+        () => _lookup(v, (l) => _sender = l, () => _senderPhone == v));
     if (!mygigPhoneComplete(v)) setState(() => _sender = const MygigLookup());
   }
 
   void _dropPhoneChanged(_Drop d, String v) {
+    d.phone = v;
     d.timer?.cancel();
-    d.timer = Timer(const Duration(milliseconds: 450), () => _lookup(v, (l) => d.lookup = l, () => d.phone.text == v));
+    d.timer = Timer(const Duration(milliseconds: 450), () => _lookup(v, (l) => d.lookup = l, () => d.phone == v));
     if (!mygigPhoneComplete(v)) setState(() => d.lookup = const MygigLookup());
   }
 
@@ -229,14 +234,14 @@ class _MygigDeliveryNewScreenState extends ConsumerState<MygigDeliveryNewScreen>
         if (d.place != null)
           {
             ...(d.place!.toJson()..remove('here')),
-            'phone': mygigPhoneComplete(d.phone.text) ? '+${mygigPhoneDigits(d.phone.text)}' : d.phone.text,
+            'phone': d.phone,
             'recipient': d.name.text.trim(),
           },
     ],
     'km': ?_km,
     'min': ?_min,
     'sender': {
-      'phone': mygigPhoneComplete(_senderPhone.text) ? '+${mygigPhoneDigits(_senderPhone.text)}' : null,
+      'phone': mygigPhoneComplete(_senderPhone) ? _senderPhone : null,
       'name': _senderName.text.trim(),
     },
     'registered': _sender.registered,
@@ -299,12 +304,12 @@ class _MygigDeliveryNewScreenState extends ConsumerState<MygigDeliveryNewScreen>
         ? 'Finding where you are…'
         : mygigRouteProblem(
             senderPhoneRequired: c.settings.senderPhoneRequired,
-            senderPhone: _senderPhone.text,
+            senderPhone: _senderPhone,
             sender: _sender,
             senderName: _senderName.text,
             drops: [
               for (final d in _drops)
-                MygigDropDraft(placeSet: d.place != null, phone: d.phone.text, lookup: d.lookup, name: d.name.text),
+                MygigDropDraft(placeSet: d.place != null, phone: d.phone, lookup: d.lookup, name: d.name.text),
             ],
           ),
     _ => mygigDeliverySendProblem(
@@ -314,7 +319,7 @@ class _MygigDeliveryNewScreenState extends ConsumerState<MygigDeliveryNewScreen>
         codMax: c.settings.codMax,
         way: _way,
         inApp: _inApp,
-        hasPhone: mygigPhoneComplete(_senderPhone.text),
+        hasPhone: mygigPhoneComplete(_senderPhone),
       ),
   };
 
@@ -559,16 +564,15 @@ class _MygigDeliveryNewScreenState extends ConsumerState<MygigDeliveryNewScreen>
       ),
       _sec(t, Icons.person_outline, 'Sender',
           trailing: Text(s.senderPhoneRequired ? 'Phone required' : 'Phone optional', style: t.textTheme.bodySmall)),
-      TextField(
+      PhoneNumberField(
         key: const ValueKey('mygig-delivery-sender-phone'),
-        controller: _senderPhone,
-        keyboardType: TextInputType.phone,
-        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9 \-]'))],
-        decoration: const InputDecoration(prefixText: '+60 ', labelText: 'Sender’s phone', hintText: '12 345 6789'),
+        keyPrefix: 'mygig-delivery-sender-phone',
+        label: 'Sender’s phone',
+        hintText: '12 345 6789',
         onChanged: _senderChanged,
       ),
       _lookupNote(t, _sender, sender: true),
-      if (_sender.needsName || (_senderPhone.text.trim().isEmpty && !s.senderPhoneRequired))
+      if (_sender.needsName || (_senderPhone.trim().isEmpty && !s.senderPhoneRequired))
         TextField(
           key: const ValueKey('mygig-delivery-sender-name'),
           controller: _senderName,
@@ -603,12 +607,13 @@ class _MygigDeliveryNewScreenState extends ConsumerState<MygigDeliveryNewScreen>
                   if (p != null && mounted) setState(() => d.place = p);
                 },
               ),
-              TextField(
-                key: ValueKey('mygig-delivery-drop-phone-$i'),
-                controller: d.phone,
-                keyboardType: TextInputType.phone,
-                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9 \-]'))],
-                decoration: const InputDecoration(prefixText: '+60 ', labelText: 'Recipient’s phone', hintText: '12 345 6789'),
+              PhoneNumberField(
+                // Keyed by the drop's identity so its field state follows it
+                // when a middle drop-off is removed and the list reindexes.
+                key: ObjectKey(d),
+                keyPrefix: 'mygig-delivery-drop-phone-$i',
+                label: 'Recipient’s phone',
+                hintText: '12 345 6789',
                 onChanged: (v) => _dropPhoneChanged(d, v),
               ),
               _lookupNote(t, d.lookup, sender: false),
@@ -643,7 +648,7 @@ class _MygigDeliveryNewScreenState extends ConsumerState<MygigDeliveryNewScreen>
     final q = _quote;
     final recipientNo = mygigRecipientPaysNo(s: s, p: c.prefs, pay: _pay);
     final codNo = mygigCodNo(s: s, p: c.prefs, senderRegistered: _sender.registered);
-    final hasPhone = mygigPhoneComplete(_senderPhone.text);
+    final hasPhone = mygigPhoneComplete(_senderPhone);
     final ways = ride == null
         ? const <MygigWay>[]
         : mygigWays(ride.settings, _sender.registered ? _sender.state : MygigLookupState.none, hasPhone: hasPhone)

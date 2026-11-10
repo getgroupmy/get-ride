@@ -8,7 +8,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
@@ -27,6 +26,7 @@ import '../../widgets/app_notice.dart' show showAppNotice;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/page_style_host.dart';
+import '../../widgets/phone_number_field.dart' show PhoneNumberField;
 import '../../widgets/ride_map.dart';
 import '../partner/partner_trip_screen.dart' show tripFixProvider;
 import '../ride/place_search.dart';
@@ -150,7 +150,10 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
   MygigPay _pay = MygigPay.cash;
   String? _businessId;
   MygigWay? _way;
-  final _phone = TextEditingController();
+  // The passenger's phone is a country-code + national-number field; it holds
+  // the composed E.164 (trunk 0 dropped), which the lookup and the offer both
+  // take directly.
+  String _phone = '';
   final _name = TextEditingController();
   MygigLookup _lookup = const MygigLookup();
   // 0331: a number that rode with this driver before, and its usual drop-off.
@@ -180,7 +183,6 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
   void dispose() {
     _lookupTimer?.cancel();
     _quoteTimer?.cancel();
-    _phone.dispose();
     _name.dispose();
     super.dispose();
   }
@@ -386,8 +388,10 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
 
   void _phoneChanged(String v) {
     _lookupTimer?.cancel();
+    _phone = v;
     if (!mygigPhoneComplete(v)) {
       setState(() {
+        if (v.isEmpty) _name.clear();
         _lookup = const MygigLookup();
         _regular = null;
       });
@@ -397,11 +401,11 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
     _lookupTimer = Timer(const Duration(milliseconds: 450), () async {
       try {
         final l = await ref.read(mygigRepositoryProvider).lookup(v, lat: _origin?.latitude, lng: _origin?.longitude);
-        if (!mounted || _phone.text != v) return;
+        if (!mounted || _phone != v) return;
         setState(() => _lookup = l);
         _fixPayAndWay();
         final regular = await ref.read(mygigRepositoryProvider).regular(v).catchError((_) => null);
-        if (mounted && _phone.text == v) setState(() => _regular = regular);
+        if (mounted && _phone == v) setState(() => _regular = regular);
       } catch (e) {
         if (mounted) showError(context, e);
       }
@@ -424,7 +428,7 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
   }
 
   List<MygigWay> _waysNow(MygigConfig c) {
-    final ways = mygigWays(c.settings, _lookup.state, hasPhone: mygigPhoneComplete(_phone.text));
+    final ways = mygigWays(c.settings, _lookup.state, hasPhone: mygigPhoneComplete(_phone));
     // A Family ride is accepted in the member's own app.
     return _pay == MygigPay.family ? ways.where((w) => w == MygigWay.app).toList() : ways;
   }
@@ -438,7 +442,7 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
     if (ref.read(storeReviewProvider)) return _sendDemo();
     final sent = await ref.read(mygigRepositoryProvider).create(
       trip: _trip(),
-      phone: mygigPhoneComplete(_phone.text) ? '+${mygigPhoneDigits(_phone.text)}' : null,
+      phone: mygigPhoneComplete(_phone) ? _phone : null,
       name: _name.text.trim().isEmpty ? null : _name.text.trim(),
       way: way,
       lat: _origin?.latitude,
@@ -580,7 +584,7 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
     final problem = q?.problem;
     final bagsCount = _bags.values.fold<int>(0, (a, b) => a + b);
     final ways = c == null ? const <MygigWay>[] : _waysNow(c);
-    final hasPhone = mygigPhoneComplete(_phone.text);
+    final hasPhone = mygigPhoneComplete(_phone);
     final hs = _hireSettings(c);
     final kinds = _kinds(c);
     final hire = _booking.kind.hire;
@@ -779,27 +783,11 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
         Text(s.phoneRequired ? 'Phone required' : 'Phone optional', style: t.textTheme.bodySmall),
       ]),
       const SizedBox(height: 8),
-      TextField(
+      PhoneNumberField(
         key: const ValueKey('mygig-phone'),
-        controller: _phone,
-        keyboardType: TextInputType.phone,
-        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9 \-]'))],
-        decoration: InputDecoration(
-          prefixText: '+60 ',
-          labelText: s.phoneRequired ? 'Phone' : 'Phone (optional)',
-          hintText: '12 345 6789',
-          suffixIcon: _phone.text.isEmpty
-              ? null
-              : IconButton(
-                  tooltip: 'Clear phone',
-                  icon: const Icon(Icons.cancel),
-                  onPressed: () {
-                    _phone.clear();
-                    _name.clear();
-                    _phoneChanged('');
-                  },
-                ),
-        ),
+        keyPrefix: 'mygig-phone',
+        label: s.phoneRequired ? 'Phone' : 'Phone (optional)',
+        hintText: '12 345 6789',
         onChanged: _phoneChanged,
       ),
       const SizedBox(height: 8),
@@ -949,7 +937,7 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
     final l = _lookup;
     if (l.state == MygigLookupState.short) {
       return [
-        if (_phone.text.trim().isNotEmpty)
+        if (_phone.trim().isNotEmpty)
           Text('Checking when the number is complete…', style: t.textTheme.bodySmall),
       ];
     }
@@ -1026,7 +1014,7 @@ class _MygigNewScreenState extends ConsumerState<MygigNewScreen> {
     final why = mygigSendProblem(
       quote: _quote,
       lookup: _lookup,
-      phone: _phone.text,
+      phone: _phone,
       name: _name.text,
       pay: _pay,
       way: _way,
