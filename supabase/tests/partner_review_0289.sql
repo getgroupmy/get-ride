@@ -50,6 +50,18 @@ insert into public.provider_documents (id, partner_id, auth_user_id, doc_id, doc
 insert into public.vehicle_documents (id, vehicle_id, partner_id, auth_user_id, doc_id, doc_name, file_url) values
   ('00000000-0000-0000-0000-0000000289d2', '00000000-0000-0000-0000-0000000289f1', '00000000-0000-0000-0000-000000028901',
    '00000000-0000-0000-0000-0000000289b1', 'doc-inspection', 'Inspection', 'https://x.test/inspection-1.jpg');
+-- 0402 (VOC completion gate): submitting and approving a vehicle now need its
+-- ownership certificate — uploaded to submit, verified to approve. Give the
+-- registration vehicle an Approved VOC from the start, so the re-submit and the
+-- approval below both clear the gate. (The gate itself is covered end-to-end by
+-- voc_completion_gate_0402.sql.)
+insert into public.required_document (id, values, active) values
+  ('00000000-0000-0000-0000-0000000289d3', '{"name":"VOC 0289","readAs":"voc","active":true,"required":true}', true)
+on conflict (id) do nothing;
+insert into public.vehicle_documents (id, vehicle_id, partner_id, auth_user_id, doc_id, doc_name, file_url, status) values
+  ('00000000-0000-0000-0000-0000000289d4', '00000000-0000-0000-0000-0000000289f1', '00000000-0000-0000-0000-000000028901',
+   '00000000-0000-0000-0000-0000000289b1', '00000000-0000-0000-0000-0000000289d3', 'Vehicle Ownership Certificate',
+   'https://x.test/voc-289.jpg', 'Approved');
 
 create or replace function pg_temp.as_user(p uuid) returns void language plpgsql as $$
 begin
