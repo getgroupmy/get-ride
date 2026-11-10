@@ -56,6 +56,7 @@ import '../../data/business_repository.dart';
 import '../business/business_booking.dart';
 import 'confirm_parts.dart' show paymentLook;
 import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
+import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired;
 import 'delivery_addons_parts.dart';
 import 'delivery_look.dart';
 import 'freight_parts.dart' show FreightVehicleImage;
@@ -387,6 +388,9 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     // ID verification (migrations 0342–0344): an admin country rule may require
     // the rider to verify before booking; the server trigger enforces it too.
     if (!mounted || !await ensureRiderIdVerified(context, ref)) return;
+    // Live-selfie gate (0401): a fresh approver-verified selfie may be required
+    // before booking; the server trigger enforces it too.
+    if (!mounted || !await ensureLivenessOk(context, ref)) return;
     setState(() => _booking = true);
     try {
       try {
@@ -497,6 +501,10 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
         if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
           showInfo(context, 'You can send your booking now.');
         }
+      }
+      // The server's liveness gate (0401): capture a fresh live selfie.
+      else if (isLivenessRequired(e)) {
+        if (mounted) await ensureLivenessOk(context, ref);
       }
       // Refused by the server's service check (0302): its own modal.
       else if (mounted && !showServiceNotOffered(context, e)) {
