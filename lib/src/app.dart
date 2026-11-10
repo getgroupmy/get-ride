@@ -108,6 +108,7 @@ import 'features/partner/partner_trip_history_screen.dart';
 import 'features/partner/partner_onboarding_screen.dart';
 import 'features/partner/driver_permit_screen.dart';
 import 'features/partner/partner_screen.dart';
+import 'features/partner/vehicle_access_requests_screen.dart';
 import 'features/partner/vehicle_screens.dart';
 import 'features/partner/partner_trip_screen.dart';
 import 'features/profile/account_screen.dart';
@@ -639,6 +640,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (_, s) => s.extra is DemoJob ? DemoJobScreen(job: s.extra! as DemoJob) : const PartnerScreen(),
           ),
           GoRoute(path: '/drive/vehicles', builder: (_, _) => const VehiclesScreen()),
+          GoRoute(path: '/drive/vehicles/requests', builder: (_, _) => const VehicleAccessRequestsScreen()),
           GoRoute(path: '/drive/vehicles/new', builder: (_, _) => const VehicleOnboardingScreen()),
           GoRoute(
             path: '/drive/vehicles/:id',
