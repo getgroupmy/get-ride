@@ -914,9 +914,13 @@ class AddableDoc {
 /// How many times an approver has nudged a member to upload a document, and
 /// when the last reminder was sent (migration 0384).
 class DocRequestStat {
-  const DocRequestStat({required this.count, this.lastSentAt});
+  const DocRequestStat({required this.count, this.lastSentAt, this.reachable = true});
   final int count;
   final DateTime? lastSentAt;
+
+  /// Whether a push actually went out — false when the member has no device
+  /// registered, so the approver is told the nudge couldn't reach them.
+  final bool reachable;
 }
 
 /// One required document still missing for a covered member (Approvals →
@@ -934,6 +938,8 @@ class PendingUpload {
     this.plate,
     required this.sentCount,
     this.lastSentAt,
+    this.reachable = true,
+    this.location,
   });
 
   final String memberId;
@@ -950,6 +956,15 @@ class PendingUpload {
 
   final int sentCount;
   final DateTime? lastSentAt;
+
+  /// Whether the member has a device to receive a push — false when they have
+  /// no push token (never installed the app, notifications off), so a nudge
+  /// can't reach them and the row says so instead of silently doing nothing.
+  final bool reachable;
+
+  /// Where the member operates, as "City | State | Country" (from their partner
+  /// service area); null when they have none on file.
+  final String? location;
 
   bool get isVehicle => source == 'vehicle';
 
@@ -969,6 +984,8 @@ class PendingUpload {
         plate: _s(j['plate']),
         sentCount: (j['sent_count'] as num?)?.toInt() ?? 0,
         lastSentAt: j['last_sent_at'] == null ? null : DateTime.tryParse('${j['last_sent_at']}')?.toLocal(),
+        reachable: j['reachable'] == null ? true : j['reachable'] == true,
+        location: _s(j['location']),
       );
 }
 
@@ -1112,6 +1129,7 @@ class ApproverInboxRepository {
     return DocRequestStat(
       count: (m['sent_count'] as num?)?.toInt() ?? 1,
       lastSentAt: m['last_sent_at'] == null ? null : DateTime.tryParse('${m['last_sent_at']}')?.toLocal(),
+      reachable: m['reachable'] == null ? true : m['reachable'] == true,
     );
   }
 
