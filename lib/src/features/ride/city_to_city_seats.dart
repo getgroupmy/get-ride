@@ -37,6 +37,7 @@ import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show EmptyState, showError, showInfo;
 import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
 import '../../widgets/date_boxes.dart';
+import '../../widgets/phone_number_field.dart' show PhoneNumberField;
 import '../../widgets/page_style_host.dart';
 import 'city_to_city_parts.dart';
 import 'city_to_city_steps.dart' show c2cAreaProvider, c2cClockProvider, openC2cSteps;
@@ -320,7 +321,8 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
   final _names = <TextEditingController>[];
   final _familyIds = <String?>[];
   final _recipient = TextEditingController();
-  final _phone = TextEditingController();
+  // A country-code + national-number field; holds the composed E.164.
+  String _phone = '';
   final _parcelNote = TextEditingController();
   C2cPayment? _payment;
   bool _payPicked = false;
@@ -332,7 +334,7 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
   @override
   void initState() {
     super.initState();
-    for (final c in [_recipient, _phone, _parcelNote]) {
+    for (final c in [_recipient, _parcelNote]) {
       c.addListener(() {
         if (mounted) setState(() {});
       });
@@ -343,7 +345,7 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
 
   @override
   void dispose() {
-    for (final c in [..._names, _recipient, _phone, _parcelNote]) {
+    for (final c in [..._names, _recipient, _parcelNote]) {
       c.dispose();
     }
     super.dispose();
@@ -417,7 +419,7 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
     final x = widget.trip;
     if (!x.mayBook) return 'This trip is for women only.';
     if (_parcel) {
-      if (_recipient.text.trim().isEmpty || !RegExp(r'^\+?[0-9 ]{6,20}$').hasMatch(_phone.text.trim())) {
+      if (_recipient.text.trim().isEmpty || !RegExp(r'^\+?[0-9 ]{6,20}$').hasMatch(_phone.trim())) {
         return "Give the recipient's name and phone number.";
       }
     } else {
@@ -458,7 +460,7 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
             ? {
                 'size': _size.key,
                 'recipientName': _recipient.text.trim(),
-                'recipientPhone': _phone.text.trim(),
+                'recipientPhone': _phone.trim(),
                 if (_parcelNote.text.trim().isNotEmpty) 'note': _parcelNote.text.trim(),
               }
             : null,
@@ -617,11 +619,14 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
                     controller: _recipient,
                     decoration: const InputDecoration(labelText: 'Who collects it'),
                   ),
-                  TextField(
+                  PhoneNumberField(
                     key: const ValueKey('c2c-parcel-phone'),
-                    controller: _phone,
-                    keyboardType: TextInputType.phone,
-                    decoration: const InputDecoration(labelText: 'Their phone number'),
+                    keyPrefix: 'c2c-parcel-phone',
+                    label: 'Their phone number',
+                    onChanged: (v) {
+                      _phone = v;
+                      if (mounted) setState(() {});
+                    },
                   ),
                   TextField(
                     key: const ValueKey('c2c-parcel-note'),
