@@ -103,6 +103,26 @@ void main() {
     expect(find.byKey(_editKey), findsOneWidget);
   });
 
+  testWidgets('request live selfie: shows with edit grant and opens a confirm (0401)', (tester) async {
+    tester.view.physicalSize = const Size(1200, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await _pump(tester, grant: _grant(edit: true));
+
+    final key = const ValueKey('my-team-request-liveness');
+    expect(find.byKey(key), findsOneWidget);
+    await tester.ensureVisible(find.byKey(key));
+    await tester.tap(find.byKey(key));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('request-liveness-confirm')), findsOneWidget);
+  });
+
+  testWidgets('request live selfie: hidden without the edit grant', (tester) async {
+    await _pump(tester, grant: _grant(credit: true));
+    expect(find.byKey(const ValueKey('my-team-request-liveness')), findsNothing);
+  });
+
   testWidgets('add credit: amount step then a PIN keypad', (tester) async {
     tester.view.physicalSize = const Size(1200, 3000);
     tester.view.devicePixelRatio = 1.0;

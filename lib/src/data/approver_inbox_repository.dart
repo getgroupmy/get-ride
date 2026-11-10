@@ -1336,6 +1336,13 @@ class ApproverInboxRepository {
     return m['is_partner'] == true;
   }
 
+  /// Request a fresh live selfie from a covered member (migration 0401): deletes
+  /// their current profile photo and requires them to re-take it before they can
+  /// transact again.
+  Future<void> requestMemberLiveness(String memberId) async {
+    await _db.rpc('approver_request_member_liveness', params: {'p_member': memberId});
+  }
+
   /// Set a covered member's payout account (migration 0361), bank or e-wallet.
   Future<void> setMemberPayout(String memberId,
       {required String provider, required String account, required String holder, required String type}) async {

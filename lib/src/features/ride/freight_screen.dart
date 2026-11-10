@@ -72,6 +72,7 @@ import 'freight_parts.dart';
 import 'map_place_picker.dart';
 import 'pickup_time_sheet.dart';
 import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
+import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired;
 import 'place_search.dart';
 import 'scheduled_rides_screen.dart' show pickupLabel;
 import 'searching_parts.dart' show OfferStack, SearchOfferView;
@@ -634,6 +635,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     // ID verification (migrations 0342–0344): an admin country rule may require
     // the rider to verify before booking; the server trigger enforces it too.
     if (!mounted || !await ensureRiderIdVerified(context, ref)) return;
+    if (!mounted || !await ensureLivenessOk(context, ref)) return;
     setState(() => _booking = true);
     try {
       try {
@@ -767,6 +769,8 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
         if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
           showInfo(context, 'You can send your booking now.');
         }
+      } else if (isLivenessRequired(e)) {
+        if (mounted) await ensureLivenessOk(context, ref);
       }
       // Refused by the server's service check (0302): its own modal.
       else if (mounted && !showServiceNotOffered(context, e)) {

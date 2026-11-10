@@ -86,6 +86,7 @@ import '../../data/geo_service.dart';
 import '../../data/live_tables.dart';
 import '../../data/current_country_reporter.dart';
 import '../../data/location_source.dart';
+import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired, promptLivenessOnLaunch;
 import '../../data/permission_probe.dart';
 import '../../core/app_permissions.dart' show PermState;
 import '../../core/permission_ask.dart';
@@ -706,6 +707,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // per launch.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) maybeAutoLaunchMeter(context, ref);
+    });
+    // A rider who owes a fresh live selfie is nudged at launch (0401); one who
+    // has already submitted and is waiting is left alone.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(promptLivenessOnLaunch(context, ref));
     });
     // A booking left unfinished when the app closed: Welcome back.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2120,6 +2126,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // the rider to verify a photo ID before this booking. Run it up front; the
     // server's booking trigger enforces it regardless.
     if (!mounted || !await ensureRiderIdVerified(context, ref)) return;
+    // The admin's country rule (or an approver's request) may require a fresh
+    // live selfie before this booking (0401); the server trigger enforces it too.
+    if (!mounted || !await ensureLivenessOk(context, ref)) return;
     // Checked again as it is booked: a region blocked since, or a trip
     // booked before the route's check answered, never goes out.
     final gap = await _findGap(a, List.of(_stops), b);
@@ -2387,6 +2396,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
           showInfo(context, 'You can send your booking now.');
         }
+      } else if (isLivenessRequired(e)) {
+        if (mounted) await ensureLivenessOk(context, ref);
       }
       // Refused by the server's service check (0302): its own modal.
       else if (mounted && !showServiceNotOffered(context, e, service: _service.name)) {
@@ -2947,6 +2958,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     // ID verification (0342–0344): an admin country rule may require it.
     if (!mounted || !await ensureRiderIdVerified(context, ref)) return;
+    // A fresh live selfie may also be required (0401).
+    if (!mounted || !await ensureLivenessOk(context, ref)) return;
     final d = _hireDrop;
     final gap = await _findGap(a, stops, d ?? a);
     if (gap != null) {
@@ -3048,6 +3061,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
           showInfo(context, 'You can book now.');
         }
+      } else if (isLivenessRequired(e)) {
+        if (mounted) await ensureLivenessOk(context, ref);
       } else if (mounted) {
         showError(context, HireError.wrap(e));
       }

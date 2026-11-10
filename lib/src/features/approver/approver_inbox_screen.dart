@@ -51,20 +51,25 @@ class ApproverInboxScreen extends ConsumerWidget {
     // during recording — a screenshot can't be blocked there).
     return SecureScreen(
       child: DefaultTabController(
-        length: 2,
+        length: 3,
         child: Scaffold(
           appBar: AppBar(
             title: const Text('Approvals'),
             bottom: const TabBar(
+              isScrollable: true,
               tabs: [
                 Tab(key: ValueKey('approvals-tab-review'), text: 'To review'),
+                Tab(key: ValueKey('approvals-tab-liveness'), text: 'Liveness'),
                 Tab(key: ValueKey('approvals-tab-pending'), text: 'Pending Upload'),
               ],
             ),
           ),
           body: TabBarView(
             children: [
-              _reviewTab(context, ref),
+              // Live selfies get their own tab (migration 0401), so To review
+              // keeps the document checks and Liveness the selfie verifications.
+              _reviewTab(context, ref, liveness: false),
+              _reviewTab(context, ref, liveness: true),
               const _PendingUploadTab(),
             ],
           ),
@@ -73,50 +78,57 @@ class ApproverInboxScreen extends ConsumerWidget {
     );
   }
 
-  /// The documents waiting for this approver's review (the original Approvals
-  /// list).
-  Widget _reviewTab(BuildContext context, WidgetRef ref) {
+  static bool _isLiveness(ApproverDoc d) => d.source == 'identity' && d.docKey == 'selfie';
+
+  /// The checks waiting for this approver's review. [liveness] true shows only
+  /// live-selfie verifications (migration 0401); false shows everything else.
+  Widget _reviewTab(BuildContext context, WidgetRef ref, {required bool liveness}) {
     final value = ref.watch(approverPendingProvider);
     return OfflineStrip.over(AsyncView<List<ApproverDoc>>(
       value: value,
       onRetry: () => ref.invalidate(approverPendingProvider),
-      data: (docs) => docs.isEmpty
-          ? refreshableEmpty(
-              onRefresh: () async => ref.invalidate(approverPendingProvider),
-              child: const EmptyState(
-                icon: Icons.fact_check_outlined,
-                title: 'Nothing to review',
-                message: 'Documents waiting for your review appear here, within the scope your admin set.',
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: () async => ref.invalidate(approverPendingProvider),
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: docs.length,
-                separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
-                itemBuilder: (context, i) {
-                  final d = docs[i];
-                  final cs = Theme.of(context).colorScheme;
-                  return ResponsiveCenter(
-                    maxWidth: 760,
-                    child: ListTile(
-                      key: ValueKey('approver-doc-${d.id}'),
-                      leading: CircleAvatar(
-                        backgroundColor: cs.surfaceContainerHighest,
-                        foregroundColor: cs.onSurfaceVariant,
-                        child: Icon(iconFor(d.source)),
-                      ),
-                      title: Text(d.docLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
-                      subtitle: Text(ownerLine(d),
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () => _openDocument(context, d),
-                    ),
-                  );
-                },
-              ),
+      data: (all) {
+        final docs = [for (final d in all) if (_isLiveness(d) == liveness) d];
+        if (docs.isEmpty) {
+          return refreshableEmpty(
+            onRefresh: () async => ref.invalidate(approverPendingProvider),
+            child: EmptyState(
+              icon: liveness ? Icons.face_retouching_natural_outlined : Icons.fact_check_outlined,
+              title: liveness ? 'No live selfies to verify' : 'Nothing to review',
+              message: liveness
+                  ? 'Live selfies people have submitted for verification appear here, within the scope your admin set.'
+                  : 'Documents waiting for your review appear here, within the scope your admin set.',
             ),
+          );
+        }
+        return RefreshIndicator(
+          onRefresh: () async => ref.invalidate(approverPendingProvider),
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            itemCount: docs.length,
+            separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
+            itemBuilder: (context, i) {
+              final d = docs[i];
+              final cs = Theme.of(context).colorScheme;
+              return ResponsiveCenter(
+                maxWidth: 760,
+                child: ListTile(
+                  key: ValueKey('approver-doc-${d.id}'),
+                  leading: CircleAvatar(
+                    backgroundColor: cs.surfaceContainerHighest,
+                    foregroundColor: cs.onSurfaceVariant,
+                    child: Icon(liveness ? Icons.face_outlined : iconFor(d.source)),
+                  ),
+                  title: Text(d.docLabel, maxLines: 2, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(ownerLine(d), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _openDocument(context, d),
+                ),
+              );
+            },
+          ),
+        );
+      },
     ));
   }
 
