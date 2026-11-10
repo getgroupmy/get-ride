@@ -1,19 +1,27 @@
 -- ============================================================================
--- 0399 — Pending Upload lists ID / Passport where the country requires it.
+-- 0399 — Pending Upload lists ID / Passport where the SERVICE country requires it.
 --
--- Migration 0398 stopped listing partner/driver documents for plain users and
--- split the list into Partners and Users. This fills the Users side (and adds
--- to partners too): where the person's country requires a verified photo ID,
--- and they have not verified one yet, the list shows an "ID / Passport" row so
--- the approver can nudge them — whether they are a partner or a plain user.
+-- Migration 0398 split the list into Partners and Users. This adds an
+-- "ID / Passport" row for a PARTNER whose service country requires a verified
+-- photo ID and who has not verified one yet, so the approver can nudge them.
 --
--- "Required by the local authorities" reuses the existing per-country rule the
--- admin already manages (migration 0342, rider_id_gate, in Admin → Settings),
--- keyed by the person's profile country (profiles.nationality, else master) —
--- no second setting. A person needs the row when that rule's `require` is on,
--- their id_verified is not 'Verified', and they have no ID check already
--- uploaded (Pending Review or Approved). The nudge path
--- (approver_request_document_upload) already accepts the 'identity' source.
+-- "Required by the local authorities" is the country the person provides
+-- service in — a partner's partners.service_countries — matched against the
+-- existing per-country rule the admin already manages (migration 0342,
+-- rider_id_gate, in Admin → Settings), with its master rule as the default per
+-- country. No second setting. A partner needs the row when that rule's
+-- `require` is on for one of their service countries, their id_verified is not
+-- 'Verified', and they have no ID check already uploaded (Pending Review or
+-- Approved). The nudge path (approver_request_document_upload) already accepts
+-- the 'identity' source.
+--
+-- A plain user (rider) is NOT listed here: their requirement is "the country
+-- they are using service in", which is their live location — not stored
+-- server-side in any queryable form (the profile has no country of use, a
+-- session keeps only a raw IP blob, a booking only a free-text address). A
+-- rider's ID is enforced at booking time by rider_id_gate, where the device
+-- knows the country; persisting a rider's current country for this list is a
+-- separate change.
 -- ============================================================================
 
 create or replace function public.approver_pending_uploads(
@@ -100,9 +108,9 @@ begin
      where not exists (select 1 from public.vehicle_documents d
                         where d.vehicle_id = veh.id and d.doc_id = rd.id::text)
   ),
-  -- ID / Passport, for partner and user alike, where the person's country
-  -- requires it (rider_id_gate, migration 0342) and they have not verified or
-  -- uploaded one yet (migration 0399).
+  -- ID / Passport for a PARTNER whose service country requires it (rider_id_gate,
+  -- migration 0342; the master rule is the default per country), when they have
+  -- not verified or uploaded one yet (migration 0399).
   identity_rows as (
     select c.id as member_id, c.name as member_name, c.phone as member_phone, c.reachable, c.location,
            c.is_partner,
@@ -115,11 +123,15 @@ begin
       left join public.document_upload_requests dur
         on dur.target_user_id = c.id and dur.source = 'identity'
        and dur.doc_key = 'id' and dur.vehicle_id is null
-     where coalesce((coalesce(v_gate -> p.nationality, v_gate -> 'master') ->> 'require')::boolean, false)
-       and coalesce(p.id_verified::text, '') is distinct from 'Verified'
+     where coalesce(p.id_verified::text, '') is distinct from 'Verified'
        and not exists (select 1 from public.identity_checks ic
                         where ic.user_id = c.id and ic.kind = 'id'
                           and ic.status in ('Pending Review', 'Approved'))
+       and exists (
+             select 1 from public.partners pr
+              where pr.auth_user_id = c.id
+                and exists (select 1 from unnest(pr.service_countries) sc
+                             where coalesce((coalesce(v_gate -> sc, v_gate -> 'master') ->> 'require')::boolean, false)))
   ),
   rows as (
     select * from (
