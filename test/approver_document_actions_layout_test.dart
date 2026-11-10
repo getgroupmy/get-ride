@@ -77,4 +77,18 @@ void main() {
     expect(tester.widget<FilledButton>(confirm).onPressed, isNotNull);
     expect(find.text('Send back'), findsWidgets);
   });
+
+  testWidgets('approve is blocked when the image did not load', (tester) async {
+    await _openDialog(tester);
+    // The invalid URL fails to load in tests, so the errorBuilder fires.
+    await tester.pumpAndSettle();
+    final approve = find.byKey(const ValueKey('approver-approve'));
+    expect(approve, findsOneWidget);
+    expect(tester.widget<FilledButton>(approve).onPressed, isNull,
+        reason: 'Approve must be disabled when the image is unviewable');
+    expect(find.textContaining("can't be approved"), findsOneWidget);
+    // Reject and Send back are still offered.
+    expect(find.byKey(const ValueKey('approver-reject')), findsOneWidget);
+    expect(find.byKey(const ValueKey('approver-delete')), findsOneWidget);
+  });
 }

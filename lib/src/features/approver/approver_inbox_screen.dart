@@ -303,6 +303,10 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
   late final _expiry = TextEditingController(text: widget.doc.expiryDate ?? '');
   bool _busy = false;
   _ViewerMode _mode = _ViewerMode.none;
+  // Image URLs whose load failed this session. An approver must not approve a
+  // document whose image they can't see, so Approve is blocked while any shown
+  // image is in here (reject / send back / replace stay available).
+  final Set<String> _failedImages = {};
 
   @override
   void dispose() {
@@ -573,11 +577,18 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
                                     padding: EdgeInsets.all(32),
                                     child: Center(child: CircularProgressIndicator()),
                                   ),
-                            errorBuilder: (c, _, _) => Padding(
-                              padding: const EdgeInsets.all(32),
-                              child: Text("Couldn't load this image.",
-                                  textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
-                            ),
+                            errorBuilder: (c, _, _) {
+                              // Record the failure after this frame so Approve
+                              // is blocked (can't verify what can't be seen).
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted && _failedImages.add(url)) setState(() {});
+                              });
+                              return Padding(
+                                padding: const EdgeInsets.all(32),
+                                child: Text("Couldn't load this image.",
+                                    textAlign: TextAlign.center, style: TextStyle(color: cs.onSurfaceVariant)),
+                              );
+                            },
                           ),
                         ),
                       ),
@@ -587,7 +598,8 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
                 ],
               ),
             ),
-            _actions(context, canApprove, canDelete, canUpload, deleteHard, cs),
+            _actions(context, canApprove, canDelete, canUpload, deleteHard, cs,
+                imageUnviewable: urls.any(_failedImages.contains)),
           ],
         ),
       ),
@@ -825,7 +837,8 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
     );
   }
 
-  Widget _actions(BuildContext context, bool canApprove, bool canDelete, bool canUpload, bool deleteHard, ColorScheme cs) {
+  Widget _actions(BuildContext context, bool canApprove, bool canDelete, bool canUpload, bool deleteHard, ColorScheme cs,
+      {bool imageUnviewable = false}) {
     final pad = const EdgeInsets.fromLTRB(20, 8, 20, 16);
     if (!canApprove && !canDelete && !canUpload) {
       return Padding(
@@ -1001,9 +1014,17 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
           if (canApprove && pending)
             FilledButton(
               key: const ValueKey('approver-approve'),
-              onPressed: _busy ? null : () => _review('approve'),
+              // Can't verify what can't be seen: a document whose image failed
+              // to load can't be approved — only rejected, sent back or replaced.
+              onPressed: (_busy || imageUnviewable) ? null : () => _review('approve'),
               child: _spinnerOr('Approve'),
             ),
+          if (canApprove && pending && imageUnviewable) ...[
+            const SizedBox(height: 6),
+            Text("The image didn't load, so this can't be approved. Send it back or replace it.",
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+          ],
           if (canApprove && pending) const SizedBox(height: 8),
           Wrap(
             spacing: 10,
