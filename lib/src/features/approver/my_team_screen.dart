@@ -3699,6 +3699,32 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(v.descriptor!, style: t.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
                   ),
+                // An approved vehicle whose ownership certificate isn't verified
+                // (e.g. approved before the VOC existed, migration 0392): a
+                // non-blocking flag so the approver can chase it.
+                if (v.vocMissing && v.status == 'approved')
+                  Container(
+                    key: const ValueKey('vehicle-voc-missing'),
+                    margin: const EdgeInsets.only(top: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: cs.errorContainer,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.warning_amber_rounded, size: 20, color: cs.onErrorContainer),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Approved · ownership certificate not verified',
+                            style: t.textTheme.bodySmall?.copyWith(
+                                color: cs.onErrorContainer, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (v.photos.isNotEmpty) ...[
                   const SizedBox(height: 16),
                   _sectionLabel(t, cs, 'VEHICLE PHOTOS · ${v.photos.length} ANGLES'),
