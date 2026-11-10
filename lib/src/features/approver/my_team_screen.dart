@@ -1581,6 +1581,13 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
             if (canEditProfile) ...[
               const SizedBox(height: 10),
               OutlinedButton.icon(
+                key: const ValueKey('my-team-request-liveness'),
+                onPressed: _busyStatus ? null : _requestLiveness,
+                icon: const Icon(Icons.face_retouching_natural_outlined, size: 18),
+                label: const Text('Request live selfie'),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
                 key: const ValueKey('my-team-reset-pin'),
                 onPressed: _busyStatus ? null : _resetPin,
                 style: OutlinedButton.styleFrom(foregroundColor: cs.error),
@@ -1592,6 +1599,48 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
         ),
       ),
     );
+  }
+
+  /// Request a fresh live selfie (migration 0401): deletes the member's current
+  /// profile photo and requires them to re-take it — they can't transact until
+  /// they do and an approver verifies it.
+  Future<void> _requestLiveness() async {
+    final ok = await showAppDialog<bool>(
+      id: 'dialog.approver-request-liveness', context: context,
+      builder: (c) => AlertDialog(
+        title: Text('Request a new live selfie from ${member.name.split(' ').first}?'),
+        content: const Text(
+            'Their current profile photo is removed and they must take a new live '
+            'selfie. Until they do and it is verified, they cannot book or transact.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(
+            key: const ValueKey('request-liveness-confirm'),
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Request')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busyStatus = true);
+    try {
+      await ref.read(approverInboxRepositoryProvider).requestMemberLiveness(member.id);
+      ref.invalidate(approverMemberDetailProvider(member.id));
+      if (!mounted) return;
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: '${member.name} must take a new live selfie before their next transaction.',
+        kind: NoticeKind.success));
+    } catch (e) {
+      if (!mounted) return;
+      final m = e is PostgrestException ? e.message : e.toString();
+      unawaited(showAppNotice(
+        id: 'notice.approver-status', context: context,
+        message: m.contains('not_allowed') ? "You can't request a selfie from this member." : "Couldn't request a selfie. Try again.",
+        kind: NoticeKind.error));
+    } finally {
+      if (mounted) setState(() => _busyStatus = false);
+    }
   }
 
   /// Reset the member's sign-in PIN to the default 123456; they must set a new
