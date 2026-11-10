@@ -36,6 +36,7 @@ import '../store_review/demo_flows.dart' show playDemoBooking;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show EmptyState, showError, showInfo;
 import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
+import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired;
 import '../../widgets/date_boxes.dart';
 import '../../widgets/phone_number_field.dart' show PhoneNumberField;
 import '../../widgets/page_style_host.dart';
@@ -443,6 +444,7 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
     if (pay == null || _problem != null) return;
     // ID verification (0342–0344): an admin country rule may require it.
     if (!mounted || !await ensureRiderIdVerified(context, ref)) return;
+    if (!mounted || !await ensureLivenessOk(context, ref)) return;
     final door = _door;
     final dues = _held ? (_info?.duesTotal ?? 0) : 0.0;
     try {
@@ -496,6 +498,8 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
         if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
           showInfo(context, 'You can book now.');
         }
+      } else if (isLivenessRequired(e)) {
+        if (mounted) await ensureLivenessOk(context, ref);
       } else if (mounted) {
         showError(context, e);
       }
