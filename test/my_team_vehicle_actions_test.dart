@@ -31,10 +31,10 @@ const _vehicles = MemberVehicles(
   allowed: [],
 );
 
-VehicleDetail _detail({required bool canManage}) => VehicleDetail(
+VehicleDetail _detail({required bool canManage, bool vocMissing = false}) => VehicleDetail(
       id: 'v1', plate: 'BMT4420', make: 'Perodua', model: 'Myvi', color: 'Silver', year: '2021',
       descriptor: 'Perodua · Myvi · Silver · 2021', status: 'approved', ownerName: 'Self',
-      canManage: canManage,
+      canManage: canManage, vocMissing: vocMissing,
     );
 
 class _FakeRepo extends ApproverInboxRepository {
@@ -135,7 +135,7 @@ void _bigWindow(WidgetTester tester) {
   addTearDown(tester.view.resetDevicePixelRatio);
 }
 
-Future<_FakeRepo> _openSheet(WidgetTester tester, {required bool canManage, VehiclePermits? permitCard}) async {
+Future<_FakeRepo> _openSheet(WidgetTester tester, {required bool canManage, VehiclePermits? permitCard, bool vocMissing = false}) async {
   _bigWindow(tester);
   final repo = _FakeRepo()..permitCard = permitCard;
   await tester.pumpWidget(
@@ -147,7 +147,7 @@ Future<_FakeRepo> _openSheet(WidgetTester tester, {required bool canManage, Vehi
         approverOwnerDocumentsProvider.overrideWith((ref, id) async => const <ApproverDoc>[]),
         approverMemberWalletProvider.overrideWith((ref, id) async => null),
         approverMemberVehiclesProvider.overrideWith((ref, id) async => _vehicles),
-        approverVehicleDetailProvider.overrideWith((ref, id) async => _detail(canManage: canManage)),
+        approverVehicleDetailProvider.overrideWith((ref, id) async => _detail(canManage: canManage, vocMissing: vocMissing)),
         approverAddableVehicleDocsProvider.overrideWith((ref, id) async =>
             const [AddableDoc(docId: 'veh-type', name: 'Inspection (Puspakom)', required: true)]),
       ],
@@ -482,5 +482,16 @@ void main() {
     );
     expect(find.byKey(const ValueKey('permit-revoke-evp-type')), findsNothing);
     expect(find.byKey(const ValueKey('permit-bypass-toggle')), findsNothing);
+  });
+
+  testWidgets('an approved vehicle missing a verified VOC shows the flag (0392)', (tester) async {
+    await _openSheet(tester, canManage: true, vocMissing: true);
+    expect(find.byKey(const ValueKey('vehicle-voc-missing')), findsOneWidget);
+    expect(find.text('Approved · ownership certificate not verified'), findsOneWidget);
+  });
+
+  testWidgets('a vehicle with its VOC verified shows no flag', (tester) async {
+    await _openSheet(tester, canManage: true, vocMissing: false);
+    expect(find.byKey(const ValueKey('vehicle-voc-missing')), findsNothing);
   });
 }

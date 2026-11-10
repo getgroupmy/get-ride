@@ -628,6 +628,7 @@ class VehicleDetail {
     this.photoLeft,
     this.photoRight,
     this.canManage = false,
+    this.vocMissing = false,
     this.drivers = const [],
     this.documents = const [],
   });
@@ -664,6 +665,11 @@ class VehicleDetail {
   final String? photoRight;
 
   final bool canManage;
+
+  /// True when a vehicle ownership certificate is required but this vehicle has
+  /// no Approved one — e.g. a vehicle approved before the VOC existed (0392).
+  final bool vocMissing;
+
   final List<VehicleDriver> drivers;
   final List<VehicleDoc> documents;
 
@@ -710,6 +716,7 @@ class VehicleDetail {
       photoLeft: _s(photos['left']),
       photoRight: _s(photos['right']),
       canManage: j['can_manage'] == true,
+      vocMissing: j['voc_missing'] == true,
       drivers: [
         for (final e in (j['drivers'] as List? ?? const []))
           VehicleDriver(
