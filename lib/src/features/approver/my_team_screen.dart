@@ -3746,7 +3746,7 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
                 const SizedBox(height: 16),
                 _sectionLabel(t, cs, 'SERVICES & PERMITS'),
                 const SizedBox(height: 8),
-                _PermitsSection(vehicleId: widget.vehicleId, regYear: v.year, canManage: v.canManage),
+                _PermitsSection(vehicleId: widget.vehicleId, plate: v.plate, regYear: v.year, canManage: v.canManage),
                 const SizedBox(height: 16),
                 _sectionLabel(t, cs, 'WHO CAN DRIVE THIS · ${v.drivers.length}'),
                 const SizedBox(height: 6),
@@ -4233,8 +4233,9 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
 /// reads the same permit card the admin screen uses, approver-scoped. Shows
 /// the vehicle's age and each permit's state; hidden on a legacy database.
 class _PermitsSection extends ConsumerStatefulWidget {
-  const _PermitsSection({required this.vehicleId, this.regYear, this.canManage = false});
+  const _PermitsSection({required this.vehicleId, this.plate, this.regYear, this.canManage = false});
   final String vehicleId;
+  final String? plate;
   final String? regYear;
   final bool canManage;
 
@@ -4290,7 +4291,7 @@ class _PermitsSectionState extends ConsumerState<_PermitsSection> {
       id: 'approver.vehicle-permit',
       context: context,
       isScrollControlled: true,
-      builder: (_) => _VehiclePermitSheet(vehicleId: widget.vehicleId, permit: p),
+      builder: (_) => _VehiclePermitSheet(vehicleId: widget.vehicleId, plate: widget.plate, permit: p),
     );
     if (saved == true) ref.invalidate(approverVehiclePermitCardProvider(widget.vehicleId));
   }
@@ -4503,8 +4504,9 @@ class _PermitsSectionState extends ConsumerState<_PermitsSection> {
 /// the same AI reader the upload forms use and fills the fields; the chosen
 /// image is attached after saving. Pops `true` when the permit was written.
 class _VehiclePermitSheet extends ConsumerStatefulWidget {
-  const _VehiclePermitSheet({required this.vehicleId, required this.permit});
+  const _VehiclePermitSheet({required this.vehicleId, this.plate, required this.permit});
   final String vehicleId;
+  final String? plate;
   final PermitItem permit;
 
   @override
@@ -4517,6 +4519,7 @@ class _VehiclePermitSheetState extends ConsumerState<_VehiclePermitSheet> {
   PickedImage? _image;
   bool _busy = false;
   bool _scanning = false;
+  String? _readPlate; // the plate the scan read off the permit, for the match chip
 
   @override
   void initState() {
@@ -4535,6 +4538,11 @@ class _VehiclePermitSheetState extends ConsumerState<_VehiclePermitSheet> {
   String get _permitName =>
       widget.permit.name.isEmpty ? (widget.permit.shortName.isEmpty ? 'Permit' : widget.permit.shortName) : widget.permit.name;
 
+  /// Scan the operating / e-hailing permit (Malaysia: the APAD / EVP permit;
+  /// named differently per country) and autofill the number and expiry with what
+  /// it reads (vehicle-permit-read, Gemini vision). The permit's own plate is
+  /// surfaced beside the vehicle's so the approver can catch a permit issued for
+  /// a different car before saving.
   Future<void> _scan() async {
     final picked = await pickDocumentImage(context);
     if (picked == null || !mounted) return;
@@ -4543,44 +4551,42 @@ class _VehiclePermitSheetState extends ConsumerState<_VehiclePermitSheet> {
       _scanning = true;
     });
     try {
-      final repo = ref.read(documentAiRepositoryProvider);
-      final url = await repo.prepare(picked.bytes, picked.name);
-      final outcome = url == null
-          ? (result: null, reason: 'image_too_large')
-          : await repo.verify(docAiRequestBody(
-              frontDataUrl: url, docName: _permitName,
-              documentNumber: _number.text, expiryDate: _expiry.text));
-      final r = outcome.result;
-      if (r == null) {
+      final url = await ref.read(documentAiRepositoryProvider).prepare(picked.bytes, picked.name);
+      if (url == null) {
         if (!mounted) return;
         unawaited(showAppNotice(
           id: 'notice.approver-permit', context: context,
-          message: docAiUnavailableText(outcome.reason), kind: NoticeKind.error));
+          message: 'That image is too large. Try a smaller photo.', kind: NoticeKind.error));
         return;
       }
-      final fill = docAiAutofill(
-        r,
-        requireDocumentNumber: true, requireStartDate: false, requireExpiryDate: true,
-        requireInsuranceProvider: false, pwdFlag: false,
-        documentNumber: '', startDate: '', expiryDate: '',
-        insurerId: null, isPwd: false, insurers: const [],
-      );
+      final permit = await ref.read(approverInboxRepositoryProvider).readVehiclePermit(dataUrl: url);
       if (!mounted) return;
       setState(() {
-        if (fill.documentNumber != null) _number.text = fill.documentNumber!;
-        if (fill.expiryDate != null) _expiry.text = fill.expiryDate!;
+        if (permit.documentNumber != null) _number.text = permit.documentNumber!;
+        if (permit.expiryDate != null) _expiry.text = permit.expiryDate!;
+        _readPlate = permit.plate;
       });
+      final mismatch = permit.plate != null && widget.plate != null &&
+          !permitPlateMatches(permit.plate, widget.plate);
       unawaited(showAppNotice(
         id: 'notice.approver-permit', context: context,
-        message: fill.filled.isEmpty
+        message: permit.isEmpty
             ? 'Scanned, but nothing matched — type the details.'
-            : 'Read from the document. Check the details before saving.',
-        kind: fill.filled.isEmpty ? NoticeKind.info : NoticeKind.success));
-    } catch (_) {
+            : (mismatch
+                ? "This permit reads for ${permit.plate} — not ${widget.plate}. Check it's the right permit."
+                : 'Read from the permit. Check the details before saving.'),
+        kind: permit.isEmpty
+            ? NoticeKind.info
+            : (mismatch ? NoticeKind.error : NoticeKind.success)));
+    } catch (e) {
       if (!mounted) return;
+      final m = e.toString();
       unawaited(showAppNotice(
         id: 'notice.approver-permit', context: context,
-        message: "Couldn't read the document. Type the details instead.", kind: NoticeKind.error));
+        message: m.contains('not_allowed')
+            ? "You can't scan permits."
+            : "Couldn't read the permit. Type the details instead.",
+        kind: NoticeKind.error));
     } finally {
       if (mounted) setState(() => _scanning = false);
     }
@@ -4643,6 +4649,14 @@ class _VehiclePermitSheetState extends ConsumerState<_VehiclePermitSheet> {
                   : const Icon(Icons.document_scanner_outlined, size: 18),
               label: Text(_image == null ? 'Scan a photo' : 'Photo selected · scan again'),
             ),
+            if (_readPlate != null) ...[
+              const SizedBox(height: 12),
+              _PermitPlateChip(
+                readPlate: _readPlate!,
+                vehiclePlate: widget.plate,
+                matches: widget.plate != null && permitPlateMatches(_readPlate, widget.plate),
+              ),
+            ],
             const SizedBox(height: 14),
             TextField(
               key: const ValueKey('permit-number'),
@@ -4669,6 +4683,44 @@ class _VehiclePermitSheetState extends ConsumerState<_VehiclePermitSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Shows the plate the permit scan read, and whether it matches the vehicle on
+/// file. A mismatch (an EVP issued for a different car) is the one thing an
+/// approver most needs to catch, so it reads red; a match reassures in green;
+/// with no vehicle plate to compare against, it just reports what was read.
+class _PermitPlateChip extends StatelessWidget {
+  const _PermitPlateChip({required this.readPlate, required this.vehiclePlate, required this.matches});
+  final String readPlate;
+  final String? vehiclePlate;
+  final bool matches;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final known = vehiclePlate != null;
+    final (Color bg, Color fg, IconData icon, String msg) = !known
+        ? (cs.surfaceContainerHighest, cs.onSurfaceVariant, Icons.info_outline,
+            'Permit reads for $readPlate.')
+        : matches
+            ? (cs.primaryContainer, cs.onPrimaryContainer, Icons.check_circle_outline,
+                'Permit matches $readPlate.')
+            : (cs.errorContainer, cs.onErrorContainer, Icons.warning_amber_rounded,
+                'Permit reads for $readPlate — not $vehiclePlate.');
+    return Container(
+      key: const ValueKey('permit-plate-chip'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: fg),
+          const SizedBox(width: 8),
+          Expanded(child: Text(msg, style: text.bodyMedium?.copyWith(color: fg, fontWeight: FontWeight.w600))),
+        ],
       ),
     );
   }
