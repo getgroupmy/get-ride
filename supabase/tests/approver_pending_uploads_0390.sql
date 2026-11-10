@@ -29,6 +29,11 @@ insert into public.vehicle (id, auth_user_id, plate, make, model, color, status)
    'WXY 3901', 'Testmake', 'Sedan', 'Blue', 'approved')
 on conflict (id) do nothing;
 
+-- Able is a partner, so partner/driver documents are listed for them (0398).
+insert into public.partners (id, auth_user_id, name, phone) values
+  ('00000000-0000-0000-0000-000003900191', '00000000-0000-0000-0000-0000000390b1', 'Able Ninety', '+60100003902')
+on conflict (id) do nothing;
+
 -- Two required documents Able has not uploaded: one partner (no vehicle docType),
 -- one vehicle (a Vehicle-category docType). Both active + required.
 insert into public.required_document (id, values) values

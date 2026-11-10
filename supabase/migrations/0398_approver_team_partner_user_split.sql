@@ -286,8 +286,8 @@ security definer
 set search_path = public
 as $$
 declare
-  p public.profiles;
-  v_part public.partners%rowtype;
+  p   public.profiles;
+  pay public.partner_payout_accounts;
 begin
   if auth.uid() is null or p_member is null or not public.approver_covers(p_member) then
     return null;
@@ -296,8 +296,7 @@ begin
   if not found then
     return null;
   end if;
-  select * into v_part from public.partners where auth_user_id = p_member
-   order by updated_at desc nulls last limit 1;
+  select * into pay from public.partner_payout_accounts where profile_id = p_member;
   return jsonb_build_object(
     'id', p.id,
     'name', p.name,
@@ -308,9 +307,16 @@ begin
     'address', p.address,
     'status', p.status,
     'id_verified', p.id_verified,
-    'is_partner', found,
-    'partner_status', case when found then v_part.status::text else null end,
-    'partner_types', coalesce(to_jsonb(v_part.partner_types), '[]'::jsonb));
+    'is_partner', exists (select 1 from public.partners where auth_user_id = p_member),
+    -- The provider status, for the detail sheet's effective-status badge (0398).
+    'partner_status', (select pp.status::text from public.partners pp
+                        where pp.auth_user_id = p_member
+                        order by pp.updated_at desc nulls last limit 1),
+    'partner_types', coalesce((select to_jsonb(partner_types) from public.partners
+                                where auth_user_id = p_member limit 1), '[]'::jsonb),
+    'payout', case when pay.profile_id is null then null else jsonb_build_object(
+                'type', pay.account_type, 'provider', pay.bank_name,
+                'account', pay.account_no, 'holder', pay.holder_name) end);
 end;
 $$;
 revoke execute on function public.approver_member_detail(uuid) from public, anon;
