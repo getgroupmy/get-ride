@@ -376,7 +376,7 @@ void main() {
         await _tap(tester, 'courier-pickup');
         await _tap(tester, 'courier-drop');
         await _tap(tester, 'courier-recipient');
-        await tester.enterText(find.byKey(const ValueKey('freight-recipient-phone')), '+60 12 345 6789');
+        await tester.enterText(find.byKey(const ValueKey('freight-recipient-phone-number')), '012 345 6789');
         await tester.tap(find.byKey(const ValueKey('freight-recipient-done')));
         await tester.pumpAndSettle();
         expect(find.byKey(const ValueKey('delivery-addons')), findsOneWidget);

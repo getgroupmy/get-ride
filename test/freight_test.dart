@@ -600,14 +600,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('freight-recipient')));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(const ValueKey('freight-recipient-name')), 'Mei');
-      await tester.enterText(find.byKey(const ValueKey('freight-recipient-phone')), 'abc');
+      // Country-code + number field: the national number composes to E.164
+      // (default +60, trunk 0 dropped).
+      await tester.enterText(find.byKey(const ValueKey('freight-recipient-phone-number')), '012 345 6789');
       await tester.tap(find.byKey(const ValueKey('freight-recipient-done')));
       await tester.pumpAndSettle();
-      expect(find.text('Enter a phone number, such as +60 12 345 6789.'), findsOneWidget);
-      await tester.enterText(find.byKey(const ValueKey('freight-recipient-phone')), '+60 12 345 6789');
-      await tester.tap(find.byKey(const ValueKey('freight-recipient-done')));
-      await tester.pumpAndSettle();
-      expect(find.text('Mei · +60 12 345 6789'), findsOneWidget);
+      expect(find.text('Mei · +60123456789'), findsOneWidget);
 
       // The sizes, with their load and load size.
       await tester.tap(find.byKey(const ValueKey('freight-vehicle')));
@@ -697,7 +695,7 @@ void main() {
       expect((a[#metadata] as Map)['country'], 'Malaysia');
       expect(a[#declaredValue], 400);
       expect(a[#prohibitedAck], isTrue);
-      expect(a[#recipient], (name: 'Mei', phone: '+60 12 345 6789'));
+      expect(a[#recipient], (name: 'Mei', phone: '+60123456789'));
       // Sent: My requests.
       expect(find.text('My freight requests'), findsOneWidget);
       expect(find.text('Request sent. Drivers will send you their offers.'), findsOneWidget);
