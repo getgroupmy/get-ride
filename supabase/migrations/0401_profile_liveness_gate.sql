@@ -171,6 +171,20 @@ $$;
 revoke execute on function public.profile_liveness_block(uuid) from public, anon;
 grant execute on function public.profile_liveness_block(uuid) to authenticated;
 
+-- The signed-in person asks whether they owe a live selfie (for the app's
+-- capture-before-booking flow, without exposing anyone else's state).
+create or replace function public.my_liveness_required()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.profile_liveness_block(auth.uid());
+$$;
+revoke execute on function public.my_liveness_required() from public, anon;
+grant execute on function public.my_liveness_required() to authenticated;
+
 -- ---- 4. Block booking for a rider who owes a live selfie (every booking module) --------------------
 create or replace function public.profile_liveness_guard()
 returns trigger
