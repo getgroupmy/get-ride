@@ -78,6 +78,21 @@ void main() {
       expect(mygigPhoneText('60123456789'), '+60 12 345 6789');
     });
 
+    test('a composed international number is trusted, never force-prefixed', () {
+      // Mirrors the server's mygig_phone_digits (migration 0393): a number the
+      // app built with its leading '+' keeps its own country code.
+      expect(mygigPhoneDigits('+65 8123 4567'), '6581234567');
+      expect(mygigPhoneDigits('+49 151 1234567'), '491511234567');
+      expect(mygigPhoneDigits('+60123456789'), '60123456789');
+      // A bare local number (no '+') still gets the Malaysian normalisation.
+      expect(mygigPhoneDigits('0123456789'), '60123456789');
+      // Completeness counts the whole composed number, so a shorter-dial-code
+      // country (e.g. +65 + 8 digits) is admitted.
+      expect(mygigPhoneComplete('+65 8123 4567'), isTrue);
+      expect(mygigPhoneComplete('+60 12 345 6789'), isTrue);
+      expect(mygigPhoneComplete('+65 812'), isFalse);
+    });
+
     test('what the number is', () {
       final l = MygigLookup.fromJson({
         'state': 'latest', 'name': 'Ai**a', 'idType': 'MyKad', 'id': '•••• 5678', 'version': '1.4.11',
