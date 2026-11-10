@@ -143,6 +143,16 @@ class PermitsRepository {
   Future<void> saveCountrySettings(String country, Map<String, dynamic> values) =>
       _db.from('permit_country_settings').upsert({'country': country, ...values}, onConflict: 'country');
 
+  /// Give every currently-approved vehicle of [country] that lacks a required
+  /// permit the country's bypass window, so switching enforcement on is a soft
+  /// rollout rather than an instant cut-off (migration 0394). Returns how many
+  /// vehicles were graced. Safe to call when enforcement is already on and a
+  /// no-op when nothing needs grace.
+  Future<int> grantEnableGrace(String country) async {
+    final n = await _db.rpc('permit_enable_grace', params: {'p_country': country});
+    return (n as num?)?.toInt() ?? 0;
+  }
+
   Future<List<ReminderDays>> reminderDays() async {
     final rows = await _db.from('document_reminder_days').select().order('scope', ascending: true);
     return [for (final r in rows) ReminderDays.fromRow(r)];

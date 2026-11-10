@@ -177,6 +177,45 @@ on conflict (profile_id) do update set online = true;
 select pg_temp.check((select online from public.driver_presence where profile_id = '00000000-0000-0000-0000-0000000254b1'),
   'with a permit the driver goes online');
 
+-- 3b. Soft rollout: permit_enable_grace gives the permit-less fleet grace -------
+-- With enforcement on, TST 2542 (no permit) is held up. An admin — not a driver
+-- — grants the country's fleet its grace window, and the permit-less vehicle may
+-- work for the grace days instead of being cut off at once.
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000254b2');
+select pg_temp.refused($q$select public.permit_enable_grace('Malaysia')$q$,
+  'not_authorized', 'a driver granting the fleet a grace');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000254c1');
+select pg_temp.check(public.permit_enable_grace('Malaysia') >= 1,
+  'an admin grants grace to the permit-less fleet');
+reset role;
+select pg_temp.check(public.driver_permit_problem('00000000-0000-0000-0000-0000000254b2') is null,
+  'after the grace grant the permit-less driver is not held up');
+select pg_temp.check(public.vehicle_permit_status('00000000-0000-0000-0000-0000000254f2') = 'bypass',
+  'the graced vehicle is on bypass');
+select pg_temp.check(
+  (select permit_bypass_until from public.vehicle where id = '00000000-0000-0000-0000-0000000254f2')
+    between now() + interval '71 hours' and now() + interval '73 hours',
+  'the grace lasts the country''s 3 days');
+select pg_temp.check(public.driver_permit_problem('00000000-0000-0000-0000-0000000254b1') is null,
+  'the already-permitted vehicle is unaffected by the grant');
+-- A longer grace already in hand is only extended, never shortened.
+update public.vehicle set permit_bypass_until = now() + interval '10 days'
+ where id = '00000000-0000-0000-0000-0000000254f2';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000254c1');
+select public.permit_enable_grace('Malaysia');
+reset role;
+select pg_temp.check(
+  (select permit_bypass_until from public.vehicle where id = '00000000-0000-0000-0000-0000000254f2')
+    > now() + interval '9 days',
+  'grace is only extended, never shortened');
+-- Clear the grace so the sections below see TST 2542 held up again.
+update public.vehicle set permit_bypass_until = null, permit_bypass_set_at = null, permit_bypass_set_by = null
+ where id = '00000000-0000-0000-0000-0000000254f2';
+select pg_temp.check(public.driver_permit_problem('00000000-0000-0000-0000-0000000254b2') like '%TST 2542 is missing%',
+  'with the grace cleared the driver is held up again');
+
 insert into public.ride_requests (id, rider_id, status, pickup_lat, pickup_lng, fare) values
   ('00000000-0000-0000-0000-000000025401', '00000000-0000-0000-0000-0000000254a1', 'open', 3.1, 101.6, 20);
 

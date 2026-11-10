@@ -154,6 +154,36 @@ class _VehiclePermitsScreenState extends ConsumerState<VehiclePermitsScreen> {
     if (ok) ref.invalidate(adminPermitSettingsProvider);
   }
 
+  /// Turning enforcement on is a soft rollout: the fleet that still lacks a
+  /// permit is given the country's grace window first, so no one is cut off the
+  /// instant the switch flips. Turning it off is a plain save.
+  Future<void> _setEnforce(String country, bool on) async {
+    if (!on) {
+      await _saveSettings(country, {'enforce': false}, success: 'Permits are no longer required in $country');
+      return;
+    }
+    var graced = 0;
+    final ok = await runAdminAction(
+      context,
+      () async {
+        final repo = ref.read(permitsRepositoryProvider);
+        await repo.saveCountrySettings(country, {'enforce': true});
+        graced = await repo.grantEnableGrace(country);
+      },
+    );
+    if (!ok) return;
+    ref.invalidate(adminPermitSettingsProvider);
+    _refresh(country);
+    if (!mounted) return;
+    showInfo(
+      context,
+      graced > 0
+          ? 'Permits are now required in $country. $graced vehicle${graced == 1 ? '' : 's'} without a permit '
+              'got a grace period to upload it before being taken offline.'
+          : 'Permits are now required in $country.',
+    );
+  }
+
   Future<void> _bypass(String country, VehiclePermits v, bool on) async {
     final id = v.vehicleId;
     if (id == null) return;
@@ -233,10 +263,7 @@ class _VehiclePermitsScreenState extends ConsumerState<VehiclePermitsScreen> {
                           ? "Vehicles without a valid permit can't go online or take rides in $country."
                           : 'Off: vehicles without a permit still take rides. Turn on once permits are uploaded.'),
                       value: settings.enforce,
-                      onChanged: edit
-                          ? (v) => _saveSettings(country, {'enforce': v},
-                              success: v ? 'Permits are now required in $country' : 'Permits are no longer required in $country')
-                          : null,
+                      onChanged: edit ? (v) => _setEnforce(country, v) : null,
                     ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
