@@ -81,10 +81,13 @@ class ApproverInboxScreen extends ConsumerWidget {
       value: value,
       onRetry: () => ref.invalidate(approverPendingProvider),
       data: (docs) => docs.isEmpty
-          ? const EmptyState(
-              icon: Icons.fact_check_outlined,
-              title: 'Nothing to review',
-              message: 'Documents waiting for your review appear here, within the scope your admin set.',
+          ? refreshableEmpty(
+              onRefresh: () async => ref.invalidate(approverPendingProvider),
+              child: const EmptyState(
+                icon: Icons.fact_check_outlined,
+                title: 'Nothing to review',
+                message: 'Documents waiting for your review appear here, within the scope your admin set.',
+              ),
             )
           : RefreshIndicator(
               onRefresh: () async => ref.invalidate(approverPendingProvider),
@@ -120,6 +123,24 @@ class ApproverInboxScreen extends ConsumerWidget {
   Future<void> _openDocument(BuildContext context, ApproverDoc d) => openApproverDocument(context, d);
 }
 
+/// Wrap an empty state so it can still be pulled down to refresh: an
+/// always-scrollable viewport that fills the height so the pull gesture works
+/// even with nothing in the list.
+Widget refreshableEmpty({required Future<void> Function() onRefresh, required Widget child}) {
+  return RefreshIndicator(
+    onRefresh: onRefresh,
+    child: LayoutBuilder(
+      builder: (context, c) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: c.maxHeight),
+          child: child,
+        ),
+      ),
+    ),
+  );
+}
+
 /// "Pending Upload" tab (migration 0389): every required document still missing
 /// across the people this approver covers, each with a button to nudge the
 /// member to upload it and the count / time of the last reminder. Needs
@@ -146,11 +167,14 @@ class _PendingUploadTabState extends ConsumerState<_PendingUploadTab> {
       onRetry: () => ref.invalidate(approverPendingUploadsProvider),
       data: (items) {
         if (items.isEmpty) {
-          return const EmptyState(
-            icon: Icons.cloud_upload_outlined,
-            title: 'Nothing pending upload',
-            message: 'Required documents your people still need to upload appear here, within '
-                'the scope your admin set. You can nudge each one from this list.',
+          return refreshableEmpty(
+            onRefresh: () async => ref.invalidate(approverPendingUploadsProvider),
+            child: const EmptyState(
+              icon: Icons.cloud_upload_outlined,
+              title: 'Nothing pending upload',
+              message: 'Required documents your people still need to upload appear here, within '
+                  'the scope your admin set. You can nudge each one from this list.',
+            ),
           );
         }
         final partners = [for (final it in items) if (it.isPartner) it];
