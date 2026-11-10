@@ -13,6 +13,7 @@ import '../../core/partner_registration.dart';
 import '../../core/saved_drafts.dart';
 import '../../core/vehicle_onboarding.dart';
 import '../../data/partner_doc_check.dart' show partnerTypeEntriesProvider;
+import '../../data/vehicle_access_repository.dart' show ownerDriverRequestsProvider;
 import '../../data/live_tables.dart';
 import '../../data/partner_onboarding_repository.dart';
 import '../../data/ride_draft_store.dart';
@@ -152,6 +153,25 @@ class _VehiclesScreenState extends ConsumerState<VehiclesScreen> {
             return ResponsiveCenter(
               maxWidth: 640,
               child: ListView(padding: EdgeInsets.fromLTRB(16, 16, 16, addActionListBottomPadding(context)), children: [
+                Builder(builder: (context) {
+                  final n = ref.watch(ownerDriverRequestsProvider).asData?.value.length ?? 0;
+                  if (n == 0) return const SizedBox.shrink();
+                  final cs = Theme.of(context).colorScheme;
+                  return Card(
+                    key: const ValueKey('driver-requests-banner'),
+                    color: cs.secondaryContainer,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ListTile(
+                      leading: Icon(Icons.verified_user_outlined, color: cs.onSecondaryContainer),
+                      title: Text(n == 1 ? '1 driver request' : '$n driver requests',
+                          style: TextStyle(color: cs.onSecondaryContainer, fontWeight: FontWeight.w600)),
+                      subtitle: Text('Approve or decline drivers added to your vehicles.',
+                          style: TextStyle(color: cs.onSecondaryContainer)),
+                      trailing: Icon(Icons.chevron_right, color: cs.onSecondaryContainer),
+                      onTap: () => _open('/drive/vehicles/requests'),
+                    ),
+                  );
+                }),
                 for (final v in list)
                   Builder(builder: (context) {
                     final step = firstVehicleStep(v);

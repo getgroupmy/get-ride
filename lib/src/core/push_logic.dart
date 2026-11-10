@@ -112,6 +112,9 @@ String? pushRouteFor(Map<String, dynamic> data) {
     case 'wallet_transfer_request':
     case 'wallet_transfer_response':
       return '/wallet';
+    case 'vehicle_access_request':
+      // A driver was added to the owner's car and needs their consent (0377/0391).
+      return '/drive/vehicles/requests';
     case 'partner_remote_action':
       // Support asked the driver's phone to change their status (0286): the
       // Drive page runs it; the line kept in Notifications opens Drive.
