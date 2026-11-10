@@ -1,8 +1,8 @@
 -- ============================================================================
 -- Regression test for migration 0353: an approver replaces a document's image.
 --   * can_upload is required; the scope (approver_covers) is re-checked.
---   * target returns the current image URL (for the edge function to overwrite)
---     and refuses a document with no image.
+--   * target returns the current image URL (for the edge function to overwrite);
+--     a document with no image gets a fresh write path (migration 0397).
 --   * commit reopens the document for review (Pending Review, reviewer fields
 --     cleared).
 --
@@ -63,9 +63,12 @@ select pg_temp.check((select status = 'Pending Review' and reviewer_notes is nul
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000353a1');
 
--- 3. A document with no image can't be replaced.
-select pg_temp.check(pg_temp.errored($q$select public.approver_upload_target('partner', '00000000-0000-0000-0000-0000003532d2')$q$),
-  'a document with no image is refused');
+-- 3. A partner document with no image now gets a fresh write path, rather than
+--    being refused (migration 0397: the first on-behalf upload needs one).
+select pg_temp.check(
+  (public.approver_upload_target('partner', '00000000-0000-0000-0000-0000003532d2') ->> 'upload_url')
+    like '%/provider-documents/00000000-0000-0000-0000-0000000353b1/approver-%',
+  'a partner document with no image gets a fresh write path');
 
 -- 4. Without can_upload, refused.
 reset role;
