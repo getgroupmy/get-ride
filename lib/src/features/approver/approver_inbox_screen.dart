@@ -173,6 +173,7 @@ class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
   bool _busy = false;
   late int _count = widget.item.sentCount;
   late DateTime? _lastSentAt = widget.item.lastSentAt;
+  late bool _reachable = widget.item.reachable;
 
   Future<void> _send() async {
     final item = widget.item;
@@ -185,10 +186,15 @@ class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
       setState(() {
         _count = stat.count;
         _lastSentAt = stat.lastSentAt;
+        _reachable = stat.reachable;
       });
       unawaited(showAppNotice(
         id: 'notice.approver-doc-request', context: context,
-        message: 'Upload request sent to ${item.memberName}.', kind: NoticeKind.success));
+        message: stat.reachable
+            ? 'Upload reminder sent to ${item.memberName}.'
+            : "${item.memberName} has no device to notify yet — they haven't installed the app "
+                'or turned on notifications. The request is logged.',
+        kind: stat.reachable ? NoticeKind.success : NoticeKind.info));
     } catch (e) {
       if (!mounted) return;
       final m = e.toString();
@@ -201,6 +207,14 @@ class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// The member's registered mobile as a dialable label: "+" ahead of the
+  /// stored digits (null/blank when there is no number).
+  static String? _phoneLabel(String? phone) {
+    final t = phone?.trim() ?? '';
+    if (t.isEmpty) return null;
+    return t.startsWith('+') ? t : '+$t';
   }
 
   static String _two(int n) => n.toString().padLeft(2, '0');
@@ -220,11 +234,10 @@ class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final item = widget.item;
-    // A vehicle document names its car by plate; a driver/partner document
-    // stands alone.
-    final docLine = item.isVehicle
-        ? '${(item.plate?.isNotEmpty ?? false) ? '${item.plate} · ' : ''}${item.name}'
-        : item.name;
+    // A vehicle document names its car by plate; a driver/partner document is
+    // headed by the member's registered mobile number instead.
+    final lead = item.isVehicle ? item.plate : _phoneLabel(item.memberPhone);
+    final docLine = (lead?.isNotEmpty ?? false) ? '$lead · ${item.name}' : item.name;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 10),
       child: Row(
@@ -243,6 +256,27 @@ class _PendingUploadRowState extends ConsumerState<_PendingUploadRow> {
                 Text(item.memberName, style: text.titleSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
                 Text(docLine, style: text.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
                     maxLines: 2, overflow: TextOverflow.ellipsis),
+                if (item.location?.isNotEmpty ?? false)
+                  Text(item.location!,
+                      key: ValueKey('pending-upload-location-$_rowId'),
+                      style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                if (!_reachable)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Container(
+                      key: ValueKey('pending-upload-nodevice-$_rowId'),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: cs.surfaceContainerHighest, borderRadius: BorderRadius.circular(8)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.notifications_off_outlined, size: 13, color: cs.onSurfaceVariant),
+                        const SizedBox(width: 4),
+                        Text('No device to notify',
+                            style: text.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+                      ]),
+                    ),
+                  ),
                 if (_count > 0)
                   Padding(
                     padding: const EdgeInsets.only(top: 3),

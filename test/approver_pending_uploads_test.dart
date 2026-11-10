@@ -13,8 +13,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 final _items = [
   PendingUpload(
-    memberId: 'm1', memberName: 'Hasanul Bazari', source: 'partner',
-    docKey: 'doc-dl', name: 'Driving License', sentCount: 0),
+    memberId: 'm1', memberName: 'Hasanul Bazari', memberPhone: '60123456789', source: 'partner',
+    docKey: 'doc-dl', name: 'Driving License', sentCount: 0, location: 'Semenyih | Selangor | Malaysia'),
   PendingUpload(
     memberId: 'm2', memberName: 'Siti Aminah', source: 'partner',
     docKey: 'doc-dl', name: 'Driving License', sentCount: 2,
@@ -24,6 +24,10 @@ final _items = [
     memberId: 'm2', memberName: 'Siti Aminah', source: 'vehicle',
     docKey: 'doc-voc', name: 'Vehicle Ownership Certificate',
     vehicleId: 'v9', plate: 'WVX 1234', sentCount: 0),
+  // A member with no device to notify (no push token): the row says so.
+  PendingUpload(
+    memberId: 'm3', memberName: 'Zaid Noor', source: 'partner',
+    docKey: 'doc-dl', name: 'Driving License', sentCount: 0, reachable: false),
 ];
 
 class _FakeRepo extends ApproverInboxRepository {
@@ -37,7 +41,8 @@ class _FakeRepo extends ApproverInboxRepository {
   Future<DocRequestStat> requestDocumentUpload(String memberId, String source, String docKey,
       {String? label, String? vehicleId}) async {
     requested.add((memberId, source, docKey, vehicleId));
-    return DocRequestStat(count: 1, lastSentAt: DateTime(2026, 11, 10, 3, 4));
+    // m3 has no device, so the push can't reach them.
+    return DocRequestStat(count: 1, lastSentAt: DateTime(2026, 11, 10, 3, 4), reachable: memberId != 'm3');
   }
 }
 
@@ -70,9 +75,13 @@ void main() {
 
     expect(find.text('Hasanul Bazari'), findsOneWidget);
     expect(find.text('Siti Aminah'), findsNWidgets(2)); // a partner doc + a vehicle doc
-    expect(find.text('Driving License'), findsNWidgets(2));
-    // A vehicle document names its car by plate.
+    // A vehicle document names its car by plate; a driver/partner document is
+    // headed by the member's registered mobile number instead.
     expect(find.text('WVX 1234 · Vehicle Ownership Certificate'), findsOneWidget);
+    expect(find.text('+60123456789 · Driving License'), findsOneWidget);
+    // The service location shows under the document name.
+    expect(find.byKey(const ValueKey('pending-upload-location-m1-partner--doc-dl')), findsOneWidget);
+    expect(find.text('Semenyih | Selangor | Malaysia'), findsOneWidget);
 
     // The already-nudged member shows its count and last-sent time.
     expect(find.byKey(const ValueKey('pending-upload-count-m2-partner--doc-dl')), findsOneWidget);
@@ -83,6 +92,27 @@ void main() {
     expect(find.byKey(const ValueKey('pending-upload-count-m1-partner--doc-dl')), findsNothing);
     // The vehicle row has its own notify button, keyed per vehicle.
     expect(find.byKey(const ValueKey('pending-upload-notify-m2-vehicle-v9-doc-voc')), findsOneWidget);
+
+    // The member with no device shows the "No device to notify" badge; reachable
+    // members don't.
+    expect(find.byKey(const ValueKey('pending-upload-nodevice-m3-partner--doc-dl')), findsOneWidget);
+    expect(find.text('No device to notify'), findsOneWidget);
+    expect(find.byKey(const ValueKey('pending-upload-nodevice-m1-partner--doc-dl')), findsNothing);
+  });
+
+  testWidgets('Notify on an unreachable member still records the request and keeps the badge', (tester) async {
+    final repo = await _pump(tester);
+    await tester.tap(find.byKey(const ValueKey('approvals-tab-pending')));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.byKey(const ValueKey('pending-upload-notify-m3-partner--doc-dl')));
+    await tester.tap(find.byKey(const ValueKey('pending-upload-notify-m3-partner--doc-dl')));
+    await tester.pumpAndSettle();
+
+    expect(repo.requested, [('m3', 'partner', 'doc-dl', null)]);
+    // Still flagged as unreachable, and the request is logged (count shows).
+    expect(find.byKey(const ValueKey('pending-upload-nodevice-m3-partner--doc-dl')), findsOneWidget);
+    expect(find.byKey(const ValueKey('pending-upload-count-m3-partner--doc-dl')), findsOneWidget);
   });
 
   testWidgets('Notify sends an upload request and updates the row', (tester) async {
