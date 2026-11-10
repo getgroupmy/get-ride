@@ -602,6 +602,45 @@ class VehicleRegistration {
       );
 }
 
+/// The permit fields read off a vehicle operating / e-hailing permit (Malaysia:
+/// the APAD / EVP permit; named differently per country) by the
+/// vehicle-permit-read function (Gemini). Every field is optional — a scan may
+/// read only some. The [plate] is what lets the approver catch a permit issued
+/// for a different car than the one on file.
+class PermitRead {
+  const PermitRead({this.documentNumber, this.expiryDate, this.plate, this.authority});
+
+  final String? documentNumber;
+  final String? expiryDate; // yyyy-mm-dd
+  final String? plate;
+  final String? authority;
+
+  bool get isEmpty =>
+      documentNumber == null && expiryDate == null && plate == null && authority == null;
+
+  static String? _s(Object? v) {
+    final t = '${v ?? ''}'.trim();
+    return t.isEmpty || t == 'null' ? null : t;
+  }
+
+  static PermitRead fromJson(Map<String, dynamic> j) => PermitRead(
+        documentNumber: _s(j['document_number']),
+        expiryDate: _s(j['expiry_date']),
+        plate: _s(j['plate']),
+        authority: _s(j['authority']),
+      );
+}
+
+/// True when two plates are the same ignoring case and separators — mirrors the
+/// vehicle-permit-read edge function's `platesMatch`, so the app and the server
+/// agree on whether a scanned permit is issued for the vehicle on file. Empty or
+/// null plates never match.
+bool permitPlateMatches(String? a, String? b) {
+  String norm(String? s) => (s ?? '').toUpperCase().replaceAll(RegExp('[^A-Z0-9]'), '');
+  final x = norm(a), y = norm(b);
+  return x.isNotEmpty && x == y;
+}
+
 /// The Vehicle detail sheet payload (migration 0366).
 class VehicleDetail {
   const VehicleDetail({
@@ -1395,6 +1434,20 @@ class ApproverInboxRepository {
     final data = res.data;
     final fields = data is Map ? data['fields'] : null;
     return VehicleRegistration.fromJson(
+        fields is Map ? Map<String, dynamic>.from(fields) : const <String, dynamic>{});
+  }
+
+  /// Read a vehicle operating / e-hailing permit photo (Malaysia: the APAD / EVP
+  /// permit; named differently per country) with the vehicle-permit-read
+  /// function (Gemini) and return the permit number, expiry, issued-for plate
+  /// and authority it could read, for the approver to check — and to catch a
+  /// permit issued for a different car — before saving. [dataUrl] is a base64
+  /// image data URL.
+  Future<PermitRead> readVehiclePermit({required String dataUrl}) async {
+    final res = await _db.functions.invoke('vehicle-permit-read', body: {'front': dataUrl});
+    final data = res.data;
+    final fields = data is Map ? data['fields'] : null;
+    return PermitRead.fromJson(
         fields is Map ? Map<String, dynamic>.from(fields) : const <String, dynamic>{});
   }
 }
