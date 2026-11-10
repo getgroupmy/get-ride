@@ -1,10 +1,9 @@
 // Rider live-selfie (liveness) gate UX (migration 0401): the admin's country
 // rule, or an approver's request, may require the rider to take a fresh live
 // selfie before they can transact. [ensureLivenessOk] checks the requirement
-// and, when it applies, runs the capture + submits it for approver verification.
-// The server is the real enforcement (BEFORE INSERT triggers raise
-// LIVENESS_REQUIRED); this keeps the rider out of a failed booking and gives
-// them the way through.
+// and, when it applies, runs the capture + submits it for approver verification;
+// [promptLivenessOnLaunch] nudges a rider who still owes one at app launch. The
+// server is the real enforcement (BEFORE INSERT triggers raise LIVENESS_REQUIRED).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -19,20 +18,50 @@ import '../../widgets/page_style_host.dart';
 /// The server's refusal when a booking needs a fresh live selfie first (0401).
 bool isLivenessRequired(Object error) => '$error'.contains('LIVENESS_REQUIRED');
 
-/// Whether the rider may transact now. Returns true at once when no selfie is
-/// owed; otherwise runs the capture + submit and returns false (they stay
-/// blocked until an approver verifies it — the server trigger enforces that).
-Future<bool> ensureLivenessOk(BuildContext context, WidgetRef ref) async {
-  try {
-    final required = (await ref.read(supabaseProvider).rpc('my_liveness_required')) == true;
-    if (!required) return true;
-  } catch (_) {
-    // Unreadable (a transient error, a test without the RPC): don't block here;
-    // the server trigger still enforces it.
-    return true;
-  }
-  if (!context.mounted) return false;
+enum _Liveness { ok, pending, capture }
 
+/// Reads whether the rider owes a live selfie: ok (none owed), pending (already
+/// submitted, awaiting verification), or capture (must take one). Never throws —
+/// an unreadable state is treated as ok (the server trigger still enforces).
+Future<_Liveness> _state(WidgetRef ref) async {
+  try {
+    final db = ref.read(supabaseProvider);
+    final required = (await db.rpc('my_liveness_required')) == true;
+    if (!required) return _Liveness.ok;
+    final pending = (await db.rpc('my_liveness_pending')) == true;
+    return pending ? _Liveness.pending : _Liveness.capture;
+  } catch (_) {
+    return _Liveness.ok;
+  }
+}
+
+/// Whether the rider may transact now. true when none is owed; otherwise runs
+/// the capture (or says it is under review) and returns false — they stay
+/// blocked until an approver verifies it.
+Future<bool> ensureLivenessOk(BuildContext context, WidgetRef ref) async {
+  switch (await _state(ref)) {
+    case _Liveness.ok:
+      return true;
+    case _Liveness.pending:
+      if (context.mounted) {
+        showInfo(context, 'Your live selfie is being reviewed. You can continue once it is approved.');
+      }
+      return false;
+    case _Liveness.capture:
+      if (!context.mounted) return false;
+      return _capture(context, ref);
+  }
+}
+
+/// At app launch, prompt a rider who must take a live selfie — but not one who
+/// already submitted and is waiting to be verified.
+Future<void> promptLivenessOnLaunch(BuildContext context, WidgetRef ref) async {
+  if (await _state(ref) == _Liveness.capture && context.mounted) {
+    await _capture(context, ref);
+  }
+}
+
+Future<bool> _capture(BuildContext context, WidgetRef ref) async {
   final go = await showAppDialog<bool>(
     id: 'ride.liveness-intro',
     context: context,

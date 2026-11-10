@@ -185,6 +185,26 @@ $$;
 revoke execute on function public.my_liveness_required() from public, anon;
 grant execute on function public.my_liveness_required() to authenticated;
 
+-- Whether the signed-in person already has a live selfie waiting for review
+-- (since the requirement) — so the app prompts a capture only when one is
+-- actually needed, not while they wait to be verified.
+create or replace function public.my_liveness_pending()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.identity_checks ic
+     where ic.user_id = auth.uid() and ic.kind = 'selfie' and ic.status = 'Pending Review'
+       and coalesce(ic.created_at, '-infinity'::timestamptz)
+           >= coalesce((select selfie_required_at from public.profiles where id = auth.uid()),
+                       '-infinity'::timestamptz));
+$$;
+revoke execute on function public.my_liveness_pending() from public, anon;
+grant execute on function public.my_liveness_pending() to authenticated;
+
 -- ---- 4. Block booking for a rider who owes a live selfie (every booking module) --------------------
 create or replace function public.profile_liveness_guard()
 returns trigger

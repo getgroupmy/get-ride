@@ -86,7 +86,7 @@ import '../../data/geo_service.dart';
 import '../../data/live_tables.dart';
 import '../../data/current_country_reporter.dart';
 import '../../data/location_source.dart';
-import 'rider_liveness_flow.dart';
+import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired, promptLivenessOnLaunch;
 import '../../data/permission_probe.dart';
 import '../../core/app_permissions.dart' show PermState;
 import '../../core/permission_ask.dart';
@@ -707,6 +707,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // per launch.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) maybeAutoLaunchMeter(context, ref);
+    });
+    // A rider who owes a fresh live selfie is nudged at launch (0401); one who
+    // has already submitted and is waiting is left alone.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(promptLivenessOnLaunch(context, ref));
     });
     // A booking left unfinished when the app closed: Welcome back.
     WidgetsBinding.instance.addPostFrameCallback((_) {
