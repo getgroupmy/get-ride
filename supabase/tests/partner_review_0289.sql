@@ -238,6 +238,21 @@ select public.partner_review_view('00000000-0000-0000-0000-000000028901', 'doc:p
 select public.partner_review_set('00000000-0000-0000-0000-000000028901', 'id.front', 'national_id', 'MyKad front photo', 'approved');
 select public.partner_review_set('00000000-0000-0000-0000-000000028901', 'doc:provider:doc-licence', 'service_documents',
   'Driving License', 'approved');
+-- 0402 (VOC completion gate): a vehicle is approved only with a verified
+-- ownership certificate. Give the registration vehicle an Approved VOC so the
+-- approval below goes through (the gate itself is covered by
+-- voc_completion_gate_0402.sql).
+reset role;
+insert into public.required_document (id, values, active) values
+  ('00000000-0000-0000-0000-0000000289d3', '{"name":"VOC 0289","readAs":"voc","active":true,"required":true}', true)
+on conflict (id) do nothing;
+insert into public.vehicle_documents (id, vehicle_id, partner_id, auth_user_id, doc_id, doc_name, file_url, status) values
+  ('00000000-0000-0000-0000-0000000289d4', '00000000-0000-0000-0000-0000000289f1', '00000000-0000-0000-0000-000000028901',
+   '00000000-0000-0000-0000-0000000289b1', '00000000-0000-0000-0000-0000000289d3', 'Vehicle Ownership Certificate',
+   'https://x.test/voc-289.jpg', 'Approved')
+on conflict (id) do nothing;
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000289a2');
 select public.partner_review_approve('00000000-0000-0000-0000-000000028901');
 select pg_temp.check((select approved_by = '00000000-0000-0000-0000-0000000289a2' and approved_at is not null
    from public.partners where id = '00000000-0000-0000-0000-000000028901'), 'the approver is recorded');
