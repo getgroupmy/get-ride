@@ -857,10 +857,12 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
               onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 10),
-            Row(
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: 12,
+              overflowSpacing: 8,
               children: [
                 TextButton(onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.none), child: const Text('Back')),
-                const Spacer(),
                 FilledButton(
                   key: const ValueKey('approver-reject-confirm'),
                   style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError),
@@ -900,10 +902,12 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
               ),
             ),
             const SizedBox(height: 10),
-            Row(
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: 12,
+              overflowSpacing: 8,
               children: [
                 TextButton(onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.none), child: const Text('Back')),
-                const Spacer(),
                 FilledButton(
                   key: const ValueKey('approver-delete-confirm'),
                   style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError),
@@ -964,10 +968,12 @@ class _DocumentViewerState extends ConsumerState<ApproverDocumentViewer> {
               ),
               const SizedBox(height: 10),
             ],
-            Row(
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              spacing: 12,
+              overflowSpacing: 8,
               children: [
                 TextButton(onPressed: _busy ? null : () => setState(() => _mode = _ViewerMode.none), child: const Text('Back')),
-                const Spacer(),
                 FilledButton(
                   key: const ValueKey('approver-edit-save'),
                   onPressed: _busy ? null : _saveFields,
