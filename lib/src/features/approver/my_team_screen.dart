@@ -54,6 +54,39 @@ String? _creditErrorText(Object e) {
 /// every vehicle those people own.
 enum _TeamMode { partners, vehicles }
 
+// The People list's section headers (migration 0398).
+const String _kPartnersHeader = 'Providers · Partners · Drivers';
+const String _kUsersHeader = 'Users';
+
+enum _TeamRowKind { banner, header, member, footer }
+
+/// One row of the People list: the scope banner, a section header, a member
+/// card, or the bottom footer.
+class _TeamRowSpec {
+  const _TeamRowSpec.banner()
+      : kind = _TeamRowKind.banner,
+        label = null,
+        count = null,
+        member = null;
+  const _TeamRowSpec.header(this.label, this.count)
+      : kind = _TeamRowKind.header,
+        member = null;
+  const _TeamRowSpec.member(this.member)
+      : kind = _TeamRowKind.member,
+        label = null,
+        count = null;
+  const _TeamRowSpec.footer()
+      : kind = _TeamRowKind.footer,
+        label = null,
+        count = null,
+        member = null;
+
+  final _TeamRowKind kind;
+  final String? label;
+  final int? count;
+  final TeamMember? member;
+}
+
 /// Sentinel so [_setFilters] can tell "leave as is" from "set to null (All)".
 const Object _unset = Object();
 
@@ -82,6 +115,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
   String? _status; // null | 'approved' | 'unapproved' (both lists)
   String? _presence; // null | 'online' | 'offline' (partners)
   String? _usage; // null | 'unassigned' | 'online' | 'offline' (vehicles)
+  String? _kind; // null (everyone) | 'partner' | 'user' — the People split (0398)
 
   bool get _isVehicles => _mode == _TeamMode.vehicles;
   int get _count => _isVehicles ? _vehicles.length : _members.length;
@@ -130,12 +164,18 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
   }
 
   /// Switch the filter bullets and reload. Null clears (All).
-  void _setFilters({_TeamMode? mode, Object? status = _unset, Object? presence = _unset, Object? usage = _unset}) {
+  void _setFilters(
+      {_TeamMode? mode,
+      Object? status = _unset,
+      Object? presence = _unset,
+      Object? usage = _unset,
+      Object? kind = _unset}) {
     setState(() {
       if (mode != null) _mode = mode;
       if (!identical(status, _unset)) _status = status as String?;
       if (!identical(presence, _unset)) _presence = presence as String?;
       if (!identical(usage, _unset)) _usage = usage as String?;
+      if (!identical(kind, _unset)) _kind = kind as String?;
     });
     _reload();
   }
@@ -165,6 +205,7 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
           after: fresh ? null : _members.lastOrNull,
           status: _status,
           presence: _presence,
+          kind: _kind,
         );
         if (!mounted) return;
         setState(() {
@@ -256,6 +297,16 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
                   () => _setFilters(mode: _TeamMode.vehicles)),
             ]),
             const SizedBox(height: 6),
+            // The People split (migration 0398): everyone, just providers/
+            // partners/drivers, or just plain users who never applied.
+            if (!_isVehicles) ...[
+              chips([
+                _chip('team-kind-all', 'Everyone', _kind == null, () => _setFilters(kind: null)),
+                _chip('team-kind-partner', 'Partners', _kind == 'partner', () => _setFilters(kind: 'partner')),
+                _chip('team-kind-user', 'Users', _kind == 'user', () => _setFilters(kind: 'user')),
+              ]),
+              const SizedBox(height: 6),
+            ],
             chips([
               _chip('team-status-all', 'All', _status == null, () => _setFilters(status: null)),
               _chip('team-status-approved', 'Approved', _status == 'approved', () => _setFilters(status: 'approved')),
@@ -317,21 +368,17 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
                 : 'People within the scope your admin set appear here.'),
       );
     }
-    return RefreshIndicator(
-      onRefresh: _reload,
-      child: ListView.builder(
-        controller: _scroll,
-        padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
-        // A scope banner at the top, then the rows, then the bottom
-        // spinner / "that's everyone" line.
-        itemCount: _count + 2,
-        itemBuilder: (context, i) {
-          if (i == 0) {
-            return ResponsiveCenter(maxWidth: 760, child: _scopeBanner(context));
-          }
-          final idx = i - 1;
-          if (idx == _count) return _footer(context);
-          if (_isVehicles) {
+    if (_isVehicles) {
+      return RefreshIndicator(
+        onRefresh: _reload,
+        child: ListView.builder(
+          controller: _scroll,
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
+          itemCount: _count + 2,
+          itemBuilder: (context, i) {
+            if (i == 0) return ResponsiveCenter(maxWidth: 760, child: _scopeBanner(context));
+            final idx = i - 1;
+            if (idx == _count) return _footer(context);
             final v = _vehicles[idx];
             return ResponsiveCenter(
               maxWidth: 760,
@@ -343,19 +390,69 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
                 ),
               ),
             );
+          },
+        ),
+      );
+    }
+
+    // People: a scope banner, then section headers (Providers/Partners/Drivers
+    // and Users, migration 0398) around the cards, then the bottom line.
+    final specs = _peopleSpecs();
+    return RefreshIndicator(
+      onRefresh: _reload,
+      child: ListView.builder(
+        controller: _scroll,
+        padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
+        itemCount: specs.length,
+        itemBuilder: (context, i) {
+          final s = specs[i];
+          switch (s.kind) {
+            case _TeamRowKind.banner:
+              return ResponsiveCenter(maxWidth: 760, child: _scopeBanner(context));
+            case _TeamRowKind.footer:
+              return _footer(context);
+            case _TeamRowKind.header:
+              return ResponsiveCenter(maxWidth: 760, child: _SectionHeader(label: s.label!, count: s.count!));
+            case _TeamRowKind.member:
+              final m = s.member!;
+              return ResponsiveCenter(
+                maxWidth: 760,
+                child: _TeamCard(
+                  member: m,
+                  onTap: () => context.push('/my-team/member', extra: m),
+                  onDocs: () => context.push('/my-team/member?tab=documents', extra: m),
+                  onStats: () => context.push('/my-team/member?tab=statistics', extra: m),
+                ),
+              );
           }
-          return ResponsiveCenter(
-            maxWidth: 760,
-            child: _TeamCard(
-              member: _members[idx],
-              onTap: () => context.push('/my-team/member', extra: _members[idx]),
-              onDocs: () => context.push('/my-team/member?tab=documents', extra: _members[idx]),
-              onStats: () => context.push('/my-team/member?tab=statistics', extra: _members[idx]),
-            ),
-          );
         },
       ),
     );
+  }
+
+  /// The People list laid out as header + card rows. When a kind is picked the
+  /// list is one section; "Everyone" splits the loaded people into Providers/
+  /// Partners/Drivers first, then Users (each still name-ordered). Partitioning
+  /// is purely visual — pagination still rides the raw name keyset.
+  List<_TeamRowSpec> _peopleSpecs() {
+    final specs = <_TeamRowSpec>[const _TeamRowSpec.banner()];
+    if (_kind == null) {
+      final partners = [for (final m in _members) if (m.isPartner) m];
+      final users = [for (final m in _members) if (!m.isPartner) m];
+      if (partners.isNotEmpty) {
+        specs.add(_TeamRowSpec.header(_kPartnersHeader, partners.length));
+        specs.addAll(partners.map(_TeamRowSpec.member));
+      }
+      if (users.isNotEmpty) {
+        specs.add(_TeamRowSpec.header(_kUsersHeader, users.length));
+        specs.addAll(users.map(_TeamRowSpec.member));
+      }
+    } else if (_members.isNotEmpty) {
+      specs.add(_TeamRowSpec.header(_kind == 'partner' ? _kPartnersHeader : _kUsersHeader, _members.length));
+      specs.addAll(_members.map(_TeamRowSpec.member));
+    }
+    specs.add(const _TeamRowSpec.footer());
+    return specs;
   }
 
   Widget _scopeBanner(BuildContext context) {
@@ -484,7 +581,7 @@ class _TeamCard extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      if (member.status != null) _StatusChip(status: member.status!),
+                      if (member.effectiveStatus != null) _StatusChip(status: member.effectiveStatus!),
                       const SizedBox(height: 6),
                       _PresenceChip(online: member.online),
                     ],
@@ -714,6 +811,40 @@ class _Avatar extends StatelessWidget {
 }
 
 /// A lifecycle-status pill (approved / blocked / pending…).
+/// A section header in the People list — "Providers · Partners · Drivers" or
+/// "Users" — with the loaded count (migration 0398).
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.label, required this.count});
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    return Padding(
+      key: ValueKey('team-section-${label == _kUsersHeader ? 'users' : 'partners'}'),
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
+      child: Row(
+        children: [
+          Text(label.toUpperCase(),
+              style: t.textTheme.labelMedium?.copyWith(
+                  color: cs.onSurfaceVariant, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text('$count', style: t.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _StatusChip extends StatelessWidget {
   const _StatusChip({required this.status});
   final String status;
@@ -986,13 +1117,22 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
     }
 
     final toApproved = !approved;
+    // For a partner, approving also approves their user account (migration 0398).
+    final isPartner = (ref.read(approverMemberDetailProvider(member.id)).asData?.value?['is_partner'] as bool?) ??
+        member.isPartner;
     final ok = await showAppDialog<bool>(
       id: 'dialog.approver-approve-member', context: context,
       builder: (c) => AlertDialog(
-        title: Text(toApproved ? 'Approve ${member.name}?' : 'Set to Unapproved?'),
+        title: Text(toApproved
+            ? 'Approve ${member.name}${isPartner ? ' as a partner' : ''}?'
+            : 'Set to Unapproved?'),
         content: Text(toApproved
-            ? 'All required documents are approved. Mark this member Approved?'
-            : 'This member will be marked Unapproved.'),
+            ? (isPartner
+                ? 'All required documents are approved. Approve this partner? Their user account is approved too.'
+                : 'All required documents are approved. Mark this member Approved?')
+            : (isPartner
+                ? "This partner will be marked Unapproved. Their user account stays as it is."
+                : 'This member will be marked Unapproved.')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
           FilledButton(
@@ -1005,8 +1145,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
     if (ok != true) { if (mounted) setState(() => _busyStatus = false); return; }
 
     try {
-      await ref.read(approverInboxRepositoryProvider)
-          .editProfile(member.id, {'status': toApproved ? 'approved' : 'unapproved'});
+      await ref.read(approverInboxRepositoryProvider).setMemberApproval(member.id, toApproved);
       ref.invalidate(approverMemberDetailProvider(member.id));
       if (!mounted) return;
       unawaited(showAppNotice(
@@ -1240,11 +1379,17 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                 ],
               ),
             ),
-            if (member.status != null) ...[
+            if (member.effectiveStatus != null) ...[
               const SizedBox(width: 8),
               Builder(builder: (context) {
-                final live = (ref.watch(approverMemberDetailProvider(member.id)).asData?.value?['status']
-                        as String?) ?? member.status!;
+                // The effective status (migration 0398): a partner's provider
+                // status, else the account status — matching the list badge.
+                final detail = ref.watch(approverMemberDetailProvider(member.id)).asData?.value;
+                final isPartner = (detail?['is_partner'] as bool?) ?? member.isPartner;
+                final live = (isPartner
+                        ? ((detail?['partner_status'] as String?) ?? member.partnerStatus)
+                        : ((detail?['status'] as String?) ?? member.status)) ??
+                    member.effectiveStatus!;
                 final canEdit = ref.watch(approverSelfProvider).value?.canEditProfile ?? false;
                 final chip = _StatusChip(status: live);
                 if (!canEdit) return chip;

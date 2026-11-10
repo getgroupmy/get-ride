@@ -181,6 +181,8 @@ class TeamMember {
     this.updatedAt,
     this.online = false,
     this.docsExpiring = 0,
+    this.isPartner = false,
+    this.partnerStatus,
   });
 
   final String id;
@@ -224,6 +226,20 @@ class TeamMember {
   /// already past), for the expiring badge (migration 0383).
   final int docsExpiring;
 
+  /// Whether this person is a provider/partner/driver — they have a partners
+  /// row — versus a plain user who never applied (migration 0398). Drives the
+  /// Partners/Users split and which approval status is shown.
+  final bool isPartner;
+
+  /// The provider approval status (`partners.status`: approved / unapproved /
+  /// blocked / rejected / permit-*) for a partner; null for a plain user.
+  final String? partnerStatus;
+
+  /// The status to show and act on: a partner's provider status, else the
+  /// account status. This is what My Team's badge and Approve button use, so a
+  /// partner reads the same as the admin Partners page (migration 0398).
+  String? get effectiveStatus => isPartner ? partnerStatus : status;
+
   static String? _s(Object? v) {
     final t = (v as String?)?.trim() ?? '';
     return t.isEmpty ? null : t;
@@ -253,6 +269,8 @@ class TeamMember {
         updatedAt: _date(j['updated_at']),
         online: j['online'] == true,
         docsExpiring: (j['docs_expiring'] as num?)?.toInt() ?? 0,
+        isPartner: j['is_partner'] == true,
+        partnerStatus: _s(j['partner_status']),
       );
 }
 
@@ -940,6 +958,7 @@ class PendingUpload {
     this.lastSentAt,
     this.reachable = true,
     this.location,
+    this.isPartner = true,
   });
 
   final String memberId;
@@ -966,6 +985,10 @@ class PendingUpload {
   /// service area); null when they have none on file.
   final String? location;
 
+  /// Whether this person is a provider/partner/driver versus a plain user, so
+  /// the Pending Upload list can split the two (migration 0398).
+  final bool isPartner;
+
   bool get isVehicle => source == 'vehicle';
 
   static String? _s(Object? v) {
@@ -986,6 +1009,7 @@ class PendingUpload {
         lastSentAt: j['last_sent_at'] == null ? null : DateTime.tryParse('${j['last_sent_at']}')?.toLocal(),
         reachable: j['reachable'] == null ? true : j['reachable'] == true,
         location: _s(j['location']),
+        isPartner: j['is_partner'] == null ? true : j['is_partner'] == true,
       );
 }
 
@@ -1005,6 +1029,7 @@ class ApproverInboxRepository {
     int limit = teamPageSize,
     String? status,
     String? presence,
+    String? kind,
   }) async {
     final rows = await _db.rpc('approver_covered_partners', params: {
       'p_query': (query ?? '').trim().isEmpty ? null : query!.trim(),
@@ -1013,6 +1038,7 @@ class ApproverInboxRepository {
       'p_limit': limit,
       'p_status': status,
       'p_presence': presence,
+      'p_kind': kind,
     }) as List;
     final members = [for (final r in rows) TeamMember.fromJson(Map<String, dynamic>.from(r as Map))];
     return TeamPage(members: members, hasMore: members.length >= limit);
@@ -1297,6 +1323,17 @@ class ApproverInboxRepository {
 
   Future<void> editProfile(String memberId, Map<String, dynamic> fields) async {
     await _db.rpc('approver_edit_profile', params: {'p_member': memberId, 'p_fields': fields});
+  }
+
+  /// Partner-aware Approve (migration 0398): approving a partner approves the
+  /// partner row AND cascades to their user account; approving a plain user sets
+  /// the account. Un-approving a partner touches only the partner row. Returns
+  /// whether the member was handled as a partner.
+  Future<bool> setMemberApproval(String memberId, bool approved) async {
+    final r = await _db.rpc('approver_set_member_approval',
+        params: {'p_member': memberId, 'p_approved': approved});
+    final m = r is Map ? Map<String, dynamic>.from(r) : const <String, dynamic>{};
+    return m['is_partner'] == true;
   }
 
   /// Set a covered member's payout account (migration 0361), bank or e-wallet.

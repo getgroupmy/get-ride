@@ -91,6 +91,14 @@ class _FakeRepo extends ApproverInboxRepository {
     editedProfile = fields;
   }
 
+  (String, bool)? memberApproval; // (memberId, approved)
+
+  @override
+  Future<bool> setMemberApproval(String memberId, bool approved) async {
+    memberApproval = (memberId, approved);
+    return false; // the test member is a plain account, not a partner
+  }
+
   VehiclePermits? permitCard;
 
   @override
@@ -123,7 +131,7 @@ class _FakeRepo extends ApproverInboxRepository {
 
   @override
   Future<TeamPage> coveredPartners(
-          {String? query, TeamMember? after, int limit = ApproverInboxRepository.teamPageSize, String? status, String? presence}) async =>
+          {String? query, TeamMember? after, int limit = ApproverInboxRepository.teamPageSize, String? status, String? presence, String? kind}) async =>
       const TeamPage(members: [TeamMember(id: 'm2', displayId: 'GR-0002', name: 'Rajesh')], hasMore: false);
 }
 
@@ -415,7 +423,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('member-status-confirm')));
     await tester.pumpAndSettle();
-    expect(repo.editedProfile?['status'], 'unapproved');
+    // Approve/un-approve now goes through the partner-aware RPC (migration 0398).
+    expect(repo.memberApproval, ('m1', false));
   });
 
   testWidgets('Revoke access shows on an allowed vehicle and revokes the member', (tester) async {

@@ -124,37 +124,171 @@ class ApproverInboxScreen extends ConsumerWidget {
 /// across the people this approver covers, each with a button to nudge the
 /// member to upload it and the count / time of the last reminder. Needs
 /// can_upload (the RPC returns nothing otherwise, so the tab reads empty).
-class _PendingUploadTab extends ConsumerWidget {
+// The Pending Upload list's section headers (migration 0398).
+const String _kPuPartnersHeader = 'Providers · Partners · Drivers';
+const String _kPuUsersHeader = 'Users';
+
+class _PendingUploadTab extends ConsumerStatefulWidget {
   const _PendingUploadTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PendingUploadTab> createState() => _PendingUploadTabState();
+}
+
+class _PendingUploadTabState extends ConsumerState<_PendingUploadTab> {
+  String? _kind; // null (everyone) | 'partner' | 'user' — the split (0398)
+
+  @override
+  Widget build(BuildContext context) {
     final value = ref.watch(approverPendingUploadsProvider);
     return OfflineStrip.over(AsyncView<List<PendingUpload>>(
       value: value,
       onRetry: () => ref.invalidate(approverPendingUploadsProvider),
-      data: (items) => items.isEmpty
-          ? const EmptyState(
-              icon: Icons.cloud_upload_outlined,
-              title: 'Nothing pending upload',
-              message: 'Required documents your people still need to upload appear here, within '
-                  'the scope your admin set. You can nudge each one from this list.',
-            )
-          : RefreshIndicator(
-              onRefresh: () async => ref.invalidate(approverPendingUploadsProvider),
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: items.length,
-                separatorBuilder: (_, _) => const Divider(height: 1, indent: 16),
-                itemBuilder: (context, i) => ResponsiveCenter(
-                  maxWidth: 760,
-                  child: _PendingUploadRow(
-                    key: ValueKey('pending-upload-row-${items[i].memberId}-${items[i].source}-${items[i].vehicleId ?? ''}-${items[i].docKey}'),
-                    item: items[i]),
-                ),
+      data: (items) {
+        if (items.isEmpty) {
+          return const EmptyState(
+            icon: Icons.cloud_upload_outlined,
+            title: 'Nothing pending upload',
+            message: 'Required documents your people still need to upload appear here, within '
+                'the scope your admin set. You can nudge each one from this list.',
+          );
+        }
+        final partners = [for (final it in items) if (it.isPartner) it];
+        final users = [for (final it in items) if (!it.isPartner) it];
+        return Column(
+          children: [
+            _kindChips(partners.length, users.length),
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: () async => ref.invalidate(approverPendingUploadsProvider),
+                child: _list(partners, users),
               ),
             ),
+          ],
+        );
+      },
     ));
+  }
+
+  Widget _kindChips(int partnerCount, int userCount) {
+    Widget chip(String key, String label, bool selected, String? kind) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: ChoiceChip(
+            key: ValueKey(key),
+            label: Text(label),
+            selected: selected,
+            onSelected: (_) => setState(() => _kind = kind),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: ResponsiveCenter(
+        maxWidth: 760,
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            chip('pending-kind-all', 'Everyone', _kind == null, null),
+            chip('pending-kind-partner', 'Partners', _kind == 'partner', 'partner'),
+            chip('pending-kind-user', 'Users', _kind == 'user', 'user'),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _list(List<PendingUpload> partners, List<PendingUpload> users) {
+    // A flat run of section headers + rows. "Everyone" shows both groups;
+    // a chip shows one. (Spec: header strings vs upload rows.)
+    final specs = <({String? header, int headerCount, PendingUpload? item})>[];
+    void section(String label, List<PendingUpload> rows) {
+      if (rows.isEmpty) return;
+      specs.add((header: label, headerCount: rows.length, item: null));
+      for (final it in rows) {
+        specs.add((header: null, headerCount: 0, item: it));
+      }
+    }
+
+    if (_kind == null) {
+      section(_kPuPartnersHeader, partners);
+      section(_kPuUsersHeader, users);
+    } else if (_kind == 'partner') {
+      section(_kPuPartnersHeader, partners);
+    } else {
+      section(_kPuUsersHeader, users);
+    }
+
+    if (specs.isEmpty) {
+      return ListView(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 40, 16, 16),
+            child: Text(
+              _kind == 'user'
+                  ? 'No users have a document pending upload.'
+                  : 'No partners have a document pending upload.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.only(bottom: 8),
+      itemCount: specs.length,
+      itemBuilder: (context, i) {
+        final s = specs[i];
+        if (s.header != null) {
+          return ResponsiveCenter(
+            maxWidth: 760,
+            child: _PendingSectionHeader(label: s.header!, count: s.headerCount),
+          );
+        }
+        final it = s.item!;
+        return ResponsiveCenter(
+          maxWidth: 760,
+          child: _PendingUploadRow(
+            key: ValueKey('pending-upload-row-${it.memberId}-${it.source}-${it.vehicleId ?? ''}-${it.docKey}'),
+            item: it,
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// A section header in the Pending Upload list (migration 0398).
+class _PendingSectionHeader extends StatelessWidget {
+  const _PendingSectionHeader({required this.label, required this.count});
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final cs = t.colorScheme;
+    return Padding(
+      key: ValueKey('pending-section-${label == _kPuUsersHeader ? 'users' : 'partners'}'),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+      child: Row(
+        children: [
+          Text(label.toUpperCase(),
+              style: t.textTheme.labelMedium?.copyWith(
+                  color: cs.onSurfaceVariant, fontWeight: FontWeight.w700, letterSpacing: 0.4)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text('$count', style: t.textTheme.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+          ),
+        ],
+      ),
+    );
   }
 }
 
