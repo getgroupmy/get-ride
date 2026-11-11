@@ -9,6 +9,7 @@ import '../../../core/photo_quality.dart' show PhotoQuality;
 import '../../../core/document_ai.dart';
 import '../../../core/partner_doc_check.dart';
 import '../../../data/document_ai_repository.dart';
+import '../../../data/vehicle_catalog_repository.dart' show vehicleCatalogRepositoryProvider;
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/in_app_page.dart';
@@ -583,52 +584,196 @@ String makeModelLabel(MakeModel m) =>
     formatVehicleLabel(make: m.make, model: m.model, yearFrom: m.yearFrom, yearTo: m.yearTo);
 
 class MakeModelField extends ConsumerWidget {
-  const MakeModelField({super.key, required this.value, required this.onChanged, this.enabled = true});
+  const MakeModelField(
+      {super.key, required this.value, required this.onChanged, this.enabled = true, this.allowAi = false});
   final MakeModel? value;
   final ValueChanged<MakeModel> onChanged;
   final bool enabled;
 
+  /// Offer "Can't find it? Search with AI" in the picker. Only where the caller
+  /// is an admin or a vehicle-managing approver — the vehicle-catalog-lookup
+  /// function (0387) refuses anyone else, so a plain partner never sees it.
+  final bool allowAi;
+
   Future<void> _pick(BuildContext context, WidgetRef ref) async {
-    final rows = await ref.read(peopleRepositoryProvider).makeModels();
+    var rows = await ref.read(peopleRepositoryProvider).makeModels();
     if (!context.mounted) return;
+    List<MakeModel> toModels(List<Map<String, dynamic>> rs) =>
+        rs.map(makeModelFromRow).where((m) => m.make.isNotEmpty && m.model.isNotEmpty).toList()..sort(compareMakeModel);
+    // Cascading pick: Energy / Fuel -> Make -> Model, in one dialog so there is
+    // a single page-style id and a Back at each step. Year and colour are the
+    // next fields on the form. Entries with no energy are grouped under "Other".
+    // With [allowAi] (an admin or vehicle-managing approver) "Search with AI"
+    // tops the catalogue up with a missing make/model (0387) and jumps to it.
     final picked = await showAppDialog<MakeModel>(id: 'people-widgets.pick',
       context: context,
       builder: (ctx) {
+        var step = 0; // 0 = energy, 1 = make, 2 = model
         var q = '';
+        String? energy, make;
+        var busy = false;
+        var all = toModels(rows);
+        String energyKey(MakeModel m) => m.energyType.isEmpty ? 'Other' : m.energyType;
         return StatefulBuilder(builder: (ctx, setState) {
-          final all = rows.map(makeModelFromRow).where((m) => m.make.isNotEmpty && m.model.isNotEmpty).toList()
-            ..sort(compareMakeModel);
-          final list = all
-              .where((m) => '${m.make} ${m.model} ${m.vehicleType} ${m.energyType}'.toLowerCase().contains(q.toLowerCase()))
-              .toList();
+          Future<void> aiAdd() async {
+            final makeCtrl = TextEditingController(text: (step == 1 ? q : make) ?? '');
+            final modelCtrl = TextEditingController(text: step == 2 ? q : '');
+            final go = await showAppDialog<bool>(
+              id: 'people-widgets.ai', context: ctx,
+              builder: (c) => AlertDialog(
+                title: const Text('Search with AI'),
+                content: Column(mainAxisSize: MainAxisSize.min, children: [
+                  TextField(
+                    key: const ValueKey('mm-ai-make'), controller: makeCtrl, autofocus: true,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: 'Make', border: OutlineInputBorder())),
+                  const SizedBox(height: 10),
+                  TextField(
+                    key: const ValueKey('mm-ai-model'), controller: modelCtrl,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(labelText: 'Model (optional)', border: OutlineInputBorder())),
+                ]),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+                  FilledButton(
+                    key: const ValueKey('mm-ai-search'),
+                    onPressed: () => Navigator.pop(c, true), child: const Text('Search')),
+                ],
+              ),
+            );
+            final mk = makeCtrl.text.trim();
+            final md = modelCtrl.text.trim();
+            makeCtrl.dispose();
+            modelCtrl.dispose();
+            if (go != true || mk.isEmpty) return;
+            setState(() => busy = true);
+            try {
+              await ref.read(vehicleCatalogRepositoryProvider).lookup(make: mk, model: md.isEmpty ? null : md);
+              rows = await ref.read(peopleRepositoryProvider).makeModels();
+              final fresh = toModels(rows);
+              final hit = fresh
+                  .where((m) =>
+                      m.make.toLowerCase() == mk.toLowerCase() && (md.isEmpty || m.model.toLowerCase() == md.toLowerCase()))
+                  .toList();
+              if (!ctx.mounted) return;
+              if (hit.isEmpty) {
+                setState(() => busy = false);
+                showInfo(ctx, "Couldn't find that make / model. Check the spelling.");
+                return;
+              }
+              if (md.isNotEmpty && hit.length == 1) {
+                Navigator.pop(ctx, hit.first); // the exact model was found: pick it
+                return;
+              }
+              setState(() {
+                all = fresh;
+                energy = energyKey(hit.first);
+                make = hit.first.make;
+                step = 2; // jump to the models for the make we just added
+                q = '';
+                busy = false;
+              });
+            } catch (e) {
+              if (!ctx.mounted) return;
+              setState(() => busy = false);
+              showError(ctx, e);
+            }
+          }
+
+          final matches = q.trim().toLowerCase();
+          late final String title, hint;
+          late final List<Widget> rowsUi;
+          if (step == 0) {
+            title = 'Select Energy / Fuel';
+            hint = 'Search energy or fuel';
+            final energies = {for (final m in all) energyKey(m)}.toList()..sort();
+            rowsUi = [
+              for (final e in energies.where((e) => e.toLowerCase().contains(matches)))
+                ListTile(
+                  key: ValueKey('vehicle-energy-$e'),
+                  title: Text(e),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => setState(() { energy = e; step = 1; q = ''; }),
+                ),
+            ];
+          } else if (step == 1) {
+            title = 'Select Make';
+            hint = 'Search make';
+            final makes = {for (final m in all) if (energyKey(m) == energy) m.make}.toList()..sort();
+            rowsUi = [
+              for (final mk in makes.where((mk) => mk.toLowerCase().contains(matches)))
+                ListTile(
+                  key: ValueKey('vehicle-make-$mk'),
+                  title: Text(mk),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => setState(() { make = mk; step = 2; q = ''; }),
+                ),
+            ];
+          } else {
+            title = 'Select Model';
+            hint = 'Search model';
+            final models = all.where((m) => energyKey(m) == energy && m.make == make).toList()..sort(compareMakeModel);
+            rowsUi = [
+              for (final m in models
+                  .where((m) => '${m.model} ${m.vehicleType}'.toLowerCase().contains(matches)))
+                ListTile(
+                  title: Text(makeModelLabel(m)),
+                  subtitle: Text(makeModelKind(m.vehicleType, m.energyType)),
+                  onTap: () => Navigator.pop(ctx, m),
+                ),
+            ];
+          }
+          final crumb = [energy, if (step > 1) make].whereType<String>().join(' · ');
+          final emptyText = step == 0
+              ? 'No vehicle models (Settings > Vehicle Make & Model).'
+              : allowAi
+                  ? "Nothing here. Try another, or “Search with AI” below."
+                  : 'Nothing here. Go back and pick again.';
           return AlertDialog(
-            title: const Text('Select vehicle'),
+            title: Text(title),
             content: SizedBox(
               width: 460,
               height: 480,
-              child: Column(children: [
-                TextField(
-                  autofocus: true,
-                  decoration:
-                      const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search make, model, type', isDense: true),
-                  onChanged: (v) => setState(() => q = v),
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: list.isEmpty
-                      ? const Center(child: Text('No vehicle models (Settings > Vehicle Make & Model).'))
-                      : ListView(children: [
-                          for (final m in list)
-                            ListTile(
-                              title: Text(makeModelLabel(m)),
-                              subtitle: Text(makeModelKind(m.vehicleType, m.energyType)),
-                              onTap: () => Navigator.pop(ctx, m),
-                            ),
-                        ]),
-                ),
+              child: Stack(children: [
+                Column(children: [
+                  if (crumb.isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(crumb, style: Theme.of(ctx).textTheme.bodySmall),
+                      ),
+                    ),
+                  TextField(
+                    autofocus: true,
+                    enabled: !busy,
+                    decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: hint, isDense: true),
+                    onChanged: (v) => setState(() => q = v),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: rowsUi.isEmpty
+                        ? Center(child: Text(emptyText, textAlign: TextAlign.center))
+                        : ListView(children: rowsUi),
+                  ),
+                ]),
+                if (busy)
+                  const Positioned.fill(
+                    child: ColoredBox(color: Color(0x33000000), child: Center(child: CircularProgressIndicator())),
+                  ),
               ]),
             ),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel'))],
+            actions: [
+              if (allowAi)
+                TextButton.icon(
+                  key: const ValueKey('mm-ai'),
+                  onPressed: busy ? null : aiAdd,
+                  icon: const Icon(Icons.auto_awesome, size: 18),
+                  label: const Text('Search with AI')),
+              if (step > 0)
+                TextButton(onPressed: busy ? null : () => setState(() { step -= 1; q = ''; }), child: const Text('Back')),
+              TextButton(onPressed: busy ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ],
           );
         });
       },
