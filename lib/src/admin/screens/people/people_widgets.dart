@@ -591,44 +591,97 @@ class MakeModelField extends ConsumerWidget {
   Future<void> _pick(BuildContext context, WidgetRef ref) async {
     final rows = await ref.read(peopleRepositoryProvider).makeModels();
     if (!context.mounted) return;
+    final all = rows.map(makeModelFromRow).where((m) => m.make.isNotEmpty && m.model.isNotEmpty).toList()
+      ..sort(compareMakeModel);
+    // Cascading pick: Energy / Fuel -> Make -> Model, in one dialog so there is
+    // a single page-style id and a Back at each step. Year and colour are the
+    // next fields on the form. Entries with no energy are grouped under "Other".
     final picked = await showAppDialog<MakeModel>(id: 'people-widgets.pick',
       context: context,
       builder: (ctx) {
+        var step = 0; // 0 = energy, 1 = make, 2 = model
         var q = '';
+        String? energy, make;
+        String energyKey(MakeModel m) => m.energyType.isEmpty ? 'Other' : m.energyType;
         return StatefulBuilder(builder: (ctx, setState) {
-          final all = rows.map(makeModelFromRow).where((m) => m.make.isNotEmpty && m.model.isNotEmpty).toList()
-            ..sort(compareMakeModel);
-          final list = all
-              .where((m) => '${m.make} ${m.model} ${m.vehicleType} ${m.energyType}'.toLowerCase().contains(q.toLowerCase()))
-              .toList();
+          final matches = q.trim().toLowerCase();
+          late final String title, hint;
+          late final List<Widget> rowsUi;
+          if (step == 0) {
+            title = 'Select Energy / Fuel';
+            hint = 'Search energy or fuel';
+            final energies = {for (final m in all) energyKey(m)}.toList()..sort();
+            rowsUi = [
+              for (final e in energies.where((e) => e.toLowerCase().contains(matches)))
+                ListTile(
+                  key: ValueKey('vehicle-energy-$e'),
+                  title: Text(e),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => setState(() { energy = e; step = 1; q = ''; }),
+                ),
+            ];
+          } else if (step == 1) {
+            title = 'Select Make';
+            hint = 'Search make';
+            final makes = {for (final m in all) if (energyKey(m) == energy) m.make}.toList()..sort();
+            rowsUi = [
+              for (final mk in makes.where((mk) => mk.toLowerCase().contains(matches)))
+                ListTile(
+                  key: ValueKey('vehicle-make-$mk'),
+                  title: Text(mk),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => setState(() { make = mk; step = 2; q = ''; }),
+                ),
+            ];
+          } else {
+            title = 'Select Model';
+            hint = 'Search model';
+            final models = all.where((m) => energyKey(m) == energy && m.make == make).toList()..sort(compareMakeModel);
+            rowsUi = [
+              for (final m in models
+                  .where((m) => '${m.model} ${m.vehicleType}'.toLowerCase().contains(matches)))
+                ListTile(
+                  title: Text(makeModelLabel(m)),
+                  subtitle: Text(makeModelKind(m.vehicleType, m.energyType)),
+                  onTap: () => Navigator.pop(ctx, m),
+                ),
+            ];
+          }
+          final crumb = [energy, if (step > 1) make].whereType<String>().join(' · ');
           return AlertDialog(
-            title: const Text('Select vehicle'),
+            title: Text(title),
             content: SizedBox(
               width: 460,
               height: 480,
               child: Column(children: [
+                if (crumb.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text(crumb, style: Theme.of(ctx).textTheme.bodySmall),
+                    ),
+                  ),
                 TextField(
                   autofocus: true,
-                  decoration:
-                      const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Search make, model, type', isDense: true),
+                  decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: hint, isDense: true),
                   onChanged: (v) => setState(() => q = v),
                 ),
                 const SizedBox(height: 8),
                 Expanded(
-                  child: list.isEmpty
-                      ? const Center(child: Text('No vehicle models (Settings > Vehicle Make & Model).'))
-                      : ListView(children: [
-                          for (final m in list)
-                            ListTile(
-                              title: Text(makeModelLabel(m)),
-                              subtitle: Text(makeModelKind(m.vehicleType, m.energyType)),
-                              onTap: () => Navigator.pop(ctx, m),
-                            ),
-                        ]),
+                  child: rowsUi.isEmpty
+                      ? Center(child: Text(step == 0
+                          ? 'No vehicle models (Settings > Vehicle Make & Model).'
+                          : 'Nothing here. Go back and pick again.'))
+                      : ListView(children: rowsUi),
                 ),
               ]),
             ),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel'))],
+            actions: [
+              if (step > 0)
+                TextButton(onPressed: () => setState(() { step -= 1; q = ''; }), child: const Text('Back')),
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ],
           );
         });
       },
