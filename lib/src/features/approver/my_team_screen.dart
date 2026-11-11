@@ -163,6 +163,14 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
     await _loadMore(fresh: true);
   }
 
+  /// Open a member's detail, then refresh the list on return so a change made
+  /// there — approve, unapprove, an edit — shows at once instead of leaving the
+  /// card stale until a manual pull-to-refresh.
+  Future<void> _openMember(TeamMember m, {String? tab}) async {
+    await context.push(tab == null ? '/my-team/member' : '/my-team/member?tab=$tab', extra: m);
+    if (mounted) _reload();
+  }
+
   /// Switch the filter bullets and reload. Null clears (All).
   void _setFilters(
       {_TeamMode? mode,
@@ -419,9 +427,9 @@ class _MyTeamScreenState extends ConsumerState<MyTeamScreen> {
                 maxWidth: 760,
                 child: _TeamCard(
                   member: m,
-                  onTap: () => context.push('/my-team/member', extra: m),
-                  onDocs: () => context.push('/my-team/member?tab=documents', extra: m),
-                  onStats: () => context.push('/my-team/member?tab=statistics', extra: m),
+                  onTap: () => _openMember(m),
+                  onDocs: () => _openMember(m, tab: 'documents'),
+                  onStats: () => _openMember(m, tab: 'statistics'),
                 ),
               );
           }
