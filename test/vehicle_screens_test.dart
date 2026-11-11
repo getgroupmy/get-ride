@@ -312,6 +312,12 @@ void main() {
       expect(find.text('Make and model'), findsOneWidget);
       await tester.tap(find.text('Select make & model'));
       await _frames(tester);
+      // Cascade: Energy/Fuel -> Make -> Model. The fixtures carry no energy, so
+      // both group under "Other".
+      await tester.tap(find.text('Other'));
+      await _frames(tester);
+      await tester.tap(find.text('Proton'));
+      await _frames(tester);
       await tester.tap(find.text('Proton Saga'));
       await _frames(tester);
       expect(find.text('Vehicle service *'), findsOneWidget);
@@ -335,6 +341,12 @@ void main() {
       final repo = await _pump(tester, const VehicleOnboardingScreen(vehicleId: 'v1'),
           brightness: b, people: people(), vehicles: _FakeVehicles(existing: const {'id': 'v1', 'plate': 'WXY 1'}));
       await tester.tap(find.text('Select make & model'));
+      await _frames(tester);
+      // Cascade: Energy/Fuel -> Make -> Model. The fixtures carry no energy, so
+      // both group under "Other".
+      await tester.tap(find.text('Other'));
+      await _frames(tester);
+      await tester.tap(find.text('Perodua'));
       await _frames(tester);
       await tester.tap(find.text('Perodua Bezza'));
       await _frames(tester);
