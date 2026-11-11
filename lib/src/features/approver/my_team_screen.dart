@@ -3895,12 +3895,34 @@ class _VehicleDetailSheetState extends ConsumerState<_VehicleDetailSheet> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(v.plate, style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-                if (v.descriptor != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(v.descriptor!, style: t.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
-                  ),
+                // The sheet fills the screen and its body scrolls, so the
+                // drag handle can't be reached to dismiss it — a close button
+                // in the header is the reliable way back.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(v.plate, style: t.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                          if (v.descriptor != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(v.descriptor!,
+                                  style: t.textTheme.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                            ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      key: const ValueKey('vehicle-detail-close'),
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
+                ),
                 // An approved vehicle whose ownership certificate isn't verified
                 // (e.g. approved before the VOC existed, migration 0392): a
                 // non-blocking flag so the approver can chase it.

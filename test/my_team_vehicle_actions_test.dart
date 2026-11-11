@@ -221,6 +221,17 @@ void main() {
     expect(find.byKey(const ValueKey('vehicle-edit')), findsNothing);
   });
 
+  testWidgets('the vehicle detail sheet has a close button that dismisses it', (tester) async {
+    await _openSheet(tester, canManage: true);
+    // The sheet is open: its header close button is there.
+    final close = find.byKey(const ValueKey('vehicle-detail-close'));
+    expect(close, findsOneWidget);
+    await tester.tap(close);
+    await tester.pumpAndSettle();
+    // The sheet is gone — the close button (unique to it) is no longer mounted.
+    expect(find.byKey(const ValueKey('vehicle-detail-close')), findsNothing);
+  });
+
   testWidgets('Edit vehicle pre-fills and sends a trimmed patch', (tester) async {
     final repo = await _openSheet(tester, canManage: true);
 
