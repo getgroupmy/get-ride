@@ -244,6 +244,7 @@ class _VehicleFormState extends ConsumerState<_VehicleForm> {
             MakeModelField(
               value: _mm,
               enabled: canEdit,
+              allowAi: true, // admin panel: the catalogue AI lookup is permitted here
               onChanged: (m) => setState(() {
                 _mm = m;
                 if (m.serviceId.isNotEmpty && _service.isEmpty) _service = m.serviceId;

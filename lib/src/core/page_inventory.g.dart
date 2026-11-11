@@ -286,6 +286,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:passkeys.remove', SurfaceKind.modal, 'Passkeys · Remove', 'lib/src/features/settings/passkeys_screen.dart'),
   SurfaceEntry('modal:payment-gateways.set-secret', SurfaceKind.modal, 'Payment gateways · Set secret', 'lib/src/admin/screens/commerce/payment_screens.dart'),
   SurfaceEntry('modal:payment-gateways.test-result', SurfaceKind.modal, 'Payment gateways · Test result', 'lib/src/admin/screens/commerce/payment_screens.dart'),
+  SurfaceEntry('modal:people-widgets.ai', SurfaceKind.modal, 'People widgets · Ai', 'lib/src/admin/screens/people/people_widgets.dart'),
   SurfaceEntry('modal:people-widgets.pick', SurfaceKind.modal, 'People widgets · Pick', 'lib/src/admin/screens/people/people_widgets.dart'),
   SurfaceEntry('modal:people.ask-status-reason', SurfaceKind.modal, 'People · Status reason', 'lib/src/admin/screens/people_screens.dart'),
   SurfaceEntry('modal:permissions.open_settings', SurfaceKind.modal, 'Permissions · Settings', 'lib/src/features/permissions/permission_actions.dart'),
