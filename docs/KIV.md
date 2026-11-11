@@ -36,6 +36,15 @@ Missing or partly built:
 - 11.4 Driver code of conduct and a driver grievance and appeal process.
 - 11.5 Data export or reports for APAD and other agencies.
 
+## Live tracking after the app is closed (study of 11 Nov 2026)
+
+Goal: keep a trip's live map dot moving when a participant swipes the app away, for users on "Always"/"Allow all the time". "Always" is a permission for a *running* app to read location in the background — it does not keep a killed app alive, so the geolocator stream (and the dot) dies on swipe-away. The native background reporter (0272) and God View live stream (0282) already keep reporting with no app running, keyed by the install's background key.
+
+- Shipped (slice 1, 0404): `trip_live_bridge` — a background/live fix from a phone whose account is a participant in an active ride (`accepted`/`arrived`/`on_trip`) also refreshes that ride's live columns (the rider's `user_live_*`, the driver's `partner_live_*`). Wired into `push_background_location` and `push_live_location`. Same two columns, same two recipients, same purpose the app already shares them for — just kept fresh while the app is closed. No new build needed. Cadence is coarse, though: the background path reports ~once a minute at most and the native reporter's own schedule is ~15 min / 200 m, so a closed-app dot only refreshes at that rate unless a 5-second live stream is open.
+- Slice 2 (the continuous cadence, not built): a **trip-scoped live session** that opens the 5-second native stream (`goLive` / `LiveLocation.kt` / iOS `startLive`) for the life of an active ride, so the dot stays live, not just unfrozen. Likely a `trip_live_sessions` table + a detector (pg_cron or a realtime trigger) that, while a ride is active and a participant's fix is stale, sends that participant a `location_live` push to wake the stream; generalise `push_live_location`'s session check to cover trip sessions; end on trip end. Server-heavy, reuses the existing native streaming.
+- Slice 3 (app + testing, not built): arm/`goLive` the reporter on trip start for both rider and driver; trip-appropriate "we keep sharing while the app is closed" copy/consent (the iOS `NSLocationAlwaysAndWhenInUse` string already says this); and the device test matrix.
+- Hard ceilings to set expectations on (no app escapes these): iOS **manual force-quit** (swipe up in the app switcher) suppresses significant-change / push relaunch until the next reboot, so live-after-close is unreliable after a deliberate force-quit (works when iOS itself terminates the app, or it's only backgrounded). Aggressive Android OEMs (Xiaomi/Oppo/Vivo/Huawei) kill even foreground services; needs battery-optimisation allow-listing and per-OEM autostart guidance. "Live after close" therefore means *re-acquired within a push/SLC cycle*, never guaranteed-continuous.
+
 ## Owner setup
 
 - Online payment: wallet top-up through the payment gateway is built (Fiuu, Billplz; FPX and e-wallets). Add the merchant account keys in Admin › Payment gateways, then turn Card back on. DuitNow QR top-up is not built.
