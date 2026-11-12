@@ -26,7 +26,7 @@ void main() {
   const pages = [
     '/', '/ev', '/trips', '/wallet', '/account/safety', '/account/settings', '/account/guide', '/account/support', '/account/help',
     '/account/emergency', '/account/referral', '/account/my-ride', '/account/my-qr', '/account/family', '/account/notifications',
-    '/trips/scheduled', '/freight', '/courier', '/approvals', '/my-team',
+    '/trips/scheduled', '/freight', '/courier', '/approvals', '/my-team', '/my-team/location',
   ];
 
   /// Taps [id]'s row as [settings] arrange the menu; the page on top after,
@@ -78,6 +78,7 @@ void main() {
       'courier': '/courier',
       'approver': '/approvals',
       'my-team': '/my-team',
+      teamLocationMenuItemId: '/my-team/location',
     };
     for (final MapEntry(key: id, value: page) in expected.entries) {
       testWidgets('$id opens $page', (tester) async {

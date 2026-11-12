@@ -6,11 +6,11 @@ import '../../admin/admin_providers.dart';
 import '../../core/contact_phone.dart' show formatPhoneDisplay;
 import '../../core/referral.dart';
 import '../../admin/screens/meterapp/display_logic.dart'
-    show approverMenuItemId, inviteFriendsMenuItemId, myTeamMenuItemId, scheduledRidesMenuItemId;
+    show approverMenuItemId, inviteFriendsMenuItemId, myTeamMenuItemId, scheduledRidesMenuItemId, teamLocationMenuItemId;
 import '../../core/side_menu.dart';
 import '../partner/partner_mode_picker.dart' show openPartnerMode;
 import '../../data/app_display_repository.dart';
-import '../../data/approver_inbox_repository.dart' show isApproverProvider;
+import '../../data/approver_inbox_repository.dart' show approverSelfProvider, isApproverProvider;
 import '../../data/dispatch_repository.dart' show dispatchRolesProvider;
 import '../../data/identity_repository.dart' show dispatchChecksProvider;
 import '../../data/scheduled_ride_repository.dart' show scheduledRidesConfigProvider;
@@ -46,6 +46,7 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
     'invite-friends': '/account/referral',
     'approver': '/approvals',
     'my-team': '/my-team',
+    'team-location': '/my-team/location',
   };
   if (id == 'logout') {
     // Asked first, while the menu is still open: a stray tap must not sign out.
@@ -66,10 +67,12 @@ bool riderMenuAction(BuildContext context, WidgetRef ref, String id, {VoidCallba
 
 /// Whether a rider menu row shows now: Ride Later (scheduled) only while
 /// scheduled rides are on; Approvals only for an active approver.
-bool riderMenuRowShows(String id, {bool scheduledRides = false, bool approver = false}) => switch (id) {
+bool riderMenuRowShows(String id, {bool scheduledRides = false, bool approver = false, bool canLocate = false}) =>
+    switch (id) {
       scheduledRidesMenuItemId => scheduledRides,
       approverMenuItemId => approver,
       myTeamMenuItemId => approver,
+      teamLocationMenuItemId => canLocate,
       _ => true,
     };
 
@@ -130,9 +133,10 @@ class RiderMenu extends ConsumerWidget {
     final blob = ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{};
     final scheduled = ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false;
     final approver = ref.watch(isApproverProvider);
+    final canLocate = ref.watch(approverSelfProvider).value?.canViewLocation ?? false;
     final menu = [
       for (final e in resolveSideMenu(blob, 'user'))
-        if (riderMenuRowShows(e.id, scheduledRides: scheduled, approver: approver) &&
+        if (riderMenuRowShows(e.id, scheduledRides: scheduled, approver: approver, canLocate: canLocate) &&
             !(ref.watch(hideComingSoonProvider) && e.comingSoon))
           e,
     ];

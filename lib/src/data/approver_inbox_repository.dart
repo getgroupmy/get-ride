@@ -10,6 +10,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/god_view.dart' show GodViewSnapshot;
 import '../providers.dart';
 import 'permits_repository.dart' show VehiclePermits;
 
@@ -24,6 +25,7 @@ class ApproverGrant {
     required this.canEditProfile,
     required this.canVerifyId,
     this.canManageVehicle = false,
+    this.canViewLocation = false,
     required this.scope,
     required this.docTypes,
   });
@@ -48,6 +50,10 @@ class ApproverGrant {
   /// Whether the approver may approve/revoke a driver's access to a covered
   /// member's vehicle (migration 0366). Off by default.
   final bool canManageVehicle;
+
+  /// Whether the approver may open Team Location — a God View of the team they
+  /// cover (migration 0406). Off by default.
+  final bool canViewLocation;
   final String scope;
   final List<String> docTypes;
 
@@ -60,6 +66,7 @@ class ApproverGrant {
         canEditProfile: j['can_edit_profile'] == true,
         canVerifyId: j['can_verify_id'] == true,
         canManageVehicle: j['can_manage_vehicle'] == true,
+        canViewLocation: j['can_view_location'] == true,
         scope: (j['scope'] as String?) ?? 'referral',
         docTypes: [for (final t in (j['doc_types'] as List? ?? const [])) t as String],
       );
@@ -1396,6 +1403,28 @@ class ApproverInboxRepository {
     final r = await _db.rpc('approver_self');
     if (r == null) return null;
     return ApproverGrant.fromJson(Map<String, dynamic>.from(r as Map));
+  }
+
+  /// Team Location (migration 0406): the people this approver covers, on the
+  /// map — the same shape as God View's snapshot, so the UI reuses the God View
+  /// models. Server-gated to approvers with `can_view_location`.
+  Future<GodViewSnapshot> teamLocation({
+    ({double minLat, double minLng, double maxLat, double maxLng})? box,
+    bool showOffline = true,
+    String query = '',
+    int limit = 1500,
+  }) async {
+    final q = query.trim();
+    final res = await _db.rpc('approver_team_snapshot', params: {
+      'p_min_lat': box?.minLat,
+      'p_min_lng': box?.minLng,
+      'p_max_lat': box?.maxLat,
+      'p_max_lng': box?.maxLng,
+      'p_show_offline': showOffline,
+      'p_query': q.isEmpty ? null : q,
+      'p_limit': limit,
+    });
+    return GodViewSnapshot.fromJson(res is Map ? Map<String, dynamic>.from(res) : const {}, query: q);
   }
 
   /// Every pending document in the caller's scope.

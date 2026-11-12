@@ -77,6 +77,11 @@ const approverMenuItemId = 'approver';
 /// Approvals. On both menus.
 const myTeamMenuItemId = 'my-team';
 
+/// Team Location (0406): an approver's God View of the team they cover — a live
+/// map of where their people are; shown only to an approver whose grant has
+/// can_view_location. On both menus.
+const teamLocationMenuItemId = 'team-location';
+
 /// The driver's My Ride code (QR and the riders who added them); shown only
 /// where the database has My Ride (migration 0160).
 const myRideCodeMenuItemId = 'my-ride-code';
@@ -114,6 +119,7 @@ const defaultUserMenuItems = <(String, String)>[
   ('wallet', 'Wallet'),
   (approverMenuItemId, 'Approvals'), // this app's own (0349/0350); shown only to an approver
   (myTeamMenuItemId, 'My Team'), // this app's own (0357); shown only to an approver
+  (teamLocationMenuItemId, 'Team Location'), // this app's own (0406); an approver with can_view_location
   ('notifications', 'Notifications'),
   ('safety', 'Safety'),
   ('settings', 'Settings'),
@@ -167,6 +173,7 @@ const defaultPartnerMenuItems = <(String, String)>[
   ('documents', 'Documents'),
   (approverMenuItemId, 'Approvals'), // this app's own (0349/0350); shown only to an approver
   (myTeamMenuItemId, 'My Team'), // this app's own (0357); shown only to an approver
+  (teamLocationMenuItemId, 'Team Location'), // this app's own (0406); an approver with can_view_location
   ('notifications', 'Notifications'),
   (helpAssistantMenuItemId, 'Help assistant'), // this app's own; the Expo menu skips it
   ('support', 'Support'),

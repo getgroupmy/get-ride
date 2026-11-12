@@ -60,6 +60,7 @@ const _builtInIcons = <String, IconData>{
   'vehicle-information': Icons.speed,
   'documents': Icons.description_outlined,
   'approver': Icons.fact_check_outlined,
+  'team-location': Icons.location_on_outlined,
   'emergency-contacts': Icons.contact_emergency_outlined,
   'invite-friends': Icons.card_giftcard,
 };
