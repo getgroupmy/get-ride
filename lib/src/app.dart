@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -168,6 +169,7 @@ import 'features/wallet/wallet_screen.dart';
 import 'providers.dart';
 import 'platform/web_favicon.dart';
 import 'widgets/app_icon_changed.dart';
+import 'core/battery_reliability.dart';
 import 'widgets/app_notice.dart';
 import 'widgets/connection_status_dialog.dart';
 import 'widgets/android_nav_bar_inset.dart';
@@ -1161,10 +1163,46 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
     if (want == _backgroundArmed) return;
     if (want) {
       _backgroundArmed = await _background.arm(url: AppConfig.supabaseUrl, anonKey: AppConfig.supabaseAnonKey, key: key);
+      if (_backgroundArmed == true) unawaited(_maybeNudgeBattery());
     } else {
       await _background.disarm();
       _backgroundArmed = false;
     }
+  }
+
+  final _battery = const BatteryReliability();
+
+  /// Once, on an Android phone that is holding the app back, suggest letting it
+  /// run without battery limits — otherwise the power manager can kill the
+  /// closed-app live stream during a trip (0405). Only while the app is on
+  /// screen, so it never interrupts, and never more than once.
+  Future<void> _maybeNudgeBattery() async {
+    if (!mounted || !_battery.supported) return;
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) return;
+    final prefs = await SharedPreferences.getInstance();
+    const flag = 'battery_reliability_nudged';
+    final unrestricted = await _battery.unrestricted();
+    if (!shouldNudgeBatteryExemption(
+      android: _battery.supported,
+      armed: _backgroundArmed == true,
+      unrestricted: unrestricted,
+      alreadyNudged: prefs.getBool(flag) ?? false,
+    )) {
+      return;
+    }
+    await prefs.setBool(flag, true);
+    if (!mounted) return;
+    unawaited(showAppNotice(
+      id: 'notice.battery-reliability',
+      context: context,
+      title: 'Keep live location reliable',
+      message: 'This phone can stop the app in the background, which pauses live '
+          'location sharing during a trip. Allow it to run without battery '
+          'limits to keep it reliable.',
+      actionLabel: 'Open settings',
+      onAction: () => unawaited(_battery.openSettings()),
+      closeLabel: 'Not now',
+    ));
   }
 
   /// An admin's install is listed under Admin → SMS / WhatsApp so it can be

@@ -201,6 +201,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:notice.approver-phone', SurfaceKind.modal, 'Notice · Approver phone', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:notice.approver-status', SurfaceKind.modal, 'Notice · Approver status', 'lib/src/features/approver/my_team_screen.dart'),
   SurfaceEntry('modal:notice.approver-vehicle', SurfaceKind.modal, 'Notice · Approver vehicle', 'lib/src/features/approver/my_team_screen.dart'),
+  SurfaceEntry('modal:notice.battery-reliability', SurfaceKind.modal, 'Notice · Battery reliability', 'lib/src/app.dart'),
   SurfaceEntry('modal:notice.book-for', SurfaceKind.modal, 'Notice · Book for', 'lib/src/features/ride/book_for_sheet.dart'),
   SurfaceEntry('modal:notice.call-number', SurfaceKind.modal, 'Notice · Call number', 'lib/src/widgets/call_number.dart'),
   SurfaceEntry('modal:notice.catalogue-rename', SurfaceKind.modal, 'Notice · Catalogue rename', 'lib/src/admin/screens/catalogue/safe_rename.dart'),

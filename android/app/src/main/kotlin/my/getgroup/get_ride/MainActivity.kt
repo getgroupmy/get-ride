@@ -3,10 +3,13 @@ package my.getgroup.get_ride
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
@@ -43,6 +46,8 @@ class MainActivity : FlutterActivity() {
                 "statuses" -> result.success(permissionStatuses())
                 "requestLocationAlways" -> requestLocationAlways(result)
                 "openNotificationSettings" -> result.success(openNotificationSettings())
+                "batteryUnrestricted" -> result.success(batteryUnrestricted())
+                "openBatterySettings" -> result.success(openBatterySettings())
                 else -> result.notImplemented()
             }
         }
@@ -103,6 +108,37 @@ class MainActivity : FlutterActivity() {
         true
     } catch (e: Exception) {
         false
+    }
+
+    // Whether this phone is NOT holding the app back with battery optimisation.
+    // When it is (false), an aggressive power manager can kill the closed-app
+    // live stream (LiveLocationService, 0405). Pre-M has no such setting.
+    private fun batteryUnrestricted(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return true
+        val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true
+        return pm.isIgnoringBatteryOptimizations(packageName)
+    }
+
+    // Opens the system list where the user turns battery optimisation off for
+    // our app. The plain settings screen (not the restricted direct-ask dialog),
+    // so no special permission and no Play policy flag; falls back to the app's
+    // own details page.
+    private fun openBatterySettings(): Boolean = try {
+        startActivity(
+            Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+        true
+    } catch (e: Exception) {
+        try {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            true
+        } catch (e2: Exception) {
+            false
+        }
     }
 
     private fun permissionStatuses(): Map<String, String> {
