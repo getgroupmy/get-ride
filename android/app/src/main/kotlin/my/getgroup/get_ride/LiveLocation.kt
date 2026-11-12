@@ -71,6 +71,12 @@ class LiveLocationService : Service(), LocationListener {
     private var detailsSent = false
     private var latest: Location? = null
     private var lastSent = 0L
+    // Why the stream is running, from the server's answer (push_live_location):
+    // "trip" (0405: a ride the person is on — the passenger/driver see it),
+    // "support" (0282: God View's "Live now"), or "" before the first answer.
+    // It decides the foreground notification's words, so a trip is never
+    // labelled as support watching the person.
+    private var reason = ""
 
     // A phone standing still may get no new fix: the last one goes again.
     private val tick = object : Runnable {
@@ -191,14 +197,22 @@ class LiveLocationService : Service(), LocationListener {
                     stopSelf()
                     return@post
                 }
+                // Re-label the notification when the reason becomes known or
+                // changes (a trip vs God View support), so the words always
+                // match why the phone is streaming.
+                val r = if (answer.optBoolean("trip", false)) "trip" else "support"
+                val reasonChanged = r != reason
+                reason = r
                 val left = answer.optLong("ends_in", -1L)
                 if (left >= 0) {
                     val next = System.currentTimeMillis() + left * 1000L
                     if (kotlin.math.abs(next - until) > 2_000L) {
                         until = next
                         inForeground()
+                        return@post
                     }
                 }
+                if (reasonChanged) inForeground()
             }
         }
     }
@@ -220,9 +234,13 @@ class LiveLocationService : Service(), LocationListener {
 
     private fun notification(): Notification {
         val manager = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && manager?.getNotificationChannel(LiveLocation.CHANNEL_ID) == null) {
-            val channel = NotificationChannel(LiveLocation.CHANNEL_ID, "Shared live with support", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "While get.ride support sees where you are, live"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Neutral channel name: the same stream carries a trip and a God
+            // View share, so the channel can't be worded as either. Re-created
+            // each time so the name/description refresh on an upgrade from the
+            // old "support" wording; importance stays whatever the user set.
+            val channel = NotificationChannel(LiveLocation.CHANNEL_ID, "Live location", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "While you are sharing your live location"
                 setShowBadge(false)
             }
             manager?.createNotificationChannel(channel)
@@ -239,16 +257,28 @@ class LiveLocationService : Service(), LocationListener {
             Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        // The words follow why the phone is streaming (set from the server's
+        // answer in send()): a trip the person is on, a God View support share,
+        // or neutral before the first answer lands.
+        val (title, text) = when (reason) {
+            "trip" -> "Sharing your live location" to
+                "Your driver or passenger can see where you are during your trip."
+            "support" -> "Shared live with support" to
+                "get.ride support sees where you are, every 5 s, until the time is up."
+            else -> "Sharing your live location" to "Sharing where you are, live."
+        }
         b.setSmallIcon(R.drawable.ic_live_share)
-            .setContentTitle("Shared live with support")
-            .setContentText("get.ride support sees where you are, every 5 s, until the time is up.")
+            .setContentTitle(title)
+            .setContentText(text)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(Notification.CATEGORY_SERVICE)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
             .setContentIntent(open)
-        // The time left, counting down on its own.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        // The time left, counting down on its own — only for a God View share,
+        // which has a fixed end. A trip's window rolls every couple of minutes,
+        // so a countdown there would be meaningless.
+        if (reason == "support" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             b.setWhen(until).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
         }
         return b.build()
