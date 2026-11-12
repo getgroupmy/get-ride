@@ -6,6 +6,7 @@ import '../../admin/screens/meterapp/display_logic.dart'
     show
         approverMenuItemId,
         myTeamMenuItemId,
+        teamLocationMenuItemId,
         cityToCityMenuItemId,
         myPermitMenuItemId,
         myQrMenuItemId,
@@ -21,7 +22,7 @@ import '../../admin/screens/meterapp/display_logic.dart'
 import '../../core/side_menu.dart';
 import '../../data/city_to_city_repository.dart' show c2cServiceActiveProvider;
 import '../../data/app_display_repository.dart';
-import '../../data/approver_inbox_repository.dart' show isApproverProvider;
+import '../../data/approver_inbox_repository.dart' show approverSelfProvider, isApproverProvider;
 import '../../data/driver_services_repository.dart' show servicesPageAvailableProvider;
 import '../../data/my_ride_repository.dart' show myRideCodeProvider;
 import '../../data/mygig_repository.dart' show mygigAt, mygigConfigProvider;
@@ -65,6 +66,7 @@ bool partnerMenuRowShows(
   bool cityToCity = false,
   bool mygig = false,
   bool approver = false,
+  bool canLocate = false,
 }) => switch (id) {
   _ when !approved && partnerRowsAfterApproval.contains(id) => false,
   mygigMenuItemId || mygigScheduledMenuItemId || mygigHotspotsMenuItemId => mygig,
@@ -75,6 +77,7 @@ bool partnerMenuRowShows(
   cityToCityMenuItemId => cityToCity,
   approverMenuItemId => approver,
   myTeamMenuItemId => approver,
+  teamLocationMenuItemId => canLocate,
   _ => true,
 };
 
@@ -121,6 +124,7 @@ bool partnerMenuAction(BuildContext context, WidgetRef ref, String id, {required
     'documents': '/drive/onboarding',
     approverMenuItemId: '/approvals',
     myTeamMenuItemId: '/my-team',
+    teamLocationMenuItemId: '/my-team/location',
     'notifications': '/account/notifications',
     'support': '/account/support',
     'help-assistant': '/account/help',
@@ -174,6 +178,7 @@ class PartnerMenuSheet extends ConsumerWidget {
     final c2c = ref.watch(c2cServiceActiveProvider).value ?? false;
     final mygig = mygigButtonShows(ref.watch(mygigConfigProvider(mygigAt(null, null))).value);
     final approver = ref.watch(isApproverProvider);
+    final canLocate = ref.watch(approverSelfProvider).value?.canViewLocation ?? false;
     final menu = [
       for (final e in resolveSideMenu(blob, 'partner'))
         if (!(ref.watch(hideComingSoonProvider) && e.comingSoon) && partnerMenuRowShows(
@@ -186,6 +191,7 @@ class PartnerMenuSheet extends ConsumerWidget {
           cityToCity: c2c,
           mygig: mygig,
           approver: approver,
+          canLocate: canLocate,
         ))
           e,
     ];

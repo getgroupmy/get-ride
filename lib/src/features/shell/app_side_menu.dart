@@ -9,7 +9,7 @@ import 'package:go_router/go_router.dart';
 import '../../admin/admin_providers.dart';
 import '../../core/side_menu.dart';
 import '../../data/app_display_repository.dart';
-import '../../data/approver_inbox_repository.dart' show isApproverProvider;
+import '../../data/approver_inbox_repository.dart' show approverSelfProvider, isApproverProvider;
 import '../../data/city_to_city_repository.dart' show c2cServiceActiveProvider;
 import '../../data/dispatch_repository.dart' show dispatchRolesProvider;
 import '../../data/identity_repository.dart' show dispatchChecksProvider;
@@ -96,7 +96,10 @@ class RiderSideMenu extends ConsumerWidget {
       onProfile: profile.comingSoon ? (hide ? null : showComingSoon) : SideMenuPanel.editProfile,
       rows: [
         for (final e in resolveSideMenu(blob, 'user'))
-          if (riderMenuRowShows(e.id, scheduledRides: scheduled, approver: ref.watch(isApproverProvider)) &&
+          if (riderMenuRowShows(e.id,
+                  scheduledRides: scheduled,
+                  approver: ref.watch(isApproverProvider),
+                  canLocate: ref.watch(approverSelfProvider).value?.canViewLocation ?? false) &&
               !(hide && e.comingSoon)) ...[
             // Log out set apart from the pages above it.
             SideMenuTile(
@@ -160,6 +163,7 @@ class PartnerSideMenu extends ConsumerWidget {
             cityToCity: ref.watch(c2cServiceActiveProvider).value ?? false,
             mygig: mygigButtonShows(ref.watch(mygigConfigProvider(mygigAt(null, null))).value),
             approver: ref.watch(isApproverProvider),
+            canLocate: ref.watch(approverSelfProvider).value?.canViewLocation ?? false,
           )) ...[
             SideMenuTile(
               entry: e,
