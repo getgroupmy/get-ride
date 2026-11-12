@@ -98,6 +98,7 @@ class _ApproverDialogState extends State<ApproverDialog> {
   late bool _editProfile = widget.current?['can_edit_profile'] == true;
   late bool _verifyId = widget.current?['can_verify_id'] == true;
   late bool _manageVehicle = widget.current?['can_manage_vehicle'] == true;
+  late bool _viewLocation = widget.current?['can_view_location'] == true;
   late String _scope = _scopeLabels.containsKey(widget.current?['scope']) ? '${widget.current?['scope']}' : 'referral';
   late bool _useOwn = widget.current?['use_own_region'] != false;
   late bool _conflict = widget.current?['conflict_guard'] != false;
@@ -134,6 +135,7 @@ class _ApproverDialogState extends State<ApproverDialog> {
         'can_edit_profile': _editProfile,
         'can_verify_id': _editProfile && _verifyId,
         'can_manage_vehicle': _manageVehicle,
+        'can_view_location': _viewLocation,
         'scope': _scope,
         'use_own_region': _useOwn,
         'conflict_guard': _conflict,
@@ -217,6 +219,14 @@ class _ApproverDialogState extends State<ApproverDialog> {
               subtitle: const Text("Approve or revoke a driver's access to a member's vehicle."),
               value: _manageVehicle,
               onChanged: (v) => setState(() => _manageVehicle = v),
+            ),
+            SwitchListTile(
+              key: const ValueKey('approver-view-location'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('View team location'),
+              subtitle: const Text('A live map of where their team is now — God View, limited to the people they cover.'),
+              value: _viewLocation,
+              onChanged: (v) => setState(() => _viewLocation = v),
             ),
             if (_delete)
               SwitchListTile(
