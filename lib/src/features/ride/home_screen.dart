@@ -4092,14 +4092,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final sheetTop = (MapSheetLayout.defaultMax - navLiftFraction) * box.maxHeight;
           final least = !confirming && _foldHeight > 0 && box.maxHeight > 0
               ? math.min(
-                  MapSheetLayout.defaultMax - navLiftFraction,
-                  effectiveSheetMin(
-                        auto: _foldHeight,
-                        adjust: sheetMinAdjust(blob, homeSheetMinAdjustKey),
-                        floor: _floorHeight,
-                        max: sheetTop,
-                      ) /
-                      box.maxHeight,
+                  // Keep at least mapMinFraction of the screen as map, so on a
+                  // short screen (the Duo's cover display) the sheet can't grow
+                  // so tall that it covers the pickup pin and the map's layer /
+                  // recenter buttons; the rest is reached by dragging it up.
+                  math.max(0.22, 1 - MapSheetLayout.defaultMapMinFraction - navLiftFraction),
+                  math.min(
+                    MapSheetLayout.defaultMax - navLiftFraction,
+                    effectiveSheetMin(
+                          auto: _foldHeight,
+                          adjust: sheetMinAdjust(blob, homeSheetMinAdjustKey),
+                          floor: _floorHeight,
+                          max: sheetTop,
+                        ) /
+                        box.maxHeight,
+                  ),
                 )
               : 0.22;
           // A phone on its side (844 × 390): the confirm sheet starts lower,
