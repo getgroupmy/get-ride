@@ -3334,9 +3334,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     Widget aboveSheet(Widget Function(double inset) build) => Positioned.fill(
       child: Builder(builder: (c) => MapBottomInset.listen(c, (inset) => Stack(children: [build(inset)]))),
     );
-    // How far the bars' feet run behind the sheet: past its rounded top
-    // corners, however deep the admin made them.
-    final footUnder = SheetTopBar.footUnder(SurfaceStyle.ofPage(context).number('mapSheetRadius'));
+    // The sheet's rounded top-corner depth (App Page Settings): the bars'
+    // feet run this far behind it, and the bottom-right map buttons clear it
+    // by this much so they never tuck against the corner on a device whose
+    // sheet rests tight to them.
+    final sheetCornerRadius = SurfaceStyle.ofPage(context).number('mapSheetRadius');
+    final footUnder = SheetTopBar.footUnder(sheetCornerRadius);
     // The promo bar (0242): the code applied, or the codes that fit.
     Widget confirmPromoBar(double foot) => ConfirmPromoBar(
           offers: _promoOffers,
@@ -3668,9 +3671,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           (inset) => Positioned(
             // Clear of the notch on a phone on its side.
             right: 16 + MediaQuery.paddingOf(context).right,
-            // Always the same clearance above the sheet, whatever its resting
-            // height on this device; the admin's gap only adds to it.
-            bottom: mapAttributionClearance + inset + mapLayout.recenterGap,
+            // Always clear of the sheet on every device: the flat-top margin
+            // plus the sheet's rounded-corner depth, so the buttons never tuck
+            // against the corner where the sheet rests tight to them (a thinner
+            // gesture-nav inset lets it rest a touch lower). Same clearance
+            // whatever the sheet's resting height; the admin's gap only adds.
+            bottom: mapAttributionClearance + sheetCornerRadius + inset + mapLayout.recenterGap,
             child: IgnorePointer(
               ignoring: _pinMoving,
               child: AnimatedSlide(
