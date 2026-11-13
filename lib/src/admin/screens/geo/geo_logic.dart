@@ -25,8 +25,8 @@ import '../../../core/service_tree.dart' show regionSubServiceSwitches;
 
 /// Where a boundary came from. Stored as `boundarySource` / `geofence.source`.
 /// `google` and `geonames` are only read (rows written by the Expo app); the
-/// Flutter editor produces `osm`, `bbox` and `manual`.
-const boundarySources = ['osm', 'google', 'geonames', 'bbox', 'manual'];
+/// Flutter editor produces `osm`, `ai`, `bbox` and `manual`.
+const boundarySources = ['osm', 'ai', 'google', 'geonames', 'bbox', 'manual'];
 
 class BBox {
   const BBox({required this.north, required this.south, required this.east, required this.west});

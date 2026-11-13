@@ -118,6 +118,28 @@ class GeoAdminRepository {
     }
   }
 
+  /// Admin → Regions → Boundary editor's AI source: asks the
+  /// `region-boundary-ai` edge function (whichever AI provider API Keys has
+  /// switched on, Gemini by default) for [query]'s outline. Returns the shape
+  /// to review, or a short reason it couldn't.
+  Future<({BoundaryShape? shape, String? error})> aiBoundary(String query) async {
+    try {
+      final res = await _db.functions.invoke('region-boundary-ai', body: {'query': query.trim()});
+      final data = res.data;
+      final map = data is Map ? Map<String, dynamic>.from(data) : const {};
+      if (map['ok'] == true && map['boundary'] is Map) {
+        final shape = parseBoundary(jsonEncode(map['boundary']));
+        if (shape != null) return (shape: shape, error: null);
+        return (shape: null, error: 'The AI returned no usable outline.');
+      }
+      final reason = map['reason'];
+      return (shape: null, error: reason is String && reason.isNotEmpty ? reason : 'The AI request failed. Try again.');
+    } catch (e) {
+      if (kDebugMode) debugPrint('region-boundary-ai: $e');
+      return (shape: null, error: 'The AI request failed. Try again.');
+    }
+  }
+
   /// Admin → Regions → Service check (migration 0302): the mode, the
   /// counts and the latest bookings kept.
   Future<RegionServiceCheck> regionServiceCheck() async {
