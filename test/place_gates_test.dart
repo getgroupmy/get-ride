@@ -99,19 +99,25 @@ void main() {
       expect(matchGatedPlace(places: const [], gates: _gates, point: const LatLng(3.1178, 101.6772)), isNull);
     });
 
-    test('a named result is never snapped to a nearby place of another name', () {
-      // A different POI a few hundred metres from the mall, searched by name,
-      // must not resolve to the mall's gates (the Gleneagles -> Jelatek LRT
-      // bug): a named search is resolved by name, not by nearness.
-      final named = matchGatedPlace(
+    test('a named result is not captured by a gated place down the road', () {
+      // The Gleneagles -> Jelatek LRT bug: a different POI ~1 km from the
+      // mall, searched by name, must not resolve to the mall's gates.
+      final far = matchGatedPlace(
         places: places,
         gates: _gates,
-        point: const LatLng(3.1185, 101.6775), // within 1.5 km of the mall
-        name: 'Gleneagles Hospital', // but a different place
+        point: const LatLng(3.1268, 101.6772), // ~1 km north of the mall
+        name: 'Gleneagles Hospital',
       );
-      expect(named, isNull);
-      // The same point with no name (a dropped pin) still snaps to the mall.
-      expect(matchGatedPlace(places: places, gates: _gates, point: const LatLng(3.1185, 101.6775))?.id, 'mall');
+      expect(far, isNull);
+      // But a result that sits on the place, named differently, still matches
+      // it (a "KLIA T1" pin on KLIA Terminal 1).
+      final onIt = matchGatedPlace(
+        places: places,
+        gates: _gates,
+        point: const LatLng(3.1178, 101.6772), // on the mall
+        name: 'MV Mall',
+      );
+      expect(onIt?.id, 'mall');
     });
 
     test('a place with no gates never blocks', () {
