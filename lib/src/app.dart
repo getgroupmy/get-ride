@@ -174,6 +174,7 @@ import 'core/battery_reliability.dart';
 import 'widgets/app_notice.dart';
 import 'widgets/connection_status_dialog.dart';
 import 'widgets/duo_fold_scope.dart';
+import 'widgets/duo_geometry_overlay.dart';
 import 'widgets/android_nav_bar_inset.dart';
 import 'widgets/keyboard_dismiss.dart';
 import 'widgets/page_style_host.dart';
@@ -1421,8 +1422,10 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
                                       // MediaQuery.displayFeatures here, the same place an
                                       // Android foldable's already is, so every screen's
                                       // fold-aware layout needs no platform branch.
-                                      child: DuoFoldScope(
-                                        child: LiveShareNotice(child: child ?? const SizedBox.shrink()),
+                                      child: DuoGeometryOverlay(
+                                        child: DuoFoldScope(
+                                          child: LiveShareNotice(child: child ?? const SizedBox.shrink()),
+                                        ),
                                       ),
                                     ),
                                   ),
