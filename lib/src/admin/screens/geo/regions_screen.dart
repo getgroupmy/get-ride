@@ -161,7 +161,7 @@ class _AdminRegionsScreenState extends ConsumerState<AdminRegionsScreen> {
         onClear: entry == null || !r.hasBoundary
             ? null
             : () async {
-                await repo.saveRegion(id: entry.id, values: withoutBoundary(entry.values), position: entry.position);
+                await repo.clearRegionBoundary(entry.level, entry.id);
                 ref.invalidate(regionsProvider);
               },
       ),

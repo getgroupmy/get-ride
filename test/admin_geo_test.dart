@@ -219,10 +219,12 @@ void main() {
       final kept = regionUpsert('s1', {...listed.values, 'timezone': 'Asia/Singapore'})!;
       expect(kept.row.containsKey('geofence'), isFalse);
       expect(kept.row['values'], {'timezone': 'Asia/Singapore'});
-      // Clearing it drops the marks too, and writes no shape.
-      final cleared = regionUpsert('s1', withoutBoundary(listed.values))!;
-      expect(cleared.row.containsKey('geofence'), isTrue);
-      expect(cleared.row['geofence'], isNull);
+      // A save with the shape dropped never blanks the stored boundary: it
+      // simply writes no geofence (removing one is region_clear_boundary, which
+      // the database guards — migration 0410). So a region edit can't silently
+      // take a state or city offline.
+      final noShape = regionUpsert('s1', withoutBoundary(listed.values))!;
+      expect(noShape.row.containsKey('geofence'), isFalse);
       // A row without one is marked as such.
       final plain = regionEntryFromRow({'id': 'c1', 'name': 'Malaysia', 'values': {}}, RegionLevel.country);
       expect(RegionRow(level: RegionLevel.country, country: 'Malaysia', entry: plain).hasBoundary, isFalse);

@@ -443,17 +443,12 @@ RegionEntry regionEntryFromRow(Map<String, dynamic> row, RegionLevel level) {
     ..remove('boundary')
     ..remove('boundarySource')
     ..remove('boundaryUpdatedAt');
-  // A boundary marked but not loaded (the admin list leaves the shapes
-  // out) is left as stored; one cleared ([withoutBoundary]) drops the marks
-  // too, and is cleared.
-  final keepStored = boundary.isEmpty && (source.isNotEmpty || updatedAt.isNotEmpty);
-  final geofence = boundary.isEmpty
-      ? null
-      : {
-          'boundary': boundary,
-          if (source.isNotEmpty) 'source': source,
-          if (updatedAt.isNotEmpty) 'updatedAt': updatedAt,
-        };
+  // A save only ever writes the geofence when it carries an actual boundary
+  // shape. One without a shape (an edit from the list, where the shapes are
+  // left out) leaves the stored boundary untouched -- it is never blanked
+  // here, so a region edit can't silently take a state or city offline.
+  // Removing a boundary is region_clear_boundary (GeoAdminRepository), and the
+  // database guards it too (migration 0410).
   final row = <String, dynamic>{
     'id': id,
     ...switch (level) {
@@ -463,7 +458,12 @@ RegionEntry regionEntryFromRow(Map<String, dynamic> row, RegionLevel level) {
       RegionLevel.suburb => {'country': country, 'state': state, 'city': city, 'name': suburb},
     },
     'values': payload,
-    if (!keepStored) 'geofence': geofence,
+    if (boundary.isNotEmpty)
+      'geofence': {
+        'boundary': boundary,
+        if (source.isNotEmpty) 'source': source,
+        if (updatedAt.isNotEmpty) 'updatedAt': updatedAt,
+      },
     'position': position,
   };
   return (table: regionTables[level]!, onConflict: regionConflictKeys[level]!, row: row, level: level);

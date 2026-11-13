@@ -65,7 +65,8 @@ select pg_temp.check(
      from public.countries where name = 'Perfland 227'),
   'the marks follow a changed geofence');
 
-update public.countries set geofence = null where name = 'Perfland 227';
+-- Clearing goes through the sanctioned path (migration 0410 guards a plain null).
+select public.region_clear_boundary('countries', (select id from public.countries where name = 'Perfland 227'));
 select pg_temp.check(
   (select geofence_source is null from public.countries where name = 'Perfland 227'),
   'a cleared geofence clears the marks');

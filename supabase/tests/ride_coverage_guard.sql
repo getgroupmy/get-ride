@@ -105,8 +105,9 @@ begin
   if g is distinct from 'blocked:Malaysia' then raise exception 'FAILED: blocked country, got %', g; end if;
   update public.countries set values = '{}' where name = 'Malaysia';
 
-  -- A boundary edit rebuilds the polygons.
-  update public.states set geofence = null where name = 'Selangor';
+  -- Clearing the boundary rebuilds the polygons (cleared via the sanctioned
+  -- path; migration 0410 guards a plain null).
+  perform public.region_clear_boundary('states', (select id from public.states where name = 'Selangor'));
   if (select boundary_polys from public.states where name = 'Selangor') is not null then
     raise exception 'FAILED: clearing a boundary should clear its polygons';
   end if;
