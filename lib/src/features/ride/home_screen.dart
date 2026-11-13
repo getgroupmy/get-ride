@@ -3668,8 +3668,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           (inset) => Positioned(
             // Clear of the notch on a phone on its side.
             right: 16 + MediaQuery.paddingOf(context).right,
-            // Recenter button height: at least that far up, still above the sheet.
-            bottom: math.max(mapAttributionClearance + inset, mapLayout.recenterBottom ?? 0),
+            // Always the same clearance above the sheet, whatever its resting
+            // height on this device; the admin's gap only adds to it.
+            bottom: mapAttributionClearance + inset + mapLayout.recenterGap,
             child: IgnorePointer(
               ignoring: _pinMoving,
               child: AnimatedSlide(

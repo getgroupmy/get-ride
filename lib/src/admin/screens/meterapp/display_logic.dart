@@ -419,7 +419,7 @@ Map<String, dynamic> defaultDisplaySettings() => {
       // (core/raise_nudge.dart).
       'raiseFareAfterSeconds': 45,
       'serviceBoxes': defaultServiceBoxes(),
-      'recenterButtonBottom': 459,
+      'recenterButtonGap': 0,
       'mapHeightOffset': 365,
       'dropPinTopOffset': 0,
       pinMiddleOffsetKey: 0,
@@ -581,8 +581,9 @@ const _vDesc = '(negative = up, positive = down)';
 const _hDesc = '(negative = left, positive = right)';
 
 const mapLayoutItems = [
-  LayoutItem('recenterButtonBottom', 'Recenter button height',
-      'Distance from the bottom of the screen (the button still stays above the bottom sheet)', 100, 700, 10),
+  LayoutItem('recenterButtonGap', 'Recenter button gap',
+      'Extra gap above the bottom sheet. The map type and recenter buttons always sit just above the sheet by the '
+          'same amount on every device; this adds to that gap (negative tucks them closer)', -40, 300, 5),
   LayoutItem('mapHeightOffset', 'Map height', 'Extra map height extending above the screen (the pin stays where it is)', 0, 800, 25),
   LayoutItem(pinMiddleOffsetKey, 'Pin up/down',
       'The pin, its address bar and the current place sit halfway between the top of the screen and the top of the '

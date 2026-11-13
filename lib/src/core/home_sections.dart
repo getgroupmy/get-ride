@@ -73,12 +73,13 @@ const pinMiddleOffsetKey = 'pinMiddleOffset';
 /// Admin → Display → Map Layout on the home map. Each applies only once the
 /// admin has set it, so a blob without it leaves the map as it is.
 class HomeMapLayout {
-  const HomeMapLayout({this.recenterBottom, this.mapExtra = 0, this.pinShift = (0, 0), this.pillOffset = 0});
+  const HomeMapLayout({this.recenterGap = 0, this.mapExtra = 0, this.pinShift = (0, 0), this.pillOffset = 0});
 
-  /// The map type and recenter buttons stand at least this far up from the
-  /// bottom of the screen (they still ride above the sheet when it is
-  /// higher). Null leaves them on the sheet.
-  final double? recenterBottom;
+  /// Extra gap added above the one the map type and recenter buttons always
+  /// keep over the bottom sheet, so they sit the same distance above it on
+  /// every device whatever the sheet's resting height. 0 keeps the default
+  /// clearance; positive lifts them, negative tucks them closer.
+  final double recenterGap;
 
   /// How far the map reaches above the top of the screen. The pin stays
   /// where it is ([focusShift] makes up for it).
@@ -109,7 +110,7 @@ class HomeMapLayout {
     }
 
     return HomeMapLayout(
-      recenterBottom: n('recenterButtonBottom'),
+      recenterGap: n('recenterButtonGap') ?? 0,
       mapExtra: math.max(0, n('mapHeightOffset') ?? 0),
       // The pin's own up / down (0302 on): the older Drop pin height made
       // up for Map height moving the pin, which it no longer does.
