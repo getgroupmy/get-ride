@@ -95,6 +95,12 @@ class GeoAdminRepository {
     await _db.from(up.table).upsert(up.row, onConflict: up.onConflict);
   }
 
+  /// Removes a region's mapped boundary — the one sanctioned clear
+  /// (`region_clear_boundary`, migration 0410). A plain region save can never
+  /// blank a stored boundary, so this is the only way to take one off.
+  Future<void> clearRegionBoundary(RegionLevel level, String id) =>
+      _db.rpc('region_clear_boundary', params: {'p_table': regionTables[level], 'p_id': id});
+
   /// Expo `deleteRegion`: the id may live in any of the four tables.
   Future<void> deleteRegion(String id) async {
     await Future.wait(regionTables.values.map((t) => _db.from(t).delete().eq('id', id)));
