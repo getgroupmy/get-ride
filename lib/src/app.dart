@@ -173,6 +173,7 @@ import 'widgets/app_icon_changed.dart';
 import 'core/battery_reliability.dart';
 import 'widgets/app_notice.dart';
 import 'widgets/connection_status_dialog.dart';
+import 'widgets/duo_fold_scope.dart';
 import 'widgets/android_nav_bar_inset.dart';
 import 'widgets/keyboard_dismiss.dart';
 import 'widgets/page_style_host.dart';
@@ -1416,7 +1417,13 @@ class _GetRideAppState extends ConsumerState<GetRideApp> {
                                     // The safety-location indicator (0337), then "Shared live with
                                     // support" while God View streams them (0282).
                                     child: SafetyLocationNotice(
-                                      child: LiveShareNotice(child: child ?? const SizedBox.shrink()),
+                                      // An iPhone Duo's crease (or a simulated one) enters
+                                      // MediaQuery.displayFeatures here, the same place an
+                                      // Android foldable's already is, so every screen's
+                                      // fold-aware layout needs no platform branch.
+                                      child: DuoFoldScope(
+                                        child: LiveShareNotice(child: child ?? const SizedBox.shrink()),
+                                      ),
                                     ),
                                   ),
                                 ),
