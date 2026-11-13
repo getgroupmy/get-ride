@@ -3846,7 +3846,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             payment: _payment,
             payments: _payments,
             onPayment: () async {
-              final p = await showPaymentSheet(context, _payment, payments: _payments);
+              final showCoin = coinOffer != null && layout.showCoin && coins != null;
+              final p = await showPaymentSheet(
+                context,
+                _payment,
+                payments: _payments,
+                coinTitle: showCoin ? 'Use GET.coin' : null,
+                coinSubtitleFor: !showCoin
+                    ? null
+                    : (on) => fareCoinSubtitle(
+                          on: on,
+                          fare: _fareFor(_service),
+                          coinBalance: coins.balance,
+                          coinsPerCurrency: coins.rate,
+                          currency: _currency,
+                        ),
+                useCoins: _useCoins,
+                onUseCoins: (v) => setState(() => _useCoins = v),
+              );
               if (p != null && mounted) setState(() => _paymentPick = p);
             },
             // Offers only come where bidding is on for this service.
@@ -3864,18 +3881,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     (_forOtherOn && bookedFor(_otherName.text, _otherPhone.text) == null)
                 ? null
                 : _find,
-            coinTitle: coinOffer == null || !layout.showCoin ? null : 'Use GET.coin',
-            coinSubtitle: coinOffer == null || !layout.showCoin
-                ? null
-                : fareCoinSubtitle(
-                    on: _useCoins,
-                    fare: _fareFor(_service),
-                    coinBalance: coins!.balance,
-                    coinsPerCurrency: coins.rate,
-                    currency: _currency,
-                  ),
-            useCoins: _useCoins,
-            onUseCoins: (v) => setState(() => _useCoins = v),
+            // GET.coin moved into the payment-method sheet (it is a drop-off
+            // discount paired with the method, not a separate footer toggle).
             pickLater: scheduleConfig.enabled && direct == null ? () => _pickLater(scheduleConfig) : null,
             onLater: _bookLater,
             owedNote: owedFeesNote(owed, _currency),
