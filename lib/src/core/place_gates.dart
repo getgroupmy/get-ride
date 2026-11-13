@@ -97,14 +97,18 @@ String _mode(Object? raw) => switch ('${raw ?? 'both'}') {
   _ => 'both',
 };
 
-/// The admin place a search result is at (the one of exactly that name,
-/// else the airport whose boundary holds the result ([airportId]), else the
-/// nearest within [gateMatchRadiusKm], else by name), with its active gates
-/// for [usage] in display-priority order. Null when it isn't an admin place,
-/// or the place is switched off. The exact name and the airport come first
-/// so an airport result (shown at its boundary's centre) or an address in
-/// the airport ("KLIA2 Arrival Lane") is the airport, not a smaller place
-/// nearer that point (an ERL station).
+/// The admin place a search result is at (the one of exactly that name, else
+/// the airport whose boundary holds the result ([airportId]), else -- only
+/// when the result has no name of its own -- the nearest within
+/// [gateMatchRadiusKm], else by name), with its active gates for [usage] in
+/// display-priority order. Null when it isn't an admin place, or the place is
+/// switched off. The exact name and the airport come first so an airport
+/// result (shown at its boundary's centre) or an address in the airport
+/// ("KLIA2 Arrival Lane") is the airport, not a smaller place nearer that
+/// point (an ERL station). A *named* search result (a POI the rider picked)
+/// only ever matches by name, never by nearness: searching "Gleneagles
+/// Hospital" must not land on a Jelatek LRT gate a kilometre away just
+/// because it is the closest mapped place.
 GatedPlace? matchGatedPlace({
   required List<GateRow> places,
   required List<GateRow> gates,
@@ -117,7 +121,11 @@ GatedPlace? matchGatedPlace({
   final q = _normalize(name ?? '');
   GateRow? place = q.isEmpty ? null : places.where((p) => _normalize('${p.values['name'] ?? ''}') == q).firstOrNull;
   if (place == null && airportId != null) place = places.where((p) => p.id == airportId).firstOrNull;
-  if (place == null && point != null) {
+  // Nearness snaps a result onto a mapped place only when it has no name of
+  // its own (a dropped pin or current location). A named POI is resolved by
+  // name below, so it is never hijacked by whatever gated place happens to sit
+  // within range.
+  if (place == null && q.isEmpty && point != null) {
     const distance = Distance();
     var best = double.infinity;
     for (final p in places) {

@@ -99,6 +99,21 @@ void main() {
       expect(matchGatedPlace(places: const [], gates: _gates, point: const LatLng(3.1178, 101.6772)), isNull);
     });
 
+    test('a named result is never snapped to a nearby place of another name', () {
+      // A different POI a few hundred metres from the mall, searched by name,
+      // must not resolve to the mall's gates (the Gleneagles -> Jelatek LRT
+      // bug): a named search is resolved by name, not by nearness.
+      final named = matchGatedPlace(
+        places: places,
+        gates: _gates,
+        point: const LatLng(3.1185, 101.6775), // within 1.5 km of the mall
+        name: 'Gleneagles Hospital', // but a different place
+      );
+      expect(named, isNull);
+      // The same point with no name (a dropped pin) still snaps to the mall.
+      expect(matchGatedPlace(places: places, gates: _gates, point: const LatLng(3.1185, 101.6775))?.id, 'mall');
+    });
+
     test('a place with no gates never blocks', () {
       final m = matchGatedPlace(places: [_mall], gates: const [], point: const LatLng(3.1178, 101.6772));
       expect(m?.gates, isEmpty);
