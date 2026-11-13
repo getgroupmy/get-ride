@@ -9,8 +9,12 @@ import 'airport_queue.dart';
 /// the building. Places come from `multi_gate` (kind `place`) and
 /// `airport_areas`; gates from `multi_gate` (kind `gate`, `values.placeId`).
 
-/// How close a search result must be to an admin place to count as it.
-const gateMatchRadiusKm = 1.5;
+/// How close a search result must be to an admin place to count as it by
+/// nearness alone -- tight, so a result sits essentially *on* the place (a
+/// "KLIA T1" pin on KLIA Terminal 1), not merely in the same part of town (a
+/// hospital search a kilometre from an LRT station's gate). A result that
+/// genuinely is the place, named differently, still matches by name.
+const gateMatchRadiusKm = 0.25;
 
 enum GateUsage { pickup, drop }
 
@@ -97,14 +101,18 @@ String _mode(Object? raw) => switch ('${raw ?? 'both'}') {
   _ => 'both',
 };
 
-/// The admin place a search result is at (the one of exactly that name,
-/// else the airport whose boundary holds the result ([airportId]), else the
-/// nearest within [gateMatchRadiusKm], else by name), with its active gates
+/// The admin place a search result is at (the one of exactly that name, else
+/// the airport whose boundary holds the result ([airportId]), else the one it
+/// sits on within [gateMatchRadiusKm], else by name), with its active gates
 /// for [usage] in display-priority order. Null when it isn't an admin place,
-/// or the place is switched off. The exact name and the airport come first
-/// so an airport result (shown at its boundary's centre) or an address in
-/// the airport ("KLIA2 Arrival Lane") is the airport, not a smaller place
-/// nearer that point (an ERL station).
+/// or the place is switched off. The exact name and the airport come first so
+/// an airport result (shown at its boundary's centre) or an address in the
+/// airport ("KLIA2 Arrival Lane") is the airport, not a smaller place nearer
+/// that point (an ERL station). The nearness step is deliberately tight so a
+/// named POI isn't captured by an unrelated gated place nearby (searching
+/// "Gleneagles Hospital" must not land on a Jelatek LRT gate a kilometre off),
+/// while a result that genuinely is the place under another name (a "KLIA T1"
+/// pin on KLIA Terminal 1) still matches.
 GatedPlace? matchGatedPlace({
   required List<GateRow> places,
   required List<GateRow> gates,
@@ -117,6 +125,8 @@ GatedPlace? matchGatedPlace({
   final q = _normalize(name ?? '');
   GateRow? place = q.isEmpty ? null : places.where((p) => _normalize('${p.values['name'] ?? ''}') == q).firstOrNull;
   if (place == null && airportId != null) place = places.where((p) => p.id == airportId).firstOrNull;
+  // By nearness: only a result sitting on the place ([gateMatchRadiusKm]),
+  // so a named POI isn't hijacked by an unrelated gated place down the road.
   if (place == null && point != null) {
     const distance = Distance();
     var best = double.infinity;
