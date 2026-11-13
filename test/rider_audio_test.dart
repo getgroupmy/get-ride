@@ -581,6 +581,36 @@ void main() {
       expect(find.byKey(const ValueKey('rider-audio-row')), findsNothing);
     });
 
+    testWidgets('ride-screen prompt: Not now returns false, Turn on returns true', (tester) async {
+      bool? result;
+      await pump(
+        tester,
+        Builder(
+          builder: (ctx) => TextButton(
+            key: const ValueKey('open-audio-prompt'),
+            onPressed: () async => result = await showRiderAudioPrompt(ctx, const RiderAudioAt()),
+            child: const Text('open'),
+          ),
+        ),
+      );
+      Future<void> open() async {
+        await tester.tap(find.byKey(const ValueKey('open-audio-prompt')));
+        await tester.pumpAndSettle();
+      }
+
+      await open();
+      expect(find.text('Turn on audio protection?'), findsOneWidget);
+      expect(find.textContaining('until you turn it off'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('rider-audio-prompt-not-now')));
+      await tester.pumpAndSettle();
+      expect(result, isFalse);
+
+      await open();
+      await tester.tap(find.byKey(const ValueKey('rider-audio-prompt-on')));
+      await tester.pumpAndSettle();
+      expect(result, isTrue);
+    });
+
     testWidgets('the Safety card says what it means', (tester) async {
       await pump(tester, const RiderAudioCard(), b: Brightness.dark, enabled: true);
       expect(find.text('Audio protection'), findsOneWidget);

@@ -44,6 +44,66 @@ Future<bool> confirmRiderAudio(BuildContext context, RiderAudioAt at) async =>
     ) ==
     true;
 
+/// The same consent as [confirmRiderAudio], but as the bottom-sheet prompt
+/// the ride screen raises once the driver is on the way (the switch left the
+/// booking sheet). Turning it on here remembers it, so later rides record
+/// without asking until the rider turns it off on the Safety page. True:
+/// turn it on.
+Future<bool> showRiderAudioPrompt(BuildContext context, RiderAudioAt at) async =>
+    await showAppSheet<bool>(
+      id: 'safety.rider-audio-prompt',
+      context: context,
+      builder: (ctx) {
+        final t = Theme.of(ctx);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                CircleAvatar(
+                  backgroundColor: t.colorScheme.surfaceContainerHighest,
+                  child: Icon(Icons.mic_none, color: t.colorScheme.onSurfaceVariant),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Turn on audio protection?',
+                      style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              Text(riderAudioConsent(at)),
+              const SizedBox(height: 8),
+              Text(riderAudioPrivacyLine, style: t.textTheme.bodySmall),
+              const SizedBox(height: 8),
+              Text(
+                'Stays on for your next rides until you turn it off under Safety.',
+                style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 16),
+              Row(children: [
+                Expanded(
+                  child: OutlinedButton(
+                    key: const ValueKey('rider-audio-prompt-not-now'),
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('Not now'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    key: const ValueKey('rider-audio-prompt-on'),
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('Turn on'),
+                  ),
+                ),
+              ]),
+            ]),
+          ),
+        );
+      },
+    ) ==
+    true;
+
 Future<void> _toggle(BuildContext context, WidgetRef ref, bool v, RiderAudioAt at) async {
   if (v && !await confirmRiderAudio(context, at)) return;
   await ref.read(riderAudioProvider.notifier).setEnabled(v);

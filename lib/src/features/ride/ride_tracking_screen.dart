@@ -12,8 +12,10 @@ import '../../core/hourly_hire.dart' show HourlyHireConfig;
 import '../../data/hourly_hire_repository.dart' show hourlyHireConfigProvider;
 import 'hire_parts.dart' show HireTripCard;
 import '../../data/ride_cancel_config.dart';
+import '../../core/rider_audio.dart' show RiderAudioAt;
+import '../../data/rider_audio_repository.dart' show riderAudioAtProvider, riderAudioSupported;
 import '../safety/rider_audio_controller.dart' show riderAudioProvider;
-import '../safety/rider_audio_widgets.dart' show RiderAudioTripLine;
+import '../safety/rider_audio_widgets.dart' show RiderAudioTripLine, showRiderAudioPrompt;
 import '../../data/city_ride_repository.dart';
 import '../../core/ride_offers.dart';
 import '../../core/permits.dart' show plateColoursFromJson;
@@ -381,8 +383,52 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     if (_isDemo) return;
     final r = widget.ride;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(ref.read(riderAudioProvider.notifier).onRide(r));
+      if (!mounted) return;
+      unawaited(ref.read(riderAudioProvider.notifier).onRide(r));
+      unawaited(_maybePromptAudio());
     });
+  }
+
+  /// The ride this phone has already offered audio protection for, so the
+  /// bottom-sheet prompt is raised once per ride, not on every update.
+  String? _audioPromptedRide;
+
+  /// Once the driver is on the way, offer audio protection as a one-time
+  /// bottom-sheet prompt (0315) — moved off the booking sheet. Skipped when
+  /// it is already on (it then records by itself and keeps doing so until the
+  /// rider turns it off under Safety) or not offered at this pickup. Turning
+  /// it on here remembers it for later rides too.
+  Future<void> _maybePromptAudio() async {
+    if (_isDemo || !riderAudioSupported) return;
+    final r = widget.ride;
+    if (!(r.status == RideStatus.accepted || r.status == RideStatus.arrived)) return;
+    if (_audioPromptedRide == r.id) return;
+    final audio = ref.read(riderAudioProvider);
+    if (!audio.loaded || audio.enabled) return;
+    final lat = r.pickupLat, lng = r.pickupLng;
+    if (lat == null || lng == null) return;
+    // Mark before the async lookup so a second update can't open a second sheet.
+    _audioPromptedRide = r.id;
+    double round(double v) => (v * 1000).roundToDouble() / 1000;
+    final at = await _readAudioAt(round(lat), round(lng));
+    if (at == null || !at.enabled || !mounted) return;
+    // Still this ride, still on the way, still off.
+    final now = widget.ride;
+    if (now.id != r.id || !(now.status == RideStatus.accepted || now.status == RideStatus.arrived)) return;
+    if (ref.read(riderAudioProvider).enabled) return;
+    final on = await showRiderAudioPrompt(context, at);
+    if (on && mounted) {
+      await ref.read(riderAudioProvider.notifier).setEnabled(true);
+      if (mounted) unawaited(ref.read(riderAudioProvider.notifier).onRide(widget.ride));
+    }
+  }
+
+  Future<RiderAudioAt?> _readAudioAt(double lat, double lng) async {
+    try {
+      return await ref.read(riderAudioAtProvider((lat: lat, lng: lng)).future);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// The driver's request to cancel, as a popup the passenger answers.
