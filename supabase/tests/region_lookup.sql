@@ -48,8 +48,9 @@ select pg_temp.check((select not inside from public.regions_at(15, 15) where reg
 select pg_temp.check((select inside is null and has_boundary from public.regions_at() where region_table = 'countries' and country = 'Testland 169'),
   'no point, no answer');
 
--- The shapes follow the admin's edits.
-update public.cities set geofence = null where name = 'Box 169';
+-- The shapes follow the admin's edits (cleared via the sanctioned path;
+-- migration 0410 guards a plain null).
+select public.region_clear_boundary('cities', (select id from public.cities where name = 'Box 169'));
 select pg_temp.check((select not has_boundary from public.regions_at(2, 2) where city = 'Box 169'), 'cleared boundary dropped');
 select pg_temp.check(has_function_privilege('anon', 'public.regions_at(double precision, double precision)', 'execute'),
   'anon cannot ask regions_at');
