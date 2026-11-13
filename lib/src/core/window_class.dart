@@ -165,6 +165,21 @@ bool hitsFold(Rect item, WindowFold? fold) => fold != null && fold.separates && 
   );
 }
 
+/// For a left-panel / right-map split (the home screen's wide layout): the
+/// panel width and the seam gap so the divider falls on a vertical book-fold,
+/// instead of an arbitrary fixed width that could land content in the crease.
+/// Null to keep the default single split — when there is no separating
+/// vertical fold, or the two panes it would make are too narrow to use
+/// ([minLeft] for the panel, [minRight] for the map).
+({double panelWidth, double gap})? verticalSplitFor(WindowMetrics m, {double minLeft = 360, double minRight = 300}) {
+  final f = m.fold;
+  if (f == null || !f.separates || !f.vertical) return null;
+  final left = f.bounds.left;
+  final right = m.size.width - f.bounds.right;
+  if (left < minLeft || right < minRight) return null;
+  return (panelWidth: left, gap: f.bounds.width);
+}
+
 /// The window's size class, fold and pose for [context], read from the live
 /// MediaQuery so it follows folding, unfolding and resizing. Depends only on
 /// the window size and its display features, not the whole MediaQuery.

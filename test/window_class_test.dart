@@ -118,4 +118,50 @@ void main() {
       expect(panesAround(area, outside), isNull, reason: 'a seam at the very edge divides nothing');
     });
   });
+
+  group('verticalSplitFor', () {
+    WindowMetrics metrics(Size size, List<DisplayFeature> features) => windowMetricsOf(size, features);
+
+    test('aligns the panel and gap to a half-opened vertical book-fold', () {
+      final m = metrics(
+        const Size(1000, 1200),
+        [_fold(const Rect.fromLTWH(480, 0, 40, 1200), state: DisplayFeatureState.postureHalfOpened)],
+      );
+      final split = verticalSplitFor(m)!;
+      expect(split.panelWidth, 480, reason: 'the left pane');
+      expect(split.gap, 40, reason: 'the seam thickness');
+    });
+
+    test('a hinge separates whatever the pose', () {
+      final m = metrics(const Size(1340, 1000), [_hinge(const Rect.fromLTWH(650, 0, 40, 1000))]);
+      expect(verticalSplitFor(m)?.panelWidth, 650);
+    });
+
+    test('keeps the default when a pane would be too narrow', () {
+      // Left pane 300 < minLeft.
+      final narrowLeft = metrics(
+        const Size(1000, 1200),
+        [_fold(const Rect.fromLTWH(300, 0, 20, 1200), state: DisplayFeatureState.postureHalfOpened)],
+      );
+      expect(verticalSplitFor(narrowLeft), isNull);
+      // Right pane 260 < minRight.
+      final narrowRight = metrics(
+        const Size(1000, 1200),
+        [_fold(const Rect.fromLTWH(720, 0, 20, 1200), state: DisplayFeatureState.postureHalfOpened)],
+      );
+      expect(verticalSplitFor(narrowRight), isNull);
+    });
+
+    test('null for a flat fold, a horizontal fold, or none', () {
+      expect(verticalSplitFor(metrics(const Size(1000, 1200), [_fold(const Rect.fromLTWH(480, 0, 40, 1200))])), isNull,
+          reason: 'flat = seamless');
+      expect(
+        verticalSplitFor(metrics(const Size(1200, 1000),
+            [_hinge(const Rect.fromLTWH(0, 480, 1200, 40))])),
+        isNull,
+        reason: 'horizontal seam is not a left/right split',
+      );
+      expect(verticalSplitFor(metrics(const Size(1000, 1200), const [])), isNull);
+    });
+  });
 }
