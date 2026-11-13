@@ -78,6 +78,8 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
   List<LatLng> _draft = [];
   int? _selected;
   bool _busy = false;
+  // Which "Fetch boundary" source is running, for its chip's spinner.
+  String? _fetching;
   final _n = TextEditingController(), _s = TextEditingController(), _e = TextEditingController(), _w = TextEditingController();
 
   @override
@@ -174,31 +176,41 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
     _setBoundary(shape);
   }
 
-  Future<void> _fetchOsm() async {
-    if (widget.askQuery) {
-      final c = TextEditingController(text: _query);
-      final q = await showAppDialog<String>(
-        id: 'admin-regions.osm-query',
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Search OpenStreetMap'),
-          content: TextField(
-            controller: c,
-            autofocus: true,
-            decoration: const InputDecoration(hintText: 'e.g. Putrajaya'),
-            onSubmitted: (v) => Navigator.pop(ctx, v),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Search')),
-          ],
+  /// For [askQuery] sources (an airport's zone is rarely named after it):
+  /// asks what to look [source] up for, seeded from [_query]. Returns false
+  /// when cancelled.
+  Future<bool> _askQuery(String source) async {
+    if (!widget.askQuery) return true;
+    final c = TextEditingController(text: _query);
+    final q = await showAppDialog<String>(
+      id: 'admin-regions.osm-query',
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Search $source'),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'e.g. Putrajaya'),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
-      );
-      c.dispose();
-      if (q == null || q.trim().isEmpty || !mounted) return;
-      setState(() => _query = q.trim());
-    }
-    setState(() => _busy = true);
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Search')),
+        ],
+      ),
+    );
+    c.dispose();
+    if (q == null || q.trim().isEmpty || !mounted) return false;
+    setState(() => _query = q.trim());
+    return true;
+  }
+
+  Future<void> _fetchOsm() async {
+    if (!await _askQuery('OpenStreetMap')) return;
+    setState(() {
+      _busy = true;
+      _fetching = 'osm';
+    });
     final osm = ref.read(osmLookupProvider);
     try {
       var list = <BoundaryCandidate>[];
@@ -221,7 +233,38 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
         if (picked != null) _setBoundary(picked.shape);
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _fetching = null;
+        });
+      }
+    }
+  }
+
+  /// Ask the AI (via the `region-boundary-ai` edge function) for [_query]'s
+  /// outline — a third source beside OSM and a typed bounding box.
+  Future<void> _fetchAi() async {
+    if (!await _askQuery('with AI')) return;
+    setState(() {
+      _busy = true;
+      _fetching = 'ai';
+    });
+    try {
+      final res = await ref.read(geoAdminRepositoryProvider).aiBoundary(_query);
+      if (!mounted) return;
+      if (res.shape != null) {
+        _setBoundary(res.shape);
+      } else {
+        showInfo(context, res.error ?? 'The AI request failed. Try again.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _fetching = null;
+        });
+      }
     }
   }
 
@@ -455,11 +498,19 @@ class _BoundaryEditorPageState extends ConsumerState<BoundaryEditorPage> {
         const SizedBox(height: 8),
         Wrap(spacing: 8, children: [
           ActionChipButton(
-            avatar: _busy
+            avatar: _fetching == 'osm'
                 ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.public, size: 18),
             label: const Text('OSM'),
             onPressed: _busy || _mode != _DrawMode.off ? null : _fetchOsm,
+          ),
+          ActionChipButton(
+            key: const ValueKey('boundary-ai'),
+            avatar: _fetching == 'ai'
+                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.auto_awesome, size: 18),
+            label: const Text('AI'),
+            onPressed: _busy || _mode != _DrawMode.off ? null : _fetchAi,
           ),
           ActionChipButton(
             avatar: const Icon(Icons.crop_square, size: 18),

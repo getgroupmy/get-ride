@@ -25,6 +25,24 @@ void main() {
       expect(parseBoundary(42), isNull);
     });
 
+    test('AI source (region-boundary-ai output) parses and is a known source', () {
+      // The shape the region-boundary-ai edge function returns (full
+      // BoundaryShape with source "ai", multiple rings).
+      const raw = '{"coords":[{"latitude":1,"longitude":100},{"latitude":1,"longitude":101},'
+          '{"latitude":2,"longitude":101},{"latitude":1,"longitude":100}],'
+          '"polygons":[[{"latitude":1,"longitude":100},{"latitude":1,"longitude":101},'
+          '{"latitude":2,"longitude":101},{"latitude":1,"longitude":100}],'
+          '[{"latitude":5,"longitude":110},{"latitude":5,"longitude":111},'
+          '{"latitude":6,"longitude":111},{"latitude":5,"longitude":110}]],'
+          '"bbox":{"north":6,"south":1,"east":111,"west":100},"source":"ai"}';
+      final b = parseBoundary(raw)!;
+      expect(b.source, 'ai');
+      expect(boundarySources, contains('ai'));
+      expect(b.rings.length, 2);
+      expect(boundaryContains(b, const LatLng(5.5, 110.5)), isTrue);
+      expect(boundaryContains(b, const LatLng(3, 105)), isFalse);
+    });
+
     test('encode round-trips and uses latitude/longitude keys', () {
       final shape = boundaryFromDraft(const [LatLng(1, 1), LatLng(1, 2), LatLng(2, 2)])!;
       final j = jsonDecode(shape.encode()) as Map<String, dynamic>;
