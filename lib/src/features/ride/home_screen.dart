@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
 import '../../core/booking_modules.dart' show familyModuleHire, familyModuleRide;
+import '../../core/window_class.dart' show verticalSplitFor, windowMetricsFor;
 import '../../core/hourly_hire.dart' show HourlyHireConfig, hirePackageHourly, hireTileRoute, hireTitle;
 import '../../core/multi_day_hire.dart'
     show HireDaysBooking, MultiHireConfig, hirePackageDaily, hirePackageMonthly, hirePackageWeekly;
@@ -4025,10 +4026,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           if (confirming && _routing && !_addingStop) const Positioned.fill(child: CalculatingFareOverlay()),
         ]);
     if (wide) {
+      // On a foldable held open as a book, line the panel/map divide up with
+      // the fold so neither crosses the crease; a fixed width otherwise. No-op
+      // on every non-folding device (no separating vertical fold reported).
+      final split = verticalSplitFor(windowMetricsFor(context));
       return Scaffold(
         body: calculating(Row(children: [
           SizedBox(
-            width: 420,
+            width: split?.panelWidth ?? 420,
             child: SafeArea(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4060,7 +4065,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           ),
-          const VerticalDivider(width: 1),
+          // The seam gap on a book-fold, else a hairline divider.
+          if (split != null) SizedBox(width: split.gap) else const VerticalDivider(width: 1),
           Expanded(child: map),
         ])),
       );
