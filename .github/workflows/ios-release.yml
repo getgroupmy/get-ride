@@ -474,6 +474,23 @@ jobs:
 
           ls -l "$RUNNER_TEMP/ipa"
 
+      # App Review 2.5.2: an App Store binary must not carry the itms-services
+      # scheme (it installs apps outside the App Store). The store build drops
+      # the only Dart literal behind STORE_BUILD, but guard the actual binary so
+      # a stray occurrence — a new dependency, a reverted gate — can never ship
+      # and trigger the "Extended Review" / account-risk warning again.
+      - name: No itms-services in the app binary
+        if: steps.creds.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          app=$(ls -d "$RUNNER_TEMP/Runner.xcarchive/Products/Applications/"*.app | head -1)
+          if grep -rqa "itms-services" "$app"; then
+            echo "::error::'itms-services' is present in the archived app (App Review 2.5.2). Nothing was uploaded."
+            grep -rla "itms-services" "$app" || true
+            exit 1
+          fi
+          echo "clean: no itms-services in $app"
+
       # Same archive, re-signed for the iPhones in the Ad Hoc profile.
       - name: Ad Hoc export
         id: adhoc

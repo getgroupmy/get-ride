@@ -7,6 +7,7 @@
 // beside the universal one: a phone is handed its own ([AppBuild.forDevice]),
 // 64-bit unless it says it is a 32-bit-only phone, and the universal APK
 // when its split was not published.
+import '../config.dart' show AppConfig;
 import 'ride_share.dart';
 
 /// The 64-bit Android ABI: nearly every phone, and the default.
@@ -186,7 +187,18 @@ class AppBuild {
     String? text(Object? v) => v is String && v.trim().isNotEmpty ? v.trim() : null;
     String? https(Object? v) {
       final s = text(v);
-      return s != null && (s.startsWith('https://') || s.startsWith('itms-services://')) ? s : null;
+      if (s == null) return null;
+      if (s.startsWith('https://')) return s;
+      // An iPhone installs an Ad Hoc build over an itms-services link. That
+      // scheme is never allowed in an App Store binary (App Review 2.5.2), and
+      // a store build has no install screen to use one anyway. `storeBuild` is
+      // a compile-time const, so in a store build this whole block — the
+      // `itms-services` string literal included — is dropped by the AOT
+      // compiler and never reaches Apple's binary scan.
+      if (!AppConfig.storeBuild) {
+        if (s.startsWith('itms-services://')) return s;
+      }
+      return null;
     }
 
     final download = https(json['download_url']);
