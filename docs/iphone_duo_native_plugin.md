@@ -16,10 +16,29 @@ fold from `MediaQuery.displayFeatures` and lays the UI out around it.
 > **Status: written from reference code, NOT compiled here.** This repo's CI is Linux;
 > there is no Xcode. Build and verify this on **Xcode 27.1 + the iPhone Duo simulator**.
 > The API names (`UIHingeInteraction`, `UIView.reservedRegions(kind:options:)`,
-> `ReservedRegion`, `verticalBarEdge`) are taken from Apple's HIG and three community
+> `ReservedRegion`, `verticalBarEdge`) are taken from Apple's HIG and the community
 > samples (pvinis/duo-demo, openHacking/DuoKit, Codelaby/IphoneDuo) — confirm each
 > against the installed SDK before shipping; do not assume a signature that does not
 > compile.
+
+## This plugin is a stopgap — Flutter is adding it to the engine
+
+[flutter/flutter#193025](https://github.com/flutter/flutter/pull/193025) ("[iOS] Populate
+display features from the iPhone Duo hinge and reserved regions") teaches the iOS embedder
+to fill `MediaQuery.displayFeatures` itself — a `FlutterDisplayFeaturesMonitor` that installs
+`UIHingeInteraction`, re-reads `reservedRegions` on every hinge update and layout pass, and
+reports them into the viewport metrics. It was **open against `flutter:master`** at the time
+of writing (gated on Flutter CI moving to Xcode 27.1), not in any stable release this app uses.
+
+So: **ship this plugin only until the app's Flutter includes #193025.** Once it does,
+`displayFeatures` fills on iOS with no plugin, and `mergeFoldFeatures` already drops this
+plugin's synthesized feature in favour of the engine's (so leaving the plugin in during the
+overlap is harmless, not doubled). The whole thing can then be deleted.
+
+Its mapping, confirmed to match ours: the division becomes **`DisplayFeatureType.fold`** (not
+hinge — the inner panel is continuous), reported **only while the hinge is partially open**, as
+a **zero-width `postureHalfOpened`** feature decided by hinge status + `isActive`; occlusion
+becomes a `cutout`; bounds are **logical points**, scaled by the device pixel ratio.
 
 ## Channel contract (what Dart expects)
 
@@ -119,6 +138,13 @@ final class DuoFoldPlugin: NSObject, FlutterStreamHandler {
 
 Also re-emit on `traitCollectionDidChange` / `viewDidLayoutSubviews` of the
 `FlutterViewController`, so a rotate or Split-View resize refreshes the crease.
+
+**Read the regions in `viewDidLayoutSubviews`, not only in the hinge handler.** Per
+flutter/flutter#193025, the reserved regions *lag* the hinge: inside the hinge update the
+division still reports its pre-move `isActive`; it clears ~2–15 ms after the hinge reads fully
+open and becomes active ~1 s after folding, and there is **no change notification** for reserved
+regions in the 27.1 headers. Reading on each layout pass is what catches the settled state. The
+posture rule (treat active-while-open as a separating fold) covers the in-between window.
 
 ## Verifying without hardware (works today)
 
