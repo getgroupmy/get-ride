@@ -100,13 +100,13 @@ void main() {
   group('Map Layout on the home map', () {
     test('each setting is read once the admin has set it', () {
       final l = HomeMapLayout.fromSettings({
-        'recenterButtonBottom': 239,
+        'recenterButtonGap': 24,
         'mapHeightOffset': '215',
         pinMiddleOffsetKey: 30,
         'dropPinHorizontalOffset': -10,
         'addressBarTopOffset': -20,
       });
-      expect(l.recenterBottom, 239);
+      expect(l.recenterGap, 24);
       expect(l.mapExtra, 215);
       expect(l.pinShift, (-10.0, 30.0));
       // The map's centre is half its extra height up; the pin is put back
@@ -117,7 +117,7 @@ void main() {
 
     test('nothing set leaves the map as it is', () {
       final l = HomeMapLayout.fromSettings(const {});
-      expect(l.recenterBottom, isNull);
+      expect(l.recenterGap, 0);
       expect(l.mapExtra, 0);
       expect(l.pinShift, (0.0, 0.0));
       expect(l.focusShift, Offset.zero);
