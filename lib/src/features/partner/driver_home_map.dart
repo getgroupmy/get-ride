@@ -199,7 +199,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
           (inset) => Positioned(
             // Clear of the notch on a phone on its side.
             right: 12 + MediaQuery.paddingOf(context).right,
-            bottom: mapAttributionClearance + inset,
+            // Clear of the sheet's rounded corner too, so the buttons never
+            // tuck against it on a device whose sheet rests tight to them.
+            bottom: mapAttributionClearance + MapBottomInset.cornerOf(context) + inset,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               // Traffic (when configured), then map view above recenter.
               const TrafficButton(),

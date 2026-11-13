@@ -361,7 +361,9 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
           (inset) => Positioned(
             // Clear of the notch on a phone on its side.
             right: 12 + MediaQuery.paddingOf(context).right - recenterAt.$1,
-            bottom: mapAttributionClearance + inset - recenterAt.$2,
+            // Clear of the sheet's rounded corner too, so the buttons never
+            // tuck against it on a device whose sheet rests tight to them.
+            bottom: mapAttributionClearance + MapBottomInset.cornerOf(context) + inset - recenterAt.$2,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               ?widget.topButton,
               // Map view above recenter on every map.
