@@ -149,7 +149,6 @@ import '../../widgets/page_style_host.dart';
 import '../../widgets/web_overlay_back.dart';
 import '../../data/rider_audio_repository.dart' show riderAudioSupported;
 import '../safety/rider_audio_controller.dart' show riderAudioProvider;
-import '../safety/rider_audio_widgets.dart' show RiderAudioConfirmRow;
 import '../../core/rider_live_map.dart';
 import '../../data/rider_live_map_repository.dart';
 import 'live_map_feed.dart';
@@ -3907,10 +3906,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onEdit: () => _pickMyRide(myRideFavs, myRideSettings),
                   )
                 : null,
-            // The rider's own trip only: not when booking for someone else.
-            audioProtection: _forOtherOn || _pickup == null
-                ? null
-                : RiderAudioConfirmRow(lat: _pickup!.point.latitude, lng: _pickup!.point.longitude),
+            // Audio protection is no longer offered here: the ride screen asks
+            // once the driver is on the way (rider_audio_widgets, 0315).
           )
         : null;
     // The nearest drivers to the pickup, on the confirm step: real ones from
