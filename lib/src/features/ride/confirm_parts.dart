@@ -1347,12 +1347,22 @@ Future<String?> showPaymentSheet(
   BuildContext context,
   String current, {
   List<PaymentChoice> payments = builtInPayments,
+  // GET.coin is a fare discount (redeemed at drop-off), not a method on its
+  // own, so it rides at the foot of this sheet as a toggle rather than as one
+  // of the tappable rows: picking a method still charges any remainder.
+  // [coinSubtitleFor] gives the live subtitle for the on/off state.
+  String? coinTitle,
+  String Function(bool on)? coinSubtitleFor,
+  bool useCoins = false,
+  ValueChanged<bool>? onUseCoins,
 }) => showAppSheet<String>(id: 'confirm.show-payment-sheet',
   context: context,
   fitContent: true,
   builder: (c) {
     final t = Theme.of(c);
     final dark = t.brightness == Brightness.dark;
+    // Lives in this closure so it survives the coin row's rebuilds.
+    var coinOn = useCoins;
     return SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1402,6 +1412,37 @@ Future<String?> showPaymentSheet(
                 onTap: () => Navigator.pop(c, value),
               ),
             ),
+          // GET.coin (a drop-off discount): a toggle at the foot of the sheet,
+          // not a tappable method. Toggling it does not close the sheet.
+          if (coinTitle != null && coinSubtitleFor != null) ...[
+            const Divider(height: 1),
+            StatefulBuilder(
+              builder: (c, setRow) {
+                void set(bool v) {
+                  setRow(() => coinOn = v);
+                  onUseCoins?.call(v);
+                }
+                return ListTile(
+                  key: const ValueKey('payment-use-coins'),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                  leading: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: const BoxDecoration(color: Color(0xFFFEF3C7), shape: BoxShape.circle),
+                    child: const Icon(Icons.toll, size: 18, color: Color(0xFFB45309)),
+                  ),
+                  title: Text(coinTitle, style: t.textTheme.bodyLarge?.copyWith(fontSize: 17)),
+                  subtitle: Text(coinSubtitleFor(coinOn), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  trailing: ConfirmSwitch(
+                    key: const ValueKey('payment-use-coins-switch'),
+                    value: coinOn,
+                    onChanged: set,
+                  ),
+                  onTap: () => set(!coinOn),
+                );
+              },
+            ),
+          ],
           const SizedBox(height: 12),
         ],
       ),

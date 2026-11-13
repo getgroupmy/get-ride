@@ -324,6 +324,40 @@ void _sheets() {
         expect(await r, 'Ewallet');
       });
 
+      testWidgets('Payment method: GET.coin is a toggle in the sheet, not a row ($at)', (tester) async {
+        await onPhone(tester, phone);
+        late BuildContext ctx;
+        await tester.pumpWidget(sheetHost(phone, b, (c) => ctx = c));
+        final toggles = <bool>[];
+        final r = showPaymentSheet(
+          ctx,
+          'Cash',
+          coinTitle: 'Use GET.coin',
+          coinSubtitleFor: (on) => on ? 'coin-on' : 'coin-off',
+          useCoins: false,
+          onUseCoins: toggles.add,
+        );
+        await tester.pumpAndSettle();
+        // The coin row is shown, off, with its off subtitle — and it is a
+        // toggle (a switch), not one of the tappable method rows.
+        final coinRow = find.byKey(const ValueKey('payment-use-coins'));
+        await tester.ensureVisible(coinRow);
+        await tester.pumpAndSettle();
+        expect(coinRow, findsOneWidget);
+        expect(find.text('coin-off'), findsOneWidget);
+        // Turning it on does not close the sheet; the subtitle goes live and
+        // onUseCoins fires.
+        await tester.tap(find.byKey(const ValueKey('payment-use-coins-switch')));
+        await tester.pumpAndSettle();
+        expect(toggles, [true]);
+        expect(find.text('coin-on'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        // Picking a method still returns it (the coin state rode alongside).
+        await tester.tap(find.byKey(const ValueKey('payment-Cash')));
+        await tester.pumpAndSettle();
+        expect(await r, 'Cash');
+      });
+
       testWidgets('Choose date and time: Confirm time on screen ($at)', (tester) async {
         await onPhone(tester, phone);
         late BuildContext ctx;
