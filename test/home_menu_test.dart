@@ -79,7 +79,9 @@ void main() {
     final sheetTop = tester.getRect(find.byKey(const ValueKey('map-sheet-handle'))).top;
     final recenter = tester.getRect(find.byKey(const ValueKey('map-recenter')));
     expect(recenter.bottom, lessThan(sheetTop));
-    expect(recenter.bottom, greaterThan(sheetTop - 40), reason: 'right above the sheet, not at the top');
+    // Just above the sheet — now clearing its rounded corner (the 12px margin
+    // plus the corner radius), not stranded at the top of the map.
+    expect(recenter.bottom, greaterThan(sheetTop - 72), reason: 'right above the sheet, not at the top');
     expect(recenter.right, closeTo(400 - 16, 0.5));
     expect(tester.getRect(find.byKey(const ValueKey('map-type'))).bottom, lessThanOrEqualTo(recenter.top));
 
