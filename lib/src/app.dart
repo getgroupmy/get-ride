@@ -39,7 +39,7 @@ import 'core/trip_card.dart' show tripCardLinkLocation;
 import 'core/partner_remote_action.dart' show RemoteActionRequest, remoteActionIdFromPush, remoteActionLinkLocation, remoteActionRoute;
 import 'features/approver/approver_inbox_screen.dart';
 import 'features/approver/my_team_screen.dart';
-import 'features/approver/team_location_screen.dart';
+import 'admin/screens/god_view_screen.dart' show GodViewScreen;
 import 'data/approver_inbox_repository.dart' show TeamMember;
 import 'features/team/team_members_screen.dart';
 import 'features/business/business_apply_screen.dart';
@@ -631,8 +631,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               initialTab: state.uri.queryParameters['tab'],
             ),
           ),
-          // Team Location (0406): an approver's God View of the team they cover.
-          GoRoute(path: '/my-team/location', builder: (_, _) => const TeamLocationScreen()),
+          // Team Location (0406–0409): the God View screen itself, scoped to the
+          // approver's team (teamScoped) — same map, filters, People list and
+          // per-person actions, with the admin-only powers hidden.
+          GoRoute(path: '/my-team/location', builder: (_, _) => const GodViewScreen(teamScoped: true)),
           // Team (0358): the member's team directory (Profile → Team → View members).
           GoRoute(path: '/team/members', builder: (_, _) => const TeamMembersScreen()),
           // Driver mode's pages, under the driver menu.

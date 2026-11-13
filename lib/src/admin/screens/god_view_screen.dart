@@ -28,6 +28,7 @@ import '../../data/app_version_repository.dart' show appVersionRulesProvider;
 import '../../data/geo_service.dart' show Place, defaultCenter;
 import '../../core/smart_address.dart' show placeAreaLine, placeIcon, shortArea;
 import '../../data/god_view_repository.dart';
+import '../../data/approver_inbox_repository.dart' show approverInboxRepositoryProvider;
 import '../../providers.dart' show geoServiceProvider;
 import '../../widgets/busy.dart';
 import '../../widgets/call_number.dart';
@@ -82,7 +83,17 @@ IconData _serviceIcon(GodViewService s) => switch (s) {
 };
 
 class GodViewScreen extends ConsumerStatefulWidget {
-  const GodViewScreen({super.key});
+  const GodViewScreen({super.key, this.teamScoped = false});
+
+  /// Team Location (migrations 0406–0409): the very same screen, but its map
+  /// and "No location" list come from the approver's team-scoped RPCs
+  /// (`approver_team_snapshot` / `approver_team_unlocated`) instead of God
+  /// View's admin-wide ones, the title reads "Team Location", and the
+  /// platform-wide Settings are hidden. Every per-person action already works
+  /// for a covering approver (0408), and the admin-only powers (suspend, edit
+  /// phone, open admin profile) gate themselves off on the admin permissions
+  /// an approver does not have.
+  final bool teamScoped;
 
   @override
   ConsumerState<GodViewScreen> createState() => _GodViewScreenState();
@@ -231,10 +242,15 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     }
     _inFlight = true;
     try {
-      final s = await ref.read(godViewRepositoryProvider).snapshot(
-        showOffline: _filters.lastKnown,
-        query: _filters.query,
-      );
+      final s = widget.teamScoped
+          ? await ref.read(approverInboxRepositoryProvider).teamLocation(
+              showOffline: _filters.lastKnown,
+              query: _filters.query,
+            )
+          : await ref.read(godViewRepositoryProvider).snapshot(
+              showOffline: _filters.lastKnown,
+              query: _filters.query,
+            );
       if (!mounted) return;
       setState(() {
         _snap = s;
@@ -260,7 +276,9 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
   Future<void> _loadUnlocated() async {
     final query = _filters.query;
     try {
-      final rows = await ref.read(godViewRepositoryProvider).unlocated(query: query);
+      final rows = widget.teamScoped
+          ? await ref.read(approverInboxRepositoryProvider).teamUnlocated(query: query)
+          : await ref.read(godViewRepositoryProvider).unlocated(query: query);
       if (mounted && _filters.query == query) setState(() => _unlocated = rows);
     } catch (e) {
       debugPrint('[god-view] no-location list not loaded: $e');
@@ -785,19 +803,21 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     final snap = _snap;
     final shown = godViewShown(snap?.people ?? const [], _filters, serverQuery: snap?.query ?? '');
     final now = _now();
-    final canPartner = ref.watch(pageAccessProvider('admin-partner-edit')) != AccessLevel.none;
-    final canUser = ref.watch(pageAccessProvider('admin-user-edit')) != AccessLevel.none;
+    final canPartner = !widget.teamScoped && ref.watch(pageAccessProvider('admin-partner-edit')) != AccessLevel.none;
+    final canUser = !widget.teamScoped && ref.watch(pageAccessProvider('admin-user-edit')) != AccessLevel.none;
     return AdminPage(
-      title: 'God View',
+      title: widget.teamScoped ? 'Team Location' : 'God View',
       module: 'god-view',
       actions: [
         IconButton(tooltip: 'Refresh', icon: const Icon(Icons.refresh), onPressed: _refresh),
-        IconButton(
-          key: const ValueKey('god-view-settings'),
-          tooltip: 'Settings',
-          icon: const Icon(Icons.settings_outlined),
-          onPressed: _openSettings,
-        ),
+        // Settings is the platform-wide ping/always-on config: admin only.
+        if (!widget.teamScoped)
+          IconButton(
+            key: const ValueKey('god-view-settings'),
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: _openSettings,
+          ),
       ],
       body: LayoutBuilder(
         builder: (context, c) {
@@ -1138,13 +1158,20 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
     final color = godViewStatusColor(p.status, b);
     final onMap = _snap?.people.any((x) => x.id == p.id) ?? false;
     final other = p.otherName ?? (p.otherId == null ? null : 'On the ride');
-    final actions = godViewActionsFor(
-      p,
-      canReadRides: ref.watch(moduleAccessProvider('rides')) != AccessLevel.none,
-      canOpenProfile: ref.watch(pageAccessProvider(p.isPartner ? 'admin-partner-edit' : 'admin-user-edit')) != AccessLevel.none,
-      canPush: ref.watch(moduleAccessProvider('push')) == AccessLevel.edit,
-      canSuspend: ref.watch(moduleAccessProvider(p.isPartner ? 'partners' : 'users')) == AccessLevel.edit,
-    );
+    // Team Location is location only: the admin-only actions (open ride, open
+    // admin profile, send push, suspend) are off whoever is looking, so an
+    // admin who is also an approver still gets the team view, not God View's
+    // account powers. The location actions (reveal / ping / Live now /
+    // movement) are not in this set and stay on.
+    final actions = widget.teamScoped
+        ? godViewActionsFor(p, canReadRides: false, canOpenProfile: false, canPush: false, canSuspend: false)
+        : godViewActionsFor(
+            p,
+            canReadRides: ref.watch(moduleAccessProvider('rides')) != AccessLevel.none,
+            canOpenProfile: ref.watch(pageAccessProvider(p.isPartner ? 'admin-partner-edit' : 'admin-user-edit')) != AccessLevel.none,
+            canPush: ref.watch(moduleAccessProvider('push')) == AccessLevel.edit,
+            canSuspend: ref.watch(moduleAccessProvider(p.isPartner ? 'partners' : 'users')) == AccessLevel.edit,
+          );
     final phone = _phones[p.id];
     final revealed = _phones.containsKey(p.id);
     return ListView(
@@ -1270,7 +1297,7 @@ class _GodViewScreenState extends ConsumerState<GodViewScreen> with TickerProvid
               onPressed: () => _reveal(p),
               child: const Text('Show'),
             ),
-          if (ref.watch(adminAccessProvider).value?.canEdit(const ['admin-users', 'admin-user-edit']) ?? false)
+          if (!widget.teamScoped && (ref.watch(adminAccessProvider).value?.canEdit(const ['admin-users', 'admin-user-edit']) ?? false))
             IconButton(
               key: const ValueKey('god-view-edit-phone'),
               tooltip: 'Change phone number',

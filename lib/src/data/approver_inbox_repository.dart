@@ -10,7 +10,7 @@ import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../core/god_view.dart' show GodViewSnapshot;
+import '../core/god_view.dart' show GodViewSnapshot, GodViewUnlocated;
 import '../providers.dart';
 import 'permits_repository.dart' show VehiclePermits;
 
@@ -1425,6 +1425,18 @@ class ApproverInboxRepository {
       'p_limit': limit,
     });
     return GodViewSnapshot.fromJson(res is Map ? Map<String, dynamic>.from(res) : const {}, query: q);
+  }
+
+  /// Team Location's "No location" list (migration 0409): the people this
+  /// approver covers who are not on the map, the team-scoped twin of God
+  /// View's `god_view_unlocated`.
+  Future<List<GodViewUnlocated>> teamUnlocated({String query = '', int limit = 500}) async {
+    final q = query.trim();
+    final rows = await _db.rpc('approver_team_unlocated', params: {'p_query': q.isEmpty ? null : q, 'p_limit': limit});
+    return [
+      for (final r in (rows as List? ?? const []))
+        if (r is Map) GodViewUnlocated.fromJson(Map<String, dynamic>.from(r)),
+    ];
   }
 
   /// Every pending document in the caller's scope.
