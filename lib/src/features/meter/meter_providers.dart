@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../core/meter_console.dart';
+import '../../core/orientation.dart';
 import '../../core/vehicle_assignment.dart';
 import '../../data/active_location.dart';
 import '../../data/vehicle_assignment_repository.dart';
@@ -121,11 +122,21 @@ final meterTripsStoreProvider = Provider((_) => MeterTripsStore());
 class MeterOrientation {
   const MeterOrientation();
 
-  Future<void> lockLandscape() =>
-      SystemChrome.setPreferredOrientations(const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+  Future<void> lockLandscape() {
+    // Hold the app's orientation controller off until release, so a metrics
+    // change mid-shift can't snap the console back to portrait.
+    meterHoldsOrientation.value = true;
+    return SystemChrome.setPreferredOrientations(
+        const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+  }
 
-  /// An empty list is the app's own default (`Info.plist` / the manifest).
-  Future<void> release() => SystemChrome.setPreferredOrientations(const []);
+  /// Hands rotation back to the app's default for this device
+  /// (`core/orientation.dart`) — portrait on a phone or a folded cover, free on
+  /// a tablet or an unfolded inner — rather than the bare manifest.
+  Future<void> release() {
+    meterHoldsOrientation.value = false;
+    return applyAppDefaultOrientation();
+  }
 }
 
 final meterOrientationProvider = Provider<MeterOrientation>((_) => const MeterOrientation());
