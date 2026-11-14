@@ -12,6 +12,7 @@ import 'package:latlong2/latlong.dart';
 import '../../config.dart';
 import '../../core/booking_modules.dart' show familyModuleHire, familyModuleRide;
 import '../../core/window_class.dart' show verticalSplitFor, windowMetricsFor;
+import '../../core/launch_destination.dart' show isFoldedCoverSize;
 import '../../core/hourly_hire.dart' show HourlyHireConfig, hirePackageHourly, hireTileRoute, hireTitle;
 import '../../core/multi_day_hire.dart'
     show HireDaysBooking, MultiHireConfig, hirePackageDaily, hirePackageMonthly, hirePackageWeekly;
@@ -3077,6 +3078,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// above the fold show with the sheet all the way down; those under it
   /// only with the sheet up.
   Widget _homeParts(HomeSections sections, HomeLayout layout, Map<String, dynamic> blob, AppDisplay? display) {
+    // On a foldable's folded cover (a small front screen) the home strips to
+    // its core booking parts: the admin's extra tile and promo rows are hidden
+    // so the little screen is not a long scroll. No admin setting; they come
+    // back on the unfolded inner.
+    final cmq = MediaQuery.of(context);
+    final foldedCover = isFoldedCoverSize(
+      cmq.size.width,
+      cmq.size.height,
+      cmq.viewPadding.left > cmq.viewPadding.right ? cmq.viewPadding.left : cmq.viewPadding.right,
+      web: kIsWeb,
+    );
     final serviceOn = display?.serviceEnabled ?? true;
     final recentSection = layout.of(HomeSectionType.recent);
     final recent = layout.shows(HomeSectionType.recent)
@@ -3205,12 +3217,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               : openAppRoute(context, b.route!),
             ),
           ));
-        case HomeSectionType.tiles || HomeSectionType.wide when s.on && s.shownTiles.isNotEmpty:
+        case HomeSectionType.tiles || HomeSectionType.wide when !foldedCover && s.on && s.shownTiles.isNotEmpty:
           into.add(Padding(
             padding: const EdgeInsets.only(top: 12),
             child: HomeTileRow(section: s, onOpen: openTile),
           ));
-        case HomeSectionType.promos when s.on && s.shownTiles.isNotEmpty:
+        case HomeSectionType.promos when !foldedCover && s.on && s.shownTiles.isNotEmpty:
           into.add(Padding(
             padding: const EdgeInsets.only(top: 12),
             child: HomePromoRow(section: s, onOpen: openTile),
