@@ -7,6 +7,7 @@
 library;
 
 import 'dart:math' as math;
+import '../../../core/booking_chips.dart' show emptyBookingChips, normalizeBookingChips;
 import '../../../core/home_sections.dart' show pinMiddleOffsetKey;
 import '../../../core/hourly_hire.dart' show hireTileRoute;
 import '../../../core/home_layout.dart' show HomeLayouts, HomeSectionType;
@@ -542,6 +543,7 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'partnerMenu': emptyMenu(),
       'userRail': emptyMenu(),
       'partnerRail': emptyMenu(),
+      'bookingChips': emptyBookingChips(),
     };
 
 List<String> _strings(Object? v) => v is List ? v.whereType<String>().toList() : <String>[];
@@ -617,6 +619,7 @@ Map<String, dynamic> mergeDisplaySettings(Object? raw) {
     'partnerMenu': normalizeMenu(parsed['partnerMenu']),
     'userRail': normalizeMenu(parsed['userRail']),
     'partnerRail': normalizeMenu(parsed['partnerRail']),
+    'bookingChips': normalizeBookingChips(parsed['bookingChips']),
   };
 }
 
