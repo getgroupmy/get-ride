@@ -367,7 +367,9 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
                 mapButtonsRightInset(MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height,
                     MediaQuery.paddingOf(context).right, web: kIsWeb) -
                 recenterAt.$1,
-            bottom: mapAttributionClearance + inset - recenterAt.$2,
+            // Clear of the sheet's rounded corner too, so the buttons never
+            // tuck against it on a device whose sheet rests tight to them.
+            bottom: mapAttributionClearance + MapBottomInset.cornerOf(context) + inset - recenterAt.$2,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               ?widget.topButton,
               // Map view above recenter on every map.

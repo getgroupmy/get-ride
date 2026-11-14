@@ -212,7 +212,9 @@ class _SharedRideView extends ConsumerWidget {
               (inset) => Stack(children: [
                 Positioned(
                   right: 12,
-                  bottom: mapAttributionClearance + inset,
+                  // Clear of the sheet's rounded corner too, so the button
+                  // never tucks against it where the sheet rests tight.
+                  bottom: mapAttributionClearance + MapBottomInset.cornerOf(context) + inset,
                   child: FloatingActionButton(
                     key: const ValueKey('shared-sos'),
                     heroTag: null,

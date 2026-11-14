@@ -30,8 +30,15 @@ class MapBottomInset extends InheritedWidget {
     this.pull,
     this.rest = 0,
     this.beside,
+    this.cornerRadius = 0,
     required super.child,
   });
+
+  /// The sheet's rounded top-corner depth, so the map's bottom buttons can
+  /// clear the corner and never tuck against it on a device whose sheet
+  /// rests tight to them. 0 where nothing covers the map (no sheet, no
+  /// corner to clear).
+  final double cornerRadius;
 
   /// Where the map's buttons stand when the sheet is narrowed to leave room
   /// beside it ([MapSheetLayout.besideWhenShort]): this far up from the
@@ -71,6 +78,11 @@ class MapBottomInset extends InheritedWidget {
   /// The inset right now (for a one-off camera fit).
   static double of(BuildContext context) => context.getInheritedWidgetOfExactType<MapBottomInset>()?.value ?? 0;
 
+  /// The rounded-corner depth of the sheet over the map (0 when none), for
+  /// the bottom map buttons to clear so they never tuck against the corner.
+  static double cornerOf(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<MapBottomInset>()?.cornerRadius ?? 0;
+
   /// How far from the map's centre a point should be put to stand in the
   /// middle of the map left showing above the sheet when it is all the way
   /// down (inDrive keeps its pickup pin there): up by half that sheet.
@@ -80,7 +92,13 @@ class MapBottomInset extends InheritedWidget {
 
   @override
   bool updateShouldNotify(MapBottomInset old) =>
-      old.extent != extent || old.pull != pull || old.height != height || old.cap != cap || old.rest != rest || old.beside != beside;
+      old.extent != extent ||
+      old.pull != pull ||
+      old.height != height ||
+      old.cap != cap ||
+      old.rest != rest ||
+      old.beside != beside ||
+      old.cornerRadius != cornerRadius;
 }
 
 /// Moves the point a map keeps its pin on ([MapBottomInset.focusOffset])
@@ -732,6 +750,9 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
         _h = h;
         _bottomPad = MediaQuery.viewPaddingOf(context).bottom;
         final side = _besideRoom(c.maxWidth, h);
+        // The sheet's rounded top-corner depth, handed to the map so its
+        // bottom buttons clear the corner (MapBottomInset.cornerOf).
+        final cornerRadius = SurfaceStyle.ofPage(context).number('mapSheetRadius');
         return Stack(
           children: [
             Positioned.fill(
@@ -742,6 +763,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                 pull: _bounce,
                 rest: math.min(h * _min, h * (1 - widget.mapMinFraction)),
                 beside: side > 0 ? _bottomPad : null,
+                cornerRadius: cornerRadius,
                 child: widget.map,
               ),
             ),
