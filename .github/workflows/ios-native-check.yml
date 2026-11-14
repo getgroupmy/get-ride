@@ -48,6 +48,9 @@ jobs:
           echo "Selected $app"
           sudo xcode-select -s "$app/Contents/Developer"
           xcodebuild -version
+          # Confirms the Swift toolchain, so the `#if compiler(>=6.3)` gate on
+          # the Duo hinge code (Xcode 27 / Swift 6.3) is known to be active here.
+          swift -version
 
       - uses: subosito/flutter-action@v2
         with:

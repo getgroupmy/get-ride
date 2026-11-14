@@ -1185,6 +1185,26 @@ final class DuoFoldPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     return nil
   }
 
+  private func emit() {
+    guard let sink = sink else { return }
+    var message: [String: Any] = [
+      "hinge": status,
+      "divisionActive": false,
+      "occlusions": [],
+    ]
+    if let angle = angleDegrees { message["angle"] = angle }
+    sink(message)
+  }
+
+  // UIHinge / UIHingeInteraction exist only in the iOS 27.1 SDK (Xcode 27, Swift
+  // 6.3 — the toolchain the release workflow pins). Referencing them at all
+  // would fail to compile under the older SDK (Xcode 26 / Swift 6.2, which the
+  // PR CI's iOS build uses), so the whole hinge path is gated on the compiler.
+  // Under an older SDK the plugin stays silent and the Dart side falls back to
+  // its window-size rule — the Duo inner display only fills against the 27.1
+  // SDK anyway, so that build never runs on a Duo.
+#if compiler(>=6.3)
+
   /// Adds the hinge interaction to the Flutter view once. The key window may
   /// not exist at the first listen (the engine starts before the scene), so a
   /// missing view is retried shortly rather than given up on.
@@ -1214,17 +1234,6 @@ final class DuoFoldPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     attached = true
   }
 
-  private func emit() {
-    guard let sink = sink else { return }
-    var message: [String: Any] = [
-      "hinge": status,
-      "divisionActive": false,
-      "occlusions": [],
-    ]
-    if let angle = angleDegrees { message["angle"] = angle }
-    sink(message)
-  }
-
   @available(iOS 27.1, *)
   private static func name(_ status: UIHinge.Status) -> String {
     switch status {
@@ -1248,4 +1257,12 @@ final class DuoFoldPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     }
     return nil
   }
+
+#else
+
+  /// Older SDK (no UIHingeInteraction): nothing to attach, so the stream stays
+  /// silent and Dart uses the window-size rule.
+  private func attachIfPossible() {}
+
+#endif
 }
