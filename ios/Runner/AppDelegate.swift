@@ -1190,7 +1190,7 @@ final class DuoFoldPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   /// missing view is retried shortly rather than given up on.
   private func attachIfPossible() {
     guard !attached else { return }
-    guard #available(iOS 27.0, *) else { return }
+    guard #available(iOS 27.1, *) else { return }
     guard let view = Self.hostView() else {
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
         self?.attachIfPossible()
@@ -1221,7 +1221,7 @@ final class DuoFoldPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     sink(message)
   }
 
-  @available(iOS 27.0, *)
+  @available(iOS 27.1, *)
   private static func name(_ status: UIHinge.Status) -> String {
     switch status {
     case .closed: return "closed"
