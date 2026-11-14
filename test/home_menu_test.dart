@@ -110,6 +110,48 @@ void main() {
     expect(tester.getTopLeft(find.byType(HomeScreen)).dx, SideMenuHost.widthFor(400));
   });
 
+  testWidgets('a short screen (the Duo cover display) keeps the map, pin and buttons uncovered', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    // A short, cover-display-shaped screen: the whole sheet content would
+    // cover most of it, so the sheet must cap its resting height to leave the
+    // map (and the pickup pin and layer/recenter buttons) showing.
+    tester.view.physicalSize = const Size(420, 560);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          rideRepositoryProvider.overrideWithValue(_FakeRides(const [])),
+          geoServiceProvider.overrideWithValue(GeoService(client: MockClient((_) async => http.Response('', 500)))),
+          coinTradeQuoteProvider.overrideWith((ref) => Future.error('offline')),
+          serviceBoxNamesProvider.overrideWith((ref) async => const <String, String>{}),
+          rideServicesProvider.overrideWith((ref) async => const [RideService('Teksi', 'Metered taxi', 1, 4)]),
+          recentPlacesProvider.overrideWith((ref) async => const []),
+          displaySettingsBlobProvider.overrideWith((ref) async => const <String, dynamic>{}),
+          appDisplayProvider.overrideWith((ref) => Future.error('offline')),
+          fareTariffsProvider.overrideWith((ref) async => const []),
+          meterLaunchSessionProvider.overrideWithValue(null),
+          profileProvider.overrideWith((ref) async => null),
+          adminAccessProvider.overrideWith((ref) => Future.error('offline')),
+        ],
+        child: const MaterialApp(home: SideMenuHost(menu: RiderSideMenu(), child: HomeScreen())),
+      ),
+    );
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    // The sheet rests no taller than 1 - mapMinFraction, so a good strip of
+    // map stays above it rather than the handle sitting near the top.
+    final handleTop = tester.getRect(find.byKey(const ValueKey('map-sheet-handle'))).top;
+    expect(handleTop, greaterThan(560 * 0.33), reason: 'the sheet must not swallow the map on a short screen');
+    // The layer and recenter buttons ride above the sheet and stay fully on
+    // screen (uncapped, the cluster is pushed off the top edge here).
+    final recenter = tester.getRect(find.byKey(const ValueKey('map-recenter')));
+    final mapType = tester.getRect(find.byKey(const ValueKey('map-type')));
+    expect(recenter.bottom, lessThanOrEqualTo(handleTop), reason: 'recenter above the sheet');
+    expect(mapType.top, greaterThan(0), reason: 'the layer button is not clipped off the top');
+  });
+
   testWidgets('no menu button without the side menu (wide screens have the rail)', (tester) async {
     SharedPreferences.setMockInitialValues({});
     tester.view.physicalSize = const Size(400, 800);

@@ -37,9 +37,11 @@ class MenuEntry {
   final bool comingSoon;
 }
 
-/// [menu] is `'user'` or `'partner'`; [settings] the display blob.
-List<MenuEntry> resolveSideMenu(Map<String, dynamic> settings, String menu) {
-  final cfg = normalizeMenu(settings[menu == 'user' ? 'userMenu' : 'partnerMenu']);
+/// [menu] is `'user'` or `'partner'`; [settings] the display blob. [kind]
+/// picks the side menu (default) or the side rail — the same resolution over
+/// a different config slot and built-in list.
+List<MenuEntry> resolveSideMenu(Map<String, dynamic> settings, String menu, {NavKind kind = NavKind.menu}) {
+  final cfg = normalizeMenu(settings[menuKey(menu, kind: kind)]);
   final renames = (cfg['renames'] as Map).cast<String, String>();
   final routes = (cfg['routes'] as Map).cast<String, String>();
   final icons = (cfg['icons'] as Map).cast<String, String>();
@@ -47,7 +49,7 @@ List<MenuEntry> resolveSideMenu(Map<String, dynamic> settings, String menu) {
   final soon = (cfg['comingSoon'] as List).cast<String>().toSet();
   final order = (cfg['order'] as List).cast<String>();
   final natural = <MenuEntry>[
-    for (final (id, label) in defaultMenuItems(menu))
+    for (final (id, label) in defaultNavItems(menu, kind))
       MenuEntry(
         id: id,
         label: renames[id] ?? label,

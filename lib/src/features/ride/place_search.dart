@@ -338,6 +338,11 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                     controller: _query,
                     focusNode: _focus,
                     autofocus: true,
+                    // The keyboard's action key dismisses the keyboard (so the
+                    // results list isn't left under it). Without an explicit
+                    // action it sends `unspecified`, which does not unfocus.
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _focus.unfocus(),
                     style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400, height: 1.3),
                     decoration: const InputDecoration.collapsed(hintText: null).copyWith(
                       isDense: true,
@@ -980,7 +985,13 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     ref.watch(areaPrecedenceRuleProvider);
     final typing = _query.text.trim().isNotEmpty;
     final smart = ref.watch(geoServiceProvider).smartAddress;
-    return Column(
+    // The route sheet passes its body straight to showAppSheet (not through
+    // FitSheetBody), so pad for the keyboard here: otherwise on a short screen
+    // (the folded cover) the results list extends under the keyboard and its
+    // lower rows can't be scrolled into view.
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(
       children: [
         // The title in the middle, a round close on the right (inDrive's).
         Padding(
@@ -1115,6 +1126,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           ),
         ),
       ],
+      ),
     );
   }
 

@@ -93,6 +93,15 @@ const lucideIcons = <String, IconData>{
 
 IconData lucide(String? name) => lucideIcons[name] ?? Icons.star_border;
 
+/// Opens the nav-surface editor — a side menu ([NavKind.menu]) or a side rail
+/// ([NavKind.rail]) — for [menu] (`user` / `partner`). Both the Side Menus and
+/// Side Rails lists go through here so the editor's page id is used once in
+/// source (page_styles_test).
+void openNavEditor(BuildContext context, String menu, NavKind kind) =>
+    Navigator.of(context).push(AppPageRoute(id: 'display.stepper',
+      builder: (_) => SideMenuEditorScreen(menu: menu, kind: kind),
+    ));
+
 /// Shared write helper for the display / mock screens.
 Future<void> applyDisplay(BuildContext context, WidgetRef ref, DisplayEdit edit) =>
     runAdminAction(context, () => ref.read(displaySettingsProvider.notifier).apply(edit));
@@ -492,9 +501,23 @@ class _DisplayBody extends ConsumerWidget {
                   title: Text(label),
                   subtitle: const Text('Rename, hide, reorder, link pages or add custom entries'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(AppPageRoute(id: 'display.stepper',
-                    builder: (_) => SideMenuEditorScreen(menu: menu),
-                  )),
+                  onTap: () => openNavEditor(context, menu, NavKind.menu),
+                ),
+            ]),
+          ),
+          const _Section('Side Rails'),
+          Card(
+            child: Column(children: [
+              for (final (menu, label, icon) in [
+                ('user', 'User side rail', Icons.person_outline),
+                ('partner', 'Partner side rail', Icons.work_outline),
+              ])
+                ListTile(
+                  leading: Icon(icon),
+                  title: Text(label),
+                  subtitle: const Text('The tablet / wide-layout nav rail: rename, hide, reorder, link pages or add custom entries'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => openNavEditor(context, menu, NavKind.rail),
                 ),
             ]),
           ),
@@ -1008,11 +1031,17 @@ class _VehicleArrangement extends ConsumerWidget {
 // ---------------------------------------------------------------------------
 
 class SideMenuEditorScreen extends ConsumerWidget {
-  const SideMenuEditorScreen({super.key, required this.menu, this.highlight});
+  const SideMenuEditorScreen({super.key, required this.menu, this.kind = NavKind.menu, this.highlight});
   final String menu;
+
+  /// The side menu (default) or the side rail (the tablet / wide-layout nav
+  /// rail). Both use this one editor over their own config slot.
+  final NavKind kind;
 
   /// The item to pick out (its id), from the Media Gallery.
   final String? highlight;
+
+  bool get _isRail => kind == NavKind.rail;
 
   /// [icon] is the item's icon now; [defaultIcon] a built-in item's own
   /// (null for a custom item).
@@ -1035,7 +1064,11 @@ class SideMenuEditorScreen extends ConsumerWidget {
       context,
       ref,
       (x) => setMenuItemIcon(
-          setMenuItemRoute(renameMenuItem(x, menu, itemId, res.$1), menu, itemId, res.$2), menu, itemId, iconName),
+          setMenuItemRoute(renameMenuItem(x, menu, itemId, res.$1, kind: kind), menu, itemId, res.$2, kind: kind),
+          menu,
+          itemId,
+          iconName,
+          kind: kind),
     );
   }
 
@@ -1054,13 +1087,14 @@ class SideMenuEditorScreen extends ConsumerWidget {
                 );
                 if (res == null || !context.mounted) return;
                 final id = 'custom-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 5)}';
-                await applyDisplay(context, ref, (x) => addCustomMenuItem(x, menu, res.$1, res.$3, res.$2, id: id));
+                await applyDisplay(context, ref, (x) => addCustomMenuItem(x, menu, res.$1, res.$3, res.$2, id: id, kind: kind));
               },
             )
         : null;
+    final surface = _isRail ? 'Side Rail' : 'Side Menu';
     return Scaffold(
       appBar: AppBar(
-        title: Text(menu == 'user' ? 'User Side Menu' : 'Partner Side Menu'),
+        title: Text('${menu == 'user' ? 'User' : 'Partner'} $surface'),
         actions: pageAddActions(context, add),
       ),
       floatingActionButton: pageAddFab(context, add),
@@ -1068,15 +1102,16 @@ class SideMenuEditorScreen extends ConsumerWidget {
         value: value,
         onRetry: () => ref.invalidate(displaySettingsProvider),
         data: (s) {
-          final cfg = menuOf(s, menu);
-          final ordered = menuItemOrder(menu, cfg);
+          final cfg = menuOf(s, menu, kind: kind);
+          final ordered = menuItemOrder(menu, cfg, kind: kind);
           final hidden = ((cfg['hidden'] as List?) ?? const []).toSet();
           final soon = ((cfg['comingSoon'] as List?) ?? const []).toSet();
           final renames = Map<String, dynamic>.from(cfg['renames'] as Map);
           final routes = Map<String, dynamic>.from(cfg['routes'] as Map);
           final icons = Map<String, dynamic>.from(cfg['icons'] as Map);
           final custom = {for (final c in cfg['customItems'] as List) (c as Map)['id'] as String: c};
-          final defaults = {for (final d in defaultMenuItems(menu)) d.$1: d.$2};
+          final defaults = {for (final d in defaultNavItems(menu, kind)) d.$1: d.$2};
+          // A rail has no profile header and no mode-switch footer button.
           final footerId = menu == 'user' ? partnerModeMenuItemId : passengerModeMenuItemId;
           final footerLabel = (renames[footerId] as String?) ??
               (menu == 'user' ? partnerModeDefaultLabel : passengerModeDefaultLabel);
@@ -1104,7 +1139,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                               final v = await showMediaPicker(context,
                                   kind: MediaKind.icon, current: iconValue, title: 'Icon for $title');
                               if (v != null && context.mounted) {
-                                await applyDisplay(context, ref, (x) => setMenuItemIcon(x, menu, id, v));
+                                await applyDisplay(context, ref, (x) => setMenuItemIcon(x, menu, id, v, kind: kind));
                               }
                             },
                       child: MediaIcon(iconValue, fallback: icon),
@@ -1118,7 +1153,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                       label: const Text('Coming Soon'),
                       selected: soon.contains(id),
                       onSelected: canEdit
-                          ? (v) => applyDisplay(context, ref, (x) => setMenuItemComingSoon(x, menu, id, v))
+                          ? (v) => applyDisplay(context, ref, (x) => setMenuItemComingSoon(x, menu, id, v, kind: kind))
                           : null,
                     ),
                   ]),
@@ -1129,7 +1164,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
                     BusySwitch(
                       value: !hidden.contains(id),
                       onChanged: canEdit
-                          ? (v) => applyDisplay(context, ref, (x) => setMenuItemVisibility(x, menu, id, v))
+                          ? (v) => applyDisplay(context, ref, (x) => setMenuItemVisibility(x, menu, id, v, kind: kind))
                           : null,
                     ),
                   ]),
@@ -1141,21 +1176,25 @@ class SideMenuEditorScreen extends ConsumerWidget {
               maxWidth: 820,
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Text(
-                  'Toggle items off to hide them, use the arrows to reorder, and the pencil to rename, change the icon or link a page. '
-                  'Changes apply to every device.',
+                  _isRail
+                      ? 'The navigation rail on tablets and wide screens. Toggle items off to hide them, use the arrows '
+                          'to reorder, and the pencil to rename, change the icon or link a page. Changes apply to every device.'
+                      : 'Toggle items off to hide them, use the arrows to reorder, and the pencil to rename, change the icon or link a page. '
+                          'Changes apply to every device.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 8),
-                row(id: profileMenuItemId, icon: Icons.person_outline, title: 'Profile', subtitle: 'Profile header at the top of the sheet'),
+                if (!_isRail)
+                  row(id: profileMenuItemId, icon: Icons.person_outline, title: 'Profile', subtitle: 'Profile header at the top of the sheet'),
                 for (var i = 0; i < ordered.length; i++)
                   () {
                     final o = ordered[i];
                     final c = custom[o.id];
                     final label = o.isCustom ? '${c?['label'] ?? 'Item'}' : (renames[o.id] as String?) ?? defaults[o.id] ?? o.id;
-                    final defaultIcon = o.isCustom ? null : (defaultMenuIconNames[menu]![o.id] ?? 'Settings');
+                    final defaultIcon = o.isCustom ? null : (defaultNavIconName(menu, kind, o.id) ?? 'Settings');
                     final iconName = o.isCustom ? ((c?['iconName'] as String?) ?? 'Star') : (icons[o.id] as String?) ?? defaultIcon!;
                     final route = o.isCustom ? (c?['route'] as String?) : (routes[o.id] as String?);
-                    final defRoute = o.isCustom ? null : defaultMenuRoutes[menu]![o.id];
+                    final defRoute = o.isCustom ? null : defaultNavRoute(menu, kind, o.id);
                     final effective = route ?? defRoute;
                     final tags = [
                       if (route == null && defRoute != null) 'Default',
@@ -1169,13 +1208,13 @@ class SideMenuEditorScreen extends ConsumerWidget {
                       subtitle: 'Page: ${routeLabelFor(effective)}${tags.isEmpty ? '' : '  ·  ${tags.join('  ·  ')}'}',
                       leadingExtra: Column(mainAxisSize: MainAxisSize.min, children: [
                         InkWell(
-                          onTap: !canEdit || i == 0 ? null : () => applyDisplay(context, ref, (x) => moveMenuItem(x, menu, o.id, -1)),
+                          onTap: !canEdit || i == 0 ? null : () => applyDisplay(context, ref, (x) => moveMenuItem(x, menu, o.id, -1, kind: kind)),
                           child: const Icon(Icons.keyboard_arrow_up, size: 18),
                         ),
                         InkWell(
                           onTap: !canEdit || i == ordered.length - 1
                               ? null
-                              : () => applyDisplay(context, ref, (x) => moveMenuItem(x, menu, o.id, 1)),
+                              : () => applyDisplay(context, ref, (x) => moveMenuItem(x, menu, o.id, 1, kind: kind)),
                           child: const Icon(Icons.keyboard_arrow_down, size: 18),
                         ),
                       ]),
@@ -1183,25 +1222,26 @@ class SideMenuEditorScreen extends ConsumerWidget {
                       onDelete: o.isCustom
                           ? () async {
                               if (!await confirm(context, 'Remove item', 'Remove "$label"?', ok: 'Remove')) return;
-                              if (context.mounted) await applyDisplay(context, ref, (x) => removeCustomMenuItem(x, menu, o.id));
+                              if (context.mounted) await applyDisplay(context, ref, (x) => removeCustomMenuItem(x, menu, o.id, kind: kind));
                             }
                           : null,
                     );
                   }(),
-                row(
-                  id: footerId,
-                  icon: menu == 'user' ? Icons.directions_car_outlined : Icons.person_outline,
-                  title: footerLabel,
-                  subtitle: menu == 'user' ? 'Partner Mode button in the footer' : 'Passenger Mode button in the footer',
-                  onEdit: () async {
-                    final res = await showAppDialog<_MenuItemResult>(id: 'display.menu-footer-rename',
-                      context: context,
-                      builder: (_) => _MenuItemDialog(title: 'Rename Item', label: footerLabel, showIcon: false, showRoute: false),
-                    );
-                    if (res == null || !context.mounted) return;
-                    await applyDisplay(context, ref, (x) => renameMenuItem(x, menu, footerId, res.$1));
-                  },
-                ),
+                if (!_isRail)
+                  row(
+                    id: footerId,
+                    icon: menu == 'user' ? Icons.directions_car_outlined : Icons.person_outline,
+                    title: footerLabel,
+                    subtitle: menu == 'user' ? 'Partner Mode button in the footer' : 'Passenger Mode button in the footer',
+                    onEdit: () async {
+                      final res = await showAppDialog<_MenuItemResult>(id: 'display.menu-footer-rename',
+                        context: context,
+                        builder: (_) => _MenuItemDialog(title: 'Rename Item', label: footerLabel, showIcon: false, showRoute: false),
+                      );
+                      if (res == null || !context.mounted) return;
+                      await applyDisplay(context, ref, (x) => renameMenuItem(x, menu, footerId, res.$1));
+                    },
+                  ),
               ]),
             ),
           ]);

@@ -156,8 +156,18 @@ Future<void> maybeAutoLaunchMeter(BuildContext context, WidgetRef ref) async {
     ..invalidate(meterAutoLaunchProvider)
     ..invalidate(meterAtSignInProvider)
     ..invalidate(meterSessionChoiceProvider);
-  final size = MediaQuery.sizeOf(context);
+  final mq = MediaQuery.of(context);
+  final size = mq.size;
   final tablet = isTabletSize(size.width, size.height, web: kIsWeb);
+  // The meter is a landscape, dash-mounted screen and is not for the folded
+  // cover (a small front screen that is portrait-locked), so never auto-launch
+  // it there — unfolding to the inner display is where a shift is driven.
+  final foldedCover = isFoldedCoverSize(
+    size.width,
+    size.height,
+    mq.viewPadding.left > mq.viewPadding.right ? mq.viewPadding.left : mq.viewPadding.right,
+    web: kIsWeb,
+  );
   final choices = ref.read(meterSessionChoiceProvider.notifier);
   ({bool rider, String? partnerTripId}) ongoing;
   bool busy;
@@ -179,7 +189,7 @@ Future<void> maybeAutoLaunchMeter(BuildContext context, WidgetRef ref) async {
       MeterSignInAction.stayOff || MeterSignInAction.ask => false,
       MeterSignInAction.autoLaunch => await ref.read(meterAutoLaunchProvider.future).timeout(meterLaunchTimeout),
     };
-    ask = !busy && action == MeterSignInAction.ask;
+    ask = !foldedCover && !busy && action == MeterSignInAction.ask;
   } catch (_) {
     return;
   }
@@ -189,6 +199,9 @@ Future<void> maybeAutoLaunchMeter(BuildContext context, WidgetRef ref) async {
     if (on != null) await choices.set(on);
     meter = on ?? false;
   }
+  // On the folded cover the meter never takes the launch (it stays a landscape
+  // screen for the unfolded inner); the session choice, if set, waits for then.
+  if (foldedCover) meter = false;
   final LaunchTarget target;
   try {
     // Nor whether a tablet's account is a partner's.

@@ -139,14 +139,49 @@ const mapShortStrip = 110.0;
 /// From this width the booking, offers, trip and driver pages put their
 /// panel beside the map instead of under it: the width from which the app
 /// has the rail instead of the side menu (AppSideMenuHost.appliesAt), so an
-/// iPad in portrait (768 or 820 wide) gets the side panel (0333).
-const wideLayoutMinWidth = 720.0;
+/// iPad in portrait (768 or 820 wide) gets the side panel (0333). The iPad
+/// mini is narrower in portrait (744), below this line, so it keeps the phone
+/// layout there like a large phone and only goes two-pane in landscape.
+const wideLayoutMinWidth = 760.0;
 
 /// Whether a screen of [size] lays out wide: 900 or wider as before (a
 /// laptop, a large phone on its side), and from [wideLayoutMinWidth] when it
 /// is also 500 high, as AppSideMenuHost.appliesAt (an iPad in portrait); a
 /// smaller phone on its side (844 × 390) keeps the phone layout.
 bool wideLayoutAt(Size size) => size.width >= 900 || (size.width >= wideLayoutMinWidth && size.height >= 500);
+
+/// The booking panel's width in the wide two-pane layout.
+///
+/// Wide enough that the panel's content — the mode switch, the search bar and
+/// the service boxes, all built for a phone's full width — is never narrower
+/// than a phone, so none of it truncates in a short landscape (the iPhone Duo
+/// at 956x440 squeezed the content to ~296pt before this); a little wider on a
+/// roomy screen, capped so the map keeps the larger share. [leftInset] is the
+/// device's side safe-area, which the panel's own SafeArea takes off its outer
+/// edge, so it is added back here to leave the content at the target width.
+/// Pure.
+double wideBookingPanelWidth(double windowWidth, double leftInset, {double minContent = 400, double maxContent = 500}) =>
+    (windowWidth * 0.42).clamp(minContent, maxContent) + leftInset;
+
+/// The wide two-pane booking panel's width, capped so the map keeps about half
+/// of the **whole screen** ([windowWidth]) — not half of the two panes alone,
+/// so the rail (the gap between [available], the two panes' width, and
+/// [windowWidth]) comes out of the panel's side, never the map's.
+///
+/// The panel is [natural] wide (its content-fitting width, or a book-fold's
+/// crease pane) but gives the map half the screen once the panel can still fit
+/// its content (at least a phone wide, 400 past the side [leftInset]); below
+/// that the panel holds its content width and the map takes what is left. So a
+/// near-square foldable inner and an iPad in landscape split the screen ~50/50
+/// around a slim rail, a narrow wide screen keeps the panel readable, and a
+/// roomy screen gives the map more than half. Pure.
+double cappedBookingPanelWidth(double natural, double available, double windowWidth, double leftInset) {
+  final floor = 400 + leftInset;
+  // The panel width that leaves the map at half the whole screen.
+  final target = available - windowWidth * 0.5;
+  final cap = target > floor ? target : floor;
+  return natural < cap ? natural : cap;
+}
 
 /// The sheet's width when the buttons stand beside it, and the room kept
 /// for them each side (past the notch), on a screen at least
