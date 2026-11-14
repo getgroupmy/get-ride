@@ -24,4 +24,25 @@ void main() {
       expect(wideBookingPanelWidth(1600, 0), 500); // 0.42*1600 = 672 -> 500
     });
   });
+
+  group('cappedBookingPanelWidth', () {
+    test('near-square foldable inner: ~50/50, so the map gets half', () {
+      // natural 460 would leave the map under half of 900; cap to 450.
+      expect(cappedBookingPanelWidth(460, 900, 0), 450);
+    });
+
+    test('roomy screen: panel keeps its natural width, map gets more than half', () {
+      expect(cappedBookingPanelWidth(500, 1400, 0), 500); // half (700) > natural
+    });
+
+    test('narrow wide screen (iPad portrait): panel stays readable, not below its floor', () {
+      // available 678, half 339 < 400 floor: keep 400 so the panel does not truncate.
+      expect(cappedBookingPanelWidth(400, 678, 0), 400);
+    });
+
+    test('the floor includes the side inset so content never truncates', () {
+      // Duo landscape: inset 62, floor 462; half (433) is below it, so keep 462.
+      expect(cappedBookingPanelWidth(462, 866, 62), 462);
+    });
+  });
 }

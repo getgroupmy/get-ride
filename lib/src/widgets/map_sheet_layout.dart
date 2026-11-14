@@ -145,6 +145,23 @@ bool wideLayoutAt(Size size) => size.width >= 900 || (size.width >= wideLayoutMi
 double wideBookingPanelWidth(double windowWidth, double leftInset, {double minContent = 400, double maxContent = 500}) =>
     (windowWidth * 0.42).clamp(minContent, maxContent) + leftInset;
 
+/// The wide two-pane booking panel's width capped against the [available] width
+/// (the two panes' own width, the rail already taken off), so the map keeps
+/// about half.
+///
+/// The panel is [natural] wide (its content-fitting width, or a book-fold's
+/// crease pane) but never takes more than half of [available] once half is
+/// still at least a phone's content wide (400 past the side [leftInset]) — so a
+/// near-square foldable inner splits ~50/50, a narrow wide screen (an iPad in
+/// portrait) keeps the panel readable and gives the map the rest, and a roomy
+/// screen holds [natural] and lets the map have more than half. Pure.
+double cappedBookingPanelWidth(double natural, double available, double leftInset) {
+  final floor = 400 + leftInset;
+  final half = available * 0.5;
+  final cap = half > floor ? half : floor;
+  return natural < cap ? natural : cap;
+}
+
 /// The sheet's width when the buttons stand beside it, and the room kept
 /// for them each side (past the notch), on a screen at least
 /// [besideMinWidth] wide; never narrower than [besideMinSheetWidth].
