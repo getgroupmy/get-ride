@@ -338,6 +338,11 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                     controller: _query,
                     focusNode: _focus,
                     autofocus: true,
+                    // The keyboard's action key dismisses the keyboard (so the
+                    // results list isn't left under it). Without an explicit
+                    // action it sends `unspecified`, which does not unfocus.
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _focus.unfocus(),
                     style: t.textTheme.titleMedium?.copyWith(fontSize: 17, fontWeight: FontWeight.w400, height: 1.3),
                     decoration: const InputDecoration.collapsed(hintText: null).copyWith(
                       isDense: true,
