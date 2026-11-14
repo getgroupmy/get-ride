@@ -14,7 +14,7 @@
 library;
 
 import '../admin/screens/meterapp/display_logic.dart'
-    show defaultMenuIconNames, defaultMenuItems, displayBool, normalizeBoxes;
+    show NavKind, defaultNavIconName, defaultNavItems, displayBool, menuKey, normalizeBoxes;
 import 'app_icons.dart';
 import 'home_sections.dart' show serviceBoxPresets;
 import 'icon_pack.dart';
