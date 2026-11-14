@@ -75,6 +75,24 @@ const foldedCoverInsetMin = 40.0;
 bool isFoldedCoverSize(double width, double height, double horizontalInset, {required bool web}) =>
     !isTabletSize(width, height, web: web) && height >= width && horizontalInset >= foldedCoverInsetMin;
 
+/// Whether a map's floating buttons (recenter, layers) hug the true right edge,
+/// past a wide horizontal safe-area inset, rather than clearing it. True only on
+/// the iPhone Duo — its reserved-region inset ([foldedCoverInsetMin] or wider)
+/// on the folded cover (small portrait) or the unfolded inner ([isTabletSize]) —
+/// and never on an ordinary phone on its side, whose equally wide horizontal
+/// inset is a real notch the buttons must stay clear of (a small, landscape
+/// window). Pure.
+bool mapButtonsHugRightEdge(double width, double height, double rightInset, {required bool web}) =>
+    rightInset >= foldedCoverInsetMin && (isTabletSize(width, height, web: web) || height >= width);
+
+/// The right inset a map's floating buttons add to their edge margin: dropped
+/// to 0 on the iPhone Duo so they hug the edge (like the Claude app), else the
+/// real inset (a notch to clear, ~0 on a plain portrait phone or a tablet).
+/// Passed through everywhere — the button column and whatever stands clear of
+/// it — so they shift together. Pure.
+double mapButtonsRightInset(double width, double height, double rightInset, {required bool web}) =>
+    mapButtonsHugRightEdge(width, height, rightInset, web: web) ? 0 : rightInset;
+
 /// The priority: a rider's ride in progress (it stays home, where the
 /// ongoing-ride card is), then a driver's trip in progress, then the meter
 /// auto-launch, then an unfinished partner application, then the partner
