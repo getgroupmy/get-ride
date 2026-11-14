@@ -78,7 +78,12 @@ env:
 jobs:
   release:
     name: Build and upload
-    runs-on: macos-latest
+    # The iPhone Duo's inner display only fills for an app built against the
+    # iOS 27.1 SDK; before it, iOS runs the app letterboxed. GitHub's
+    # `xcode-27` image carries that SDK (macos-latest is still Xcode 26.x).
+    # Preview label: occasional queueing; move to `macos-27` once GitHub
+    # publishes it.
+    runs-on: xcode-27
     timeout-minutes: 90
     # contents: write to publish the build as the ios-latest release.
     permissions:
@@ -86,6 +91,25 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
+      # The xcode-27 image carries 27.0, 27.1 and a 27.2 Release Candidate.
+      # App Store Connect refuses a build archived with a beta/RC Xcode, so
+      # pick the newest *GA* 27.x (no beta/rc/release_candidate in the name) —
+      # the iOS 27.1 SDK the iPhone Duo needs, without the RC.
+      - name: Select GA Xcode 27 (iOS 27.1 SDK)
+        run: |
+          set -euo pipefail
+          app=$(ls -d /Applications/Xcode_27*.app 2>/dev/null \
+            | grep -viE 'beta|_rc|release.?candidate' | sort -V | tail -1 || true)
+          if [ -z "$app" ]; then
+            echo "::error::No GA Xcode 27 on this runner. Installed:"
+            ls -d /Applications/Xcode_*.app 2>/dev/null || true
+            exit 1
+          fi
+          echo "Selected $app"
+          sudo xcode-select -s "$app/Contents/Developer"
+          xcodebuild -version
+          echo "iOS SDKs:"; xcodebuild -showsdks | grep -i ios || true
 
       - name: Is this set up yet
         id: creds
