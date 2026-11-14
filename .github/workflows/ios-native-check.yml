@@ -1,0 +1,70 @@
+# Compile-only check for the iOS native layer (Swift in ios/Runner), so a
+# native change can be verified against the iOS 27.1 SDK without running the
+# full signed release (no secrets, no archive, no upload). It builds the app
+# for the simulator, which needs no signing.
+#
+# Added to verify the iPhone Duo fold bridge (ios/Runner/DuoFoldPlugin.swift),
+# whose UIHingeInteraction API exists only in the iOS 27 SDK that the
+# `xcode-27` runner carries. Runs on demand and on pushes to the branch that
+# adds it; drop it once the native work is merged, or keep it as a manual
+# check for future iOS native changes.
+name: iOS native check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['claude/duo-ios-fold-plugin']
+    paths:
+      - 'ios/**'
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/ios-native-check.yml'
+
+concurrency:
+  group: ios-native-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Compile for the simulator
+    runs-on: xcode-27
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # The iPhone Duo APIs are in the iOS 27.1 SDK; pick the GA Xcode 27, the
+      # same selection the release workflow makes.
+      - name: Select GA Xcode 27 (iOS 27.1 SDK)
+        run: |
+          set -euo pipefail
+          app=$(ls -d /Applications/Xcode_27*.app 2>/dev/null \
+            | grep -viE 'beta|_rc|release.?candidate' | sort -V | tail -1 || true)
+          if [ -z "$app" ]; then
+            echo "::error::No GA Xcode 27 on this runner. Installed:"
+            ls -d /Applications/Xcode_*.app 2>/dev/null || true
+            exit 1
+          fi
+          echo "Selected $app"
+          sudo xcode-select -s "$app/Contents/Developer"
+          xcodebuild -version
+          # Confirms the Swift toolchain, so the `#if compiler(>=6.4)` gate on
+          # the Duo hinge code (Xcode 27 ships Swift 6.4) is known to be active
+          # here but excluded on the macos-latest PR build (Xcode 26 / Swift 6.2).
+          swift -version
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      # Builds Dart + all native Swift for the device SDK without signing —
+      # the same command the release workflow runs before it archives, so the
+      # pods link the way they do for a real build (the simulator slice does
+      # not link Pods_Runner here). A compile error in ios/Runner fails here.
+      - name: Compile iOS (device, no signing)
+        run: flutter build ios --release --no-codesign
