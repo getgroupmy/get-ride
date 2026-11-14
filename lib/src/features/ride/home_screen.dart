@@ -4043,9 +4043,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // on every non-folding device (no separating vertical fold reported).
       final split = verticalSplitFor(windowMetricsFor(context));
       return Scaffold(
-        body: calculating(Row(children: [
+        body: calculating(LayoutBuilder(builder: (context, constraints) => Row(children: [
           SizedBox(
-            width: split?.panelWidth ?? wideBookingPanelWidth(MediaQuery.sizeOf(context).width, MediaQuery.paddingOf(context).left),
+            // Keep about half the width as map (a near-square foldable inner
+            // otherwise left the map far under half), while the panel stays at
+            // least a phone's content wide so it never truncates.
+            width: cappedBookingPanelWidth(
+              split?.panelWidth ?? wideBookingPanelWidth(MediaQuery.sizeOf(context).width, MediaQuery.paddingOf(context).left),
+              constraints.maxWidth,
+              MediaQuery.paddingOf(context).left,
+            ),
             // The panel's right edge is interior (against the map divider), so
             // only its outer (left) safe-area is kept — padding the right by
             // the device inset too squeezed the content in landscape.
@@ -4084,7 +4091,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // The seam gap on a book-fold, else a hairline divider.
           if (split != null) SizedBox(width: split.gap) else const VerticalDivider(width: 1),
           Expanded(child: map),
-        ])),
+        ]))),
       );
     }
     // Above Android's navigation bar and iPhone's home indicator alike, so
