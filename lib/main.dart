@@ -68,10 +68,10 @@ Future<void> main() async {
   // The admin's splash, as cached by the last launch (read above), so it
   // paints on the first frame (see SplashGate).
   applyBrandingGlobals(branding?.branding);
-  // Phones — the iPhone Duo and Android fold/flip included — stay portrait so
-  // the UI is never squeezed into a short landscape; a tablet keeps turning.
-  // Applied once the first frame has sized the view, so a tablet is known as
-  // one; the meter restores it on the way out (core/orientation.dart).
-  WidgetsBinding.instance.addPostFrameCallback((_) => applyAppDefaultOrientation());
+  // Every screen is portrait — phones, foldables (iPhone Duo, Android
+  // fold/flip) and tablets alike — so the UI is never squeezed into a short
+  // landscape. The taxi meter forces its own landscape and restores this on
+  // the way out (core/orientation.dart).
+  await applyAppDefaultOrientation();
   runApp(ProviderScope(child: GetRideApp(branding: branding)));
 }
