@@ -93,6 +93,15 @@ const lucideIcons = <String, IconData>{
 
 IconData lucide(String? name) => lucideIcons[name] ?? Icons.star_border;
 
+/// Opens the nav-surface editor — a side menu ([NavKind.menu]) or a side rail
+/// ([NavKind.rail]) — for [menu] (`user` / `partner`). Both the Side Menus and
+/// Side Rails lists go through here so the editor's page id is used once in
+/// source (page_styles_test).
+void openNavEditor(BuildContext context, String menu, NavKind kind) =>
+    Navigator.of(context).push(AppPageRoute(id: 'display.stepper',
+      builder: (_) => SideMenuEditorScreen(menu: menu, kind: kind),
+    ));
+
 /// Shared write helper for the display / mock screens.
 Future<void> applyDisplay(BuildContext context, WidgetRef ref, DisplayEdit edit) =>
     runAdminAction(context, () => ref.read(displaySettingsProvider.notifier).apply(edit));
@@ -492,9 +501,7 @@ class _DisplayBody extends ConsumerWidget {
                   title: Text(label),
                   subtitle: const Text('Rename, hide, reorder, link pages or add custom entries'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(AppPageRoute(id: 'display.stepper',
-                    builder: (_) => SideMenuEditorScreen(menu: menu),
-                  )),
+                  onTap: () => openNavEditor(context, menu, NavKind.menu),
                 ),
             ]),
           ),
@@ -510,9 +517,7 @@ class _DisplayBody extends ConsumerWidget {
                   title: Text(label),
                   subtitle: const Text('The tablet / wide-layout nav rail: rename, hide, reorder, link pages or add custom entries'),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => Navigator.of(context).push(AppPageRoute(id: 'display.stepper',
-                    builder: (_) => SideMenuEditorScreen(menu: menu, kind: NavKind.rail),
-                  )),
+                  onTap: () => openNavEditor(context, menu, NavKind.rail),
                 ),
             ]),
           ),
