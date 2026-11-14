@@ -75,15 +75,23 @@ const foldedCoverInsetMin = 40.0;
 bool isFoldedCoverSize(double width, double height, double horizontalInset, {required bool web}) =>
     !isTabletSize(width, height, web: web) && height >= width && horizontalInset >= foldedCoverInsetMin;
 
-/// The right safe-area inset a map's floating buttons (recenter, layers) add to
-/// their 16px edge margin. On the iPhone Duo the buttons hug the true right
-/// edge (like the Claude app) instead of sitting inside its wide reserved-region
-/// inset, so that inset is dropped; a plain phone (portrait-locked, so no notch
-/// inset here) or tablet keeps its real inset, which is ~0 anyway. Passing it
-/// through this everywhere — the button column and whatever stands clear of it —
-/// shifts them together. Pure.
-double mapButtonsRightInset(double rightInset, {double min = foldedCoverInsetMin}) =>
-    rightInset >= min ? 0 : rightInset;
+/// Whether a map's floating buttons (recenter, layers) hug the true right edge,
+/// past a wide horizontal safe-area inset, rather than clearing it. True only on
+/// the iPhone Duo — its reserved-region inset ([foldedCoverInsetMin] or wider)
+/// on the folded cover (small portrait) or the unfolded inner ([isTabletSize]) —
+/// and never on an ordinary phone on its side, whose equally wide horizontal
+/// inset is a real notch the buttons must stay clear of (a small, landscape
+/// window). Pure.
+bool mapButtonsHugRightEdge(double width, double height, double rightInset, {required bool web}) =>
+    rightInset >= foldedCoverInsetMin && (isTabletSize(width, height, web: web) || height >= width);
+
+/// The right inset a map's floating buttons add to their edge margin: dropped
+/// to 0 on the iPhone Duo so they hug the edge (like the Claude app), else the
+/// real inset (a notch to clear, ~0 on a plain portrait phone or a tablet).
+/// Passed through everywhere — the button column and whatever stands clear of
+/// it — so they shift together. Pure.
+double mapButtonsRightInset(double width, double height, double rightInset, {required bool web}) =>
+    mapButtonsHugRightEdge(width, height, rightInset, web: web) ? 0 : rightInset;
 
 /// The priority: a rider's ride in progress (it stays home, where the
 /// ongoing-ride card is), then a driver's trip in progress, then the meter

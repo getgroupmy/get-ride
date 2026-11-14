@@ -362,7 +362,10 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
           (inset) => Positioned(
             // Clear of the notch on a phone on its side; flush to the edge on
             // the iPhone Duo, past its reserved-region inset (like the Claude app).
-            right: 12 + mapButtonsRightInset(MediaQuery.paddingOf(context).right) - recenterAt.$1,
+            right: 12 +
+                mapButtonsRightInset(MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height,
+                    MediaQuery.paddingOf(context).right, web: kIsWeb) -
+                recenterAt.$1,
             bottom: mapAttributionClearance + inset - recenterAt.$2,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               ?widget.topButton,
@@ -391,7 +394,10 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
             // On a narrow phone the pill stays left of the map buttons'
             // column (48 wide, 12 in), which can climb to the top when the
             // sheet is up.
-            right: 12 + mapButtonsRightInset(MediaQuery.paddingOf(context).right) + (narrow ? 56 : 0),
+            right: 12 +
+                mapButtonsRightInset(MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height,
+                    MediaQuery.paddingOf(context).right, web: kIsWeb) +
+                (narrow ? 56 : 0),
             child: Center(
               child: Material(
                 key: const ValueKey('eta-chip'),

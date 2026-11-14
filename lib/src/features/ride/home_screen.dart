@@ -3681,7 +3681,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           (inset) => Positioned(
             // Clear of the notch on a phone on its side; flush to the edge on
             // the iPhone Duo, past its reserved-region inset (like the Claude app).
-            right: 16 + mapButtonsRightInset(MediaQuery.paddingOf(context).right),
+            right: 16 +
+                mapButtonsRightInset(MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height,
+                    MediaQuery.paddingOf(context).right, web: kIsWeb),
             // Always the same clearance above the sheet, whatever its resting
             // height on this device; the admin's gap only adds to it.
             bottom: mapAttributionClearance + inset + mapLayout.recenterGap,
@@ -3805,7 +3807,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (confirming && _routeMoved)
         aboveSheet(
           (inset) => Positioned(
-            right: 16 + mapButtonsRightInset(MediaQuery.paddingOf(context).right) - layout.recenter.$1,
+            right: 16 +
+                mapButtonsRightInset(MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height,
+                    MediaQuery.paddingOf(context).right, web: kIsWeb) -
+                layout.recenter.$1,
             bottom: (wide ? mapAttributionClearance : inset + aboveBar) - layout.recenter.$2,
             child: RouteFitButton(
               key: const ValueKey('confirm-route'),

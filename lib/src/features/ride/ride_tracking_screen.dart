@@ -1724,7 +1724,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               // side (915 × 412) the second card sat under them.
               // The map buttons hug the right edge on the iPhone Duo (past its
               // reserved-region inset), so the offers clear that same edge.
-              final right = offersClearOfMapButtons(mapButtonsRightInset(MediaQuery.paddingOf(context).right));
+              final right = offersClearOfMapButtons(mapButtonsRightInset(
+                  MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height,
+                  MediaQuery.paddingOf(context).right,
+                  web: kIsWeb));
               final width = (c.maxWidth - right - 16).clamp(0.0, 380.0);
               return Stack(children: [
               Positioned.fill(child: widget.map),

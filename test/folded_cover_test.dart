@@ -33,16 +33,24 @@ void main() {
   });
 
   group('mapButtonsRightInset', () {
-    test('the iPhone Duo reserved-region inset is dropped so the buttons hug the edge', () {
-      // Duo cover and unfolded inner both report the ~84 reserved inset.
-      expect(mapButtonsRightInset(84), 0);
-      expect(mapButtonsRightInset(foldedCoverInsetMin), 0);
+    test('the iPhone Duo reserved inset is dropped so the buttons hug the edge', () {
+      // Folded cover (small portrait) and unfolded inner (tablet-size) both
+      // carry the ~84 reserved inset.
+      expect(mapButtonsRightInset(466, 678, 84, web: false), 0);
+      expect(mapButtonsRightInset(951, 669, 84, web: false), 0); // inner, landscape
+      expect(mapButtonsRightInset(669, 951, 84, web: false), 0); // inner, portrait
     });
 
-    test('a plain phone / tablet keeps its (near-zero) real inset', () {
-      expect(mapButtonsRightInset(0), 0);
-      expect(mapButtonsRightInset(8), 8);
-      expect(mapButtonsRightInset(foldedCoverInsetMin - 0.01), foldedCoverInsetMin - 0.01);
+    test('a plain phone on its side keeps its real notch inset (never hugged)', () {
+      // iPhone 15 landscape 852x393, notch 59: the buttons must still clear it.
+      expect(mapButtonsRightInset(852, 393, 59, web: false), 59);
+      expect(mapButtonsHugRightEdge(852, 393, 59, web: false), isFalse);
+    });
+
+    test('a plain portrait phone / tablet keeps its (near-zero) real inset', () {
+      expect(mapButtonsRightInset(390, 844, 0, web: false), 0);
+      expect(mapButtonsRightInset(390, 844, 8, web: false), 8); // below the threshold
+      expect(mapButtonsRightInset(834, 1112, 0, web: false), 0); // iPad
     });
   });
 }
