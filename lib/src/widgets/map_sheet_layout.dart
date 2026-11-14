@@ -214,7 +214,15 @@ class MapSheetLayout extends StatefulWidget {
     this.minFromContent = false,
     this.minCap,
     this.minFloor,
+    this.sheetLeftInset = 0,
+    this.sheetRightInset = 0,
   });
+
+  /// Extra horizontal inset on the sheet (and its footer and foot), left and
+  /// right, on top of any centring inset — so a caller can trim the sheet off a
+  /// reserved strip (the iPhone Duo's folded cover) while the map stays
+  /// full-bleed behind it. 0 for every ordinary screen, so nothing else moves.
+  final double sheetLeftInset, sheetRightInset;
 
   /// Admin → Display Settings → "Bottom sheet minimum height": px added to
   /// (or, negative, taken off) the least height the content asks for (its
@@ -750,6 +758,10 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
         _h = h;
         _bottomPad = MediaQuery.viewPaddingOf(context).bottom;
         final side = _besideRoom(c.maxWidth, h);
+        // The sheet (and its foot) trimmed off a reserved strip, if any; the
+        // map behind keeps the whole width.
+        final leftInset = side + widget.sheetLeftInset;
+        final rightInset = side + widget.sheetRightInset;
         // The sheet's rounded top-corner depth, handed to the map so its
         // bottom buttons clear the corner (MapBottomInset.cornerOf).
         final cornerRadius = SurfaceStyle.ofPage(context).number('mapSheetRadius');
@@ -783,8 +795,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
               ),
             Positioned(
               key: const ValueKey('map-sheet-slot'),
-              left: side,
-              right: side,
+              left: leftInset,
+              right: rightInset,
               top: 0,
               bottom: 0,
               child: AnimatedBuilder(
@@ -945,8 +957,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
               ),
             if (widget.footer != null)
               Positioned(
-                left: side,
-                right: side,
+                left: leftInset,
+                right: rightInset,
                 bottom: 0,
                 child: _SizeReporter(
                   onSize: (size) {
@@ -968,8 +980,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
               ),
             if (widget.aboveFooter != null)
               Positioned(
-                left: side,
-                right: side,
+                left: leftInset,
+                right: rightInset,
                 bottom: _footerHeight,
                 child: _SizeReporter(
                   onSize: (size) {

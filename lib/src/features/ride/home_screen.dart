@@ -13,6 +13,7 @@ import '../../config.dart';
 import '../../core/booking_modules.dart' show familyModuleHire, familyModuleRide;
 import '../../core/window_class.dart' show verticalSplitFor, windowMetricsFor;
 import '../../core/launch_destination.dart' show isFoldedCoverSize, mapButtonsRightInset;
+import '../../core/cover_home.dart' show CoverStripSide, coverHomeFromSettings, duoCoverHomeActive;
 import '../../core/hourly_hire.dart' show HourlyHireConfig, hirePackageHourly, hireTileRoute, hireTitle;
 import '../../core/multi_day_hire.dart'
     show HireDaysBooking, MultiHireConfig, hirePackageDaily, hirePackageMonthly, hirePackageWeekly;
@@ -3320,6 +3321,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // A destination chosen: the confirm step (Expo ride-confirm).
     final confirming = _drop != null;
     final layout = ConfirmLayout.fromSettings(blob);
+    // iPhone Duo folded cover (Admin → Display Settings → Duo cover home): a
+    // cover-only layout that trims the sheet off the reserved strip and moves
+    // the map buttons into it. Gated to the iPhone Duo cover alone — every other
+    // device (Android fold/flip included) takes the path below unchanged.
+    final coverHome = coverHomeFromSettings(blob);
+    final coverMq = MediaQuery.of(context);
+    final coverActive = duoCoverHomeActive(
+      ios: defaultTargetPlatform == TargetPlatform.iOS,
+      web: kIsWeb,
+      width: coverMq.size.width,
+      height: coverMq.size.height,
+      horizontalInset: math.max(coverMq.viewPadding.left, coverMq.viewPadding.right),
+      config: coverHome,
+    );
+    final coverStripRight = coverHome.stripSide == CoverStripSide.right;
+    final coverSheetTrim = coverActive && coverHome.trimSheet;
+    final coverCtrlInStrip = coverActive && coverHome.controlsInStrip;
+    final coverMapBtnEdge = math.max(0.0, (coverHome.stripWidth - 56) / 2);
     // A fare off the usual, fixed or offered (bidding): inDrive's demand
     // band in the promo bar's place.
     final demand = _basis != null && !_routing ? _ai?.trend : null;
@@ -3686,9 +3705,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           (inset) => Positioned(
             // Clear of the notch on a phone on its side; flush to the edge on
             // the iPhone Duo, past its reserved-region inset (like the Claude app).
-            right: 16 +
-                mapButtonsRightInset(MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height,
-                    MediaQuery.paddingOf(context).right, web: kIsWeb),
+            // On the iPhone Duo cover with "controls in strip" on, the buttons
+            // move into the reserved strip (centred in it), keeping the same
+            // height — every other device keeps the edge-hugging placement.
+            right: coverCtrlInStrip
+                ? (coverStripRight ? coverMapBtnEdge : null)
+                : 16 +
+                    mapButtonsRightInset(MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height,
+                        MediaQuery.paddingOf(context).right, web: kIsWeb),
+            left: coverCtrlInStrip && !coverStripRight ? coverMapBtnEdge : null,
             // Always clear of the sheet on every device: the flat-top margin
             // plus the sheet's rounded-corner depth, so the buttons never tuck
             // against the corner where the sheet rests tight to them (a thinner
@@ -4198,6 +4223,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // The main screen's sheet starts fully down; the rider drags it up.
           initial: (confirming ? confirmStart : least) + navLiftFraction,
           hidden: _pinMoving,
+          // iPhone Duo cover with "trim sheet" on: the sheet stops before the
+          // reserved strip so the map still shows there. Zero (no trim) on every
+          // other device, so nothing else is touched.
+          sheetLeftInset: coverSheetTrim && !coverStripRight ? coverHome.stripWidth : 0,
+          sheetRightInset: coverSheetTrim && coverStripRight ? coverHome.stripWidth : 0,
           // navLift above already keeps the sheet's foot clear of the system bar.
           padBottom: false,
           footer: footer,
