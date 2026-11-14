@@ -183,6 +183,91 @@ const defaultPartnerMenuItems = <(String, String)>[
 
 List<(String, String)> defaultMenuItems(String menu) => menu == 'user' ? defaultUserMenuItems : defaultPartnerMenuItems;
 
+// --- Side rails ----------------------------------------------------------------
+//
+// The navigation rail shown on the tablet / wide layout (the home shell's
+// [AppShell]). Admin → Display Settings → Side Rails edits it with the very
+// same editor as the side menus (rename, hide, reorder, relink, custom
+// items); a rail is just a second nav surface stored under its own keys, so
+// everything here mirrors the menu helpers above, told apart by [NavKind].
+
+/// Whether a nav-surface helper acts on a side menu or a side rail. The two
+/// differ only in which config slot they read/write ([navConfigKey]) and
+/// their built-in items ([defaultNavItems]); every edit is identical.
+enum NavKind { menu, rail }
+
+/// The rail tab ids. They map to the home shell's fixed branches (see
+/// `app_shell.dart`), so a built-in rail item the admin hasn't relinked goes
+/// to its branch; a relinked or custom item navigates by its route instead.
+const railRideId = 'ride';
+const railTripsId = 'trips';
+const railWalletId = 'wallet';
+const railDriveId = 'drive';
+const railAccountId = 'account';
+
+/// The rail tabs in branch order. The user and partner rails start the same —
+/// the shell has one set of branches — and each is then edited on its own.
+const defaultUserRailItems = <(String, String)>[
+  (railRideId, 'Ride'),
+  (railTripsId, 'Trips'),
+  (railWalletId, 'Wallet'),
+  (railDriveId, 'Drive'),
+  (railAccountId, 'Account'),
+];
+const defaultPartnerRailItems = defaultUserRailItems;
+
+List<(String, String)> defaultRailItems(String menu) => menu == 'user' ? defaultUserRailItems : defaultPartnerRailItems;
+
+/// The built-in items for a nav surface: the side menu's or the side rail's.
+List<(String, String)> defaultNavItems(String menu, NavKind kind) =>
+    kind == NavKind.rail ? defaultRailItems(menu) : defaultMenuItems(menu);
+
+/// Where a built-in rail item goes by default (its shell branch root). The
+/// admin's relink overrides it; a custom item carries its own route.
+const defaultRailRoutes = <String, Map<String, String>>{
+  'user': {
+    railRideId: '/',
+    railTripsId: '/trips',
+    railWalletId: '/wallet',
+    railDriveId: '/drive',
+    railAccountId: '/account',
+  },
+  'partner': {
+    railRideId: '/',
+    railTripsId: '/trips',
+    railWalletId: '/wallet',
+    railDriveId: '/drive',
+    railAccountId: '/account',
+  },
+};
+
+/// The icon ([sideMenuIcons] name) each built-in rail item shows in the
+/// editor and, unless the admin overrides it, on the live rail.
+const defaultRailIconNames = <String, Map<String, String>>{
+  'user': {
+    railRideId: 'Car',
+    railTripsId: 'Receipt',
+    railWalletId: 'Wallet',
+    railDriveId: 'Navigation',
+    railAccountId: 'User',
+  },
+  'partner': {
+    railRideId: 'Car',
+    railTripsId: 'Receipt',
+    railWalletId: 'Wallet',
+    railDriveId: 'Navigation',
+    railAccountId: 'User',
+  },
+};
+
+/// The default link of a built-in item on a nav surface (menu or rail).
+String? defaultNavRoute(String menu, NavKind kind, String id) =>
+    (kind == NavKind.rail ? defaultRailRoutes : defaultMenuRoutes)[menu]?[id];
+
+/// The default icon name of a built-in item on a nav surface (menu or rail).
+String? defaultNavIconName(String menu, NavKind kind, String id) =>
+    (kind == NavKind.rail ? defaultRailIconNames : defaultMenuIconNames)[menu]?[id];
+
 /// Default link of each built-in item (before any admin override).
 const defaultMenuRoutes = <String, Map<String, String>>{
   'user': {
@@ -455,6 +540,8 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'vehicleBarOrder': <dynamic>[],
       'userMenu': emptyMenu(),
       'partnerMenu': emptyMenu(),
+      'userRail': emptyMenu(),
+      'partnerRail': emptyMenu(),
     };
 
 List<String> _strings(Object? v) => v is List ? v.whereType<String>().toList() : <String>[];
@@ -528,6 +615,8 @@ Map<String, dynamic> mergeDisplaySettings(Object? raw) {
     'vehicleBarOrder': _strings(parsed['vehicleBarOrder']),
     'userMenu': normalizeMenu(parsed['userMenu']),
     'partnerMenu': normalizeMenu(parsed['partnerMenu']),
+    'userRail': normalizeMenu(parsed['userRail']),
+    'partnerRail': normalizeMenu(parsed['partnerRail']),
   };
 }
 
@@ -746,16 +835,20 @@ Map<String, dynamic> updateServiceBox(Map<String, dynamic> s, int index, Map<Str
 
 // --- Side menus ----------------------------------------------------------------
 
-String menuKey(String menu) => menu == 'user' ? 'userMenu' : 'partnerMenu';
+String menuKey(String menu, {NavKind kind = NavKind.menu}) => kind == NavKind.rail
+    ? (menu == 'user' ? 'userRail' : 'partnerRail')
+    : (menu == 'user' ? 'userMenu' : 'partnerMenu');
 
-Map<String, dynamic> menuOf(Map<String, dynamic> s, String menu) => normalizeMenu(s[menuKey(menu)]);
+Map<String, dynamic> menuOf(Map<String, dynamic> s, String menu, {NavKind kind = NavKind.menu}) =>
+    normalizeMenu(s[menuKey(menu, kind: kind)]);
 
-Map<String, dynamic> _withMenu(Map<String, dynamic> s, String menu, Map<String, dynamic> cfg) => {...s, menuKey(menu): cfg};
+Map<String, dynamic> _withMenu(Map<String, dynamic> s, String menu, Map<String, dynamic> cfg, {NavKind kind = NavKind.menu}) =>
+    {...s, menuKey(menu, kind: kind): cfg};
 
 /// Default + custom items in display order (`getMenuItemOrder`).
-List<({String id, bool isCustom})> menuItemOrder(String menu, Map<String, dynamic> cfg) {
+List<({String id, bool isCustom})> menuItemOrder(String menu, Map<String, dynamic> cfg, {NavKind kind = NavKind.menu}) {
   final all = <({String id, bool isCustom})>[
-    for (final d in defaultMenuItems(menu)) (id: d.$1, isCustom: false),
+    for (final d in defaultNavItems(menu, kind)) (id: d.$1, isCustom: false),
     for (final c in (cfg['customItems'] as List)) (id: (c as Map)['id'] as String, isCustom: true),
   ];
   final order = _strings(cfg['order']);
@@ -772,10 +865,11 @@ List<({String id, bool isCustom})> menuItemOrder(String menu, Map<String, dynami
   return [for (final x in indexed) x.item];
 }
 
-Map<String, dynamic> renameMenuItem(Map<String, dynamic> s, String menu, String itemId, String label) {
-  final cfg = menuOf(s, menu);
+Map<String, dynamic> renameMenuItem(Map<String, dynamic> s, String menu, String itemId, String label,
+    {NavKind kind = NavKind.menu}) {
+  final cfg = menuOf(s, menu, kind: kind);
   final trimmed = label.trim();
-  final def = defaultMenuItems(menu).where((d) => d.$1 == itemId).firstOrNull;
+  final def = defaultNavItems(menu, kind).where((d) => d.$1 == itemId).firstOrNull;
   final renames = Map<String, dynamic>.from(cfg['renames'] as Map);
   if (trimmed.isEmpty || (def != null && trimmed == def.$2)) {
     renames.remove(itemId);
@@ -786,21 +880,22 @@ Map<String, dynamic> renameMenuItem(Map<String, dynamic> s, String menu, String 
     for (final c in cfg['customItems'] as List)
       (c as Map)['id'] == itemId && trimmed.isNotEmpty ? {...c, 'label': trimmed} : c,
   ];
-  return _withMenu(s, menu, {...cfg, 'renames': renames, 'customItems': custom});
+  return _withMenu(s, menu, {...cfg, 'renames': renames, 'customItems': custom}, kind: kind);
 }
 
 Map<String, dynamic> addCustomMenuItem(Map<String, dynamic> s, String menu, String label, String iconName, String? route,
-    {required String id}) {
+    {required String id, NavKind kind = NavKind.menu}) {
   final trimmed = label.trim();
   if (trimmed.isEmpty) return s;
-  final cfg = menuOf(s, menu);
+  final cfg = menuOf(s, menu, kind: kind);
   final item = <String, dynamic>{'id': id, 'label': trimmed, 'iconName': iconName};
   if (route != null && route.trim().isNotEmpty) item['route'] = route.trim();
-  return _withMenu(s, menu, {...cfg, 'customItems': [...cfg['customItems'] as List, item]});
+  return _withMenu(s, menu, {...cfg, 'customItems': [...cfg['customItems'] as List, item]}, kind: kind);
 }
 
-Map<String, dynamic> setMenuItemRoute(Map<String, dynamic> s, String menu, String itemId, String? route) {
-  final cfg = menuOf(s, menu);
+Map<String, dynamic> setMenuItemRoute(Map<String, dynamic> s, String menu, String itemId, String? route,
+    {NavKind kind = NavKind.menu}) {
+  final cfg = menuOf(s, menu, kind: kind);
   final trimmed = (route ?? '').trim();
   final routes = Map<String, dynamic>.from(cfg['routes'] as Map);
   final custom = [
@@ -817,15 +912,16 @@ Map<String, dynamic> setMenuItemRoute(Map<String, dynamic> s, String menu, Strin
   } else {
     routes.remove(itemId);
   }
-  return _withMenu(s, menu, {...cfg, 'routes': routes, 'customItems': custom});
+  return _withMenu(s, menu, {...cfg, 'routes': routes, 'customItems': custom}, kind: kind);
 }
 
 /// The icon of a menu item: [iconName] from [sideMenuIcons] or the Media
 /// Gallery (`media:<id>`, `pack:<name>`), or null (or '') for the built-in
 /// item's own icon. A custom item keeps its icon on the item itself
 /// (null puts back the 'Star' it starts with).
-Map<String, dynamic> setMenuItemIcon(Map<String, dynamic> s, String menu, String itemId, String? iconName) {
-  final cfg = menuOf(s, menu);
+Map<String, dynamic> setMenuItemIcon(Map<String, dynamic> s, String menu, String itemId, String? iconName,
+    {NavKind kind = NavKind.menu}) {
+  final cfg = menuOf(s, menu, kind: kind);
   final name = (iconName ?? '').trim();
   final icons = Map<String, dynamic>.from(cfg['icons'] as Map)..remove(itemId);
   final list = cfg['customItems'] as List;
@@ -834,28 +930,31 @@ Map<String, dynamic> setMenuItemIcon(Map<String, dynamic> s, String menu, String
       for (final c in list)
         (c as Map)['id'] == itemId ? {...c, 'iconName': name.isEmpty ? 'Star' : name} : c,
     ];
-    return _withMenu(s, menu, {...cfg, 'icons': icons, 'customItems': custom});
+    return _withMenu(s, menu, {...cfg, 'icons': icons, 'customItems': custom}, kind: kind);
   }
   if (name.isNotEmpty) icons[itemId] = name;
-  return _withMenu(s, menu, {...cfg, 'icons': icons});
+  return _withMenu(s, menu, {...cfg, 'icons': icons}, kind: kind);
 }
 
-Map<String, dynamic> _toggleIn(Map<String, dynamic> s, String menu, String listKey, String itemId, bool include) {
-  final cfg = menuOf(s, menu);
+Map<String, dynamic> _toggleIn(Map<String, dynamic> s, String menu, String listKey, String itemId, bool include,
+    {NavKind kind = NavKind.menu}) {
+  final cfg = menuOf(s, menu, kind: kind);
   final set = {..._strings(cfg[listKey])};
   if (include) {
     set.add(itemId);
   } else {
     set.remove(itemId);
   }
-  return _withMenu(s, menu, {...cfg, listKey: set.toList()});
+  return _withMenu(s, menu, {...cfg, listKey: set.toList()}, kind: kind);
 }
 
-Map<String, dynamic> setMenuItemVisibility(Map<String, dynamic> s, String menu, String itemId, bool visible) =>
-    _toggleIn(s, menu, 'hidden', itemId, !visible);
+Map<String, dynamic> setMenuItemVisibility(Map<String, dynamic> s, String menu, String itemId, bool visible,
+        {NavKind kind = NavKind.menu}) =>
+    _toggleIn(s, menu, 'hidden', itemId, !visible, kind: kind);
 
-Map<String, dynamic> setMenuItemComingSoon(Map<String, dynamic> s, String menu, String itemId, bool comingSoon) =>
-    _toggleIn(s, menu, 'comingSoon', itemId, comingSoon);
+Map<String, dynamic> setMenuItemComingSoon(Map<String, dynamic> s, String menu, String itemId, bool comingSoon,
+        {NavKind kind = NavKind.menu}) =>
+    _toggleIn(s, menu, 'comingSoon', itemId, comingSoon, kind: kind);
 
 List<String>? _moved(List<String> ids, String id, int dir) {
   final order = [...ids];
@@ -868,21 +967,21 @@ List<String>? _moved(List<String> ids, String id, int dir) {
   return order;
 }
 
-Map<String, dynamic> moveMenuItem(Map<String, dynamic> s, String menu, String itemId, int dir) {
-  final cfg = menuOf(s, menu);
-  final order = _moved([for (final o in menuItemOrder(menu, cfg)) o.id], itemId, dir);
-  return order == null ? s : _withMenu(s, menu, {...cfg, 'order': order});
+Map<String, dynamic> moveMenuItem(Map<String, dynamic> s, String menu, String itemId, int dir, {NavKind kind = NavKind.menu}) {
+  final cfg = menuOf(s, menu, kind: kind);
+  final order = _moved([for (final o in menuItemOrder(menu, cfg, kind: kind)) o.id], itemId, dir);
+  return order == null ? s : _withMenu(s, menu, {...cfg, 'order': order}, kind: kind);
 }
 
-Map<String, dynamic> removeCustomMenuItem(Map<String, dynamic> s, String menu, String itemId) {
-  final cfg = menuOf(s, menu);
+Map<String, dynamic> removeCustomMenuItem(Map<String, dynamic> s, String menu, String itemId, {NavKind kind = NavKind.menu}) {
+  final cfg = menuOf(s, menu, kind: kind);
   return _withMenu(s, menu, {
     ...cfg,
     'customItems': [for (final c in cfg['customItems'] as List) if ((c as Map)['id'] != itemId) c],
     'hidden': _strings(cfg['hidden']).where((x) => x != itemId).toList(),
     'comingSoon': _strings(cfg['comingSoon']).where((x) => x != itemId).toList(),
     'order': _strings(cfg['order']).where((x) => x != itemId).toList(),
-  });
+  }, kind: kind);
 }
 
 // --- Vehicle type bar ---------------------------------------------------------------

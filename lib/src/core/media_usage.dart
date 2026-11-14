@@ -195,29 +195,35 @@ void _display(
   _KeyOf keyOf,
   _Sweep sweep,
 ) {
-  // Side menus: each built-in item's icon (or the one the admin gave it),
-  // each custom item's.
+  // Side menus and side rails: each built-in item's icon (or the one the
+  // admin gave it), each custom item's.
   for (final (menu, who) in [('user', 'rider'), ('partner', 'driver')]) {
-    final cfg = _map(s[menu == 'user' ? 'userMenu' : 'partnerMenu']);
-    final renames = _map(cfg['renames']);
-    final icons = _map(cfg['icons']);
-    final hidden = {for (final h in (cfg['hidden'] is List ? cfg['hidden'] as List : const [])) '$h'};
-    final route = sideMenuRoute(menu);
-    String label(String id, String name) =>
-        'Side menu ($who) › $name${hidden.contains(id) ? ' (hidden)' : ''}';
-    for (final (id, defaultLabel) in defaultMenuItems(menu)) {
-      final name = _text(renames[id]).isEmpty ? defaultLabel : _text(renames[id]);
-      final own = _text(icons[id]);
-      final icon = own.isNotEmpty ? own : defaultMenuIconNames[menu]?[id];
-      if (icon == null) continue;
-      add(keyOf(icon) ?? iconKey(icon), MediaUse(label(id, name), route, highlightId: id, slot: MediaKind.icon));
-    }
-    for (final c in (cfg['customItems'] is List ? cfg['customItems'] as List : const [])) {
-      if (c is! Map || c['id'] is! String) continue;
-      final id = c['id'] as String;
-      final icon = _text(c['iconName']).isEmpty ? 'Star' : _text(c['iconName']);
-      final name = _text(c['label']).isEmpty ? 'Custom item' : _text(c['label']);
-      add(keyOf(icon) ?? iconKey(icon), MediaUse(label(id, name), route, highlightId: id, slot: MediaKind.icon));
+    for (final kind in NavKind.values) {
+      final cfg = _map(s[menuKey(menu, kind: kind)]);
+      final renames = _map(cfg['renames']);
+      final icons = _map(cfg['icons']);
+      final hidden = {for (final h in (cfg['hidden'] is List ? cfg['hidden'] as List : const [])) '$h'};
+      final isRail = kind == NavKind.rail;
+      final surface = isRail ? 'Side rail' : 'Side menu';
+      // The rail editor is pushed, not a route, so point its highlight at the
+      // Display Settings screen; the side menu has its own deep link.
+      final route = isRail ? _displayRoute : sideMenuRoute(menu);
+      String label(String id, String name) =>
+          '$surface ($who) › $name${hidden.contains(id) ? ' (hidden)' : ''}';
+      for (final (id, defaultLabel) in defaultNavItems(menu, kind)) {
+        final name = _text(renames[id]).isEmpty ? defaultLabel : _text(renames[id]);
+        final own = _text(icons[id]);
+        final icon = own.isNotEmpty ? own : defaultNavIconName(menu, kind, id);
+        if (icon == null) continue;
+        add(keyOf(icon) ?? iconKey(icon), MediaUse(label(id, name), route, highlightId: id, slot: MediaKind.icon));
+      }
+      for (final c in (cfg['customItems'] is List ? cfg['customItems'] as List : const [])) {
+        if (c is! Map || c['id'] is! String) continue;
+        final id = c['id'] as String;
+        final icon = _text(c['iconName']).isEmpty ? 'Star' : _text(c['iconName']);
+        final name = _text(c['label']).isEmpty ? 'Custom item' : _text(c['label']);
+        add(keyOf(icon) ?? iconKey(icon), MediaUse(label(id, name), route, highlightId: id, slot: MediaKind.icon));
+      }
     }
   }
 
@@ -275,7 +281,7 @@ void _display(
   }
 
   // Anything else in the blob that holds a picture.
-  const covered = {'userMenu', 'partnerMenu', 'serviceBoxes', 'assistanceCatalogue'};
+  const covered = {'userMenu', 'partnerMenu', 'userRail', 'partnerRail', 'serviceBoxes', 'assistanceCatalogue'};
   for (final e in s.entries) {
     if (covered.contains(e.key)) continue;
     if (e.key == RideOptionsConfig.key) {
