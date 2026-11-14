@@ -8,6 +8,7 @@ library;
 
 import 'dart:math' as math;
 import '../../../core/booking_chips.dart' show emptyBookingChips, normalizeBookingChips;
+import '../../../core/cover_home.dart' show defaultCoverHomeMap, normalizeCoverHome;
 import '../../../core/home_sections.dart' show pinMiddleOffsetKey;
 import '../../../core/hourly_hire.dart' show hireTileRoute;
 import '../../../core/home_layout.dart' show HomeLayouts, HomeSectionType;
@@ -544,6 +545,7 @@ Map<String, dynamic> defaultDisplaySettings() => {
       'userRail': emptyMenu(),
       'partnerRail': emptyMenu(),
       'bookingChips': emptyBookingChips(),
+      'coverHome': defaultCoverHomeMap(),
     };
 
 List<String> _strings(Object? v) => v is List ? v.whereType<String>().toList() : <String>[];
@@ -620,6 +622,7 @@ Map<String, dynamic> mergeDisplaySettings(Object? raw) {
     'userRail': normalizeMenu(parsed['userRail']),
     'partnerRail': normalizeMenu(parsed['partnerRail']),
     'bookingChips': normalizeBookingChips(parsed['bookingChips']),
+    'coverHome': normalizeCoverHome(parsed['coverHome']),
   };
 }
 

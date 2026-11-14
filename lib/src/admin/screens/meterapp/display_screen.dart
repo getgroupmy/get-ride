@@ -33,6 +33,7 @@ import 'media_gallery_screen.dart' show mediaGalleryPath;
 import 'media_picker_sheet.dart';
 import '../../../core/media_assets.dart' show MediaKind, isMediaRef;
 import '../../../widgets/media_image.dart';
+import '../../../core/cover_home.dart';
 import 'home_layout_screen.dart' show HomeLayoutScreen;
 import 'ride_option_places_screen.dart' show RideOptionPlacesScreen;
 import 'freight_settings_screen.dart' show FreightSettingsScreen;
@@ -111,6 +112,10 @@ void openNavEditor(BuildContext context, String menu, NavKind kind) =>
 /// Opens the booking-row chip editor (Now, Later, Passengers, Luggage, custom).
 void openBookingChipsEditor(BuildContext context) =>
     openDisplayStepper(context, (_) => const BookingChipsEditorScreen());
+
+/// Opens the iPhone Duo folded-cover home editor.
+void openCoverHomeEditor(BuildContext context) =>
+    openDisplayStepper(context, (_) => const CoverHomeEditorScreen());
 
 /// Shared write helper for the display / mock screens.
 Future<void> applyDisplay(BuildContext context, WidgetRef ref, DisplayEdit edit) =>
@@ -539,6 +544,17 @@ class _DisplayBody extends ConsumerWidget {
               subtitle: const Text('Now, Later, Passengers, Luggage: show/hide, rename, recolour, reorder or add your own'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => openBookingChipsEditor(context),
+            ),
+          ),
+          const _Section('Duo cover home'),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.stay_current_portrait_outlined),
+              title: const Text('Duo cover home (folded)'),
+              subtitle: const Text(
+                  'iPhone Duo only: a cover-screen layout that clears the reserved strip. Android fold/flip keep the normal home'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => openCoverHomeEditor(context),
             ),
           ),
           const _Section('Ride Confirm Screen'),
@@ -1456,6 +1472,117 @@ class _Tag extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(text, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .4, color: isNew ? cs.onError : cs.onSurfaceVariant)),
+    );
+  }
+}
+
+/// Admin → Display Settings → Duo cover home. Edits the iPhone Duo folded-cover
+/// home config (core/cover_home.dart). The layout is used only on an iPhone Duo
+/// folded onto its cover screen; every other device keeps the normal home.
+class CoverHomeEditorScreen extends ConsumerWidget {
+  const CoverHomeEditorScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = ref.watch(pageAccessProvider(displayPage)) == AccessLevel.edit;
+    final value = ref.watch(displaySettingsProvider);
+    return Scaffold(
+      appBar: AppBar(title: const Text('Duo cover home')),
+      body: AsyncView(
+        value: value,
+        onRetry: () => ref.invalidate(displaySettingsProvider),
+        data: (s) {
+          final c = coverHomeFromSettings(s);
+          return ListView(padding: const EdgeInsets.fromLTRB(0, 16, 0, 28), children: [
+            ResponsiveCenter(
+              maxWidth: 820,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text(
+                  'A home layout used only when an iPhone Duo is folded onto its cover screen. Android fold/flip '
+                  'devices, ordinary phones, tablets and the Duo\'s unfolded inner screen all keep the normal home. '
+                  'Off by default; changes apply to every device.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: BusySwitchListTile(
+                    key: const ValueKey('cover-home-on'),
+                    title: const Text('Use the cover layout'),
+                    subtitle: const Text('iPhone Duo folded cover only'),
+                    value: c.enabled,
+                    onChanged: canEdit ? (v) => applyDisplay(context, ref, (x) => setCoverHomeEnabled(x, v)) : null,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: Column(children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Text('Reserved strip side', style: TextStyle(fontSize: 16)),
+                        const SizedBox(height: 2),
+                        Text('Where the camera / sensor region sits',
+                            style: Theme.of(context).textTheme.bodySmall),
+                        const SizedBox(height: 10),
+                        SegmentedButton<CoverStripSide>(
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(value: CoverStripSide.left, label: Text('Left')),
+                            ButtonSegment(value: CoverStripSide.right, label: Text('Right')),
+                          ],
+                          selected: {c.stripSide},
+                          onSelectionChanged: canEdit
+                              ? (sel) => applyDisplay(context, ref, (x) => setCoverHomeStripSide(x, sel.first))
+                              : null,
+                        ),
+                      ]),
+                    ),
+                    const Divider(height: 1),
+                    _StepperTile(
+                      label: 'Reserved strip width',
+                      description: 'How much of the edge the map keeps',
+                      value: c.stripWidth,
+                      min: coverStripMinWidth.round(),
+                      max: coverStripMaxWidth.round(),
+                      step: 2,
+                      unit: 'pt',
+                      onChanged:
+                          canEdit ? (v) => applyDisplay(context, ref, (x) => setCoverHomeStripWidth(x, v.toDouble())) : null,
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: Column(children: [
+                    BusySwitchListTile(
+                      title: const Text('Trim the sheet off the strip'),
+                      subtitle: const Text('The sheet stops before the strip so the map stays visible there'),
+                      value: c.trimSheet,
+                      onChanged: canEdit ? (v) => applyDisplay(context, ref, (x) => setCoverHomeTrimSheet(x, v)) : null,
+                    ),
+                    const Divider(height: 1),
+                    BusySwitchListTile(
+                      title: const Text('Map controls in the strip'),
+                      subtitle: const Text('Layer + recenter move into the strip, keeping their current height'),
+                      value: c.controlsInStrip,
+                      onChanged:
+                          canEdit ? (v) => applyDisplay(context, ref, (x) => setCoverHomeControlsInStrip(x, v)) : null,
+                    ),
+                  ]),
+                ),
+                const SizedBox(height: 8),
+                const Card(
+                  child: ListTile(
+                    leading: Icon(Icons.dashboard_customize_outlined),
+                    title: Text('Home sections'),
+                    subtitle: Text('The cover shows the same sections as the Home page layout, laid out for the cover screen.'),
+                  ),
+                ),
+              ]),
+            ),
+          ]);
+        },
+      ),
     );
   }
 }
