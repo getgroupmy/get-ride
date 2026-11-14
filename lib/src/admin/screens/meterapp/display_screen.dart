@@ -52,6 +52,8 @@ const displayPage = 'admin-settings-display';
 
 /// Material stand-ins for the lucide icon names stored in the blob.
 const lucideIcons = <String, IconData>{
+  'Calendar': Icons.calendar_today_outlined,
+  'Luggage': Icons.luggage_outlined,
   'ShoppingBag': Icons.shopping_bag_outlined,
   'Car': Icons.directions_car_outlined,
   'Building2': Icons.apartment,
