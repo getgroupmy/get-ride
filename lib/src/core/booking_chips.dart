@@ -66,8 +66,11 @@ Map<String, String> _hexMap(Object? v) {
   return out;
 }
 
-/// The empty config: no overrides, every built-in chip in its default state.
+/// The empty config: the booking row off, no overrides, every built-in chip in
+/// its default state. It ships off so the row never appears until an admin
+/// turns it on (the behaviour each chip drives lands in a later slice).
 Map<String, dynamic> emptyBookingChips() => <String, dynamic>{
+      'enabled': false,
       'renames': <String, dynamic>{},
       'icons': <String, dynamic>{},
       'fg': <String, dynamic>{},
@@ -95,7 +98,8 @@ Map<String, dynamic> normalizeBookingChips(Object? raw) {
     }
   }
   return <String, dynamic>{
-    'renames': {for (final e in _hexMap(raw['renames']).entries) e.key: e.value},
+    'enabled': raw['enabled'] == true,
+    'renames': _hexMap(raw['renames']),
     'icons': _hexMap(raw['icons']),
     'fg': _hexMap(raw['fg']),
     'bg': _hexMap(raw['bg']),
@@ -107,6 +111,11 @@ Map<String, dynamic> normalizeBookingChips(Object? raw) {
 
 Map<String, dynamic> _cfg(Map<String, dynamic> s) => normalizeBookingChips(s['bookingChips']);
 Map<String, dynamic> _with(Map<String, dynamic> s, Map<String, dynamic> cfg) => {...s, 'bookingChips': cfg};
+
+/// Whether the booking row shows at all (the admin's master switch).
+bool bookingChipsEnabled(Map<String, dynamic> settings) => _cfg(settings)['enabled'] == true;
+
+Map<String, dynamic> setBookingChipsEnabled(Map<String, dynamic> s, bool on) => _with(s, {..._cfg(s), 'enabled': on});
 
 /// Default + custom chips in display order (the admin editor's list).
 List<({String id, bool isCustom})> bookingChipOrder(Map<String, dynamic> cfg) {

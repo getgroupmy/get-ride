@@ -42,6 +42,8 @@ import '../../data/premium_plus_repository.dart' show premiumPlusTermsProvider;
 import '../../core/fare_offer.dart';
 import '../../core/city_cancel.dart' show owedFeesNote;
 import '../../core/city_ride_extras.dart' show CityRideExtras;
+import '../../core/booking_chips.dart' show bookingChipsEnabled, resolveBookingChips;
+import '../../widgets/booking_chips_row.dart' show BookingChipsRow;
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/airport_areas.dart' show AirportArea, AreaPrecedenceRule;
@@ -3981,6 +3983,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               money: (v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : 2),
             )
           : null,
+      // The booking row (Admin → Display → Booking Row): a visual row of chips
+      // on the confirm step when an admin has turned it on (ships off; the
+      // behaviour each chip drives lands in a later slice).
+      bookingChips: confirming && bookingChipsEnabled(blob) && resolveBookingChips(blob).isNotEmpty
+          ? BookingChipsRow(chips: resolveBookingChips(blob), padding: EdgeInsets.zero, showCaret: false)
+          : null,
       plus: plus,
       disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),
       fareAdjusted: _biddingFor(_service) && _adjust != 0,
@@ -4220,6 +4228,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 class _BookingPanel extends StatelessWidget {
   const _BookingPanel({
     this.extras,
+    this.bookingChips,
     this.disclaimerOffset = Offset.zero,
     this.fareAdjusted = false,
     this.bidding = false,
@@ -4323,6 +4332,10 @@ class _BookingPanel extends StatelessWidget {
   /// City ride extras under the vehicles (0314): luggage and the waiting rule.
   final Widget? extras;
 
+  /// The booking row (Admin → Display → Booking Row), at the top of the confirm
+  /// content when an admin has turned it on; null otherwise.
+  final Widget? bookingChips;
+
   /// The chosen card's pencil: the rider's own fare, where bidding is on.
   final VoidCallback? onEditFare;
 
@@ -4375,6 +4388,9 @@ class _BookingPanel extends StatelessWidget {
           const SizedBox(height: 8),
         ],
         ?idle,
+        // The booking row (Admin → Display → Booking Row), when turned on: at
+        // the top of the confirm content, above the route line and vehicles.
+        ?bookingChips,
         // The confirm step (Expo ride-confirm): the addresses are on the
         // map, so the sheet opens on the vehicles.
         if (idle == null && drop == null) ...[

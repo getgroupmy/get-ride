@@ -12,7 +12,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/app_branding.dart' show brandHexColor;
 import '../../../core/app_display.dart' show popupAutoCloseMaxSeconds, popupAutoCloseMinSeconds;
+import '../../../core/booking_chips.dart';
+import '../../../widgets/booking_chips_row.dart' show BookingChipsRow, defaultNewBookingChips;
 import '../../../core/option_charge.dart';
 import '../../../core/ride_assistance.dart';
 import '../../../core/ride_option_settings.dart';
@@ -95,14 +98,19 @@ const lucideIcons = <String, IconData>{
 
 IconData lucide(String? name) => lucideIcons[name] ?? Icons.star_border;
 
+/// Pushes a Display Settings editor page. Every such list goes through here so
+/// the editor's page id is used once in source (page_styles_test).
+void openDisplayStepper(BuildContext context, WidgetBuilder builder) =>
+    Navigator.of(context).push(AppPageRoute(id: 'display.stepper', builder: builder));
+
 /// Opens the nav-surface editor — a side menu ([NavKind.menu]) or a side rail
-/// ([NavKind.rail]) — for [menu] (`user` / `partner`). Both the Side Menus and
-/// Side Rails lists go through here so the editor's page id is used once in
-/// source (page_styles_test).
+/// ([NavKind.rail]) — for [menu] (`user` / `partner`).
 void openNavEditor(BuildContext context, String menu, NavKind kind) =>
-    Navigator.of(context).push(AppPageRoute(id: 'display.stepper',
-      builder: (_) => SideMenuEditorScreen(menu: menu, kind: kind),
-    ));
+    openDisplayStepper(context, (_) => SideMenuEditorScreen(menu: menu, kind: kind));
+
+/// Opens the booking-row chip editor (Now, Later, Passengers, Luggage, custom).
+void openBookingChipsEditor(BuildContext context) =>
+    openDisplayStepper(context, (_) => const BookingChipsEditorScreen());
 
 /// Shared write helper for the display / mock screens.
 Future<void> applyDisplay(BuildContext context, WidgetRef ref, DisplayEdit edit) =>
@@ -522,6 +530,16 @@ class _DisplayBody extends ConsumerWidget {
                   onTap: () => openNavEditor(context, menu, NavKind.rail),
                 ),
             ]),
+          ),
+          const _Section('Booking Row'),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Booking row chips'),
+              subtitle: const Text('Now, Later, Passengers, Luggage: show/hide, rename, recolour, reorder or add your own'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => openBookingChipsEditor(context),
+            ),
           ),
           const _Section('Ride Confirm Screen'),
           Card(
@@ -1049,17 +1067,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
   /// (null for a custom item).
   Future<void> _edit(BuildContext context, WidgetRef ref, String itemId, String label, String? route,
       {required String icon, String? defaultIcon}) async {
-    final res = await showAppDialog<_MenuItemResult>(id: 'display.menu-item-edit',
-      context: context,
-      builder: (_) => _MenuItemDialog(
-        title: 'Edit item',
-        label: label,
-        route: route,
-        showIcon: true,
-        icon: icon,
-        defaultIcon: defaultIcon,
-      ),
-    );
+    final res = await showItemEditDialog(context, title: 'Edit item', label: label, route: route, icon: icon, defaultIcon: defaultIcon);
     if (res == null || !context.mounted) return;
     final iconName = res.$3 == defaultIcon ? null : res.$3;
     await applyDisplay(
@@ -1083,10 +1091,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
               icon: const Icon(Icons.add),
               label: const Text('Add new item'),
               onPressed: () async {
-                final res = await showAppDialog<_MenuItemResult>(id: 'display.menu-item-add',
-                  context: context,
-                  builder: (_) => const _MenuItemDialog(title: 'Add Menu Item', label: '', showIcon: true, adding: true),
-                );
+                final res = await showItemAddDialog(context, title: 'Add Menu Item');
                 if (res == null || !context.mounted) return;
                 final id = 'custom-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 5)}';
                 await applyDisplay(context, ref, (x) => addCustomMenuItem(x, menu, res.$1, res.$3, res.$2, id: id, kind: kind));
@@ -1253,8 +1258,245 @@ class SideMenuEditorScreen extends ConsumerWidget {
   }
 }
 
-/// What the menu item dialog gives back: the label, the linked page and the icon.
+// ---------------------------------------------------------------------------
+// Booking row chip editor
+// ---------------------------------------------------------------------------
+
+/// The quick-pick colours for a chip's text and fill (blank = follow the theme).
+const _chipPalette = ['#1670E6', '#0EA5E9', '#22C55E', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#111823', '#616D7B', '#FFFFFF'];
+
+class BookingChipsEditorScreen extends ConsumerWidget {
+  const BookingChipsEditorScreen({super.key});
+
+  Future<void> _rename(BuildContext context, WidgetRef ref, String id, String label, String icon, String? defaultIcon) async {
+    final res = await showItemEditDialog(context, title: 'Edit chip', label: label, showRoute: false, icon: icon, defaultIcon: defaultIcon);
+    if (res == null || !context.mounted) return;
+    final iconName = res.$3 == defaultIcon ? null : res.$3;
+    await applyDisplay(context, ref, (x) => setBookingChipIcon(renameBookingChip(x, id, res.$1), id, iconName));
+  }
+
+  Widget _swatches(BuildContext context, WidgetRef ref, bool canEdit, String id, String which, String? current) {
+    final cur = (current ?? '').toUpperCase();
+    Widget dot({String? hex, required bool on, required VoidCallback? tap}) {
+      final color = hex == null ? null : brandHexColor(hex);
+      return InkWell(
+        onTap: tap,
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            color: color ?? Colors.transparent,
+            shape: BoxShape.circle,
+            border: Border.all(color: on ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.outlineVariant, width: on ? 2 : 1),
+          ),
+          child: hex == null ? const Icon(Icons.auto_awesome, size: 13) : (on ? Icon(Icons.check, size: 14, color: _onColor(color)) : null),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 44, child: Padding(padding: const EdgeInsets.only(top: 4), child: Text(which == 'fg' ? 'Text' : 'Fill', style: Theme.of(context).textTheme.labelSmall))),
+        Expanded(
+          child: Wrap(spacing: 6, runSpacing: 6, children: [
+            dot(hex: null, on: cur.isEmpty, tap: !canEdit ? null : () => applyDisplay(context, ref, (x) => setBookingChipColor(x, id, which, null))),
+            for (final p in _chipPalette)
+              dot(hex: p, on: cur == p.toUpperCase(), tap: !canEdit ? null : () => applyDisplay(context, ref, (x) => setBookingChipColor(x, id, which, p))),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final canEdit = ref.watch(pageAccessProvider(displayPage)) == AccessLevel.edit;
+    final value = ref.watch(displaySettingsProvider);
+    final add = canEdit
+        ? PageAddAction(
+            icon: const Icon(Icons.add),
+            label: const Text('Add chip'),
+            onPressed: () async {
+              final res = await showItemAddDialog(context, title: 'Add Chip', showRoute: false);
+              if (res == null || !context.mounted) return;
+              final id = 'chip-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 5)}';
+              await applyDisplay(context, ref, (x) => addCustomBookingChip(x, res.$1, id: id, icon: res.$3));
+            },
+          )
+        : null;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Booking Row'), actions: pageAddActions(context, add)),
+      floatingActionButton: pageAddFab(context, add),
+      body: AsyncView(
+        value: value,
+        onRetry: () => ref.invalidate(displaySettingsProvider),
+        data: (s) {
+          final on = bookingChipsEnabled(s);
+          final chips = resolveBookingChips(s);
+          final ordered = bookingChipOrder(normalizeBookingChips(s['bookingChips']));
+          final renames = Map<String, dynamic>.from((normalizeBookingChips(s['bookingChips'])['renames'] as Map));
+          final icons = Map<String, dynamic>.from((normalizeBookingChips(s['bookingChips'])['icons'] as Map));
+          final custom = {for (final c in (normalizeBookingChips(s['bookingChips'])['customItems'] as List)) (c as Map)['id'] as String: c};
+          final hidden = ((normalizeBookingChips(s['bookingChips'])['hidden'] as List?) ?? const []).toSet();
+          final defaults = {for (final d in defaultBookingChips) d.id: d};
+
+          return ListView(padding: EdgeInsets.fromLTRB(0, 16, 0, addActionListBottomPadding(context)), children: [
+            ResponsiveCenter(
+              maxWidth: 820,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text(
+                  'The row of chips at the top of the ride sheet. Toggle it on, then show or hide each chip, rename it, '
+                  'change its icon or colours, reorder with the arrows, or add your own. Changes apply to every device.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: SwitchListTile(
+                    key: const ValueKey('booking-chips-on'),
+                    title: const Text('Show the booking row'),
+                    subtitle: const Text('Off by default: the chips appear on the ride sheet only when this is on'),
+                    value: on,
+                    onChanged: canEdit ? (v) => applyDisplay(context, ref, (x) => setBookingChipsEnabled(x, v)) : null,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Live preview of the row as the rider sees it.
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(4, 10, 4, 12),
+                    child: Opacity(
+                      opacity: on ? 1 : .5,
+                      child: chips.isEmpty
+                          ? const Padding(padding: EdgeInsets.all(12), child: Text('Every chip is hidden — the row collapses.', textAlign: TextAlign.center))
+                          : BookingChipsRow(
+                              chips: chips,
+                              selectedId: bookingChipNowId,
+                              valueFor: (c) => c.id == bookingChipPassengersId ? '2' : c.id == bookingChipLuggageId ? '1' : null,
+                            ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                for (var i = 0; i < ordered.length; i++)
+                  () {
+                    final o = ordered[i];
+                    final c = custom[o.id];
+                    final label = o.isCustom ? '${c?['label'] ?? 'Chip'}' : (renames[o.id] as String?) ?? defaults[o.id]!.label;
+                    final defaultIcon = o.isCustom ? null : defaults[o.id]!.icon;
+                    final iconName = o.isCustom ? ((c?['iconName'] as String?) ?? 'Star') : (icons[o.id] as String?) ?? defaultIcon!;
+                    final fg = o.isCustom ? (c?['fg'] as String?) : (normalizeBookingChips(s['bookingChips'])['fg'] as Map)[o.id] as String?;
+                    final bg = o.isCustom ? (c?['bg'] as String?) : (normalizeBookingChips(s['bookingChips'])['bg'] as Map)[o.id] as String?;
+                    final isNew = defaultNewBookingChips.contains(o.id);
+                    return Card(child: Padding(
+                      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Row(children: [
+                          Column(mainAxisSize: MainAxisSize.min, children: [
+                            InkWell(onTap: !canEdit || i == 0 ? null : () => applyDisplay(context, ref, (x) => moveBookingChip(x, o.id, -1)), child: const Icon(Icons.keyboard_arrow_up, size: 18)),
+                            InkWell(onTap: !canEdit || i == ordered.length - 1 ? null : () => applyDisplay(context, ref, (x) => moveBookingChip(x, o.id, 1)), child: const Icon(Icons.keyboard_arrow_down, size: 18)),
+                          ]),
+                          const SizedBox(width: 6),
+                          InkWell(
+                            onTap: !canEdit ? null : () async {
+                              final v = await showMediaPicker(context, kind: MediaKind.icon, current: o.isCustom ? iconName : '${icons[o.id] ?? ''}', title: 'Icon for $label');
+                              if (v != null && context.mounted) await applyDisplay(context, ref, (x) => setBookingChipIcon(x, o.id, v));
+                            },
+                            child: MediaIcon(o.isCustom ? iconName : '${icons[o.id] ?? ''}', fallback: lucide(iconName)),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(child: Row(children: [
+                            Flexible(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis)),
+                            if (isNew) const Padding(padding: EdgeInsets.only(left: 6), child: _Tag('NEW')),
+                            if (o.isCustom) const Padding(padding: EdgeInsets.only(left: 6), child: _Tag('Custom')),
+                          ])),
+                          if (canEdit) BusyIconButton(tooltip: 'Rename / icon', icon: const Icon(Icons.edit_outlined), onPressed: () => _rename(context, ref, o.id, label, iconName, defaultIcon)),
+                          if (canEdit && o.isCustom)
+                            BusyIconButton(tooltip: 'Remove', icon: const Icon(Icons.delete_outline), onPressed: () async {
+                              if (!await confirm(context, 'Remove chip', 'Remove "$label"?', ok: 'Remove')) return;
+                              if (context.mounted) await applyDisplay(context, ref, (x) => removeCustomBookingChip(x, o.id));
+                            }),
+                          BusySwitch(value: !hidden.contains(o.id), onChanged: canEdit ? (v) => applyDisplay(context, ref, (x) => setBookingChipVisibility(x, o.id, v)) : null),
+                        ]),
+                        _swatches(context, ref, canEdit, o.id, 'fg', fg),
+                        _swatches(context, ref, canEdit, o.id, 'bg', bg),
+                      ]),
+                    ));
+                  }(),
+              ]),
+            ),
+          ]);
+        },
+      ),
+    );
+  }
+}
+
+/// On-colour for a check mark drawn over a swatch: dark on light fills, white
+/// on dark ones.
+Color _onColor(Color? bg) {
+  if (bg == null) return Colors.black;
+  final l = (0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b);
+  return l > .6 ? Colors.black : Colors.white;
+}
+
+/// A small outlined tag ("NEW" / "Custom") beside a chip's name in the editor.
+class _Tag extends StatelessWidget {
+  const _Tag(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isNew = text == 'NEW';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: isNew ? cs.error : cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(text, style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: .4, color: isNew ? cs.onError : cs.onSurfaceVariant)),
+    );
+  }
+}
+
 typedef _MenuItemResult = (String, String?, String);
+
+/// The shared "edit item" dialog — one page-style id (`display.menu-item-edit`)
+/// for the whole app, reused by the side-menu / side-rail editor and the
+/// booking-row chip editor. Returns the label, route and icon, or null if
+/// dismissed.
+Future<_MenuItemResult?> showItemEditDialog(
+  BuildContext context, {
+  required String title,
+  required String label,
+  String? route,
+  bool showRoute = true,
+  String icon = 'Star',
+  String? defaultIcon,
+}) =>
+    showAppDialog<_MenuItemResult>(
+      id: 'display.menu-item-edit',
+      context: context,
+      builder: (_) => _MenuItemDialog(
+        title: title,
+        label: label,
+        route: route,
+        showIcon: true,
+        showRoute: showRoute,
+        icon: icon,
+        defaultIcon: defaultIcon,
+      ),
+    );
+
+/// The shared "add item" dialog — one page-style id (`display.menu-item-add`)
+/// for the whole app.
+Future<_MenuItemResult?> showItemAddDialog(BuildContext context, {required String title, bool showRoute = true}) =>
+    showAppDialog<_MenuItemResult>(
+      id: 'display.menu-item-add',
+      context: context,
+      builder: (_) => _MenuItemDialog(title: title, label: '', showIcon: true, showRoute: showRoute, adding: true),
+    );
 
 class _MenuItemDialog extends StatefulWidget {
   const _MenuItemDialog({

@@ -16,6 +16,14 @@ void main() {
     expect(chips.firstWhere((c) => c.id == bookingChipNowId).iconName, 'Clock');
   });
 
+  test('the row ships off; the master switch toggles it', () {
+    expect(bookingChipsEnabled(const {}), isFalse);
+    var s = setBookingChipsEnabled(<String, dynamic>{}, true);
+    expect(bookingChipsEnabled(s), isTrue);
+    s = setBookingChipsEnabled(s, false);
+    expect(bookingChipsEnabled(s), isFalse);
+  });
+
   test('the blob carries a bookingChips slot', () {
     expect(defaultDisplaySettings()['bookingChips'], isA<Map>());
     expect(mergeDisplaySettings(const {})['bookingChips'], isA<Map>());
