@@ -26,23 +26,36 @@ void main() {
   });
 
   group('cappedBookingPanelWidth', () {
-    test('near-square foldable inner: ~50/50, so the map gets half', () {
-      // natural 460 would leave the map under half of 900; cap to 450.
-      expect(cappedBookingPanelWidth(460, 900, 0), 450);
+    test('map gets half the whole screen; the rail comes out of the panel side', () {
+      // Full screen 1000; a ~90pt rail leaves 910 of content. The panel is
+      // capped so the map is 500 — half the whole screen, not half the 910 of
+      // content — so the slim rail is taken off the panel's share, not the map's.
+      expect(cappedBookingPanelWidth(600, 910, 1000, 0), 410);
+      expect(910 - 410, 1000 * 0.5);
+    });
+
+    test('iPad mini landscape: the map ends up at least half the full screen', () {
+      // 1133 wide, a compact rail (~90) leaves 1043 of content; the natural
+      // content-fitting panel is clamped so the map keeps half of 1133.
+      final panel = cappedBookingPanelWidth(wideBookingPanelWidth(1133, 0), 1043, 1133, 0);
+      expect(1043 - panel, greaterThanOrEqualTo(1133 * 0.5));
     });
 
     test('roomy screen: panel keeps its natural width, map gets more than half', () {
-      expect(cappedBookingPanelWidth(500, 1400, 0), 500); // half (700) > natural
+      // available 1510 (rail ~90 off 1600); target 710 > natural 500.
+      expect(cappedBookingPanelWidth(500, 1510, 1600, 0), 500);
     });
 
     test('narrow wide screen (iPad portrait): panel stays readable, not below its floor', () {
-      // available 678, half 339 < 400 floor: keep 400 so the panel does not truncate.
-      expect(cappedBookingPanelWidth(400, 678, 0), 400);
+      // 768 wide, rail ~90 leaves 678; the half-screen target (294) is below
+      // the 400 floor, so keep 400 and let the map take the smaller share.
+      expect(cappedBookingPanelWidth(400, 678, 768, 0), 400);
     });
 
     test('the floor includes the side inset so content never truncates', () {
-      // Duo landscape: inset 62, floor 462; half (433) is below it, so keep 462.
-      expect(cappedBookingPanelWidth(462, 866, 62), 462);
+      // Duo landscape: full 956, inset 62, floor 462; the half-screen target
+      // (388) is below it, so keep 462.
+      expect(cappedBookingPanelWidth(462, 866, 956, 62), 462);
     });
   });
 }

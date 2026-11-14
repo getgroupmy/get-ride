@@ -65,7 +65,10 @@ class AppShell extends ConsumerWidget {
         child: shell,
       );
     }
-    final extended = width >= 1100;
+    // The slim (icon + label) rail on a tablet, the wide extended rail only on
+    // a desktop / wide-web width — so a tablet in landscape (an iPad mini at
+    // 1133) keeps the rail narrow and the map its half of the screen.
+    final extended = width >= 1300;
     return Scaffold(
       // Keyboard focus in the order the screen reads: the rail, then the
       // page, and within the page what floats over a map last.
