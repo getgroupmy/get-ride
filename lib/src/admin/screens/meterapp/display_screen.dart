@@ -1067,7 +1067,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
   /// (null for a custom item).
   Future<void> _edit(BuildContext context, WidgetRef ref, String itemId, String label, String? route,
       {required String icon, String? defaultIcon}) async {
-    final res = await showItemEditDialog(context, title: 'Edit item', label: label, route: route, icon: icon, defaultIcon: defaultIcon);
+    final res = await _showItemEditDialog(context, title: 'Edit item', label: label, route: route, icon: icon, defaultIcon: defaultIcon);
     if (res == null || !context.mounted) return;
     final iconName = res.$3 == defaultIcon ? null : res.$3;
     await applyDisplay(
@@ -1091,7 +1091,7 @@ class SideMenuEditorScreen extends ConsumerWidget {
               icon: const Icon(Icons.add),
               label: const Text('Add new item'),
               onPressed: () async {
-                final res = await showItemAddDialog(context, title: 'Add Menu Item');
+                final res = await _showItemAddDialog(context, title: 'Add Menu Item');
                 if (res == null || !context.mounted) return;
                 final id = 'custom-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 5)}';
                 await applyDisplay(context, ref, (x) => addCustomMenuItem(x, menu, res.$1, res.$3, res.$2, id: id, kind: kind));
@@ -1269,7 +1269,7 @@ class BookingChipsEditorScreen extends ConsumerWidget {
   const BookingChipsEditorScreen({super.key});
 
   Future<void> _rename(BuildContext context, WidgetRef ref, String id, String label, String icon, String? defaultIcon) async {
-    final res = await showItemEditDialog(context, title: 'Edit chip', label: label, showRoute: false, icon: icon, defaultIcon: defaultIcon);
+    final res = await _showItemEditDialog(context, title: 'Edit chip', label: label, showRoute: false, icon: icon, defaultIcon: defaultIcon);
     if (res == null || !context.mounted) return;
     final iconName = res.$3 == defaultIcon ? null : res.$3;
     await applyDisplay(context, ref, (x) => setBookingChipIcon(renameBookingChip(x, id, res.$1), id, iconName));
@@ -1319,7 +1319,7 @@ class BookingChipsEditorScreen extends ConsumerWidget {
             icon: const Icon(Icons.add),
             label: const Text('Add chip'),
             onPressed: () async {
-              final res = await showItemAddDialog(context, title: 'Add Chip', showRoute: false);
+              final res = await _showItemAddDialog(context, title: 'Add Chip', showRoute: false);
               if (res == null || !context.mounted) return;
               final id = 'chip-${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4().substring(0, 5)}';
               await applyDisplay(context, ref, (x) => addCustomBookingChip(x, res.$1, id: id, icon: res.$3));
@@ -1466,7 +1466,7 @@ typedef _MenuItemResult = (String, String?, String);
 /// for the whole app, reused by the side-menu / side-rail editor and the
 /// booking-row chip editor. Returns the label, route and icon, or null if
 /// dismissed.
-Future<_MenuItemResult?> showItemEditDialog(
+Future<_MenuItemResult?> _showItemEditDialog(
   BuildContext context, {
   required String title,
   required String label,
@@ -1491,7 +1491,7 @@ Future<_MenuItemResult?> showItemEditDialog(
 
 /// The shared "add item" dialog — one page-style id (`display.menu-item-add`)
 /// for the whole app.
-Future<_MenuItemResult?> showItemAddDialog(BuildContext context, {required String title, bool showRoute = true}) =>
+Future<_MenuItemResult?> _showItemAddDialog(BuildContext context, {required String title, bool showRoute = true}) =>
     showAppDialog<_MenuItemResult>(
       id: 'display.menu-item-add',
       context: context,

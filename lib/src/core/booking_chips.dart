@@ -151,7 +151,7 @@ List<ResolvedChip> resolveBookingChips(Map<String, dynamic> settings) {
   for (final o in bookingChipOrder(cfg)) {
     if (hidden.contains(o.id)) continue;
     if (o.isCustom) {
-      final c = custom[o.id] as Map?;
+      final c = custom[o.id];
       out.add(ResolvedChip(
         id: o.id,
         kind: customBookingChipKind,
@@ -221,12 +221,7 @@ Map<String, dynamic> setBookingChipColor(Map<String, dynamic> s, String id, Stri
   if (list.any((c) => (c as Map)['id'] == id)) {
     final custom = [
       for (final c in list)
-        if ((c as Map)['id'] != id)
-          c
-        else if (value.isEmpty)
-          ({...c}..remove(which))
-        else
-          {...c, which: value},
+        if ((c as Map)['id'] == id) _withChipColor(c, which, value) else c,
     ];
     return _with(s, {...cfg, 'customItems': custom});
   }
@@ -237,6 +232,18 @@ Map<String, dynamic> setBookingChipColor(Map<String, dynamic> s, String id, Stri
     map[id] = value;
   }
   return _with(s, {...cfg, which: map});
+}
+
+/// A custom chip's map with its [which] colour set to [value], or removed when
+/// [value] is empty (back to the theme).
+Map<String, dynamic> _withChipColor(Map c, String which, String value) {
+  final m = Map<String, dynamic>.from(c);
+  if (value.isEmpty) {
+    m.remove(which);
+  } else {
+    m[which] = value;
+  }
+  return m;
 }
 
 Map<String, dynamic> setBookingChipVisibility(Map<String, dynamic> s, String id, bool visible) {
