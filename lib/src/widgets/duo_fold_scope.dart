@@ -43,22 +43,35 @@ class _DuoFoldScopeState extends State<DuoFoldScope> {
     try {
       _sub = duoFoldChannel.receiveBroadcastStream().listen(
         (event) {
-          if (mounted) setState(() => _native = event is Map ? duoFoldFromNative(event) : null);
+          if (!mounted) return;
+          setState(() => _native = event is Map ? duoFoldFromNative(event) : null);
+          _publishHinge();
         },
         onError: (Object _) {},
       );
     } catch (_) {}
+    _publishHinge();
   }
 
   @override
   void dispose() {
     duoFoldSimulation.removeListener(_onChange);
     _sub?.cancel();
+    duoHingeNow.value = DuoHinge.none;
     super.dispose();
   }
 
   void _onChange() {
     if (mounted) setState(() {});
+    _publishHinge();
+  }
+
+  /// Keeps the global [duoHingeNow] in step so the orientation lock can react
+  /// to the fold pose (not just the laggy window size). A simulated pose wins
+  /// over the native one, matching [build].
+  void _publishHinge() {
+    final signal = duoFoldSimulation.value ?? _native;
+    duoHingeNow.value = signal?.hinge ?? DuoHinge.none;
   }
 
   @override
