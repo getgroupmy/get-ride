@@ -61,6 +61,20 @@ bool isTabletSize(double width, double height, {required bool web}) {
   return shortest >= (web ? 768 : 600);
 }
 
+/// The least horizontal safe-area inset that marks a foldable's reserved
+/// region (the iPhone Duo reports 84). A plain phone has none in portrait.
+const foldedCoverInsetMin = 40.0;
+
+/// The folded cover (front) display of a foldable — the iPhone Duo, an Android
+/// fold/flip. It is the same logical size as the inner display rotated and as
+/// an ordinary phone, so size alone can't name it; what sets it apart is the
+/// reserved region it still carries — a large horizontal safe-area inset
+/// ([horizontalInset], the wider of the system left/right insets) that a plain
+/// phone never has in portrait. So: a small screen (not [isTabletSize]) that is
+/// portrait and carries that inset. Pure.
+bool isFoldedCoverSize(double width, double height, double horizontalInset, {required bool web}) =>
+    !isTabletSize(width, height, web: web) && height >= width && horizontalInset >= foldedCoverInsetMin;
+
 /// The priority: a rider's ride in progress (it stays home, where the
 /// ongoing-ride card is), then a driver's trip in progress, then the meter
 /// auto-launch, then an unfinished partner application, then the partner
