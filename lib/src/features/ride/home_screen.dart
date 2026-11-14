@@ -12,7 +12,7 @@ import 'package:latlong2/latlong.dart';
 import '../../config.dart';
 import '../../core/booking_modules.dart' show familyModuleHire, familyModuleRide;
 import '../../core/window_class.dart' show verticalSplitFor, windowMetricsFor;
-import '../../core/launch_destination.dart' show isFoldedCoverSize;
+import '../../core/launch_destination.dart' show isFoldedCoverSize, mapButtonsRightInset;
 import '../../core/hourly_hire.dart' show HourlyHireConfig, hirePackageHourly, hireTileRoute, hireTitle;
 import '../../core/multi_day_hire.dart'
     show HireDaysBooking, MultiHireConfig, hirePackageDaily, hirePackageMonthly, hirePackageWeekly;
@@ -3682,8 +3682,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!confirming)
         aboveSheet(
           (inset) => Positioned(
-            // Clear of the notch on a phone on its side.
-            right: 16 + MediaQuery.paddingOf(context).right,
+            // Clear of the notch on a phone on its side; flush to the edge on
+            // the iPhone Duo, past its reserved-region inset (like the Claude app).
+            right: 16 +
+                mapButtonsRightInset(MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height,
+                    MediaQuery.paddingOf(context).right, web: kIsWeb),
             // Always clear of the sheet on every device: the flat-top margin
             // plus the sheet's rounded-corner depth, so the buttons never tuck
             // against the corner where the sheet rests tight to them (a thinner
@@ -3810,7 +3813,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (confirming && _routeMoved)
         aboveSheet(
           (inset) => Positioned(
-            right: 16 + MediaQuery.paddingOf(context).right - layout.recenter.$1,
+            right: 16 +
+                mapButtonsRightInset(MediaQuery.sizeOf(context).width, MediaQuery.sizeOf(context).height,
+                    MediaQuery.paddingOf(context).right, web: kIsWeb) -
+                layout.recenter.$1,
             bottom: (wide ? mapAttributionClearance : inset + aboveBar) - layout.recenter.$2,
             child: RouteFitButton(
               key: const ValueKey('confirm-route'),
