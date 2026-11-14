@@ -985,7 +985,13 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     ref.watch(areaPrecedenceRuleProvider);
     final typing = _query.text.trim().isNotEmpty;
     final smart = ref.watch(geoServiceProvider).smartAddress;
-    return Column(
+    // The route sheet passes its body straight to showAppSheet (not through
+    // FitSheetBody), so pad for the keyboard here: otherwise on a short screen
+    // (the folded cover) the results list extends under the keyboard and its
+    // lower rows can't be scrolled into view.
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: Column(
       children: [
         // The title in the middle, a round close on the right (inDrive's).
         Padding(
@@ -1120,6 +1126,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
           ),
         ),
       ],
+      ),
     );
   }
 
