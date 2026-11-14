@@ -52,8 +52,9 @@ class AppSideMenuHost extends StatefulWidget {
   final String location;
   final Widget child;
 
-  /// The side menu is for phones; wider screens have the rail.
-  static bool appliesAt(double width, [double height = double.infinity]) => width < 720 || height < 500;
+  /// The side menu is for phones (and the iPad mini in portrait, 744 wide);
+  /// wider screens have the rail.
+  static bool appliesAt(double width, [double height = double.infinity]) => width < 760 || height < 500;
 
   @override
   State<AppSideMenuHost> createState() => _AppSideMenuHostState();

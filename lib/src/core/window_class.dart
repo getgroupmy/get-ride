@@ -32,7 +32,7 @@ enum FoldPosture { flat, halfOpened }
 /// least height that width then also needs — the app's existing wide-layout
 /// thresholds ([wideLayoutAt] in map_sheet_layout.dart), named here so the
 /// size class and that helper never drift apart (a test pins them together).
-const windowRegularMinWidth = 720.0;
+const windowRegularMinWidth = 760.0;
 const windowRegularMinHeight = 500.0;
 
 /// The width from which the layout is regular whatever the height (a laptop, a

@@ -27,9 +27,13 @@ class _Rides implements RideRepository {
 
 void main() {
   test('the wide layout starts where the rail does', () {
-    expect(wideLayoutMinWidth, 720);
+    expect(wideLayoutMinWidth, 760);
     expect(wideLayoutAt(const Size(820, 1180)), isTrue);
     expect(wideLayoutAt(const Size(768, 1024)), isTrue);
+    // The iPad mini is narrower in portrait (744): phone layout there, two-pane
+    // only in landscape, like a large phone.
+    expect(wideLayoutAt(const Size(744, 1133)), isFalse, reason: 'iPad mini portrait');
+    expect(wideLayoutAt(const Size(1133, 744)), isTrue, reason: 'iPad mini landscape');
     expect(wideLayoutAt(const Size(844, 390)), isFalse, reason: 'a phone on its side keeps the phone layout');
     expect(wideLayoutAt(const Size(412, 915)), isFalse);
     expect(driverPanelWidth(1366), 520);
