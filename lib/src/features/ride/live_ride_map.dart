@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/launch_destination.dart' show mapButtonsRightInset;
 import '../../core/live_eta.dart';
 import '../../core/trip_card.dart' show TripRouteFix;
 import '../../core/ride_cancel.dart' show riderLocationForDriver;
@@ -359,8 +360,9 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
         MapBottomInset.listen(
           context,
           (inset) => Positioned(
-            // Clear of the notch on a phone on its side.
-            right: 12 + MediaQuery.paddingOf(context).right - recenterAt.$1,
+            // Clear of the notch on a phone on its side; flush to the edge on
+            // the iPhone Duo, past its reserved-region inset (like the Claude app).
+            right: 12 + mapButtonsRightInset(MediaQuery.paddingOf(context).right) - recenterAt.$1,
             bottom: mapAttributionClearance + inset - recenterAt.$2,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               ?widget.topButton,
@@ -389,7 +391,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
             // On a narrow phone the pill stays left of the map buttons'
             // column (48 wide, 12 in), which can climb to the top when the
             // sheet is up.
-            right: 12 + MediaQuery.paddingOf(context).right + (narrow ? 56 : 0),
+            right: 12 + mapButtonsRightInset(MediaQuery.paddingOf(context).right) + (narrow ? 56 : 0),
             child: Center(
               child: Material(
                 key: const ValueKey('eta-chip'),

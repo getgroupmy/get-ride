@@ -75,6 +75,16 @@ const foldedCoverInsetMin = 40.0;
 bool isFoldedCoverSize(double width, double height, double horizontalInset, {required bool web}) =>
     !isTabletSize(width, height, web: web) && height >= width && horizontalInset >= foldedCoverInsetMin;
 
+/// The right safe-area inset a map's floating buttons (recenter, layers) add to
+/// their 16px edge margin. On the iPhone Duo the buttons hug the true right
+/// edge (like the Claude app) instead of sitting inside its wide reserved-region
+/// inset, so that inset is dropped; a plain phone (portrait-locked, so no notch
+/// inset here) or tablet keeps its real inset, which is ~0 anyway. Passing it
+/// through this everywhere — the button column and whatever stands clear of it —
+/// shifts them together. Pure.
+double mapButtonsRightInset(double rightInset, {double min = foldedCoverInsetMin}) =>
+    rightInset >= min ? 0 : rightInset;
+
 /// The priority: a rider's ride in progress (it stays home, where the
 /// ongoing-ride card is), then a driver's trip in progress, then the meter
 /// auto-launch, then an unfinished partner application, then the partner

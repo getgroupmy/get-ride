@@ -31,4 +31,18 @@ void main() {
       expect(isFoldedCoverSize(466, 678, foldedCoverInsetMin, web: false), isTrue);
     });
   });
+
+  group('mapButtonsRightInset', () {
+    test('the iPhone Duo reserved-region inset is dropped so the buttons hug the edge', () {
+      // Duo cover and unfolded inner both report the ~84 reserved inset.
+      expect(mapButtonsRightInset(84), 0);
+      expect(mapButtonsRightInset(foldedCoverInsetMin), 0);
+    });
+
+    test('a plain phone / tablet keeps its (near-zero) real inset', () {
+      expect(mapButtonsRightInset(0), 0);
+      expect(mapButtonsRightInset(8), 8);
+      expect(mapButtonsRightInset(foldedCoverInsetMin - 0.01), foldedCoverInsetMin - 0.01);
+    });
+  });
 }

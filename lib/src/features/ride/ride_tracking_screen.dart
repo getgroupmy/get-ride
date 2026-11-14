@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../family/family_trip_parts.dart' show FamilyTripStrip;
 import '../../core/hourly_hire.dart' show HourlyHireConfig;
+import '../../core/launch_destination.dart' show mapButtonsRightInset;
 import '../../data/hourly_hire_repository.dart' show hourlyHireConfigProvider;
 import 'hire_parts.dart' show HireTripCard;
 import '../../data/ride_cancel_config.dart';
@@ -1721,7 +1722,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
               // The offers stand left of the map's layers and recenter
               // buttons (right edge), never over them: on a phone on its
               // side (915 × 412) the second card sat under them.
-              final right = offersClearOfMapButtons(MediaQuery.paddingOf(context).right);
+              // The map buttons hug the right edge on the iPhone Duo (past its
+              // reserved-region inset), so the offers clear that same edge.
+              final right = offersClearOfMapButtons(mapButtonsRightInset(MediaQuery.paddingOf(context).right));
               final width = (c.maxWidth - right - 16).clamp(0.0, 380.0);
               return Stack(children: [
               Positioned.fill(child: widget.map),
