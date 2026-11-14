@@ -58,7 +58,9 @@ jobs:
       - name: Dependencies
         run: flutter pub get
 
-      # Builds Dart + all native Swift for the simulator SDK, which needs no
-      # signing. A compile error in ios/Runner fails here.
-      - name: Compile iOS (simulator, no signing)
-        run: flutter build ios --simulator --debug
+      # Builds Dart + all native Swift for the device SDK without signing —
+      # the same command the release workflow runs before it archives, so the
+      # pods link the way they do for a real build (the simulator slice does
+      # not link Pods_Runner here). A compile error in ios/Runner fails here.
+      - name: Compile iOS (device, no signing)
+        run: flutter build ios --release --no-codesign
