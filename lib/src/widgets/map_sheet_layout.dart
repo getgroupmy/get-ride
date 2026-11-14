@@ -130,6 +130,19 @@ const wideLayoutMinWidth = 720.0;
 /// smaller phone on its side (844 × 390) keeps the phone layout.
 bool wideLayoutAt(Size size) => size.width >= 900 || (size.width >= wideLayoutMinWidth && size.height >= 500);
 
+/// The booking panel's width in the wide two-pane layout.
+///
+/// Wide enough that the panel's content — the mode switch, the search bar and
+/// the service boxes, all built for a phone's full width — is never narrower
+/// than a phone, so none of it truncates in a short landscape (the iPhone Duo
+/// at 956x440 squeezed the content to ~296pt before this); a little wider on a
+/// roomy screen, capped so the map keeps the larger share. [leftInset] is the
+/// device's side safe-area, which the panel's own SafeArea takes off its outer
+/// edge, so it is added back here to leave the content at the target width.
+/// Pure.
+double wideBookingPanelWidth(double windowWidth, double leftInset, {double minContent = 400, double maxContent = 500}) =>
+    (windowWidth * 0.42).clamp(minContent, maxContent) + leftInset;
+
 /// The sheet's width when the buttons stand beside it, and the room kept
 /// for them each side (past the notch), on a screen at least
 /// [besideMinWidth] wide; never narrower than [besideMinSheetWidth].

@@ -4033,8 +4033,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return Scaffold(
         body: calculating(Row(children: [
           SizedBox(
-            width: split?.panelWidth ?? 420,
+            width: split?.panelWidth ?? wideBookingPanelWidth(MediaQuery.sizeOf(context).width, MediaQuery.paddingOf(context).left),
+            // The panel's right edge is interior (against the map divider), so
+            // only its outer (left) safe-area is kept — padding the right by
+            // the device inset too squeezed the content in landscape.
             child: SafeArea(
+              right: false,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
