@@ -121,8 +121,10 @@ const mapShortStrip = 110.0;
 /// From this width the booking, offers, trip and driver pages put their
 /// panel beside the map instead of under it: the width from which the app
 /// has the rail instead of the side menu (AppSideMenuHost.appliesAt), so an
-/// iPad in portrait (768 or 820 wide) gets the side panel (0333).
-const wideLayoutMinWidth = 720.0;
+/// iPad in portrait (768 or 820 wide) gets the side panel (0333). The iPad
+/// mini is narrower in portrait (744), below this line, so it keeps the phone
+/// layout there like a large phone and only goes two-pane in landscape.
+const wideLayoutMinWidth = 760.0;
 
 /// Whether a screen of [size] lays out wide: 900 or wider as before (a
 /// laptop, a large phone on its side), and from [wideLayoutMinWidth] when it

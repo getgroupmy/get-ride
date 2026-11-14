@@ -16,22 +16,23 @@ void main() {
       expect(widthClassOf(const Size(390, 844)), WindowWidthClass.compact, reason: 'a phone');
       expect(widthClassOf(const Size(760, 1020)), WindowWidthClass.regular, reason: 'an unfolded inner display');
       expect(widthClassOf(const Size(1024, 768)), WindowWidthClass.regular, reason: 'a tablet');
-      // >= 720 wide needs >= 500 high; a wide-but-short strip stays compact.
+      // >= 760 wide needs >= 500 high; a wide-but-short strip stays compact.
       expect(widthClassOf(const Size(800, 400)), WindowWidthClass.compact);
       // >= 900 wide is regular at any height.
       expect(widthClassOf(const Size(950, 400)), WindowWidthClass.regular);
     });
 
     test('boundaries', () {
-      expect(widthClassOf(const Size(719, 900)), WindowWidthClass.compact);
-      expect(widthClassOf(const Size(720, 500)), WindowWidthClass.regular);
-      expect(widthClassOf(const Size(720, 499)), WindowWidthClass.compact);
+      expect(widthClassOf(const Size(744, 1133)), WindowWidthClass.compact, reason: 'iPad mini portrait — phone layout');
+      expect(widthClassOf(const Size(759, 500)), WindowWidthClass.compact);
+      expect(widthClassOf(const Size(760, 500)), WindowWidthClass.regular);
+      expect(widthClassOf(const Size(760, 499)), WindowWidthClass.compact);
       expect(widthClassOf(const Size(899, 499)), WindowWidthClass.compact);
       expect(widthClassOf(const Size(900, 499)), WindowWidthClass.regular);
     });
 
     test('never drifts from wideLayoutAt', () {
-      for (final w in [320.0, 500.0, 719.0, 720.0, 820.0, 899.0, 900.0, 1200.0]) {
+      for (final w in [320.0, 500.0, 744.0, 759.0, 760.0, 820.0, 899.0, 900.0, 1200.0]) {
         for (final h in [390.0, 499.0, 500.0, 700.0, 1024.0]) {
           final size = Size(w, h);
           expect(
