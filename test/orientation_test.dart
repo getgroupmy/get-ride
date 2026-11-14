@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/duo_fold.dart' show DuoHinge;
 import 'package:get_ride/src/core/orientation.dart';
 
 void main() {
@@ -36,6 +37,26 @@ void main() {
     test('web uses the wider 768 line', () {
       expect(appDefaultOrientations(700, 1024, web: true), portrait);
       expect(appDefaultOrientations(800, 1024, web: true), DeviceOrientation.values);
+    });
+
+    test('no/unknown hinge falls back to the size rule (every non-Duo device)', () {
+      expect(appDefaultOrientations(390, 844, web: false, hinge: DuoHinge.none), portrait);
+      expect(appDefaultOrientations(834, 1112, web: false, hinge: DuoHinge.none), DeviceOrientation.values);
+      expect(appDefaultOrientations(390, 844, web: false, hinge: DuoHinge.unknown), portrait);
+    });
+  });
+
+  group('the Duo hinge pose overrides the size rule (breaks the deadlock)', () {
+    test('the unfolded inner display rotates even while the window is still cover-sized', () {
+      // The bug: opening on the folded cover pins portrait, which can keep iOS
+      // from ever handing over the inner display's larger size. The hinge pose
+      // arrives first, so an open hinge unlocks rotation on the frozen size.
+      expect(appDefaultOrientations(466, 678, web: false, hinge: DuoHinge.fullyOpen), DeviceOrientation.values);
+      expect(appDefaultOrientations(466, 678, web: false, hinge: DuoHinge.partiallyOpen), DeviceOrientation.values);
+    });
+
+    test('the folded cover stays portrait even while the window is still inner-sized', () {
+      expect(appDefaultOrientations(951, 669, web: false, hinge: DuoHinge.closed), [DeviceOrientation.portraitUp]);
     });
   });
 }

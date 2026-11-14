@@ -32,6 +32,16 @@ DuoHinge duoHingeFromName(Object? v) => switch ('${v ?? ''}') {
   _ => DuoHinge.unknown,
 };
 
+/// The iPhone Duo hinge pose the bridge last reported (or a simulated one),
+/// kept in step by [DuoFoldScope] for code that must react to the fold beyond
+/// `MediaQuery.displayFeatures`. The orientation lock reads it: the folded
+/// cover's portrait pin can otherwise trap the app, since the pin stops iOS
+/// handing the window the unfolded inner display's larger size (see
+/// `orientation.dart`). It stays [DuoHinge.none] on every device with no Duo
+/// bridge (an Android foldable reports its fold through `displayFeatures` and
+/// resizes honestly, so it never needs this).
+final duoHingeNow = ValueNotifier<DuoHinge>(DuoHinge.none);
+
 /// What the native side reports about the fold: the pose, the crease
 /// (`.division`) rectangle and whether it is currently dividing the window,
 /// and any camera cut-outs (`.occlusion`).
