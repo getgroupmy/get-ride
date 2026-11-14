@@ -83,6 +83,12 @@ import flutter_callkit_incoming
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SecureScreenPlugin") {
       SecureScreenPlugin.register(with: registrar)
     }
+    // iPhone Duo fold bridge (lib/src/widgets/duo_fold_scope.dart,
+    // docs/iphone_duo_native_plugin.md): streams the hinge pose so the inner
+    // display rotates and the folded cover stays portrait.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "DuoFoldPlugin") {
+      DuoFoldPlugin.register(with: registrar)
+    }
   }
 
   // MARK: PushKit
@@ -1131,4 +1137,132 @@ final class NetworkInfoPlugin: NSObject, FlutterPlugin {
     }
     return out
   }
+}
+
+/// The iPhone Duo fold bridge (lib/src/widgets/duo_fold_scope.dart,
+/// docs/iphone_duo_native_plugin.md). Flutter does not surface the Duo fold in
+/// `MediaQuery.displayFeatures` on iOS, so this reads the hinge pose natively
+/// with `UIHingeInteraction` and streams it over the `get_ride/duo_fold`
+/// EventChannel. The Dart side keeps `duoHingeNow` in step and drives the
+/// orientation lock (lib/src/core/orientation.dart): the unfolded inner display
+/// rotates, the folded cover stays portrait. Without it the app is trapped —
+/// opening on the cover pins it portrait, and iOS then never hands the window
+/// the inner display's larger size, so a size-only rule can never unlock
+/// rotation after unfolding.
+///
+/// Scope: this reports the hinge **pose** only (`hinge`/`angle`), which is all
+/// the orientation fix needs. The crease rectangle (`UIView.reservedRegions`,
+/// for the two-pane layout) is deliberately left out for now — `division` is
+/// absent, which the Dart side reads as "no separating fold", so the layout is
+/// unchanged while rotation is fixed. Kept in this file (not a new one) so it
+/// needs no change to the Xcode project, as the other plugins here are.
+///
+/// A no-op on anything without a Duo hinge: `UIHingeInteraction` needs iOS 27+,
+/// and a device with no hinge never reports a pose, so the stream stays silent
+/// and the Dart side falls back to its size rule.
+final class DuoFoldPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
+  private var sink: FlutterEventSink?
+  private var attached = false
+
+  /// The newest hinge reading, as the channel contract names it.
+  private var status = "unknown"
+  private var angleDegrees: Double?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterEventChannel(name: "get_ride/duo_fold", binaryMessenger: registrar.messenger())
+    channel.setStreamHandler(DuoFoldPlugin())
+  }
+
+  func onListen(withArguments _: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    sink = events
+    attachIfPossible()
+    emit()
+    return nil
+  }
+
+  func onCancel(withArguments _: Any?) -> FlutterError? {
+    sink = nil
+    return nil
+  }
+
+  private func emit() {
+    guard let sink = sink else { return }
+    var message: [String: Any] = [
+      "hinge": status,
+      "divisionActive": false,
+      "occlusions": [],
+    ]
+    if let angle = angleDegrees { message["angle"] = angle }
+    sink(message)
+  }
+
+  // UIHinge / UIHingeInteraction exist only in the iOS 27.1 SDK (Xcode 27, which
+  // ships Swift 6.4 — the toolchain the release workflow pins). Referencing them
+  // at all would fail to compile under the older SDK (Xcode 26 / Swift 6.2–6.3,
+  // which the PR CI's iOS build on macos-latest uses), so the whole hinge path
+  // is gated on the compiler. Under an older SDK the plugin stays silent and the
+  // Dart side falls back to its window-size rule — the Duo inner display only
+  // fills against the 27.1 SDK anyway, so that build never runs on a Duo.
+#if compiler(>=6.4)
+
+  /// Adds the hinge interaction to the Flutter view once. The key window may
+  /// not exist at the first listen (the engine starts before the scene), so a
+  /// missing view is retried shortly rather than given up on.
+  private func attachIfPossible() {
+    guard !attached else { return }
+    guard #available(iOS 27.1, *) else { return }
+    guard let view = Self.hostView() else {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        self?.attachIfPossible()
+        self?.emit()
+      }
+      return
+    }
+    let interaction = UIHingeInteraction { [weak self] _, update in
+      guard let self = self else { return }
+      if let hinge = update.hinge {
+        self.status = Self.name(hinge.status)
+        self.angleDegrees = Double(hinge.angle) * 180 / .pi
+      } else {
+        // No hinge at all (not a Duo): the contract's "none".
+        self.status = "none"
+        self.angleDegrees = nil
+      }
+      self.emit()
+    }
+    view.addInteraction(interaction)
+    attached = true
+  }
+
+  @available(iOS 27.1, *)
+  private static func name(_ status: UIHinge.Status) -> String {
+    switch status {
+    case .closed: return "closed"
+    case .partiallyOpen: return "partiallyOpen"
+    case .fullyOpen: return "fullyOpen"
+    @unknown default: return "unknown"
+    }
+  }
+
+  /// The Flutter view to host the interaction on: the key window's root view
+  /// (the FlutterViewController's), mirroring SecureScreenPlugin's key-window
+  /// lookup through the connected scenes.
+  private static func hostView() -> UIView? {
+    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+    for scene in scenes {
+      let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first
+      if let view = window?.rootViewController?.view ?? window {
+        return view
+      }
+    }
+    return nil
+  }
+
+#else
+
+  /// Older SDK (no UIHingeInteraction): nothing to attach, so the stream stays
+  /// silent and Dart uses the window-size rule.
+  private func attachIfPossible() {}
+
+#endif
 }
