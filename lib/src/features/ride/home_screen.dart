@@ -4045,12 +4045,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return Scaffold(
         body: calculating(LayoutBuilder(builder: (context, constraints) => Row(children: [
           SizedBox(
-            // Keep about half the width as map (a near-square foldable inner
-            // otherwise left the map far under half), while the panel stays at
-            // least a phone's content wide so it never truncates.
+            // Keep about half the whole screen as map (the rail + panel share
+            // the other half), while the panel stays at least a phone's content
+            // wide so it never truncates.
             width: cappedBookingPanelWidth(
               split?.panelWidth ?? wideBookingPanelWidth(MediaQuery.sizeOf(context).width, MediaQuery.paddingOf(context).left),
               constraints.maxWidth,
+              MediaQuery.sizeOf(context).width,
               MediaQuery.paddingOf(context).left,
             ),
             // The panel's right edge is interior (against the map divider), so

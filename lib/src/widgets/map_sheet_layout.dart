@@ -145,20 +145,23 @@ bool wideLayoutAt(Size size) => size.width >= 900 || (size.width >= wideLayoutMi
 double wideBookingPanelWidth(double windowWidth, double leftInset, {double minContent = 400, double maxContent = 500}) =>
     (windowWidth * 0.42).clamp(minContent, maxContent) + leftInset;
 
-/// The wide two-pane booking panel's width capped against the [available] width
-/// (the two panes' own width, the rail already taken off), so the map keeps
-/// about half.
+/// The wide two-pane booking panel's width, capped so the map keeps about half
+/// of the **whole screen** ([windowWidth]) — not half of the two panes alone,
+/// so the rail (the gap between [available], the two panes' width, and
+/// [windowWidth]) comes out of the panel's side, never the map's.
 ///
 /// The panel is [natural] wide (its content-fitting width, or a book-fold's
-/// crease pane) but never takes more than half of [available] once half is
-/// still at least a phone's content wide (400 past the side [leftInset]) — so a
-/// near-square foldable inner splits ~50/50, a narrow wide screen (an iPad in
-/// portrait) keeps the panel readable and gives the map the rest, and a roomy
-/// screen holds [natural] and lets the map have more than half. Pure.
-double cappedBookingPanelWidth(double natural, double available, double leftInset) {
+/// crease pane) but gives the map half the screen once the panel can still fit
+/// its content (at least a phone wide, 400 past the side [leftInset]); below
+/// that the panel holds its content width and the map takes what is left. So a
+/// near-square foldable inner and an iPad in landscape split the screen ~50/50
+/// around a slim rail, a narrow wide screen keeps the panel readable, and a
+/// roomy screen gives the map more than half. Pure.
+double cappedBookingPanelWidth(double natural, double available, double windowWidth, double leftInset) {
   final floor = 400 + leftInset;
-  final half = available * 0.5;
-  final cap = half > floor ? half : floor;
+  // The panel width that leaves the map at half the whole screen.
+  final target = available - windowWidth * 0.5;
+  final cap = target > floor ? target : floor;
   return natural < cap ? natural : cap;
 }
 
