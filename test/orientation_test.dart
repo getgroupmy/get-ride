@@ -26,10 +26,11 @@ void main() {
       expect(appDefaultOrientations(600, 960, web: false), DeviceOrientation.values); // on the line
     });
 
-    test('the split sits between the Duo cover (466) and inner (669)', () {
-      // The whole rule set reduces to this one line crossing 600.
-      expect(appDefaultOrientations(466, 900, web: false), portrait);
-      expect(appDefaultOrientations(669, 400, web: false), DeviceOrientation.values);
+    test('the split sits between the Duo cover (shortest 466) and inner (shortest 669)', () {
+      // The whole rule set reduces to this one line crossing 600 on the
+      // shortest side (rotation-invariant).
+      expect(appDefaultOrientations(466, 678, web: false), portrait);
+      expect(appDefaultOrientations(669, 951, web: false), DeviceOrientation.values);
     });
 
     test('web uses the wider 768 line', () {
