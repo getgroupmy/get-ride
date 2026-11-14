@@ -1203,6 +1203,10 @@ final class DuoFoldPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       if let hinge = update.hinge {
         self.status = Self.name(hinge.status)
         self.angleDegrees = Double(hinge.angle) * 180 / .pi
+      } else {
+        // No hinge at all (not a Duo): the contract's "none".
+        self.status = "none"
+        self.angleDegrees = nil
       }
       self.emit()
     }
@@ -1227,7 +1231,6 @@ final class DuoFoldPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     case .closed: return "closed"
     case .partiallyOpen: return "partiallyOpen"
     case .fullyOpen: return "fullyOpen"
-    case .none: return "none"
     @unknown default: return "unknown"
     }
   }
