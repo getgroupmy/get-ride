@@ -84,6 +84,7 @@ import {
   placeFromRegions,
   type RegionRow,
   WAZE_PROVIDER,
+  WAZE_TRIP_BUDGET_MS,
   type WazeServer,
   wazeServersOf,
 } from "../_shared/waze_route.ts";
@@ -570,9 +571,14 @@ async function estimateFromWaze(ctx: StepContext): Promise<StepResult> {
 
   const points: WazeLatLng[] = [origin, ...stops, destination];
   const trendSettings = resolveTrendSettings(config.trend);
+  // One budget for the whole Waze step, so the AI and OSRM still answer
+  // before the rider app stops waiting (WAZE_TRIP_BUDGET_MS).
+  const deadline = Date.now() + WAZE_TRIP_BUDGET_MS;
   for (const server of available) {
+    const left = deadline - Date.now();
+    if (left < 300) return { estimate: null, reason: "waze_out_of_time" };
     const started = Date.now();
-    const result = await askWazeServer(server, points);
+    const result = await askWazeServer(server, points, fetch, left);
     const latencyMs = Date.now() - started;
     const parsed: RouteEstimate | null = result.estimate ? { ...result.estimate } : null;
     const standard = await ctx.standardFuture;
@@ -651,7 +657,8 @@ async function runWazeTest(
     ...(areaOf(d.area) ? { area: areaOf(d.area)! } : {}),
   };
   const started = Date.now();
-  const result = await askWazeServer(server, [origin, ...stops, destination]);
+  // A test may wake a cold container (Chrome takes 20-40 s), so it waits longer than a rider.
+  const result = await askWazeServer(server, [origin, ...stops, destination], fetch, 60_000);
   const standard = await standardRoute(origin, destination, stops);
   const estimate: RouteEstimate | null = result.estimate ? { ...result.estimate } : null;
   if (estimate) {

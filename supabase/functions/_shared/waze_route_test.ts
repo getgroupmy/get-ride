@@ -192,3 +192,15 @@ Deno.test("healthVerdict: unreachable, HTTP errors, refused key, Waze refusing, 
     "ok",
   );
 });
+
+Deno.test("askWazeServer: a slow server is given up within the trip budget", async () => {
+  const slow = (_url: string, init: RequestInit) =>
+    new Promise<Response>((_res, rej) => {
+      init.signal?.addEventListener("abort", () => rej(new DOMException("timed out", "TimeoutError")));
+    });
+  const started = Date.now();
+  const r = await askWazeServer(server, [klcc, klia], slow, 200);
+  assertEquals(r.estimate, null);
+  assertEquals(r.error, "No answer within 0.2 s");
+  assertEquals(Date.now() - started < 1000, true);
+});

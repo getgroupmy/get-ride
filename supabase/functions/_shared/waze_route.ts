@@ -253,23 +253,36 @@ export function estimateFromLegs(legs: WazeRoute[]): WazeEstimate | null {
 
 export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 
-/** Asks one server for the whole trip (one call per leg, in order). A leg
- * that fails fails the server, so the caller moves on to the next one. */
+/** How long the Waze step may take for one trip, every leg and server
+ * included. The rider app waits 5 s for an estimate ("Calculating fare",
+ * home_screen.dart aiEstimateTimeout) and then prices the plain route, so
+ * Waze must leave the next step (AI, OSRM) time to answer. A cold container
+ * that misses it keeps opening Chrome, so the next trip is fast. */
+export const WAZE_TRIP_BUDGET_MS = 3_000;
+
+/** Asks one server for the whole trip (one call per leg, in order), all of
+ * it within [budgetMs]. A leg that fails fails the server, so the caller
+ * moves on to the next one. */
 export async function askWazeServer(
   server: WazeServer,
   points: LatLng[],
   fetchImpl: Fetch = fetch,
-  timeoutMs = 20_000,
+  budgetMs = WAZE_TRIP_BUDGET_MS,
 ): Promise<WazeResult> {
+  const deadline = Date.now() + budgetMs;
   const legs: WazeRoute[] = [];
   const raws: string[] = [];
   let status: number | null = null;
   for (let i = 0; i + 1 < points.length; i++) {
     let text: string;
+    const left = deadline - Date.now();
+    if (left <= 0) {
+      return { estimate: null, httpStatus: status, error: `No answer within ${budgetMs / 1000} s`, raw: raws.join("\n") || null };
+    }
     try {
       const res = await fetchImpl(legUrl(server, points[i], points[i + 1]), {
         headers: { "X-Route-Key": server.key, accept: "application/json" },
-        signal: AbortSignal.timeout(timeoutMs),
+        signal: AbortSignal.timeout(left),
       });
       status = res.status;
       text = await res.text();
@@ -286,7 +299,9 @@ export async function askWazeServer(
       return {
         estimate: null,
         httpStatus: status,
-        error: e instanceof Error ? `${e.name}: ${e.message}` : String(e),
+        error: e instanceof Error && e.name === "TimeoutError"
+          ? `No answer within ${budgetMs / 1000} s`
+          : e instanceof Error ? `${e.name}: ${e.message}` : String(e),
         raw: raws.length ? raws.join("\n") : null,
       };
     }
