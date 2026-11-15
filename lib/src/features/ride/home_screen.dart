@@ -13,7 +13,7 @@ import '../../config.dart';
 import '../../core/booking_modules.dart' show familyModuleHire, familyModuleRide;
 import '../../core/window_class.dart' show verticalSplitFor, windowMetricsFor;
 import '../../core/launch_destination.dart' show isFoldedCoverSize, mapButtonsRightInset;
-import '../../core/cover_home.dart' show CoverStripSide, coverHomeFromSettings, duoCoverHomeActive;
+import '../../core/cover_home.dart' show CoverButton, CoverStripSide, coverHomeFromSettings, duoCoverHomeActive;
 import '../../core/hourly_hire.dart' show HourlyHireConfig, hirePackageHourly, hireTileRoute, hireTitle;
 import '../../core/multi_day_hire.dart'
     show HireDaysBooking, MultiHireConfig, hirePackageDaily, hirePackageMonthly, hirePackageWeekly;
@@ -3339,6 +3339,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final coverSheetTrim = coverActive && coverHome.trimSheet;
     final coverCtrlInStrip = coverActive && coverHome.controlsInStrip;
     final coverMapBtnEdge = math.max(0.0, (coverHome.stripWidth - 56) / 2);
+    // Each floating button's admin nudge, applied only on the Duo cover and
+    // left as a no-op (the child untouched) on every other device.
+    Widget coverNudge(CoverButton b, Widget child) {
+      if (!coverActive) return child;
+      final o = coverHome.offsetFor(b);
+      return Transform.translate(offset: Offset(o.dx, o.dy), child: child);
+    }
     // A fare off the usual, fixed or offered (bidding): inDrive's demand
     // band in the promo bar's place.
     final demand = _basis != null && !_routing ? _ai?.trend : null;
@@ -3673,7 +3680,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         Positioned(
           left: 16,
           top: 16,
-          child: IgnorePointer(
+          child: coverNudge(
+            CoverButton.menu,
+            IgnorePointer(
             ignoring: _pinMoving,
             child: AnimatedSlide(
               offset: Offset(0, _pinMoving ? -3 : 0),
@@ -3695,6 +3704,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
             ),
+          ),
           ),
         ),
       // Bottom right, riding just above the sheet as on the driver's map: the
@@ -3736,24 +3746,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       // Rider live map (0322): the overlays, only when the
                       // rider has one they may use.
                       if (liveConfig.hasOverlays) ...[
-                        MapOverlaysButton(
-                          count: liveOn.length,
-                          onPressed: () => showOverlayPicker(
-                            context,
-                            config: liveConfig,
-                            offMap: [...livePeople.offMap, ...liveTeam.offMap],
-                            onOpen: (p) {
-                              Navigator.of(context).maybePop();
-                              _openLivePerson(p, team: p.company != null);
-                            },
+                        coverNudge(
+                          CoverButton.overlays,
+                          MapOverlaysButton(
+                            count: liveOn.length,
+                            onPressed: () => showOverlayPicker(
+                              context,
+                              config: liveConfig,
+                              offMap: [...livePeople.offMap, ...liveTeam.offMap],
+                              onOpen: (p) {
+                                Navigator.of(context).maybePop();
+                                _openLivePerson(p, team: p.company != null);
+                              },
+                            ),
                           ),
                         ),
                         const SizedBox(height: 8),
                       ],
-                      const MapTypeButton(),
+                      coverNudge(CoverButton.mapType, const MapTypeButton()),
                       if (display?.recenterButton ?? true) ...[
                         const SizedBox(height: 8),
-                        RecenterButton(onPressed: _recenter),
+                        coverNudge(CoverButton.recenter, RecenterButton(onPressed: _recenter)),
                       ],
                     ],
                   ),

@@ -90,4 +90,56 @@ void main() {
       expect(active(true, true, duoCover, on()), isFalse);
     });
   });
+
+  group('button positions', () {
+    test('ship at zero for every button, and the blob carries them', () {
+      final c = coverHomeFromSettings(const {});
+      for (final b in CoverButton.values) {
+        expect(c.offsetFor(b), (dx: 0.0, dy: 0.0), reason: '$b starts put');
+      }
+      expect((defaultDisplaySettings()['coverHome'] as Map)['buttons'], isA<Map>());
+    });
+
+    test('nudging one button moves only it', () {
+      var s = <String, dynamic>{};
+      s = nudgeCoverButton(s, CoverButton.recenter, coverButtonNudgeStep, -coverButtonNudgeStep);
+      final c = coverHomeFromSettings(s);
+      expect(c.offsetFor(CoverButton.recenter), (dx: coverButtonNudgeStep, dy: -coverButtonNudgeStep));
+      for (final b in [CoverButton.menu, CoverButton.overlays, CoverButton.mapType]) {
+        expect(c.offsetFor(b), (dx: 0.0, dy: 0.0), reason: '$b untouched');
+      }
+      // Nudges accumulate.
+      s = nudgeCoverButton(s, CoverButton.recenter, 0, -coverButtonNudgeStep);
+      expect(coverHomeFromSettings(s).offsetFor(CoverButton.recenter), (dx: coverButtonNudgeStep, dy: -2 * coverButtonNudgeStep));
+    });
+
+    test('offsets are clamped and reset returns to zero', () {
+      var s = setCoverButtonOffset(<String, dynamic>{}, CoverButton.menu, 99999, -99999);
+      expect(coverHomeFromSettings(s).offsetFor(CoverButton.menu), (dx: coverButtonOffsetLimit, dy: -coverButtonOffsetLimit));
+      s = resetCoverButton(s, CoverButton.menu);
+      expect(coverHomeFromSettings(s).offsetFor(CoverButton.menu), (dx: 0.0, dy: 0.0));
+    });
+
+    test('a button nudge leaves the other cover settings in place', () {
+      var s = setCoverHomeStripWidth(setCoverHomeEnabled(<String, dynamic>{}, true), 90);
+      s = nudgeCoverButton(s, CoverButton.mapType, coverButtonNudgeStep, 0);
+      final c = coverHomeFromSettings(s);
+      expect(c.enabled, isTrue);
+      expect(c.stripWidth, 90);
+      expect(c.offsetFor(CoverButton.mapType), (dx: coverButtonNudgeStep, dy: 0.0));
+    });
+
+    test('normalize tolerates junk offsets', () {
+      final c = coverHomeFromSettings({
+        'coverHome': {
+          'buttons': {
+            'menu': {'dx': 'nope', 'dy': 12},
+            'overlays': 'not-a-map',
+          }
+        }
+      });
+      expect(c.offsetFor(CoverButton.menu), (dx: 0.0, dy: 12.0));
+      expect(c.offsetFor(CoverButton.overlays), (dx: 0.0, dy: 0.0));
+    });
+  });
 }
