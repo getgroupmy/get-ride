@@ -44,8 +44,14 @@ import '../../core/fare_offer.dart';
 import '../../core/city_cancel.dart' show owedFeesNote;
 import '../../core/city_ride_extras.dart' show CityRideExtras;
 import '../../core/booking_chips.dart'
-    show ResolvedChip, bookingChipLuggageId, bookingChipShown, bookingChipsEnabled, resolveBookingChips;
-import 'booking_chip_sheets.dart' show showLuggageSheet;
+    show
+        ResolvedChip,
+        bookingChipLuggageId,
+        bookingChipPassengersId,
+        bookingChipShown,
+        bookingChipsEnabled,
+        resolveBookingChips;
+import 'booking_chip_sheets.dart' show showLuggageSheet, showPassengersSheet;
 import '../../widgets/booking_chips_row.dart' show BookingChipsRow;
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
@@ -1556,13 +1562,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// The trailing count a booking-row chip shows (a Passengers/Luggage chip).
   String? _bookingChipValue(ResolvedChip c) {
+    if (c.id == bookingChipPassengersId) return '${_options.passengers}';
     if (c.id == bookingChipLuggageId) return _bagsBooked > 0 ? '$_bagsBooked' : null;
     return null;
   }
 
   /// A booking-row chip was tapped: open its picker.
   void _onBookingChipTap(ResolvedChip c) {
+    if (c.id == bookingChipPassengersId) unawaited(_openPassengersSheet());
     if (c.id == bookingChipLuggageId) unawaited(_openLuggageSheet());
+  }
+
+  /// The biggest vehicle that can take this trip — the group-size cap.
+  int get _maxSeats =>
+      _services.isEmpty ? RideOptions.standardSeats : _services.map((s) => s.seats).reduce((a, b) => a > b ? a : b);
+
+  /// Whether the Passengers booking chip is on (so the Options sheet drops its
+  /// own "More than N passengers" switch — the chip owns the count then).
+  bool get _passengersChipOn =>
+      bookingChipShown(ref.read(displaySettingsBlobProvider).value ?? const {}, bookingChipPassengersId);
+
+  /// The Passengers chip's group-size picker; its result is the booked count.
+  Future<void> _openPassengersSheet() async {
+    final n = await showPassengersSheet(context, count: _options.passengers, maxSeats: _maxSeats);
+    if (n != null && mounted) setState(() => _options = _options.copyWith(passengerCount: n));
   }
 
   /// The Luggage chip's bag picker; its result becomes the booked bag count.
@@ -2113,6 +2136,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               petConfig: _petsHere,
               config: _optionsConfigFor(_service),
               assistance: _helpHere,
+              hideMorePassengers: _passengersChipOn,
             ),
             onChanged: (v) => latest = v,
           ),
@@ -3927,6 +3951,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               petConfig: _petsHere,
               config: _optionsConfigFor(_service),
               assistance: _helpHere,
+              hideMorePassengers: _passengersChipOn,
             ).then((_) {
               if (mounted) setState(() {}); // the note may have changed
             }),

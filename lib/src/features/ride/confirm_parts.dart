@@ -1708,6 +1708,7 @@ Future<void> showRideOptionsSheet(
   PetConfig petConfig = const PetConfig(),
   RideOptionsConfig config = const RideOptionsConfig(),
   AssistanceCatalogue assistance = const AssistanceCatalogue(),
+  bool hideMorePassengers = false,
 }) => showAppSheet<void>(id: 'confirm.show-ride-options-sheet',
   context: context,
   isScrollControlled: true,
@@ -1722,6 +1723,7 @@ Future<void> showRideOptionsSheet(
     petConfig: petConfig,
     config: config,
     assistance: assistance,
+    hideMorePassengers: hideMorePassengers,
   ),
 );
 
@@ -1733,6 +1735,7 @@ class _RideOptionsSheet extends StatefulWidget {
     required this.petConfig,
     required this.config,
     required this.assistance,
+    this.hideMorePassengers = false,
   });
   final RideOptions options;
   final ValueChanged<RideOptions> onChanged;
@@ -1740,6 +1743,10 @@ class _RideOptionsSheet extends StatefulWidget {
   final PetConfig petConfig;
   final RideOptionsConfig config;
   final AssistanceCatalogue assistance;
+
+  /// The Passengers booking chip owns the passenger count when it is on, so
+  /// the "More than N passengers" switch is dropped from the sheet.
+  final bool hideMorePassengers;
 
   @override
   State<_RideOptionsSheet> createState() => _RideOptionsSheetState();
@@ -1918,7 +1925,8 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
               ],
             ),
             const SizedBox(height: 8),
-            for (final k in widget.config.shown(catalogue: widget.assistance)) _option(context, k),
+            for (final k in widget.config.shown(catalogue: widget.assistance))
+              if (!(widget.hideMorePassengers && k == RideOptionKind.morePassengers)) _option(context, k),
             const SizedBox(height: 12),
             Material(
               color: t.colorScheme.surfaceContainerHigh,
