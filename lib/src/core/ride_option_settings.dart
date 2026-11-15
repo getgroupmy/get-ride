@@ -180,6 +180,7 @@ class RideOptionsConfig {
       childSeat: o.childSeat && on.contains(RideOptionKind.childSeat),
       childSeats: o.childSeats.clamp(1, childSeatMax),
       morePassengers: o.morePassengers && on.contains(RideOptionKind.morePassengers),
+      passengerCount: o.passengerCount,
       pet: o.pet && on.contains(RideOptionKind.pet),
       pets: on.contains(RideOptionKind.pet) ? o.pets : const [],
       assistance: on.contains(RideOptionKind.assistance) ? o.assistance : null,

@@ -128,6 +128,7 @@ class RideOptions {
     this.childSeat = false,
     this.childSeats = 1,
     this.morePassengers = false,
+    this.passengerCount,
     this.pet = false,
     this.pets = const [],
     this.assistance,
@@ -141,6 +142,11 @@ class RideOptions {
 
   /// More than [standardSeats] riding.
   final bool morePassengers;
+
+  /// The exact passenger count the rider picked with the Passengers booking
+  /// chip (Admin → Display → Booking Row). Null when unset — then [passengers]
+  /// falls back to the [morePassengers] switch.
+  final int? passengerCount;
 
   /// A pet rides along (inDrive's "Pet with me").
   final bool pet;
@@ -157,8 +163,9 @@ class RideOptions {
 
   bool get any => childSeat || morePassengers || pet || assistance != null;
 
-  /// The passengers the request carries: one, or more than four.
-  int get passengers => morePassengers ? standardSeats + 1 : 1;
+  /// The passengers the request carries: the picked count, else one or more
+  /// than four from the [morePassengers] switch.
+  int get passengers => passengerCount ?? (morePassengers ? standardSeats + 1 : 1);
 
   /// Spelled out for the driver, ahead of the note. The pets' summary goes
   /// after "Pet with me", and the help's names after "Assistance:", so a
@@ -188,6 +195,7 @@ class RideOptions {
     bool? childSeat,
     int? childSeats,
     bool? morePassengers,
+    int? passengerCount,
     bool? pet,
     List<RidePet>? pets,
     RideAssistance? assistance,
@@ -196,6 +204,7 @@ class RideOptions {
     childSeat: childSeat ?? this.childSeat,
     childSeats: childSeats ?? this.childSeats,
     morePassengers: morePassengers ?? this.morePassengers,
+    passengerCount: passengerCount ?? this.passengerCount,
     pet: pet ?? this.pet,
     pets: pets ?? this.pets,
     assistance: clearAssistance ? null : (assistance ?? this.assistance),
@@ -207,12 +216,14 @@ class RideOptions {
       other.childSeat == childSeat &&
       other.childSeats == childSeats &&
       other.morePassengers == morePassengers &&
+      other.passengerCount == passengerCount &&
       other.pet == pet &&
       samePets(other.pets, pets) &&
       other.assistance == assistance;
 
   @override
-  int get hashCode => Object.hash(childSeat, childSeats, morePassengers, pet, Object.hashAll(pets), assistance);
+  int get hashCode =>
+      Object.hash(childSeat, childSeats, morePassengers, passengerCount, pet, Object.hashAll(pets), assistance);
 }
 
 /// The note the driver gets: the options the rider asked for, the entrance
