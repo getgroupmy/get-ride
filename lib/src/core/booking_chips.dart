@@ -177,6 +177,13 @@ List<ResolvedChip> resolveBookingChips(Map<String, dynamic> settings) {
   return out;
 }
 
+/// Whether a built-in chip (by id) is shown on the ride sheet right now: the
+/// master switch is on AND the chip is not hidden. Used to hide the older
+/// inline control a chip replaces (e.g. the inline luggage stepper, the footer
+/// Later button, the Options "More than N passengers" switch).
+bool bookingChipShown(Map<String, dynamic> settings, String id) =>
+    bookingChipsEnabled(settings) && resolveBookingChips(settings).any((c) => c.id == id);
+
 // --- mutators (the admin editor) -------------------------------------------
 
 Map<String, dynamic> renameBookingChip(Map<String, dynamic> s, String id, String label) {

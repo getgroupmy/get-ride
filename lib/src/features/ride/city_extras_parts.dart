@@ -30,6 +30,7 @@ class CityExtrasBookingRows extends StatelessWidget {
     required this.bags,
     required this.onBags,
     required this.money,
+    this.showLuggage = true,
   });
 
   final LuggageRules luggage;
@@ -38,14 +39,19 @@ class CityExtrasBookingRows extends StatelessWidget {
   final ValueChanged<int> onBags;
   final String Function(double) money;
 
+  /// Whether the inline luggage stepper shows. False when the Luggage booking
+  /// chip is on (it owns the luggage picker then); the waiting rule still shows.
+  final bool showLuggage;
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final muted = t.colorScheme.onSurfaceVariant;
     final rule = waiting.ruleLine(money);
-    if (!luggage.on && rule == null) return const SizedBox.shrink();
+    final luggageRow = luggage.on && showLuggage;
+    if (!luggageRow && rule == null) return const SizedBox.shrink();
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      if (luggage.on)
+      if (luggageRow)
         ConstrainedBox(
           key: const ValueKey('luggage-row'),
           constraints: const BoxConstraints(minHeight: 52),

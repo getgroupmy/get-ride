@@ -1476,6 +1476,7 @@ class ConfirmFooter extends StatelessWidget {
     this.onOptions,
     this.optionsOn = false,
     this.payments = builtInPayments,
+    this.showLater = true,
   });
 
   final String payment;
@@ -1528,6 +1529,10 @@ class ConfirmFooter extends StatelessWidget {
 
   /// An option is on: a dot on the button.
   final bool optionsOn;
+
+  /// Whether the footer Later button shows; hidden when the Later booking chip
+  /// owns the scheduled-ride flow (so there is one Later, not two).
+  final bool showLater;
 
   @override
   Widget build(BuildContext context) {
@@ -1658,6 +1663,7 @@ class ConfirmFooter extends StatelessWidget {
                             onNow: onFind,
                             pickLater: onFind == null ? null : pickLater,
                             onLater: onLater!,
+                            showLater: showLater,
                           )
                         : BusyButton.filled(
                             key: const ValueKey('book'),
@@ -1708,6 +1714,7 @@ Future<void> showRideOptionsSheet(
   PetConfig petConfig = const PetConfig(),
   RideOptionsConfig config = const RideOptionsConfig(),
   AssistanceCatalogue assistance = const AssistanceCatalogue(),
+  bool hideMorePassengers = false,
 }) => showAppSheet<void>(id: 'confirm.show-ride-options-sheet',
   context: context,
   isScrollControlled: true,
@@ -1722,6 +1729,7 @@ Future<void> showRideOptionsSheet(
     petConfig: petConfig,
     config: config,
     assistance: assistance,
+    hideMorePassengers: hideMorePassengers,
   ),
 );
 
@@ -1733,6 +1741,7 @@ class _RideOptionsSheet extends StatefulWidget {
     required this.petConfig,
     required this.config,
     required this.assistance,
+    this.hideMorePassengers = false,
   });
   final RideOptions options;
   final ValueChanged<RideOptions> onChanged;
@@ -1740,6 +1749,10 @@ class _RideOptionsSheet extends StatefulWidget {
   final PetConfig petConfig;
   final RideOptionsConfig config;
   final AssistanceCatalogue assistance;
+
+  /// The Passengers booking chip owns the passenger count when it is on, so
+  /// the "More than N passengers" switch is dropped from the sheet.
+  final bool hideMorePassengers;
 
   @override
   State<_RideOptionsSheet> createState() => _RideOptionsSheetState();
@@ -1918,7 +1931,8 @@ class _RideOptionsSheetState extends State<_RideOptionsSheet> {
               ],
             ),
             const SizedBox(height: 8),
-            for (final k in widget.config.shown(catalogue: widget.assistance)) _option(context, k),
+            for (final k in widget.config.shown(catalogue: widget.assistance))
+              if (!(widget.hideMorePassengers && k == RideOptionKind.morePassengers)) _option(context, k),
             const SizedBox(height: 12),
             Material(
               color: t.colorScheme.surfaceContainerHigh,
@@ -2623,6 +2637,7 @@ class NowLaterButton extends StatefulWidget {
     required this.pickLater,
     required this.onLater,
     this.label = 'Find a driver',
+    this.showLater = true,
   });
 
   /// The book-now button's words (the footer's label).
@@ -2632,6 +2647,10 @@ class NowLaterButton extends StatefulWidget {
   final Future<void> Function()? onNow;
   final Future<DateTime?> Function()? pickLater;
   final Future<void> Function(DateTime at) onLater;
+
+  /// Whether the Later button shows beside Now (hidden when the Later booking
+  /// chip owns scheduling).
+  final bool showLater;
 
   @override
   State<NowLaterButton> createState() => _NowLaterButtonState();
@@ -2698,10 +2717,11 @@ class _NowLaterButtonState extends State<NowLaterButton> {
                 label: Text(widget.label, maxLines: 1, overflow: TextOverflow.ellipsis),
               ),
             ),
-            const SizedBox(width: 8),
-            if (compact)
-              Tooltip(
-                message: 'Later',
+            if (widget.showLater) ...[
+              const SizedBox(width: 8),
+              if (compact)
+                Tooltip(
+                  message: 'Later',
                 child: OutlinedButton(
                   key: const ValueKey('book-later'),
                   style: OutlinedButton.styleFrom(
@@ -2728,6 +2748,7 @@ class _NowLaterButtonState extends State<NowLaterButton> {
                 icon: laterBusy ? const BusySpinner(size: 20) : const Icon(Icons.event),
                 label: const Text('Later'),
               ),
+            ],
           ],
         ),
       );
