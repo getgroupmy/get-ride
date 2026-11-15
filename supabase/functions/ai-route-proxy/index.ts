@@ -74,6 +74,21 @@ import {
   templateProblem,
   type TrafficExtras,
 } from "../_shared/fare_ai_request.ts";
+import {
+  anyArea,
+  areaOf,
+  askWazeServer,
+  cleanServerUrl,
+  type LatLng as WazeLatLng,
+  orderServersFor,
+  placeFromRegions,
+  type RegionRow,
+  sourceOf,
+  WAZE_PROVIDER,
+  wazeFallbackOf,
+  type WazeServer,
+  wazeServersOf,
+} from "../_shared/waze_route.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,6 +108,12 @@ interface FareAIConfig {
   request?: FareAIRequest;
   /** Fare trend arrows: { upPct, downPct } (see _shared/fare_ai_request.ts). */
   trend?: unknown;
+  /** Where estimates come from: "waze" | "ai" | "none" (_shared/waze_route.ts). */
+  source?: unknown;
+  /** GET.route servers, tried in order when the source is "waze". */
+  wazeServers?: unknown;
+  /** When every Waze server fails: "ai" (default) or "none". */
+  wazeFallback?: unknown;
 }
 
 interface LatLng {
@@ -112,7 +133,7 @@ interface RouteEstimate extends TrafficExtras {
   distance_km: number;
   duration_min: number;
   summary?: string;
-  provider?: Provider;
+  provider?: Provider | typeof WAZE_PROVIDER;
   toll_count?: number;
   toll_total?: number;
   tolls?: TollBooth[];
@@ -268,7 +289,14 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: "rate_limited", retry_after: wait }, 429);
   }
 
-  let body: { origin?: unknown; destination?: unknown; waypoints?: unknown; test?: unknown; request?: unknown };
+  let body: {
+    origin?: unknown;
+    destination?: unknown;
+    waypoints?: unknown;
+    test?: unknown;
+    request?: unknown;
+    server?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -297,8 +325,19 @@ Deno.serve(async (req: Request) => {
   }
 
   const config = (settingsRow?.value ?? {}) as FareAIConfig;
-  if (config.serviceEnabled === false && body.test !== true) {
+  if (body.test === "waze") {
+    return runWazeTest(req, supabaseUrl, body.server, config, origin, destination, stops);
+  }
+  const source = sourceOf(config);
+  if (source === "none" && body.test !== true) {
     return json({ ok: true, estimate: null, reason: "service_disabled" });
+  }
+  const cooldownMs = retryPolicyMs(config.retryAfterValue ?? 1, config.retryAfterUnit ?? "hour");
+  if (source === "waze" && body.test !== true) {
+    const waze = await estimateFromWaze(admin, config, userId, origin, destination, stops, cooldownMs);
+    if (waze.estimate) return json({ ok: true, estimate: waze.estimate });
+    if (wazeFallbackOf(config) === "none") return json({ ok: true, estimate: null, reason: waze.reason });
+    // Every server failed or none is set up: the AI provider answers instead.
   }
 
   const provider: Provider = config.provider ?? "gemini";
@@ -339,7 +378,6 @@ Deno.serve(async (req: Request) => {
   const trendSettings = resolveTrendSettings(config.trend);
   // Alongside the AI: the AI usually takes longer, so this is in by then.
   const standardFuture = standardRoute(origin, destination, stops);
-  const cooldownMs = retryPolicyMs(config.retryAfterValue ?? 1, config.retryAfterUnit ?? "hour");
   // Test traffic (0241): a label for the log only, asked alongside the AI.
   // Any failure answers "real".
   const testFuture = testAccountCheck(rpcTestAccountLookup((fn, args) => admin.rpc(fn, args)))(userId);
@@ -412,6 +450,155 @@ Deno.serve(async (req: Request) => {
 
   return json({ ok: true, estimate: null, reason: "all_keys_failed" });
 });
+
+/** Asks the GET.route servers, the pickup's area first (see
+ * orderServersFor), skipping any cooling down after a failure, and logs
+ * every attempt like an AI key's. The first answer wins. */
+async function estimateFromWaze(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  config: FareAIConfig,
+  userId: string,
+  origin: LatLng,
+  destination: LatLng,
+  stops: LatLng[],
+  cooldownMs: number,
+): Promise<{ estimate: (RouteEstimate & { stops: number }) | null; reason: string }> {
+  let servers = wazeServersOf(config);
+  if (servers.length === 0) return { estimate: null, reason: "no_waze_servers" };
+  if (anyArea(servers)) {
+    // The pickup's country / state / city / suburb, as commission rules see it.
+    const { data: rows, error } = await admin.rpc("regions_at", {
+      p_lat: origin.latitude,
+      p_lng: origin.longitude,
+    });
+    if (error) console.error("ai-route-proxy: regions_at failed", error.message);
+    servers = orderServersFor(servers, placeFromRegions((rows ?? []) as RegionRow[]));
+  }
+  const { data: stateRows } = await admin
+    .from("fare_ai_key_states")
+    .select("key_id, disabled_until")
+    .in("key_id", servers.map((s) => s.id));
+  const now = Date.now();
+  const cooling = new Set(
+    (stateRows ?? [])
+      .filter((r: { disabled_until: string | null }) => {
+        const until = r.disabled_until ? new Date(r.disabled_until).getTime() : NaN;
+        return Number.isFinite(until) && until > now;
+      })
+      .map((r: { key_id: string }) => r.key_id),
+  );
+  const available = servers.filter((s) => !cooling.has(s.id));
+  if (available.length === 0) return { estimate: null, reason: "waze_servers_cooling_down" };
+
+  const points: WazeLatLng[] = [origin, ...stops, destination];
+  const trendSettings = resolveTrendSettings(config.trend);
+  const standardFuture = standardRoute(origin, destination, stops);
+  const testFuture = testAccountCheck(rpcTestAccountLookup((fn, args) => admin.rpc(fn, args)))(userId);
+
+  for (const server of available) {
+    const started = Date.now();
+    const result = await askWazeServer(server, points);
+    const latencyMs = Date.now() - started;
+    const parsed: RouteEstimate | null = result.estimate ? { ...result.estimate } : null;
+    const standard = await standardFuture;
+    if (parsed) {
+      // Waze's live time against the empty-road time: the same arrows an AI gets.
+      const trend = decideFareTrend(parsed.duration_min, standard?.min ?? null, {}, trendSettings, false);
+      if (trend) parsed.trend = trend;
+    }
+    const success = !!parsed;
+    await admin.from("fare_ai_responses").insert({
+      provider: WAZE_PROVIDER,
+      key_id: server.id,
+      key_label: server.label,
+      model: "GET.route",
+      origin_lat: origin.latitude,
+      origin_lng: origin.longitude,
+      dest_lat: destination.latitude,
+      dest_lng: destination.longitude,
+      success,
+      http_status: result.httpStatus,
+      distance_km: parsed?.distance_km ?? null,
+      duration_min: parsed?.duration_min ?? null,
+      summary: parsed?.summary ?? null,
+      toll_count: parsed?.toll_count ?? null,
+      toll_total: parsed?.toll_total ?? null,
+      tolls: parsed?.tolls ?? null,
+      error: result.error,
+      latency_ms: latencyMs,
+      raw_response: result.raw ? result.raw.substring(0, 4000) : null,
+      extra: withStops(parsed ? extrasOf(parsed) : null, stops),
+      standard_duration_min: standard?.min ?? null,
+      standard_distance_km: standard?.km ?? null,
+      ...((await testFuture) ? { is_test: true } : {}),
+    });
+    await admin.rpc("fare_ai_record_usage", {
+      p_key_id: server.id,
+      p_provider: WAZE_PROVIDER,
+      p_success: success,
+      p_disabled_until: success ? null : new Date(Date.now() + cooldownMs).toISOString(),
+      p_error: result.error,
+    });
+    if (parsed) return { estimate: { ...parsed, provider: WAZE_PROVIDER, stops: stops.length }, reason: "ok" };
+  }
+  return { estimate: null, reason: "all_waze_servers_failed" };
+}
+
+/** Admin "Test" on a Waze server, saved or not: one trip, nothing recorded. */
+async function runWazeTest(
+  req: Request,
+  supabaseUrl: string,
+  draft: unknown,
+  config: FareAIConfig,
+  origin: LatLng,
+  destination: LatLng,
+  stops: LatLng[],
+): Promise<Response> {
+  // Edit access to Fare AI: the admin may name any server and key here.
+  const canEdit = await callerCanEdit({
+    url: supabaseUrl,
+    anonKey: Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    serviceKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+  }, req.headers.get("Authorization"), FARE_AI_PAGES).catch(() => false);
+  if (canEdit !== true) return json({ ok: false, error: "admin_only" }, 403);
+
+  const d = (draft && typeof draft === "object" ? draft : {}) as Record<string, unknown>;
+  const url = cleanServerUrl(d.url);
+  const key = typeof d.key === "string" ? d.key.trim() : "";
+  if (!url) return json({ ok: false, error: "The server URL must start with https://" });
+  if (!key) return json({ ok: false, error: "The server needs its key" });
+  const server: WazeServer = {
+    id: typeof d.id === "string" ? d.id : "test",
+    label: typeof d.label === "string" && d.label.trim() ? d.label.trim() : "Waze server",
+    url,
+    key,
+    enabled: true,
+    ...(areaOf(d.area) ? { area: areaOf(d.area)! } : {}),
+  };
+  const started = Date.now();
+  const result = await askWazeServer(server, [origin, ...stops, destination]);
+  const standard = await standardRoute(origin, destination, stops);
+  const estimate: RouteEstimate | null = result.estimate ? { ...result.estimate } : null;
+  if (estimate) {
+    const trend = decideFareTrend(estimate.duration_min, standard?.min ?? null, {}, resolveTrendSettings(config.trend), false);
+    if (trend) estimate.trend = trend;
+  }
+  return json({
+    ok: true,
+    test: {
+      provider: WAZE_PROVIDER,
+      server: server.label,
+      url: server.url,
+      raw: result.raw ? result.raw.substring(0, 4000) : null,
+      estimate,
+      standard,
+      http_status: result.httpStatus,
+      error: result.error,
+      latency_ms: Date.now() - started,
+    },
+  });
+}
 
 /** The fare-range, traffic and trend answers of an estimate (null when none). */
 function extrasOf(e: RouteEstimate): Record<string, unknown> | null {

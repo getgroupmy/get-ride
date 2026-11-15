@@ -413,6 +413,39 @@ class SecurityRepository {
     return Map<String, dynamic>.from(data['test'] as Map);
   }
 
+  /// Each Waze server's last scheduled health check, by server id (empty
+  /// before migration 0411).
+  Future<Map<String, WazeServerHealth>> wazeServerHealth() async {
+    try {
+      final rows = await _db
+          .from('waze_server_health')
+          .select('server_id, state, last_ok_at, failing_since, last_checked_at, detail');
+      return {for (final r in rows) '${r['server_id']}': WazeServerHealth.fromRow(r)};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Asks one GET.route server (saved or not) for a trip through
+  /// `ai-route-proxy` (admins only): its answer, the estimate made from it
+  /// and how long it took. Nothing is logged or counted.
+  Future<Map<String, dynamic>> testWazeServer(
+    WazeServer server, {
+    required ({double lat, double lng}) origin,
+    required ({double lat, double lng}) destination,
+  }) async {
+    final res = await _db.functions.invokeNearDb('ai-route-proxy', body: {
+      'test': 'waze',
+      'server': server.toJson(),
+      'origin': {'latitude': origin.lat, 'longitude': origin.lng},
+      'destination': {'latitude': destination.lat, 'longitude': destination.lng},
+    });
+    final data = res.data;
+    if (data is! Map) throw Exception('Unexpected reply from ai-route-proxy');
+    if (data['ok'] != true) throw Exception('${data['error'] ?? 'Test failed'}');
+    return Map<String, dynamic>.from(data['test'] as Map);
+  }
+
   /// Same filter as Expo (a `delete` needs one).
   Future<void> clearFareAiResponses() =>
       _db.from('fare_ai_responses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
