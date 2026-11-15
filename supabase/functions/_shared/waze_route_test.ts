@@ -9,8 +9,6 @@ import {
   legUrl,
   orderServersFor,
   placeFromRegions,
-  sourceOf,
-  wazeFallbackOf,
   wazeServersOf,
 } from "./waze_route.ts";
 
@@ -18,20 +16,6 @@ const server = { id: "s1", label: "Office NAS", url: "https://route1.getride.my"
 const klcc = { latitude: 3.1579, longitude: 101.7116 };
 const klia = { latitude: 2.7456, longitude: 101.7099 };
 const putrajaya = { latitude: 2.9264, longitude: 101.6964 };
-
-Deno.test("sourceOf: saved source, else ai, else none when the old switch is off", () => {
-  assertEquals(sourceOf({ source: "waze" }), "waze");
-  assertEquals(sourceOf({ source: "none", serviceEnabled: true }), "none");
-  assertEquals(sourceOf({}), "ai");
-  assertEquals(sourceOf(null), "ai");
-  assertEquals(sourceOf({ serviceEnabled: false }), "none");
-  assertEquals(sourceOf({ source: "bogus" }), "ai");
-});
-
-Deno.test("wazeFallbackOf: ai unless none", () => {
-  assertEquals(wazeFallbackOf({}), "ai");
-  assertEquals(wazeFallbackOf({ wazeFallback: "none" }), "none");
-});
 
 Deno.test("cleanServerUrl: https only, no credentials or query, no trailing slash", () => {
   assertEquals(cleanServerUrl("https://route1.getride.my/"), "https://route1.getride.my");

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/loading_skeleton.dart';
+import '../../../widgets/search_select.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
 import '../../widgets/region_scope_picker.dart' show pickRegionScope;
@@ -194,12 +195,9 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
     final c = _config!;
     setState(() => _saving = true);
     final ok = await runAdminAction(context, () => ref.read(securityRepositoryProvider).saveFareAiConfig(c),
-        success: switch (c.source) {
-          'waze' => 'Fares now use Waze live data from ${c.activeWazeServerCount} server'
-              '${c.activeWazeServerCount == 1 ? '' : 's'} for all users.',
-          'none' => 'Fare estimates are off: fares use the routing engine fallback.',
-          _ => 'Fare calculation now uses ${fareAiProviderLabel(c.provider)} for all users.',
-        });
+        success: c.chain.isEmpty
+            ? 'Fare estimates are off: fares use the routing engine fallback.'
+            : 'Fare estimates now come from ${fareChainLabel(c.chain)} for all users.');
     if (!mounted) return;
     setState(() {
       _saving = false;
@@ -384,42 +382,49 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
         const Card(
           child: ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Choose which AI estimates trip distance & traffic-aware time for fare calculation. Applies '
-                "globally to all users. Add multiple keys per provider — if one fails it's skipped for the retry "
-                'window below and the next key is tried automatically.'),
+            title: Text('Choose where trip distance & traffic-aware time for fares come from, and in what order. '
+                "Applies globally to all users. Add multiple AI keys or Waze servers — if one fails it's skipped for "
+                'the retry window below and the next one is tried automatically.'),
           ),
         ),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Text('Fare data source', style: t.textTheme.titleMedium),
+              Text('Fare data order', style: t.textTheme.titleMedium),
               const SizedBox(height: 8),
-              SegmentedButton<String>(
-                key: const ValueKey('fare-source'),
-                segments: [for (final e in fareSources.entries) ButtonSegment(value: e.key, label: Text(e.value))],
-                selected: {c.source},
-                onSelectionChanged: canEdit ? (v) => _update(c.copyWith(source: v.first)) : null,
+              SearchableDropdownFormField<String>(
+                key: ValueKey('fare-chain-${c.chain.join(',')}'),
+                isExpanded: true,
+                initialValue: c.chain.join(','),
+                decoration: const InputDecoration(labelText: 'Ask in this order'),
+                items: [
+                  for (final ch in {...fareChains.map((x) => x.join(',')), c.chain.join(',')})
+                    DropdownMenuItem(
+                      value: ch,
+                      child: Text(fareChainLabel(ch.isEmpty ? const [] : ch.split(',')), overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: canEdit
+                    ? (v) => _update(c.copyWith(chain: v == null || v.isEmpty ? const [] : cleanFareChain(v.split(','))))
+                    : null,
               ),
               const SizedBox(height: 8),
               Text(
-                switch (c.source) {
-                  'waze' => 'Waze live traffic from the GET.route servers below: real distance, time and tolls. '
-                      'The pickup\'s area picks the server.',
-                  'none' => 'No estimate: fares use the routing engine fallback.',
-                  _ => 'The AI provider below estimates trip distance & traffic-aware time.',
-                },
+                'Each step is asked only when the one before has no answer. Waze: live traffic, distance and tolls '
+                'from the GET.route pool on the office NAS. AI: the provider below. OSRM: road distance and time '
+                'without traffic, from the office NAS maps (or the OSRM server when the NAS is off).',
                 style: t.textTheme.bodySmall,
               ),
             ]),
           ),
         ),
-        if (c.source == 'waze') ..._wazeSection(c, canEdit),
+        if (c.uses('waze')) ..._wazeSection(c, canEdit),
         const SizedBox(height: 12),
-        Text(c.source == 'waze' ? 'AI provider (fallback)' : 'Provider', style: t.textTheme.titleMedium),
+        Text(c.uses('waze') ? 'AI provider (after Waze)' : 'AI provider', style: t.textTheme.titleMedium),
         const SizedBox(height: 6),
         Opacity(
-          opacity: c.source == 'ai' || (c.source == 'waze' && c.wazeFallback == 'ai') ? 1 : 0.5,
+          opacity: c.uses('ai') ? 1 : 0.5,
           child: RadioGroup<String>(
             groupValue: c.provider,
             onChanged: (v) {
@@ -579,15 +584,6 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
           ),
         ),
       for (final (i, s) in servers.indexed) _serverCard(c, s, i, canEdit),
-      const SizedBox(height: 8),
-      Text('When every Waze server fails', style: t.textTheme.titleSmall),
-      const SizedBox(height: 6),
-      SegmentedButton<String>(
-        key: const ValueKey('waze-fallback'),
-        segments: [for (final e in wazeFallbacks.entries) ButtonSegment(value: e.key, label: Text(e.value))],
-        selected: {c.wazeFallback},
-        onSelectionChanged: canEdit ? (v) => _update(c.copyWith(wazeFallback: v.first)) : null,
-      ),
     ];
   }
 

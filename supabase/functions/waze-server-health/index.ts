@@ -11,7 +11,7 @@
 // Fare AI admins when a server has been down for 5 minutes and when it is
 // back (the SMS gateway alert, 0178, as the face server has it, 0347).
 // Servers that were removed or switched off, or all of them when Waze is not
-// the source, are dropped quietly (waze_server_health_prune).
+// in the fare order, are dropped quietly (waze_server_health_prune).
 //
 // Deployed --no-verify-jwt: it authenticates itself with the webhook secret.
 //
@@ -19,7 +19,8 @@
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { healthVerdict, sourceOf, WAZE_HEALTH_TIMEOUT_MS, type WazeServer, wazeServersOf } from "../_shared/waze_route.ts";
+import { chainOf } from "../_shared/fare_chain.ts";
+import { healthVerdict, WAZE_HEALTH_TIMEOUT_MS, type WazeServer, wazeServersOf } from "../_shared/waze_route.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -67,7 +68,7 @@ Deno.serve(async (req) => {
     const { data, error } = await db.from("app_settings").select("value").eq("key", "fare_ai_provider").maybeSingle();
     if (error) throw error;
     const config = (data?.value ?? {}) as Record<string, unknown>;
-    const servers = sourceOf(config) === "waze" ? wazeServersOf(config) : [];
+    const servers = chainOf(config).includes("waze") ? wazeServersOf(config) : [];
 
     const { error: pruneErr } = await db.rpc("waze_server_health_prune", { p_keep: servers.map((s) => s.id) });
     if (pruneErr) console.log("[waze-server-health] prune:", pruneErr.message);

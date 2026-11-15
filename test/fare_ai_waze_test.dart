@@ -53,32 +53,43 @@ class _Repo implements SecurityRepository {
 
 void main() {
   group('fare data source', () {
-    test('a config from before sources reads as AI, or none when switched off', () {
-      expect(normalizeFareAi(null).source, 'ai');
-      expect(normalizeFareAi({'serviceEnabled': false}).source, 'none');
+    test('a config from before chains behaves as it did', () {
+      expect(normalizeFareAi(null).chain, ['ai']);
+      expect(normalizeFareAi({'serviceEnabled': false}).chain, isEmpty);
       expect(normalizeFareAi({'serviceEnabled': false}).serviceEnabled, isFalse);
-      expect(normalizeFareAi({'source': 'bogus'}).source, 'ai');
+      expect(normalizeFareAi({'source': 'waze'}).chain, ['waze', 'ai']);
+      expect(normalizeFareAi({'source': 'waze', 'wazeFallback': 'none'}).chain, ['waze']);
+      expect(normalizeFareAi({'source': 'none'}).chain, isEmpty);
     });
 
-    test('the old switch is still saved for older proxies', () {
-      final c = normalizeFareAi(null).copyWith(source: 'none');
-      expect(c.toJson()['serviceEnabled'], isFalse);
-      expect(normalizeFareAi(c.copyWith(source: 'waze').toJson()).toJson()['serviceEnabled'], isTrue);
+    test('a chain keeps known steps once, OSRM last, and survives a save', () {
+      expect(normalizeFareAi({'chain': ['osrm', 'waze', 'waze', 'google', 'ai']}).chain, ['waze', 'ai', 'osrm']);
+      final c = normalizeFareAi(null).copyWith(chain: ['waze', 'ai', 'osrm']);
+      expect(normalizeFareAi(c.toJson()).chain, ['waze', 'ai', 'osrm']);
+      expect(fareChainLabel(c.chain), 'Waze → AI → OSRM');
+      expect(fareChainLabel(const []), 'No data (apps use their own fallback)');
+      expect([fareAiProviderLabel('waze'), fareAiProviderLabel('osrm')], ['Waze (GET.route)', 'OSRM (no traffic)']);
+    });
+
+    test('the old fields are still saved for a proxy from before chains', () {
+      Map<String, dynamic> j(List<String> chain) => normalizeFareAi(null).copyWith(chain: chain).toJson();
+      expect([j(['waze', 'ai', 'osrm'])['source'], j(['waze', 'ai', 'osrm'])['wazeFallback']], ['waze', 'ai']);
+      expect([j(['waze', 'osrm'])['source'], j(['waze', 'osrm'])['wazeFallback']], ['waze', 'none']);
+      expect([j(['ai', 'osrm'])['source'], j(['ai', 'osrm'])['serviceEnabled']], ['ai', true]);
+      expect([j(const [])['source'], j(const [])['serviceEnabled']], ['none', false]);
     });
 
     test('Waze servers, their areas and the fallback survive a save', () {
       const area = RegionScope(country: 'Malaysia', state: 'Selangor', city: 'Petaling Jaya');
       final c = normalizeFareAi(null).copyWith(
-        source: 'waze',
-        wazeFallback: 'none',
+        chain: ['waze', 'osrm'],
         wazeServers: [
           WazeServer.create(id: 's1', label: 'PJ', url: 'https://route1.getride.my', key: 'k1', area: area),
           WazeServer.create(id: 's2', label: 'Any', url: 'https://route2.getride.my', key: 'k2', enabled: false),
         ],
       );
       final back = normalizeFareAi(c.toJson());
-      expect(back.source, 'waze');
-      expect(back.wazeFallback, 'none');
+      expect(back.chain, ['waze', 'osrm']);
       expect([for (final s in back.wazeServers) (s.id, s.label, s.url, s.key, s.enabled)], [
         ('s1', 'PJ', 'https://route1.getride.my', 'k1', true),
         ('s2', 'Any', 'https://route2.getride.my', 'k2', false),
@@ -100,7 +111,7 @@ void main() {
     });
   });
 
-  testWidgets('admin picks Waze, adds a server, tests it unsaved and saves', (tester) async {
+  testWidgets('admin picks Waze → AI → OSRM, adds a server, tests it unsaved and saves', (tester) async {
     tester.view.physicalSize = const Size(900, 4000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -114,11 +125,13 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    expect(find.text('Waze servers'), findsNothing, reason: 'only with Waze picked');
-    await tester.tap(find.text('Waze (GET.route)'));
+    expect(find.text('Waze servers'), findsNothing, reason: 'only with Waze in the order');
+    await tester.tap(find.text('AI'));                       // the current order
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Waze → AI → OSRM').last);
     await tester.pumpAndSettle();
     expect(find.text('Waze servers'), findsOneWidget);
-    expect(find.text('AI provider (fallback)'), findsOneWidget);
+    expect(find.text('AI provider (after Waze)'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('add-waze-server')));
     await tester.pumpAndSettle();
@@ -141,7 +154,7 @@ void main() {
     await tester.tap(find.text('Save changes'));
     await tester.pumpAndSettle();
     final c = repo.saved.single;
-    expect(c.source, 'waze');
+    expect(c.chain, ['waze', 'ai', 'osrm']);
     expect(c.toJson()['serviceEnabled'], isTrue);
     expect([for (final s in c.wazeServers) (s.url, s.key, s.area.isAll)], [('https://route1.getride.my', 's3cret', true)]);
   });
@@ -150,7 +163,7 @@ void main() {
     tester.view.physicalSize = const Size(900, 4000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    final repo = _Repo(normalizeFareAi(null).copyWith(source: 'waze', wazeServers: [
+    final repo = _Repo(normalizeFareAi(null).copyWith(chain: ['waze', 'ai', 'osrm'], wazeServers: [
       WazeServer.create(id: 's1', label: 'PJ', url: 'https://route1.getride.my', key: 'k'),
       WazeServer.create(id: 's2', label: 'KL', url: 'https://route2.getride.my', key: 'k'),
     ]))

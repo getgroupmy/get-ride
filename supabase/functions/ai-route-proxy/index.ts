@@ -83,12 +83,12 @@ import {
   orderServersFor,
   placeFromRegions,
   type RegionRow,
-  sourceOf,
   WAZE_PROVIDER,
-  wazeFallbackOf,
   type WazeServer,
   wazeServersOf,
 } from "../_shared/waze_route.ts";
+import { chainOf, OSRM_PROVIDER, osrmEstimate } from "../_shared/fare_chain.ts";
+import { nasRouteRequest, parseNasLink } from "../_shared/geo_nas.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -112,8 +112,10 @@ interface FareAIConfig {
   source?: unknown;
   /** GET.route servers, tried in order when the source is "waze". */
   wazeServers?: unknown;
-  /** When every Waze server fails: "ai" (default) or "none". */
+  /** When every Waze server fails: "ai" (default) or "none" (before chains). */
   wazeFallback?: unknown;
+  /** The order estimates are asked in: "waze" | "ai" | "osrm" (_shared/fare_chain.ts). */
+  chain?: unknown;
 }
 
 interface LatLng {
@@ -133,7 +135,7 @@ interface RouteEstimate extends TrafficExtras {
   distance_km: number;
   duration_min: number;
   summary?: string;
-  provider?: Provider | typeof WAZE_PROVIDER;
+  provider?: Provider | typeof WAZE_PROVIDER | typeof OSRM_PROVIDER;
   toll_count?: number;
   toll_total?: number;
   tolls?: TollBooth[];
@@ -328,59 +330,99 @@ Deno.serve(async (req: Request) => {
   if (body.test === "waze") {
     return runWazeTest(req, supabaseUrl, body.server, config, origin, destination, stops);
   }
-  const source = sourceOf(config);
-  if (source === "none" && body.test !== true) {
+  if (body.test === true) {
+    const provider: Provider = config.provider ?? "gemini";
+    const model = config.models?.[provider] ?? DEFAULT_MODELS[provider];
+    return runTest(req, supabaseUrl, body.request, config, provider, model, aiKeysOf(config, provider), origin, destination, stops);
+  }
+
+  // The admin's order (Waze → AI → OSRM and the like): the first step with an
+  // estimate answers. No step at all: the apps use their own fallback.
+  const chain = chainOf(config as Record<string, unknown>);
+  if (chain.length === 0) {
     return json({ ok: true, estimate: null, reason: "service_disabled" });
   }
-  const cooldownMs = retryPolicyMs(config.retryAfterValue ?? 1, config.retryAfterUnit ?? "hour");
-  if (source === "waze" && body.test !== true) {
-    const waze = await estimateFromWaze(admin, config, userId, origin, destination, stops, cooldownMs);
-    if (waze.estimate) return json({ ok: true, estimate: waze.estimate });
-    if (wazeFallbackOf(config) === "none") return json({ ok: true, estimate: null, reason: waze.reason });
-    // Every server failed or none is set up: the AI provider answers instead.
+  const ctx: StepContext = {
+    admin,
+    config,
+    userId,
+    origin,
+    destination,
+    stops,
+    cooldownMs: retryPolicyMs(config.retryAfterValue ?? 1, config.retryAfterUnit ?? "hour"),
+    // The empty-road route: what Waze's and the AI's times are compared with,
+    // and the OSRM step's answer when the office NAS is off. Asked once.
+    standardFuture: standardRoute(origin, destination, stops),
+    // Test traffic (0241): a label for the log only. Any failure answers "real".
+    testFuture: testAccountCheck(rpcTestAccountLookup((fn, args) => admin.rpc(fn, args)))(userId),
+  };
+  let reason = "no_estimate";
+  for (const step of chain) {
+    const r = step === "waze"
+      ? await estimateFromWaze(ctx)
+      : step === "ai"
+      ? await estimateFromAi(ctx)
+      : await estimateFromOsrm(ctx);
+    if (r.estimate) return json({ ok: true, estimate: r.estimate });
+    reason = r.reason;
   }
+  return json({ ok: true, estimate: null, reason });
+});
 
-  const provider: Provider = config.provider ?? "gemini";
-  const model = config.models?.[provider] ?? DEFAULT_MODELS[provider];
-  const candidates = (config.keys?.[provider] ?? []).filter(
+interface StepContext {
+  // deno-lint-ignore no-explicit-any
+  admin: any;
+  config: FareAIConfig;
+  userId: string;
+  origin: LatLng;
+  destination: LatLng;
+  stops: LatLng[];
+  cooldownMs: number;
+  standardFuture: Promise<{ min: number; km: number } | null>;
+  testFuture: Promise<boolean>;
+}
+
+type StepResult = { estimate: (RouteEstimate & { stops: number }) | null; reason: string };
+
+/** The usable keys of the AI provider. */
+function aiKeysOf(config: FareAIConfig, provider: Provider): FareAIKey[] {
+  return (config.keys?.[provider] ?? []).filter(
     (k) => k && k.enabled !== false && typeof k.key === "string" && k.key.trim().length > 0,
   );
-  if (body.test === true) {
-    return runTest(req, supabaseUrl, body.request, config, provider, model, candidates, origin, destination, stops);
-  }
-  if (candidates.length === 0) {
-    return json({ ok: true, estimate: null, reason: "no_keys" });
-  }
+}
 
-  // Skip keys that are cooling down after recent failures.
-  const ids = candidates.map((k) => k.id);
-  const { data: stateRows } = await admin
+/** The ids among [ids] resting after a failure (fare_ai_key_states). */
+async function coolingIds(ctx: StepContext, ids: string[]): Promise<Set<string>> {
+  const { data: stateRows } = await ctx.admin
     .from("fare_ai_key_states")
     .select("key_id, disabled_until")
     .in("key_id", ids);
   const now = Date.now();
-  const cooling = new Set(
+  return new Set(
     (stateRows ?? [])
-      .filter((r: { key_id: string; disabled_until: string | null }) => {
-        if (!r.disabled_until) return false;
-        const until = new Date(r.disabled_until).getTime();
+      .filter((r: { disabled_until: string | null }) => {
+        const until = r.disabled_until ? new Date(r.disabled_until).getTime() : NaN;
         return Number.isFinite(until) && until > now;
       })
       .map((r: { key_id: string }) => r.key_id),
   );
+}
+
+/** The AI provider, its keys in order, skipping keys cooling down after a
+ * failure; every attempt logged and counted. */
+async function estimateFromAi(ctx: StepContext): Promise<StepResult> {
+  const { admin, config, origin, destination, stops } = ctx;
+  const provider: Provider = config.provider ?? "gemini";
+  const model = config.models?.[provider] ?? DEFAULT_MODELS[provider];
+  const candidates = aiKeysOf(config, provider);
+  if (candidates.length === 0) return { estimate: null, reason: "no_keys" };
+  const cooling = await coolingIds(ctx, candidates.map((k) => k.id));
   const available = candidates.filter((k) => !cooling.has(k.id));
-  if (available.length === 0) {
-    return json({ ok: true, estimate: null, reason: "keys_cooling_down" });
-  }
+  if (available.length === 0) return { estimate: null, reason: "keys_cooling_down" };
 
   const request = resolveRequest(config.request);
   const prompt = buildPrompt(request, origin, destination, stops);
   const trendSettings = resolveTrendSettings(config.trend);
-  // Alongside the AI: the AI usually takes longer, so this is in by then.
-  const standardFuture = standardRoute(origin, destination, stops);
-  // Test traffic (0241): a label for the log only, asked alongside the AI.
-  // Any failure answers "real".
-  const testFuture = testAccountCheck(rpcTestAccountLookup((fn, args) => admin.rpc(fn, args)))(userId);
 
   for (const cand of available) {
     const started = Date.now();
@@ -401,8 +443,8 @@ Deno.serve(async (req: Request) => {
     const errorMsg = success
       ? null
       : result.error ?? (result.content ? "Unparseable response" : "No response content");
-    const disabledUntil = success ? null : new Date(Date.now() + cooldownMs).toISOString();
-    const standard = await standardFuture;
+    const disabledUntil = success ? null : new Date(Date.now() + ctx.cooldownMs).toISOString();
+    const standard = await ctx.standardFuture;
     if (parsed) {
       const trend = decideFareTrend(parsed.duration_min, standard?.min ?? null, parsed, trendSettings, request.includeFareRange);
       if (trend) parsed.trend = trend;
@@ -433,7 +475,7 @@ Deno.serve(async (req: Request) => {
       standard_duration_min: standard?.min ?? null,
       standard_distance_km: standard?.km ?? null,
       // Only when true: a database before 0241 has no such column.
-      ...((await testFuture) ? { is_test: true } : {}),
+      ...((await ctx.testFuture) ? { is_test: true } : {}),
     });
     await admin.rpc("fare_ai_record_usage", {
       p_key_id: cand.id,
@@ -444,26 +486,73 @@ Deno.serve(async (req: Request) => {
     });
 
     if (success && parsed) {
-      return json({ ok: true, estimate: { ...parsed, provider, stops: stops.length } });
+      return { estimate: { ...parsed, provider, stops: stops.length }, reason: "ok" };
     }
   }
+  return { estimate: null, reason: "all_keys_failed" };
+}
 
-  return json({ ok: true, estimate: null, reason: "all_keys_failed" });
-});
+/** OSRM, the last step: the office NAS when it is on and serves routes
+ * (nas_maps_link, migration 0319), else the standard route (OSRM_URL). Road
+ * distance and empty-road time, no traffic or tolls. Logged, never rested. */
+async function estimateFromOsrm(ctx: StepContext): Promise<StepResult> {
+  const { admin, origin, destination, stops } = ctx;
+  const started = Date.now();
+  let route: { km: number; min: number } | null = null;
+  let label = "OSRM server";
+  let error: string | null = null;
+  try {
+    const { data } = await admin.rpc("nas_maps_link", { p_lat: origin.latitude, p_lng: origin.longitude });
+    const link = parseNasLink(data);
+    if (link?.routes) {
+      label = "Office NAS";
+      const points = [origin, ...stops, destination].map((p) => [p.latitude, p.longitude] as [number, number]);
+      const r = nasRouteRequest(link, points);
+      const res = await fetch(r.url, { headers: r.headers, signal: AbortSignal.timeout(Math.max(r.timeoutMs ?? 1500, 3000)) });
+      const body = res.ok ? await res.json() : null;
+      const m = Number(body?.routes?.[0]?.distance), sec = Number(body?.routes?.[0]?.duration);
+      if (m > 0 && sec > 0) route = { km: m / 1000, min: sec / 60 };
+      else error = `Office NAS: ${res.ok ? "no route" : `HTTP ${res.status}`}`;
+    }
+  } catch (e) {
+    error = `Office NAS: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  if (!route) {
+    const standard = await ctx.standardFuture;
+    if (standard) {
+      route = standard;
+      label = "OSRM server";
+    }
+  }
+  const estimate = osrmEstimate(route);
+  await admin.from("fare_ai_responses").insert({
+    provider: OSRM_PROVIDER,
+    key_id: null,
+    key_label: label,
+    model: "OSRM",
+    origin_lat: origin.latitude,
+    origin_lng: origin.longitude,
+    dest_lat: destination.latitude,
+    dest_lng: destination.longitude,
+    success: !!estimate,
+    distance_km: estimate?.distance_km ?? null,
+    duration_min: estimate?.duration_min ?? null,
+    summary: estimate?.summary ?? null,
+    error: estimate ? null : error ?? "No OSRM route",
+    latency_ms: Date.now() - started,
+    extra: withStops(null, stops),
+    ...((await ctx.testFuture) ? { is_test: true } : {}),
+  });
+  return estimate
+    ? { estimate: { ...estimate, provider: OSRM_PROVIDER, stops: stops.length }, reason: "ok" }
+    : { estimate: null, reason: "no_osrm_route" };
+}
 
 /** Asks the GET.route servers, the pickup's area first (see
  * orderServersFor), skipping any cooling down after a failure, and logs
  * every attempt like an AI key's. The first answer wins. */
-async function estimateFromWaze(
-  // deno-lint-ignore no-explicit-any
-  admin: any,
-  config: FareAIConfig,
-  userId: string,
-  origin: LatLng,
-  destination: LatLng,
-  stops: LatLng[],
-  cooldownMs: number,
-): Promise<{ estimate: (RouteEstimate & { stops: number }) | null; reason: string }> {
+async function estimateFromWaze(ctx: StepContext): Promise<StepResult> {
+  const { admin, config, origin, destination, stops, cooldownMs } = ctx;
   let servers = wazeServersOf(config);
   if (servers.length === 0) return { estimate: null, reason: "no_waze_servers" };
   if (anyArea(servers)) {
@@ -475,33 +564,18 @@ async function estimateFromWaze(
     if (error) console.error("ai-route-proxy: regions_at failed", error.message);
     servers = orderServersFor(servers, placeFromRegions((rows ?? []) as RegionRow[]));
   }
-  const { data: stateRows } = await admin
-    .from("fare_ai_key_states")
-    .select("key_id, disabled_until")
-    .in("key_id", servers.map((s) => s.id));
-  const now = Date.now();
-  const cooling = new Set(
-    (stateRows ?? [])
-      .filter((r: { disabled_until: string | null }) => {
-        const until = r.disabled_until ? new Date(r.disabled_until).getTime() : NaN;
-        return Number.isFinite(until) && until > now;
-      })
-      .map((r: { key_id: string }) => r.key_id),
-  );
+  const cooling = await coolingIds(ctx, servers.map((s) => s.id));
   const available = servers.filter((s) => !cooling.has(s.id));
   if (available.length === 0) return { estimate: null, reason: "waze_servers_cooling_down" };
 
   const points: WazeLatLng[] = [origin, ...stops, destination];
   const trendSettings = resolveTrendSettings(config.trend);
-  const standardFuture = standardRoute(origin, destination, stops);
-  const testFuture = testAccountCheck(rpcTestAccountLookup((fn, args) => admin.rpc(fn, args)))(userId);
-
   for (const server of available) {
     const started = Date.now();
     const result = await askWazeServer(server, points);
     const latencyMs = Date.now() - started;
     const parsed: RouteEstimate | null = result.estimate ? { ...result.estimate } : null;
-    const standard = await standardFuture;
+    const standard = await ctx.standardFuture;
     if (parsed) {
       // Waze's live time against the empty-road time: the same arrows an AI gets.
       const trend = decideFareTrend(parsed.duration_min, standard?.min ?? null, {}, trendSettings, false);
@@ -531,7 +605,7 @@ async function estimateFromWaze(
       extra: withStops(parsed ? extrasOf(parsed) : null, stops),
       standard_duration_min: standard?.min ?? null,
       standard_distance_km: standard?.km ?? null,
-      ...((await testFuture) ? { is_test: true } : {}),
+      ...((await ctx.testFuture) ? { is_test: true } : {}),
     });
     await admin.rpc("fare_ai_record_usage", {
       p_key_id: server.id,

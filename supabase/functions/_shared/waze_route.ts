@@ -3,10 +3,9 @@
  * scraper, run on the office NAS behind a Cloudflare Tunnel; see the
  * GET.route repository's deploy/nas/README.md).
  *
- * Admin › Settings › Fare AI provider picks the data source
- * (`fare_ai_provider.source`): "waze" asks the servers in `wazeServers`, in
- * order; "ai" asks the AI provider as before; "none" gives no estimate (the
- * apps use their routing-engine fallback). A server is
+ * Admin › Settings › Fare AI provider sets the order estimates are asked in
+ * (`fare_ai_provider.chain`, _shared/fare_chain.ts); the "waze" step asks the
+ * servers in `wazeServers`. A server is
  *
  *   { id, label, url: "https://route1.getride.my", key, enabled,
  *     area?: { country, state, city, suburb } }
@@ -27,10 +26,6 @@
  *
  *     deno test supabase/functions/_shared/waze_route_test.ts
  */
-
-export type FareSource = "waze" | "ai" | "none";
-
-export const FARE_SOURCES: readonly FareSource[] = ["waze", "ai", "none"];
 
 /** The `provider` an estimate and its log row carry. */
 export const WAZE_PROVIDER = "waze";
@@ -79,19 +74,6 @@ export interface WazeResult {
   error: string | null;
   /** The servers' answers, for the response log (trimmed by the caller). */
   raw: string | null;
-}
-
-/** The data source a saved config asks for. A config from before sources
- * reads as "ai", or "none" when its AI service was switched off. */
-export function sourceOf(config: { source?: unknown; serviceEnabled?: unknown } | null | undefined): FareSource {
-  const s = config?.source;
-  if (typeof s === "string" && (FARE_SOURCES as readonly string[]).includes(s)) return s as FareSource;
-  return config?.serviceEnabled === false ? "none" : "ai";
-}
-
-/** What to do when every Waze server fails: ask the AI, or give no estimate. */
-export function wazeFallbackOf(config: { wazeFallback?: unknown } | null | undefined): "ai" | "none" {
-  return config?.wazeFallback === "none" ? "none" : "ai";
 }
 
 /** A server URL GET.ride may call: https, no credentials, no query. */
