@@ -46,7 +46,9 @@ import '../../core/city_ride_extras.dart' show CityRideExtras;
 import '../../core/booking_chips.dart'
     show
         ResolvedChip,
+        bookingChipLaterId,
         bookingChipLuggageId,
+        bookingChipNowId,
         bookingChipPassengersId,
         bookingChipShown,
         bookingChipsEnabled,
@@ -1569,8 +1571,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// A booking-row chip was tapped: open its picker.
   void _onBookingChipTap(ResolvedChip c) {
+    if (c.id == bookingChipLaterId) unawaited(_openLaterFromChip());
     if (c.id == bookingChipPassengersId) unawaited(_openPassengersSheet());
     if (c.id == bookingChipLuggageId) unawaited(_openLuggageSheet());
+  }
+
+  /// The Later chip: the same scheduled-ride flow as the footer Later button —
+  /// the existing date/time wheel, then book for that time. The chip replaces
+  /// the footer button (hidden while the chip is on), so there is one Later.
+  Future<void> _openLaterFromChip() async {
+    final c = ref.read(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
+    if (!c.enabled) return;
+    final at = await _pickLater(c);
+    if (at != null && mounted) await _bookLater(at);
   }
 
   /// The biggest vehicle that can take this trip — the group-size cap.
@@ -3998,6 +4011,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // GET.coin moved into the payment-method sheet (it is a drop-off
             // discount paired with the method, not a separate footer toggle).
             pickLater: scheduleConfig.enabled && direct == null ? () => _pickLater(scheduleConfig) : null,
+            // The Later booking chip, when on, owns the scheduled-ride flow, so
+            // the footer Later button is dropped (one Later, not two).
+            showLater: !bookingChipShown(blob, bookingChipLaterId),
             onLater: _bookLater,
             owedNote: owedFeesNote(owed, _currency),
             whoRiding: !layout.showBookForOther ? null : _WhoRiding(
@@ -4080,7 +4096,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ? BookingChipsRow(
               chips: resolveBookingChips(blob),
               padding: EdgeInsets.zero,
-              showCaret: false,
+              // Now is the resting mode (Later books a scheduled ride); the
+              // Later/Passengers/Luggage chips open a sheet, so they show a caret.
+              selectedId: bookingChipNowId,
               valueFor: _bookingChipValue,
               onTap: _onBookingChipTap,
             )
