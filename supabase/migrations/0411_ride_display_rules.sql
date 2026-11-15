@@ -44,6 +44,24 @@ drop trigger if exists trg_ride_display_rules_updated_at on public.ride_display_
 create trigger trg_ride_display_rules_updated_at before update on public.ride_display_rules
   for each row execute function public.set_updated_at();
 
+-- Page-scoped edit check (migration 0223 convention): a sub-admin writes this
+-- table only with edit on its page (or the Settings hub). Writes must not go
+-- through caller_is_admin() -- supabase/tests/admin_page_scope.sql enforces it.
+create or replace function public.ride_display_caller_can_edit()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select auth.uid() is not null
+     and (public.admin_can_edit(auth.uid(), 'admin-settings-ride-display')
+          or public.admin_can_edit(auth.uid(), 'admin-settings'));
+$$;
+
+revoke execute on function public.ride_display_caller_can_edit() from public, anon;
+grant execute on function public.ride_display_caller_can_edit() to authenticated;
+
 alter table public.ride_display_rules enable row level security;
 revoke all on public.ride_display_rules from anon;
 grant select, insert, update, delete on public.ride_display_rules to authenticated;
@@ -57,17 +75,17 @@ drop policy if exists "ride_display_rules admin delete" on public.ride_display_r
 create policy "ride_display_rules read"
   on public.ride_display_rules for select to authenticated
   using (true);
--- Admins alone write.
+-- Admins with edit on this page (or the Settings hub) write.
 create policy "ride_display_rules admin insert"
   on public.ride_display_rules for insert to authenticated
-  with check ((select public.caller_is_admin()));
+  with check ((select public.ride_display_caller_can_edit()));
 create policy "ride_display_rules admin update"
   on public.ride_display_rules for update to authenticated
-  using ((select public.caller_is_admin()))
-  with check ((select public.caller_is_admin()));
+  using ((select public.ride_display_caller_can_edit()))
+  with check ((select public.ride_display_caller_can_edit()));
 create policy "ride_display_rules admin delete"
   on public.ride_display_rules for delete to authenticated
-  using ((select public.caller_is_admin()));
+  using ((select public.ride_display_caller_can_edit()));
 
 -- Live: the ride home refetches the moment an admin saves (live_tables.dart).
 do $$
