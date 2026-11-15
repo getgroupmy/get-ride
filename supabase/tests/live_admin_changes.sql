@@ -23,6 +23,8 @@ begin
     'profiles', 'partners', 'provider_documents', 'vehicle', 'vehicle_documents',
     'insurance_providers', 'insurance_types', 'insurance_durations', 'insurance_premium',
     'driver_incentive',
+    -- Region ride-display switches (migration 0411).
+    'ride_display_rules',
     -- Admin pages (liveAdminTables, migration 0136).
     'vehicle_user_assignment', 'ride_requests', 'support_tickets', 'push_notifications',
     'ev_orders', 'help_articles', 'help_questions', 'fare_ai_responses', 'fare_ai_key_states',
