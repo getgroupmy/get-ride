@@ -555,7 +555,7 @@ class AdminRepository {
   Future<void> setCommissionRateActive(String id, bool active) =>
       _updateOne('commission_rates', id, {'active': active, 'updated_at': _now});
 
-  // ---- Ride display rules (0411) -------------------------------------------
+  // ---- Ride display rules (0412) -------------------------------------------
 
   /// Region AI-fare / distance-time switches, newest first.
   Future<List<Map<String, dynamic>>> rideDisplayRules() async => List<Map<String, dynamic>>.from(

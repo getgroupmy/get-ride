@@ -1,4 +1,4 @@
-// Admin → Ride display: region switches (migration 0411). Per Country / State
+// Admin → Ride display: region switches (migration 0412). Per Country / State
 // / City / Suburb (and one master default), an admin turns off the AI fare
 // (its pricing and badge) and/or the "12 km · 24 min" distance·time line on the
 // ride home. Scoped and resolved exactly like the commission rate.

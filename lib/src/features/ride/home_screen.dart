@@ -1180,7 +1180,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  /// The region's ride-display switches for the pickup (0411): whether to turn
+  /// The region's ride-display switches for the pickup (0412): whether to turn
   /// off the AI fare and/or the distance·time line. Resolved on the device so
   /// the gate works with no signal; "show everything" with no rule.
   RideDisplay get _rideDisplay {

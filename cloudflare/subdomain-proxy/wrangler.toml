@@ -32,7 +32,10 @@ TARGET_HOST = "www.getride.my"
 # variable SUBDOMAIN_PROXY_PASS_THROUGH, if set (then list stats there too).
 # stats: visitor stats, Umami on the office NAS behind a Cloudflare Tunnel
 # (deploy/nas-stats); its own DNS record points at the tunnel.
-PASS_THROUGH = "stats"
+# route: the GET.route Waze pool on the office NAS behind a Cloudflare Tunnel
+# (getgroupmy/get.route, GET.route/deploy/nas), the Waze server in Admin ›
+# Fare AI. Without it this worker answers route.getride.my with the web app.
+PASS_THROUGH = "stats,route"
 
 # The backend's second address (see "api.getride.my" in worker.js): this
 # subdomain is passed straight through to the Supabase project, for phones
