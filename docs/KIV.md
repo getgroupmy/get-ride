@@ -45,6 +45,71 @@ Goal: keep a trip's live map dot moving when a participant swipes the app away, 
 - Slice 3 (app + testing, not built): arm/`goLive` the reporter on trip start for both rider and driver so the stream starts without waiting for the first stale-fix kick; trip-appropriate "we keep sharing while the app is closed" copy/consent (the iOS `NSLocationAlwaysAndWhenInUse` string already says this); and the **device test matrix** — the one thing that can confirm the push actually wakes a terminated app and streams, which the server slices cannot.
 - What to expect per platform (the real limit is cadence, not that it dies): **iOS does keep getting location after the app is swiped away.** `BackgroundLocationReporter` (`AppDelegate.swift`) registers significant-location-change monitoring, visit monitoring and a 200 m geofence (region monitoring) — all three of which relaunch a terminated app in the background, the relaunch path wired through `resumeIfArmed()`. So after a swipe-away the dot un-freezes and tracks as the car moves, at a **coarse, event-driven cadence** (~200 m geofence exit / ~500 m SLC / visits), chaining into a short 5 s burst when a relaunch triggers the `location_live` kick — not a smooth continuous stream, and it needs "Always". (An earlier note here wrongly said a manual force-quit suppresses relaunch until reboot; region and visit monitoring relaunch even after a deliberate swipe-away, so that was wrong.) On **Android**, aggressive OEMs (Xiaomi/Oppo/Vivo/Huawei) can kill even foreground services, so reliability there wants the battery-optimisation exemption (the nudge in #675) and per-OEM autostart guidance. "Live after close" therefore means *re-acquired within a push/SLC/geofence cycle*, never guaranteed-continuous.
 
+## GET.support — AI self-answering customer care (study of 15 Nov 2026)
+
+Goal: an AI assistant that answers riders, partners and general enquiries like a human agent, by
+**chat and voice**, with **human handoff** and a **saved both-party transcript**, in **8 languages** —
+English, Bahasa Malaysia, Tamil, Punjabi, Hindi, Chinese (Malaysian Mandarin), Nepali, Bengali. Branded
+**GET.support**. Interactive UI mockup and a plan/flow page were prepared for the owner (private claude.ai
+artifacts). Not built — parked for the owner.
+
+Decisions made:
+
+- **No paid AI.** The whole stack is open-source / self-hosted: LLM = Llama 3.3 / Qwen2.5 (Qwen is
+  stronger on Chinese + Asian languages) via **Ollama/MLX**; STT = **Whisper** (or Vosk / the phone's
+  built-in recogniser); TTS = **Piper** / Coqui / the phone's built-in engine. The app only ever calls
+  *our own* edge function, which calls *our own* model host, so the model is swappable without touching
+  the app. Only cost is hosting, no per-message AI fee. Bigger models give better Tamil/Punjabi/Nepali/
+  Bengali.
+- **Surface: upgrade the existing Help assistant**, not a new screen. `HelpAssistantScreen` (`/account/help`,
+  reached from Account › Help & support and the side menus) becomes AI-powered; keep the article/KB search
+  as grounding *and* as the graceful fallback when the AI is off or unreachable, plus the existing
+  escalation to the human ticket (`helpSupportRoute` = `/account/support`) and the thumbs feedback /
+  question log. Reuses the route, so **no new page-inventory id to regenerate**. Add a GET.support menu
+  tile (admin menu config) pointing at it.
+- **Grounded + guardrailed.** Edge function mirrors the `vehicle-catalog-lookup` pattern (Bearer auth,
+  `auth_rate_take` limiter, CORS/JSON helpers) but points at the self-hosted model instead of Gemini.
+  Grounds on the help KB (reuse the `help_search` RPC) + an app-knowledge system prompt; never invents
+  policy; replies in the user's language (auto-detected or picked).
+- **Personalised (own data only).** May read the signed-in user's *own* rides / wallet / tickets via
+  owner-scoped RPCs to answer "where's my driver", "my last fare" — never another user's data.
+- **Languages.** Auto-detect + an 8-language picker, saved as a `preferred_language` profile field
+  (model it on the `profiles.nationality` country-resolution pattern). No i18n framework exists today, so
+  this is net-new; reply language is handled in-prompt.
+- **Transcripts.** Store both sides (user + AI, and the voice turns) in a new `support_conversations`
+  table, same access rules as support tickets — visible to the user and to admin.
+
+Phases: A text AI → B personalised → C languages → D in-app voice → E phone line → F admin (enable/
+disable AI & voice, edit the knowledge base, pick model/voice/languages, review transcripts; reuse the
+Help admin module). A–C are ordinary app + edge-function work; D and E are the larger native/infra pieces.
+Optional bonus: an **AI SMS/WhatsApp** channel on the owner's existing SMS-gateway device (normal app
+APIs, no special privilege).
+
+Phase D (in-app voice): talk to GET.support like a normal call — realtime listen→answer→speak with a live
+saved transcript, on the existing `support/call` stack. Self-hosted/on-device STT + TTS; needs a new
+native build.
+
+Phase E (phone line) — hardware **decided**, using the owner's own kit:
+
+- The owner's **ZTE MC801A** 5G router has an **RJ11 "Tel" port** (VoLTE telephony on the SIM). A data-only
+  modem could not do this; the Tel port is what makes it possible. The MC801A can't capture/inject call
+  audio itself, and stock/debugged (ADB/Shizuku) Android can't either — call audio is a privileged/root-only
+  capability (unlike SMS, which is a normal-app API, which is why the SMS gateway works and a voice gateway
+  app would not).
+- Bridge: **MC801A Tel (FXS) → Grandstream HT813 FXO "Line" port → SIP → Asterisk/FreeSWITCH → Whisper /
+  LLM / Piper → spoken back into the call → transcript saved → human transfer on request.** The HT813
+  (~US$50, network FXO ATA on the LAN) is the **only** hardware to add; the SIM stays in the router, no
+  root, no APK, no call-forwarding. Configure FXO **disconnect detection** and **caller-ID (FSK) capture**.
+- Pre-flight test (no hardware): plug an ordinary analog phone into the MC801A Tel jack and call the SIM's
+  number — if it rings and two-way audio works, VoLTE voice is live and the bridge will work; if not, the
+  SIM's voice/VoLTE must be enabled on the plan first.
+- Deployment: run the whole stack (Asterisk + Whisper + Piper + LLM via Ollama/MLX) on a **Mac mini M4
+  (24 GB recommended)** — Apple Silicon handles a 7–14B model at near-conversational latency for live
+  calls. The **DS224+** (Celeron J4125, ≤ 6 GB) is fine for Asterisk + small Whisper/Piper but **too weak
+  for a snappy live-voice LLM**, so keep it for storage, backups and transcript/recording archive rather
+  than the brain. (Synology DSM can't load DAHDI drivers, which is another reason the bridge is a *network*
+  FXO ATA, not an internal/USB card.)
+
 ## Owner setup
 
 - Online payment: wallet top-up through the payment gateway is built (Fiuu, Billplz; FPX and e-wallets). Add the merchant account keys in Admin › Payment gateways, then turn Card back on. DuitNow QR top-up is not built.
