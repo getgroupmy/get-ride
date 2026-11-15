@@ -76,4 +76,24 @@ void main() {
     expect(chips.map((c) => c.id), containsAll(ids)); // junk ignored, built-ins intact
     expect(chips.where((c) => c.custom).map((c) => c.label), ['OK']);
   });
+
+  group('bookingChipShown (hides the inline control a chip replaces)', () {
+    test('false when the master switch is off, even if the chip exists', () {
+      expect(bookingChipShown(const {}, bookingChipLuggageId), isFalse);
+    });
+
+    test('true when enabled and the chip is visible', () {
+      final s = setBookingChipsEnabled(<String, dynamic>{}, true);
+      expect(bookingChipShown(s, bookingChipLuggageId), isTrue);
+      expect(bookingChipShown(s, bookingChipPassengersId), isTrue);
+    });
+
+    test('false when that chip is hidden', () {
+      var s = setBookingChipsEnabled(<String, dynamic>{}, true);
+      s = setBookingChipVisibility(s, bookingChipLuggageId, false);
+      expect(bookingChipShown(s, bookingChipLuggageId), isFalse);
+      // other chips are unaffected
+      expect(bookingChipShown(s, bookingChipPassengersId), isTrue);
+    });
+  });
 }
