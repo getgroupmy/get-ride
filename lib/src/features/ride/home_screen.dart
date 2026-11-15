@@ -43,7 +43,9 @@ import '../../data/premium_plus_repository.dart' show premiumPlusTermsProvider;
 import '../../core/fare_offer.dart';
 import '../../core/city_cancel.dart' show owedFeesNote;
 import '../../core/city_ride_extras.dart' show CityRideExtras;
-import '../../core/booking_chips.dart' show bookingChipsEnabled, resolveBookingChips;
+import '../../core/booking_chips.dart'
+    show ResolvedChip, bookingChipLuggageId, bookingChipShown, bookingChipsEnabled, resolveBookingChips;
+import 'booking_chip_sheets.dart' show showLuggageSheet;
 import '../../widgets/booking_chips_row.dart' show BookingChipsRow;
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
@@ -1551,6 +1553,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// The bags as they can be booked here: none while luggage is off.
   int get _bagsBooked => _extrasHere.luggage.clamp(_bags);
+
+  /// The trailing count a booking-row chip shows (a Passengers/Luggage chip).
+  String? _bookingChipValue(ResolvedChip c) {
+    if (c.id == bookingChipLuggageId) return _bagsBooked > 0 ? '$_bagsBooked' : null;
+    return null;
+  }
+
+  /// A booking-row chip was tapped: open its picker.
+  void _onBookingChipTap(ResolvedChip c) {
+    if (c.id == bookingChipLuggageId) unawaited(_openLuggageSheet());
+  }
+
+  /// The Luggage chip's bag picker; its result becomes the booked bag count.
+  Future<void> _openLuggageSheet() async {
+    final n = await showLuggageSheet(
+      context,
+      luggage: _extrasHere.luggage,
+      bags: _bagsBooked,
+      money: (v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : 2),
+    );
+    if (n != null && mounted) setState(() => _bags = n);
+  }
 
   /// [s]'s recommended fare: the route's, plus what the options add, so the
   /// vehicle cards, the offer and the booked fare all include them.
@@ -4019,13 +4043,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               bags: _bagsBooked,
               onBags: (n) => setState(() => _bags = n),
               money: (v) => formatMoney(v, _currency, v == v.roundToDouble() ? 0 : 2),
+              // The Luggage booking chip owns the luggage picker when it is on,
+              // so hide this inline stepper then (the waiting rule still shows).
+              showLuggage: !bookingChipShown(blob, bookingChipLuggageId),
             )
           : null,
       // The booking row (Admin → Display → Booking Row): a visual row of chips
       // on the confirm step when an admin has turned it on (ships off; the
       // behaviour each chip drives lands in a later slice).
       bookingChips: confirming && bookingChipsEnabled(blob) && resolveBookingChips(blob).isNotEmpty
-          ? BookingChipsRow(chips: resolveBookingChips(blob), padding: EdgeInsets.zero, showCaret: false)
+          ? BookingChipsRow(
+              chips: resolveBookingChips(blob),
+              padding: EdgeInsets.zero,
+              showCaret: false,
+              valueFor: _bookingChipValue,
+              onTap: _onBookingChipTap,
+            )
           : null,
       plus: plus,
       disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),

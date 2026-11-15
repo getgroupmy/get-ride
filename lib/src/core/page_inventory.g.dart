@@ -740,6 +740,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('sheet:ride.freight-signature', SurfaceKind.sheet, 'Ride · Freight signature', 'lib/src/features/ride/freight_parts.dart'),
   SurfaceEntry('sheet:ride.freight-vehicle', SurfaceKind.sheet, 'Ride · Freight vehicle', 'lib/src/features/ride/freight_screen.dart'),
   SurfaceEntry('sheet:ride.gate_picker', SurfaceKind.sheet, 'Ride · Gate picker', 'lib/src/features/ride/gate_picker.dart'),
+  SurfaceEntry('sheet:ride.luggage', SurfaceKind.sheet, 'Ride · Luggage', 'lib/src/features/ride/booking_chip_sheets.dart'),
   SurfaceEntry('sheet:ride.pets', SurfaceKind.sheet, 'Ride · Pets', 'lib/src/features/ride/pet_parts.dart'),
   SurfaceEntry('sheet:ride.pickup-guide', SurfaceKind.sheet, 'Ride · Pickup guide', 'lib/src/features/ride/pickup_guide_card.dart'),
   SurfaceEntry('sheet:ride.pickup-time', SurfaceKind.sheet, 'Ride · Pickup time', 'lib/src/features/ride/pickup_time_sheet.dart'),
