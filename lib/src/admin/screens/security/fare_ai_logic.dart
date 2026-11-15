@@ -5,7 +5,117 @@ library;
 
 import 'package:uuid/uuid.dart';
 
+import '../../../core/partner_type_rules.dart' show RegionScope;
+
 const fareAiRemoteKey = 'fare_ai_provider';
+
+/// The steps fare estimates can come from (ai-route-proxy,
+/// `_shared/fare_chain.ts`), asked in the admin's order; the first with an
+/// estimate answers.
+const fareSteps = {
+  'waze': 'Waze',
+  'ai': 'AI',
+  'osrm': 'OSRM',
+};
+
+/// The orders offered on the Fare AI page. An empty order is "No data": the
+/// apps use their own routing-engine fallback.
+const fareChains = <List<String>>[
+  ['waze', 'ai', 'osrm'],
+  ['waze', 'osrm'],
+  ['waze', 'ai'],
+  ['ai', 'osrm'],
+  ['ai'],
+  ['osrm'],
+  [],
+];
+
+/// "Waze, then AI, then OSRM", or "No data" (no arrow glyph: it is an empty
+/// box on some phones' fonts, test/no_arrow_glyph_test.dart).
+String fareChainLabel(List<String> chain) =>
+    chain.isEmpty ? 'No data (apps use their own fallback)' : chain.map((s) => fareSteps[s] ?? s).join(', then ');
+
+/// A chain as saved: known steps once each, OSRM last (nothing after it is
+/// ever asked: it answers every trip it can route).
+List<String> cleanFareChain(Iterable<Object?> raw) {
+  final out = <String>[];
+  for (final s in raw) {
+    if (s is String && fareSteps.containsKey(s) && !out.contains(s)) out.add(s);
+  }
+  if (out.remove('osrm')) out.add('osrm');
+  return out;
+}
+
+/// One GET.route server (one container on the office NAS, reached through a
+/// Cloudflare Tunnel). [area] ties it to a country / state / city / suburb:
+/// trips picked up there ask it first. All regions = any trip.
+class WazeServer {
+  const WazeServer({
+    required this.id,
+    required this.label,
+    required this.url,
+    required this.key,
+    required this.enabled,
+    this.area = RegionScope.all,
+  });
+
+  factory WazeServer.create({String? id, String? label, String url = '', String key = '', bool enabled = true,
+          RegionScope area = RegionScope.all}) =>
+      WazeServer(
+          id: id ?? const Uuid().v4(), label: label ?? 'Waze server', url: url, key: key, enabled: enabled, area: area);
+
+  final String id;
+  final String label;
+  final String url;
+  final String key;
+  final bool enabled;
+  final RegionScope area;
+
+  bool get isActive => enabled && urlProblem == null && key.trim().isNotEmpty;
+
+  /// Why the URL can't be used, or null. The proxy only calls https servers.
+  String? get urlProblem {
+    final u = Uri.tryParse(url.trim());
+    if (url.trim().isEmpty) return 'Add the server URL';
+    if (u == null || u.scheme != 'https' || u.host.isEmpty) return 'Must start with https://';
+    if (u.userInfo.isNotEmpty || u.hasQuery || u.hasFragment) return 'Only the address, e.g. https://route1.getride.my';
+    return null;
+  }
+
+  WazeServer copyWith({String? label, String? url, String? key, bool? enabled, RegionScope? area}) => WazeServer(
+        id: id,
+        label: label ?? this.label,
+        url: url ?? this.url,
+        key: key ?? this.key,
+        enabled: enabled ?? this.enabled,
+        area: area ?? this.area,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'label': label,
+        'url': url.trim(),
+        'key': key.trim(),
+        'enabled': enabled,
+        if (!area.isAll) 'area': area.toJson(),
+      };
+}
+
+List<WazeServer> _wazeServerList(Object? raw) {
+  if (raw is! List) return const [];
+  return [
+    for (final item in raw)
+      if (item is Map)
+        WazeServer.create(
+          id: item['id'] is String && (item['id'] as String).isNotEmpty ? item['id'] as String : null,
+          label: item['label'] is String ? item['label'] as String : null,
+          url: item['url'] is String ? item['url'] as String : '',
+          key: item['key'] is String ? item['key'] as String : '',
+          enabled: item['enabled'] is bool ? item['enabled'] as bool : true,
+          area: RegionScope.fromJson(item['area']),
+        ),
+  ];
+}
 
 class FareAiProviderMeta {
   const FareAiProviderMeta(this.id, this.label, this.description, this.keyHint, this.defaultModel);
@@ -52,6 +162,9 @@ String fareAiProviderLabel(String id) {
   for (final p in fareAiProviders) {
     if (p.id == id) return p.label;
   }
+  // The non-AI steps of the fare order log under their own names.
+  if (id == 'waze') return 'Waze (GET.route)';
+  if (id == 'osrm') return 'OSRM (no traffic)';
   return id.isEmpty ? '—' : id;
 }
 
@@ -80,7 +193,7 @@ class FareAiKey {
 
 class FareAiConfig {
   const FareAiConfig({
-    required this.serviceEnabled,
+    this.chain = const ['ai'],
     required this.provider,
     required this.retryAfterValue,
     required this.retryAfterUnit,
@@ -88,9 +201,22 @@ class FareAiConfig {
     required this.keys,
     this.request = FareAiRequest.defaults,
     this.trend = FareTrendSettings.off,
+    this.wazeServers = const [],
   });
 
-  final bool serviceEnabled;
+  /// The order estimates are asked in ([fareSteps]); empty = no estimate.
+  final List<String> chain;
+
+  /// The GET.route servers, in the order the admin listed them.
+  final List<WazeServer> wazeServers;
+
+  /// Any estimates at all (the old on/off switch, still saved for older proxies).
+  bool get serviceEnabled => chain.isNotEmpty;
+
+  bool uses(String step) => chain.contains(step);
+
+  int get activeWazeServerCount => wazeServers.where((s) => s.isActive).length;
+
   final String provider;
   final int retryAfterValue;
   final String retryAfterUnit;
@@ -107,7 +233,8 @@ class FareAiConfig {
   int activeKeyCount(String provider) => keysFor(provider).where((k) => k.isActive).length;
 
   FareAiConfig copyWith({
-    bool? serviceEnabled,
+    List<String>? chain,
+    List<WazeServer>? wazeServers,
     String? provider,
     int? retryAfterValue,
     String? retryAfterUnit,
@@ -117,7 +244,8 @@ class FareAiConfig {
     FareTrendSettings? trend,
   }) =>
       FareAiConfig(
-        serviceEnabled: serviceEnabled ?? this.serviceEnabled,
+        chain: chain ?? this.chain,
+        wazeServers: wazeServers ?? this.wazeServers,
         provider: provider ?? this.provider,
         retryAfterValue: retryAfterValue ?? this.retryAfterValue,
         retryAfterUnit: retryAfterUnit ?? this.retryAfterUnit,
@@ -130,7 +258,12 @@ class FareAiConfig {
   FareAiConfig withKeys(String provider, List<FareAiKey> list) => copyWith(keys: {...keys, provider: list});
 
   Map<String, dynamic> toJson() => {
+        'chain': chain,
+        // Read by a proxy from before chains, while both are deployed.
         'serviceEnabled': serviceEnabled,
+        'source': uses('waze') ? 'waze' : (uses('ai') ? 'ai' : 'none'),
+        'wazeFallback': uses('ai') ? 'ai' : 'none',
+        'wazeServers': [for (final s in wazeServers) s.toJson()],
         'provider': provider,
         'retryAfterValue': retryAfterValue,
         'retryAfterUnit': retryAfterUnit,
@@ -185,8 +318,20 @@ FareAiConfig normalizeFareAi(Object? raw) {
     }
     keys[p.id] = list;
   }
+  // A config from before chains behaves as it did (ai-route-proxy chainOf).
+  final List<String> chain;
+  if (o['chain'] is List) {
+    chain = cleanFareChain(o['chain'] as List);
+  } else if (o['source'] == 'waze') {
+    chain = o['wazeFallback'] == 'none' ? ['waze'] : ['waze', 'ai'];
+  } else if (o['source'] == 'none' || (o['source'] != 'ai' && o['serviceEnabled'] == false)) {
+    chain = const [];
+  } else {
+    chain = const ['ai'];
+  }
   return FareAiConfig(
-    serviceEnabled: o['serviceEnabled'] is bool ? o['serviceEnabled'] as bool : true,
+    chain: chain,
+    wazeServers: _wazeServerList(o['wazeServers']),
     provider: provider,
     retryAfterValue: retryValue,
     retryAfterUnit: retryUnit,
@@ -670,3 +815,30 @@ List<String> fareAiTrafficLines(Map<dynamic, dynamic>? e) {
 /// The whole user prompt, as the edge function builds it.
 String fareAiPrompt(FareAiRequest r, ({double lat, double lng}) origin, ({double lat, double lng}) dest) =>
     '${fareAiFillTemplate(r.promptTemplate, origin, dest).trim()} ${fareAiFormatClause(r)}';
+
+/// A Waze server's last scheduled health check (`waze_server_health`,
+/// migration 0411): 'online', 'offline' or 'unknown'.
+class WazeServerHealth {
+  const WazeServerHealth({required this.state, this.lastOkAt, this.failingSince, this.lastCheckedAt, this.detail});
+
+  factory WazeServerHealth.fromRow(Map<String, dynamic> r) => WazeServerHealth(
+        state: '${r['state'] ?? 'unknown'}',
+        lastOkAt: r['last_ok_at'] as String?,
+        failingSince: r['failing_since'] as String?,
+        lastCheckedAt: r['last_checked_at'] as String?,
+        detail: r['detail'] as String?,
+      );
+
+  final String state;
+  final String? lastOkAt;
+  final String? failingSince;
+  final String? lastCheckedAt;
+  final String? detail;
+
+  /// "Online · checked 1m ago" / "Offline since 12m ago — detail".
+  String label({DateTime? now}) => switch (state) {
+        'online' => 'Online · checked ${formatRelative(lastCheckedAt, now: now)}',
+        'offline' => 'Offline since ${formatRelative(failingSince, now: now)}${detail != null ? ' — $detail' : ''}',
+        _ => 'Not checked yet',
+      };
+}

@@ -4605,11 +4605,12 @@ class _BookingPanel extends StatelessWidget {
 }
 
 /// What the AI mark on the route line means, on tap and to screen readers.
-const routeAiExplainer = 'Fare and travel time worked out by AI from current traffic and demand';
+final routeAiExplainer = EstimateSource.ai.explainer;
 
 /// The distance and time the fares are priced on. When they came from the
-/// AI Fare Service (`ai-route-proxy`, traffic-aware) the line says so with
-/// the AI mark; the plain road route has none.
+/// Fare AI service (`ai-route-proxy`) a chip says where from: Waze (live
+/// traffic), the AI, or the road (OSRM, no live traffic). The plain road
+/// route the app works out itself has none.
 class RouteBasisLine extends StatelessWidget {
   const RouteBasisLine({super.key, required this.route, this.ai, this.demandNote});
 
@@ -4623,24 +4624,27 @@ class RouteBasisLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final a = ai;
+    final source = a == null ? null : EstimateSource.of(a);
     final text = a == null
         ? '${formatDistance(route.distanceKm)} · ${formatDuration(route.durationMin)}'
-        : '${formatDistance(a.distanceKm)} · ${formatDuration(a.durationMin)} with traffic';
+        : '${formatDistance(a.distanceKm)} · ${formatDuration(a.durationMin)}'
+            '${source!.withTraffic ? ' with traffic' : ' without live traffic'}';
+    final chipFg = source == null || source.withTraffic ? t.colorScheme.onPrimaryContainer : t.colorScheme.onSurfaceVariant;
     final note = demandNote;
     final line = Row(children: [
       Flexible(child: Text(text, key: const ValueKey('route-basis'), style: t.textTheme.bodyMedium)),
-      if (a != null) ...[
+      if (source != null) ...[
         const SizedBox(width: 6),
-        // Tapped (or hovered, or long-pressed) it says what the AI did; a
-        // screen reader reads the same with the mark.
+        // Tapped (or hovered, or long-pressed) it says where the numbers came
+        // from; a screen reader reads the same with the mark.
         Tooltip(
-          message: routeAiExplainer,
+          message: source.explainer,
           triggerMode: TooltipTriggerMode.tap,
           showDuration: const Duration(seconds: 5),
           excludeFromSemantics: true,
           child: Semantics(
             container: true,
-            label: 'AI estimate. $routeAiExplainer',
+            label: '${source.spoken}. ${source.explainer}',
             excludeSemantics: true,
             child: ConstrainedBox(
               // A 44-high tap area around the small chip.
@@ -4649,24 +4653,28 @@ class RouteBasisLine extends StatelessWidget {
                 widthFactor: 1,
                 child: Container(
                   key: const ValueKey('route-ai'),
+                  // The road chip is quieter: it says live traffic was missing.
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: t.colorScheme.primaryContainer,
+                    color: source.withTraffic ? t.colorScheme.primaryContainer : t.colorScheme.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.auto_awesome, size: 14, color: t.colorScheme.onPrimaryContainer),
-                    const SizedBox(width: 3),
-                    Text(
-                      'AI',
-                      style: t.textTheme.labelSmall?.copyWith(
-                        color: t.colorScheme.onPrimaryContainer,
-                        fontWeight: FontWeight.w700,
+                      Icon(
+                        switch (source) {
+                          EstimateSource.waze => Icons.traffic_outlined,
+                          EstimateSource.ai => Icons.auto_awesome,
+                          EstimateSource.road => Icons.alt_route,
+                        },
+                        key: ValueKey('route-source-${source.name}'),
+                        size: 14,
+                        color: chipFg,
                       ),
-                    ),
-                    const SizedBox(width: 3),
-                    Icon(Icons.info_outline, size: 14, color: t.colorScheme.onPrimaryContainer),
-                  ]),
+                      const SizedBox(width: 3),
+                      Text(source.label, style: t.textTheme.labelSmall?.copyWith(color: chipFg, fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 3),
+                      Icon(Icons.info_outline, size: 14, color: chipFg),
+                    ]),
                 ),
               ),
             ),

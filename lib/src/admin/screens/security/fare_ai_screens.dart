@@ -7,8 +7,10 @@ import 'package:go_router/go_router.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/loading_skeleton.dart';
+import '../../../widgets/search_select.dart';
 import '../../admin_access.dart';
 import '../../widgets/admin_widgets.dart';
+import '../../widgets/region_scope_picker.dart' show pickRegionScope;
 import '../../test_traffic.dart';
 import 'api_keys_logic.dart' show maskSecret;
 import '../../../core/route_estimate.dart' show FareTrend, FareTrendDirection, argbFromHex;
@@ -30,12 +32,17 @@ class AdminFareAiScreen extends ConsumerStatefulWidget {
 class _FareAiState extends ConsumerState<AdminFareAiScreen> {
   FareAiConfig? _config;
   Map<String, FareAiKeyState> _states = {};
+  Map<String, WazeServerHealth> _health = {};
   Object? _error;
   bool _dirty = false;
   bool _saving = false;
 
   /// Per-key text controllers so typing doesn't lose the cursor on rebuild.
   final _controllers = <String, ({TextEditingController label, TextEditingController key})>{};
+
+  /// The same for each Waze server.
+  final _serverControllers =
+      <String, ({TextEditingController label, TextEditingController url, TextEditingController key})>{};
   final _model = TextEditingController();
   final _retry = TextEditingController();
   final _trendUp = TextEditingController();
@@ -60,6 +67,11 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
       c.label.dispose();
       c.key.dispose();
     }
+    for (final c in _serverControllers.values) {
+      c.label.dispose();
+      c.url.dispose();
+      c.key.dispose();
+    }
     _model.dispose();
     _retry.dispose();
     _trendUp.dispose();
@@ -73,12 +85,13 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
   Future<void> _load() async {
     final repo = ref.read(securityRepositoryProvider);
     try {
-      final results = await Future.wait([repo.fareAiConfig(), repo.fareAiKeyStates()]);
+      final results = await Future.wait([repo.fareAiConfig(), repo.fareAiKeyStates(), repo.wazeServerHealth()]);
       if (!mounted) return;
       final c = results[0] as FareAiConfig;
       setState(() {
         _config = c;
         _states = results[1] as Map<String, FareAiKeyState>;
+        _health = results[2] as Map<String, WazeServerHealth>;
         _error = null;
         _dirty = false;
       });
@@ -115,8 +128,15 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
   }
 
   Future<void> _refreshStats() async {
-    final s = await ref.read(securityRepositoryProvider).fareAiKeyStates();
-    if (mounted) setState(() => _states = s);
+    final repo = ref.read(securityRepositoryProvider);
+    final s = await repo.fareAiKeyStates();
+    final h = await repo.wazeServerHealth();
+    if (mounted) {
+      setState(() {
+        _states = s;
+        _health = h;
+      });
+    }
     await _loadTrendSample();
   }
 
@@ -141,11 +161,43 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
 
   void _setKeys(List<FareAiKey> keys) => _update(_config!.withKeys(_config!.provider, keys));
 
+  void _setServers(List<WazeServer> servers) => _update(_config!.copyWith(wazeServers: servers));
+
+  ({TextEditingController label, TextEditingController url, TextEditingController key}) _serverCtl(WazeServer s) =>
+      _serverControllers.putIfAbsent(
+          s.id,
+          () => (
+                label: TextEditingController(text: s.label),
+                url: TextEditingController(text: s.url),
+                key: TextEditingController(text: s.key),
+              ));
+
+  /// One sample trip (KLCC to KL Sentral) through the server as typed, saved or not.
+  Future<void> _testServer(WazeServer s) async {
+    try {
+      final r = await ref.read(securityRepositoryProvider).testWazeServer(s,
+          origin: (lat: 3.158, lng: 101.712), destination: (lat: 3.134, lng: 101.686));
+      if (!mounted) return;
+      final e = r['estimate'];
+      final ms = r['latency_ms'];
+      if (e is Map) {
+        final tolls = (e['toll_total'] is num && (e['toll_total'] as num) > 0) ? ' · tolls ${e['toll_total']}' : '';
+        showInfo(context,
+            '${s.label} answered in ${ms ?? '?'} ms: ${e['distance_km']} km, ${e['duration_min']} min$tolls.\n${e['summary'] ?? ''}');
+      } else {
+        showError(context, Exception('${s.label} did not answer a route: ${r['error'] ?? 'no answer'}'));
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
   Future<void> _save() async {
     final c = _config!;
     setState(() => _saving = true);
     final ok = await runAdminAction(context, () => ref.read(securityRepositoryProvider).saveFareAiConfig(c),
-        success: 'Fare calculation now uses ${fareAiProviderLabel(c.provider)} for all users.');
+        success: c.chain.isEmpty
+            ? 'Fare estimates are off: fares use the routing engine fallback.'
+            : 'Fare estimates now come from ${fareChainLabel(c.chain)} for all users.');
     if (!mounted) return;
     setState(() {
       _saving = false;
@@ -330,27 +382,49 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
         const Card(
           child: ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('Choose which AI estimates trip distance & traffic-aware time for fare calculation. Applies '
-                "globally to all users. Add multiple keys per provider — if one fails it's skipped for the retry "
-                'window below and the next key is tried automatically.'),
+            title: Text('Choose where trip distance & traffic-aware time for fares come from, and in what order. '
+                "Applies globally to all users. Add multiple AI keys or Waze servers — if one fails it's skipped for "
+                'the retry window below and the next one is tried automatically.'),
           ),
         ),
         Card(
-          child: SwitchListTile(
-            secondary: const Icon(Icons.power_settings_new),
-            title: const Text('AI fare service'),
-            subtitle: Text(c.serviceEnabled
-                ? 'AI estimates trip distance & time for fares'
-                : 'Turned off — fares use the routing engine fallback'),
-            value: c.serviceEnabled,
-            onChanged: canEdit ? (v) => _update(c.copyWith(serviceEnabled: v)) : null,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text('Fare data order', style: t.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              SearchableDropdownFormField<String>(
+                key: ValueKey('fare-chain-${c.chain.join(',')}'),
+                isExpanded: true,
+                initialValue: c.chain.join(','),
+                decoration: const InputDecoration(labelText: 'Ask in this order'),
+                items: [
+                  for (final ch in {...fareChains.map((x) => x.join(',')), c.chain.join(',')})
+                    DropdownMenuItem(
+                      value: ch,
+                      child: Text(fareChainLabel(ch.isEmpty ? const [] : ch.split(',')), overflow: TextOverflow.ellipsis),
+                    ),
+                ],
+                onChanged: canEdit
+                    ? (v) => _update(c.copyWith(chain: v == null || v.isEmpty ? const [] : cleanFareChain(v.split(','))))
+                    : null,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Each step is asked only when the one before has no answer. Waze: live traffic, distance and tolls '
+                'from the GET.route pool on the office NAS. AI: the provider below. OSRM: road distance and time '
+                'without traffic, from the office NAS maps (or the OSRM server when the NAS is off).',
+                style: t.textTheme.bodySmall,
+              ),
+            ]),
           ),
         ),
+        if (c.uses('waze')) ..._wazeSection(c, canEdit),
         const SizedBox(height: 12),
-        Text('Provider', style: t.textTheme.titleMedium),
+        Text(c.uses('waze') ? 'AI provider (after Waze)' : 'AI provider', style: t.textTheme.titleMedium),
         const SizedBox(height: 6),
         Opacity(
-          opacity: c.serviceEnabled ? 1 : 0.5,
+          opacity: c.uses('ai') ? 1 : 0.5,
           child: RadioGroup<String>(
             groupValue: c.provider,
             onChanged: (v) {
@@ -473,6 +547,176 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
           onPressed: _openRequest,
         ),
       ]),
+    );
+  }
+
+  /// The GET.route servers: one per container on the office NAS, each for
+  /// an area or for any trip, asked most specific area first.
+  List<Widget> _wazeSection(FareAiConfig c, bool canEdit) {
+    final t = Theme.of(context);
+    final servers = c.wazeServers;
+    return [
+      const SizedBox(height: 16),
+      Row(children: [
+        Expanded(child: Text('Waze servers', style: t.textTheme.titleMedium)),
+        if (canEdit)
+          TextButton.icon(
+            key: const ValueKey('add-waze-server'),
+            icon: const Icon(Icons.add),
+            label: const Text('Add server'),
+            onPressed: () =>
+                _setServers([...servers, WazeServer.create(label: 'Waze server ${servers.length + 1}')]),
+          ),
+      ]),
+      Text(
+        'Each GET.route container on the office NAS is one server. Give a server a country, state, city or '
+        'suburb to split the load: a trip asks the server for its pickup\'s smallest matching area first, then '
+        'servers for all regions, then the others as a backup. A server that fails rests for ${retryLabel(c)}. '
+        'Every minute each server is checked; admins with Fare AI access get a push when one has been offline '
+        'for 5 minutes, and again when it is back.',
+        style: t.textTheme.bodySmall,
+      ),
+      const SizedBox(height: 8),
+      if (servers.isEmpty)
+        Card(
+          child: ListTile(
+            title: Text('No servers yet. ${canEdit ? 'Tap "Add server" and paste the tunnel address and key.' : ''}'),
+          ),
+        ),
+      for (final (i, s) in servers.indexed) _serverCard(c, s, i, canEdit),
+    ];
+  }
+
+  Widget _serverCard(FareAiConfig c, WazeServer s, int i, bool canEdit) {
+    final st = _states[s.id];
+    final cooling = isCoolingDown(st?.disabledUntil);
+    final ctl = _serverCtl(s);
+    final servers = c.wazeServers;
+    List<WazeServer> patch(WazeServer Function(WazeServer) f) => [for (final x in servers) x.id == s.id ? f(x) : x];
+    void move(int by) {
+      final list = [...servers]..removeAt(i);
+      list.insert(i + by, s);
+      _setServers(list);
+    }
+
+    final problem = s.urlProblem;
+    return Card(
+      key: ValueKey('waze-server-${s.id}'),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: ctl.label,
+                readOnly: !canEdit,
+                decoration: InputDecoration(isDense: true, hintText: 'Waze server ${i + 1}', labelText: 'Name'),
+                onChanged: (v) => _setServers(patch((x) => x.copyWith(label: v))),
+              ),
+            ),
+            Switch(value: s.enabled, onChanged: canEdit ? (v) => _setServers(patch((x) => x.copyWith(enabled: v))) : null),
+            if (canEdit) ...[
+              IconButton(
+                tooltip: 'Ask earlier',
+                icon: const Icon(Icons.arrow_upward),
+                onPressed: i == 0 ? null : () => move(-1),
+              ),
+              IconButton(
+                tooltip: 'Remove server',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () async {
+                  if (await confirm(context, 'Remove server', 'Remove "${s.label}"? Save to apply.', ok: 'Remove')) {
+                    _setServers(servers.where((x) => x.id != s.id).toList());
+                  }
+                },
+              ),
+            ],
+          ]),
+          TextField(
+            controller: ctl.url,
+            readOnly: !canEdit,
+            autocorrect: false,
+            keyboardType: TextInputType.url,
+            decoration: InputDecoration(
+              labelText: 'Server URL',
+              hintText: 'https://route1.getride.my',
+              errorText: s.url.isEmpty ? null : problem,
+            ),
+            onChanged: (v) => _setServers(patch((x) => x.copyWith(url: v))),
+          ),
+          if (canEdit)
+            TextField(
+              controller: ctl.key,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: const InputDecoration(labelText: 'Key', hintText: 'ROUTE_API_KEY from the server\'s .env'),
+              onChanged: (v) => _setServers(patch((x) => x.copyWith(key: v))),
+            ),
+          if (_health[s.id] case final h?)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(children: [
+                Icon(h.state == 'online' ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                    size: 18, color: h.state == 'online' ? Colors.green : Colors.red),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(h.label(), maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: h.state == 'online' ? null : Colors.red)),
+                ),
+              ]),
+            ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.place_outlined),
+            title: Text(s.area.label),
+            subtitle: const Text('Area this server serves first'),
+            trailing: canEdit
+                ? TextButton(
+                    onPressed: () async {
+                      final area = await pickRegionScope(context,
+                          title: 'Area for ${s.label}', initial: s.area, allowAll: true);
+                      if (area != null) _setServers(patch((x) => x.copyWith(area: area)));
+                    },
+                    child: const Text('Change'),
+                  )
+                : null,
+          ),
+          Wrap(spacing: 12, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Text('${st?.usageCount ?? 0} used'),
+            Text('${st?.passCount ?? 0} passed', style: const TextStyle(color: Colors.green)),
+            Text('${st?.failCount ?? 0} failed', style: const TextStyle(color: Colors.red)),
+            Text('last used ${formatRelative(st?.lastUsedAt)}', style: Theme.of(context).textTheme.bodySmall),
+          ]),
+          if (cooling)
+            Row(children: [
+              Expanded(
+                child: Text('Resting after a failure — back ${formatRelative(st?.disabledUntil)}',
+                    style: const TextStyle(color: Colors.red)),
+              ),
+              if (canEdit)
+                BusyButton.text(
+                  key: ValueKey('reset-cooldown-${s.id}'),
+                  icon: const Icon(Icons.restart_alt),
+                  onPressed: () => _resetCooldown(s.id),
+                  child: const Text('Reset'),
+                ),
+            ])
+          else if (st?.lastError != null)
+            Text('Last error: ${st!.lastError}', maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.red)),
+          if (canEdit)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: BusyButton.text(
+                key: ValueKey('test-waze-server-${s.id}'),
+                icon: const Icon(Icons.play_arrow_outlined),
+                onPressed: problem != null || s.key.trim().isEmpty ? null : () => _testServer(s),
+                child: const Text('Test (KLCC to KL Sentral)'),
+              ),
+            ),
+        ]),
+      ),
     );
   }
 

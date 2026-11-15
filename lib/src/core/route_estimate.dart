@@ -39,6 +39,47 @@ int tollBoothCount(RouteEstimate? e) {
   return c > 0 ? c : e.tolls.length;
 }
 
+/// Where an estimate's distance and time came from, as the fare screen names
+/// it (Admin › Fare AI › Fare data order: Waze, the AI, or OSRM). [label] is
+/// the chip's word, [withTraffic] says whether the time includes live
+/// traffic, [explainer] is what a tap or a screen reader is told.
+enum EstimateSource {
+  waze(
+    label: 'Waze',
+    withTraffic: true,
+    explainer: 'Distance, travel time and tolls from Waze live traffic',
+    spoken: 'Waze live traffic estimate',
+  ),
+  ai(
+    label: 'AI',
+    withTraffic: true,
+    explainer: 'Fare and travel time worked out by AI from current traffic and demand',
+    spoken: 'AI estimate',
+  ),
+  road(
+    label: 'Road',
+    withTraffic: false,
+    explainer: 'Road distance and usual travel time. Live traffic was not available for this trip',
+    spoken: 'Road estimate without live traffic',
+  );
+
+  const EstimateSource({required this.label, required this.withTraffic, required this.explainer, required this.spoken});
+
+  final String label;
+  final bool withTraffic;
+  final String explainer;
+  final String spoken;
+
+  /// The estimate's source from the `provider` ai-route-proxy sends: "waze",
+  /// "osrm", or an AI provider's id (and an older proxy's estimate, which
+  /// names an AI provider or nothing).
+  static EstimateSource of(RouteEstimate e) => switch (e.provider) {
+        'waze' => EstimateSource.waze,
+        'osrm' => EstimateSource.road,
+        _ => EstimateSource.ai,
+      };
+}
+
 class RouteEstimate {
   const RouteEstimate({
     required this.distanceKm,
