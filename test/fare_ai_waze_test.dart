@@ -13,6 +13,7 @@ class _Repo implements SecurityRepository {
   FareAiConfig config;
   final saved = <FareAiConfig>[];
   final tested = <WazeServer>[];
+  final testedKinds = <String>[];
 
   @override
   Future<FareAiConfig> fareAiConfig() async => config;
@@ -39,8 +40,10 @@ class _Repo implements SecurityRepository {
     WazeServer server, {
     required ({double lat, double lng}) origin,
     required ({double lat, double lng}) destination,
+    String kind = 'waze',
   }) async {
     tested.add(server);
+    testedKinds.add(kind);
     return {
       'latency_ms': 1200,
       'estimate': {'distance_km': 4.6, 'duration_min': 14, 'toll_total': 0, 'summary': 'Via Jalan Tun Razak'},
@@ -100,6 +103,30 @@ void main() {
       expect(back.activeWazeServerCount, 1);
     });
 
+    test('Google Maps is a step of its own, with its own servers', () {
+      expect(fareChains.first, ['waze', 'gmap', 'ai', 'osrm']);
+      expect(fareChainLabel(fareChains.first), 'Waze, then Google Maps, then AI, then OSRM');
+      expect(fareAiProviderLabel('gmap'), 'Google Maps (Traffic Scraper)');
+      expect(normalizeFareAi({'chain': ['osrm', 'gmap', 'waze', 'gmap', 'ai']}).chain, ['gmap', 'waze', 'ai', 'osrm']);
+      // configs saved before the step existed don't gain it
+      expect(normalizeFareAi({'source': 'waze'}).chain, ['waze', 'ai']);
+
+      final c = normalizeFareAi(null).copyWith(
+        chain: ['waze', 'gmap', 'ai', 'osrm'],
+        wazeServers: [WazeServer.create(id: 'w1', label: 'Waze NAS', url: 'https://route.getride.my', key: 'kw')],
+        gmapServers: [WazeServer.create(id: 'g1', label: 'Maps NAS', url: 'https://traffic.getride.my', key: 'kg')],
+      );
+      final back = normalizeFareAi(c.toJson());
+      expect(back.chain, ['waze', 'gmap', 'ai', 'osrm']);
+      expect([for (final s in back.wazeServers) (s.id, s.url)], [('w1', 'https://route.getride.my')]);
+      expect([for (final s in back.gmapServers) (s.id, s.label, s.url, s.key)],
+          [('g1', 'Maps NAS', 'https://traffic.getride.my', 'kg')]);
+      expect(back.activeGmapServerCount, 1);
+      expect(normalizeFareAi({'gmapServers': [{'url': 'https://traffic.getride.my', 'key': 'k'}]}).gmapServers.single.label,
+          'Google Maps server');
+      expect(normalizeFareAi(null).gmapServers, isEmpty);
+    });
+
     test('a server needs an https address and a key to be used', () {
       WazeServer s(String url, [String key = 'k']) => WazeServer.create(url: url, key: key);
       expect(s('https://route1.getride.my').urlProblem, isNull);
@@ -157,6 +184,50 @@ void main() {
     expect(c.chain, ['waze', 'ai', 'osrm']);
     expect(c.toJson()['serviceEnabled'], isTrue);
     expect([for (final s in c.wazeServers) (s.url, s.key, s.area.isAll)], [('https://route1.getride.my', 's3cret', true)]);
+  });
+
+  testWidgets('admin picks Waze → Google Maps → AI → OSRM and adds a Google Maps server', (tester) async {
+    tester.view.physicalSize = const Size(900, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repo = _Repo(normalizeFareAi(null));
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        securityRepositoryProvider.overrideWithValue(repo),
+        adminAccessProvider.overrideWith((ref) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+      ],
+      child: const MaterialApp(home: AdminFareAiScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Google Maps servers'), findsNothing, reason: 'only with Google Maps in the order');
+    await tester.tap(find.text('AI'));                       // the current order
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Waze, then Google Maps, then AI, then OSRM').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Waze servers'), findsOneWidget);
+    expect(find.text('Google Maps servers'), findsOneWidget);
+    expect(find.text('AI provider (after Waze and Google Maps)'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('add-gmap-server')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Server URL'), 'https://traffic.getride.my');
+    await tester.enterText(find.widgetWithText(TextField, 'Key'), 'm4ps');
+    await tester.pump();
+
+    await tester.tap(find.textContaining('Test (KLCC'));
+    await tester.pumpAndSettle();
+    expect(repo.testedKinds, ['gmap'], reason: 'the proxy is asked to test it as a Google Maps server');
+    expect(repo.tested.single.label, 'Google Maps server 1');
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Save changes'));
+    await tester.pumpAndSettle();
+    final c = repo.saved.single;
+    expect(c.chain, ['waze', 'gmap', 'ai', 'osrm']);
+    expect(c.wazeServers, isEmpty);
+    expect([for (final s in c.gmapServers) (s.url, s.key)], [('https://traffic.getride.my', 'm4ps')]);
   });
 
   testWidgets('each server card shows its health', (tester) async {

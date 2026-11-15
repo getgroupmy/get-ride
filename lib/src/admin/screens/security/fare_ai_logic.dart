@@ -14,6 +14,7 @@ const fareAiRemoteKey = 'fare_ai_provider';
 /// estimate answers.
 const fareSteps = {
   'waze': 'Waze',
+  'gmap': 'Google Maps',
   'ai': 'AI',
   'osrm': 'OSRM',
 };
@@ -21,6 +22,9 @@ const fareSteps = {
 /// The orders offered on the Fare AI page. An empty order is "No data": the
 /// apps use their own routing-engine fallback.
 const fareChains = <List<String>>[
+  ['waze', 'gmap', 'ai', 'osrm'],
+  ['waze', 'gmap', 'osrm'],
+  ['gmap', 'ai', 'osrm'],
   ['waze', 'ai', 'osrm'],
   ['waze', 'osrm'],
   ['waze', 'ai'],
@@ -49,6 +53,10 @@ List<String> cleanFareChain(Iterable<Object?> raw) {
 /// One GET.route server (one container on the office NAS, reached through a
 /// Cloudflare Tunnel). [area] ties it to a country / state / city / suburb:
 /// trips picked up there ask it first. All regions = any trip.
+///
+/// The Google Maps servers (the Traffic Scraper, getgroupmy/get.route.backup)
+/// speak the same API, so they are this class too, in
+/// [FareAiConfig.gmapServers].
 class WazeServer {
   const WazeServer({
     required this.id,
@@ -101,14 +109,14 @@ class WazeServer {
       };
 }
 
-List<WazeServer> _wazeServerList(Object? raw) {
+List<WazeServer> _wazeServerList(Object? raw, {String defaultLabel = 'Waze server'}) {
   if (raw is! List) return const [];
   return [
     for (final item in raw)
       if (item is Map)
         WazeServer.create(
           id: item['id'] is String && (item['id'] as String).isNotEmpty ? item['id'] as String : null,
-          label: item['label'] is String ? item['label'] as String : null,
+          label: item['label'] is String ? item['label'] as String : defaultLabel,
           url: item['url'] is String ? item['url'] as String : '',
           key: item['key'] is String ? item['key'] as String : '',
           enabled: item['enabled'] is bool ? item['enabled'] as bool : true,
@@ -164,6 +172,7 @@ String fareAiProviderLabel(String id) {
   }
   // The non-AI steps of the fare order log under their own names.
   if (id == 'waze') return 'Waze (GET.route)';
+  if (id == 'gmap') return 'Google Maps (Traffic Scraper)';
   if (id == 'osrm') return 'OSRM (no traffic)';
   return id.isEmpty ? '—' : id;
 }
@@ -202,6 +211,7 @@ class FareAiConfig {
     this.request = FareAiRequest.defaults,
     this.trend = FareTrendSettings.off,
     this.wazeServers = const [],
+    this.gmapServers = const [],
   });
 
   /// The order estimates are asked in ([fareSteps]); empty = no estimate.
@@ -210,12 +220,17 @@ class FareAiConfig {
   /// The GET.route servers, in the order the admin listed them.
   final List<WazeServer> wazeServers;
 
+  /// The Google Maps servers (Traffic Scraper), for the "gmap" step.
+  final List<WazeServer> gmapServers;
+
   /// Any estimates at all (the old on/off switch, still saved for older proxies).
   bool get serviceEnabled => chain.isNotEmpty;
 
   bool uses(String step) => chain.contains(step);
 
   int get activeWazeServerCount => wazeServers.where((s) => s.isActive).length;
+
+  int get activeGmapServerCount => gmapServers.where((s) => s.isActive).length;
 
   final String provider;
   final int retryAfterValue;
@@ -235,6 +250,7 @@ class FareAiConfig {
   FareAiConfig copyWith({
     List<String>? chain,
     List<WazeServer>? wazeServers,
+    List<WazeServer>? gmapServers,
     String? provider,
     int? retryAfterValue,
     String? retryAfterUnit,
@@ -246,6 +262,7 @@ class FareAiConfig {
       FareAiConfig(
         chain: chain ?? this.chain,
         wazeServers: wazeServers ?? this.wazeServers,
+        gmapServers: gmapServers ?? this.gmapServers,
         provider: provider ?? this.provider,
         retryAfterValue: retryAfterValue ?? this.retryAfterValue,
         retryAfterUnit: retryAfterUnit ?? this.retryAfterUnit,
@@ -264,6 +281,7 @@ class FareAiConfig {
         'source': uses('waze') ? 'waze' : (uses('ai') ? 'ai' : 'none'),
         'wazeFallback': uses('ai') ? 'ai' : 'none',
         'wazeServers': [for (final s in wazeServers) s.toJson()],
+        'gmapServers': [for (final s in gmapServers) s.toJson()],
         'provider': provider,
         'retryAfterValue': retryAfterValue,
         'retryAfterUnit': retryAfterUnit,
@@ -332,6 +350,7 @@ FareAiConfig normalizeFareAi(Object? raw) {
   return FareAiConfig(
     chain: chain,
     wazeServers: _wazeServerList(o['wazeServers']),
+    gmapServers: _wazeServerList(o['gmapServers'], defaultLabel: 'Google Maps server'),
     provider: provider,
     retryAfterValue: retryValue,
     retryAfterUnit: retryUnit,

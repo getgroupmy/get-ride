@@ -40,7 +40,7 @@ int tollBoothCount(RouteEstimate? e) {
 }
 
 /// Where an estimate's distance and time came from, as the fare screen names
-/// it (Admin › Fare AI › Fare data order: Waze, the AI, or OSRM). [label] is
+/// it (Admin › Fare AI › Fare data order: Waze, Google Maps, the AI, or OSRM). [label] is
 /// the chip's word, [withTraffic] says whether the time includes live
 /// traffic, [explainer] is what a tap or a screen reader is told.
 enum EstimateSource {
@@ -49,6 +49,12 @@ enum EstimateSource {
     withTraffic: true,
     explainer: 'Distance, travel time and tolls from Waze live traffic',
     spoken: 'Waze live traffic estimate',
+  ),
+  gmap(
+    label: 'Google Maps',
+    withTraffic: true,
+    explainer: 'Distance and travel time from Google Maps live traffic',
+    spoken: 'Google Maps live traffic estimate',
   ),
   ai(
     label: 'AI',
@@ -71,10 +77,11 @@ enum EstimateSource {
   final String spoken;
 
   /// The estimate's source from the `provider` ai-route-proxy sends: "waze",
-  /// "osrm", or an AI provider's id (and an older proxy's estimate, which
+  /// "gmap", "osrm", or an AI provider's id (and an older proxy's estimate, which
   /// names an AI provider or nothing).
   static EstimateSource of(RouteEstimate e) => switch (e.provider) {
         'waze' => EstimateSource.waze,
+        'gmap' => EstimateSource.gmap,
         'osrm' => EstimateSource.road,
         _ => EstimateSource.ai,
       };

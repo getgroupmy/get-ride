@@ -8,6 +8,14 @@ Deno.test("chainOf: the saved chain, known steps once, OSRM last", () => {
   assertEquals(chainOf({ chain: [] }), []);
 });
 
+Deno.test("chainOf: Google Maps (gmap) is a step like the others", () => {
+  assertEquals(chainOf({ chain: ["waze", "gmap", "ai", "osrm"] }), ["waze", "gmap", "ai", "osrm"]);
+  assertEquals(chainOf({ chain: ["gmap", "osrm", "ai"] }), ["gmap", "ai", "osrm"]);
+  assertEquals(chainOf({ chain: ["gmap", "gmap"] }), ["gmap"]);
+  // configs saved before the step existed don't gain it
+  assertEquals(chainOf({ source: "waze" }), ["waze", "ai"]);
+});
+
 Deno.test("chainOf: a config from before chains behaves as it did", () => {
   assertEquals(chainOf(null), ["ai"]);
   assertEquals(chainOf({ source: "ai" }), ["ai"]);

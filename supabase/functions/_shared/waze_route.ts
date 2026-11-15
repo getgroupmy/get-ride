@@ -22,6 +22,11 @@
  * and the legs added up. The answer becomes the same estimate an AI gives
  * (distance_km, duration_min, summary, tolls), so the apps need no change.
  *
+ * The same code serves the "gmap" step: Google Maps' live route from the
+ * Traffic Scraper (getgroupmy/get.route.backup), which answers GET.route's
+ * /routes/search and /health. Its servers are `gmapServers`; GMAP_KIND names
+ * what differs (config field, default names, summary, log provider).
+ *
  * Pure apart from the injected fetch; see waze_route_test.ts.
  *
  *     deno test supabase/functions/_shared/waze_route_test.ts
@@ -29,6 +34,39 @@
 
 /** The `provider` an estimate and its log row carry. */
 export const WAZE_PROVIDER = "waze";
+export const GMAP_PROVIDER = "gmap";
+
+/** What differs between the server lists that speak GET.route's API. */
+export interface RouteServerKind {
+  provider: typeof WAZE_PROVIDER | typeof GMAP_PROVIDER;
+  /** The fare_ai_provider field holding the list. */
+  configField: "wazeServers" | "gmapServers";
+  /** Default id prefix and label for a server saved without one. */
+  idPrefix: string;
+  serverLabel: string;
+  /** The data source, in estimate summaries and health messages. */
+  sourceName: string;
+  /** The `model` column of its log rows. */
+  model: string;
+}
+
+export const WAZE_KIND: RouteServerKind = {
+  provider: WAZE_PROVIDER,
+  configField: "wazeServers",
+  idPrefix: "waze",
+  serverLabel: "Waze server",
+  sourceName: "Waze",
+  model: "GET.route",
+};
+
+export const GMAP_KIND: RouteServerKind = {
+  provider: GMAP_PROVIDER,
+  configField: "gmapServers",
+  idPrefix: "gmap",
+  serverLabel: "Google Maps server",
+  sourceName: "Google Maps",
+  model: "Traffic Scraper",
+};
 
 /** A place by name; a blank level means "any". */
 export interface Area {
@@ -89,9 +127,20 @@ export function cleanServerUrl(v: unknown): string | null {
   return u.origin + u.pathname.replace(/\/+$/, "");
 }
 
-/** The enabled servers of a saved config that have a URL and a key, in order. */
+/** The enabled Waze servers of a saved config that have a URL and a key, in order. */
 export function wazeServersOf(config: { wazeServers?: unknown } | null | undefined): WazeServer[] {
-  const raw = Array.isArray(config?.wazeServers) ? config!.wazeServers as unknown[] : [];
+  return routeServersOf(config, WAZE_KIND);
+}
+
+/** The enabled Google Maps (Traffic Scraper) servers, as wazeServersOf. */
+export function gmapServersOf(config: { gmapServers?: unknown } | null | undefined): WazeServer[] {
+  return routeServersOf(config, GMAP_KIND);
+}
+
+/** The enabled servers of one kind that have a URL and a key, in order. */
+export function routeServersOf(config: Record<string, unknown> | null | undefined, kind: RouteServerKind): WazeServer[] {
+  const list = (config as Record<string, unknown> | null | undefined)?.[kind.configField];
+  const raw = Array.isArray(list) ? list as unknown[] : [];
   const out: WazeServer[] = [];
   raw.forEach((s, i) => {
     if (!s || typeof s !== "object") return;
@@ -99,8 +148,8 @@ export function wazeServersOf(config: { wazeServers?: unknown } | null | undefin
     const url = cleanServerUrl(o.url);
     const key = typeof o.key === "string" ? o.key.trim() : "";
     if (o.enabled === false || !url || !key) return;
-    const id = typeof o.id === "string" && o.id.trim() ? o.id.trim() : `waze-${i + 1}`;
-    const label = typeof o.label === "string" && o.label.trim() ? o.label.trim() : `Waze server ${i + 1}`;
+    const id = typeof o.id === "string" && o.id.trim() ? o.id.trim() : `${kind.idPrefix}-${i + 1}`;
+    const label = typeof o.label === "string" && o.label.trim() ? o.label.trim() : `${kind.serverLabel} ${i + 1}`;
     const area = areaOf(o.area);
     out.push({ id, label, url, key, enabled: true, ...(area ? { area } : {}) });
   });
@@ -221,8 +270,8 @@ function firstRoute(body: unknown): WazeRoute | null {
 }
 
 /** The legs' routes added up into one estimate, or null when a leg lacks
- * its distance or time. */
-export function estimateFromLegs(legs: WazeRoute[]): WazeEstimate | null {
+ * its distance or time. [sourceName] names the data in the summary. */
+export function estimateFromLegs(legs: WazeRoute[], sourceName = WAZE_KIND.sourceName): WazeEstimate | null {
   let meters = 0, seconds = 0;
   const names: string[] = [];
   const tolls: WazeTollBooth[] = [];
@@ -244,7 +293,9 @@ export function estimateFromLegs(legs: WazeRoute[]): WazeEstimate | null {
   return {
     distance_km: Math.round(meters / 100) / 10,
     duration_min: Math.ceil(seconds / 60),
-    summary: names.length ? `Via ${names.join(", then ")} (Waze live traffic)` : "Waze live traffic",
+    summary: names.length
+      ? `Via ${names.join(", then ")} (${sourceName} live traffic)`
+      : `${sourceName} live traffic`,
     toll_count: tolls.length,
     toll_total: Math.round(tolls.reduce((sum, t) => sum + t.charge, 0) * 100) / 100,
     tolls,
@@ -268,6 +319,7 @@ export async function askWazeServer(
   points: LatLng[],
   fetchImpl: Fetch = fetch,
   budgetMs = WAZE_TRIP_BUDGET_MS,
+  sourceName = WAZE_KIND.sourceName,
 ): Promise<WazeResult> {
   const deadline = Date.now() + budgetMs;
   const legs: WazeRoute[] = [];
@@ -312,7 +364,7 @@ export async function askWazeServer(
     if (!route) return { estimate: null, httpStatus: status, error: "No route in the answer", raw: raws.join("\n") };
     legs.push(route);
   }
-  const estimate = estimateFromLegs(legs);
+  const estimate = estimateFromLegs(legs, sourceName);
   return {
     estimate,
     httpStatus: status,
@@ -334,8 +386,14 @@ export interface HealthVerdict {
 /** What a server's /health answer means. GET.route sends `waze` (when its
  * last Waze call worked or failed) only with the right key, so a missing
  * `waze` is a refused key. A last call that failed after the last one that
- * worked means Waze is refusing the server (tokens, Chrome), not the NAS. */
-export function healthVerdict(httpStatus: number | null, body: unknown, failure?: string): HealthVerdict {
+ * worked means Waze is refusing the server (tokens, Chrome), not the NAS.
+ * The Traffic Scraper sends the same `waze` block, for Google Maps. */
+export function healthVerdict(
+  httpStatus: number | null,
+  body: unknown,
+  failure?: string,
+  sourceName = WAZE_KIND.sourceName,
+): HealthVerdict {
   if (httpStatus === null) return { state: "down", detail: failure ?? "Health check: couldn't reach the server." };
   if (httpStatus < 200 || httpStatus >= 300) return { state: "down", detail: `Health check: HTTP ${httpStatus}.` };
   const b = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
@@ -347,7 +405,7 @@ export function healthVerdict(httpStatus: number | null, body: unknown, failure?
   const err = typeof last_error_at === "string" ? Date.parse(last_error_at) : NaN;
   if (Number.isFinite(err) && (!Number.isFinite(ok) || err > ok)) {
     const why = typeof last_error === "string" && last_error ? last_error.slice(0, 200) : "unknown error";
-    return { state: "down", detail: `Waze is refusing this server: ${why}` };
+    return { state: "down", detail: `${sourceName} is refusing this server: ${why}` };
   }
   return { state: "ok", detail: null };
 }

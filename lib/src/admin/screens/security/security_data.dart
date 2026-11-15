@@ -429,13 +429,16 @@ class SecurityRepository {
   /// Asks one GET.route server (saved or not) for a trip through
   /// `ai-route-proxy` (admins only): its answer, the estimate made from it
   /// and how long it took. Nothing is logged or counted.
+  /// [kind] is the fare step the server belongs to: 'waze' (GET.route) or
+  /// 'gmap' (Google Maps, the Traffic Scraper).
   Future<Map<String, dynamic>> testWazeServer(
     WazeServer server, {
     required ({double lat, double lng}) origin,
     required ({double lat, double lng}) destination,
+    String kind = 'waze',
   }) async {
     final res = await _db.functions.invokeNearDb('ai-route-proxy', body: {
-      'test': 'waze',
+      'test': kind,
       'server': server.toJson(),
       'origin': {'latitude': origin.lat, 'longitude': origin.lng},
       'destination': {'latitude': destination.lat, 'longitude': destination.lng},

@@ -52,6 +52,8 @@ void main() {
 
   test('the source follows the provider; an older proxy estimate is the AI', () {
     expect(EstimateSource.of(const RouteEstimate(distanceKm: 1, durationMin: 1, provider: 'waze')), EstimateSource.waze);
+    expect(EstimateSource.of(const RouteEstimate(distanceKm: 1, durationMin: 1, provider: 'gmap')), EstimateSource.gmap);
+    expect(EstimateSource.gmap.withTraffic, isTrue);
     expect(EstimateSource.of(const RouteEstimate(distanceKm: 1, durationMin: 1, provider: 'osrm')), EstimateSource.road);
     expect(EstimateSource.of(const RouteEstimate(distanceKm: 1, durationMin: 1, provider: 'claude')), EstimateSource.ai);
     expect(EstimateSource.of(const RouteEstimate(distanceKm: 1, durationMin: 1)), EstimateSource.ai);
