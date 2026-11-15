@@ -1493,6 +1493,56 @@ class CoverHomeEditorScreen extends ConsumerWidget {
         onRetry: () => ref.invalidate(displaySettingsProvider),
         data: (s) {
           final c = coverHomeFromSettings(s);
+          final nudge = coverButtonNudgeStep;
+          IconData iconFor(CoverButton b) => switch (b) {
+                CoverButton.menu => Icons.menu,
+                CoverButton.overlays => Icons.layers_outlined,
+                CoverButton.mapType => Icons.map_outlined,
+                CoverButton.recenter => Icons.my_location,
+              };
+          String labelFor(CoverButton b) => switch (b) {
+                CoverButton.menu => 'Menu',
+                CoverButton.overlays => 'Overlays',
+                CoverButton.mapType => 'Map type',
+                CoverButton.recenter => 'Recenter',
+              };
+          String sign(double v) => '${v > 0 ? '+' : ''}${v.round()}';
+          Widget pad(IconData i, String tip, bool on, void Function() tap) => IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: tip,
+                icon: Icon(i, size: 20),
+                onPressed: canEdit && on ? tap : null,
+              );
+          Widget nudgeRow(CoverButton b) {
+            final o = c.offsetFor(b);
+            final moved = o.dx != 0 || o.dy != 0;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
+              child: Row(children: [
+                Icon(iconFor(b), size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(labelFor(b), style: const TextStyle(fontSize: 15)),
+                    Text('x ${sign(o.dx)} · y ${sign(o.dy)} pt', style: Theme.of(context).textTheme.bodySmall),
+                  ]),
+                ),
+                Column(mainAxisSize: MainAxisSize.min, children: [
+                  pad(Icons.keyboard_arrow_up, 'Up', true,
+                      () => applyDisplay(context, ref, (x) => nudgeCoverButton(x, b, 0, -nudge))),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    pad(Icons.keyboard_arrow_left, 'Left', true,
+                        () => applyDisplay(context, ref, (x) => nudgeCoverButton(x, b, -nudge, 0))),
+                    pad(Icons.gps_fixed, 'Reset', moved, () => applyDisplay(context, ref, (x) => resetCoverButton(x, b))),
+                    pad(Icons.keyboard_arrow_right, 'Right', true,
+                        () => applyDisplay(context, ref, (x) => nudgeCoverButton(x, b, nudge, 0))),
+                  ]),
+                  pad(Icons.keyboard_arrow_down, 'Down', true,
+                      () => applyDisplay(context, ref, (x) => nudgeCoverButton(x, b, 0, nudge))),
+                ]),
+              ]),
+            );
+          }
           return ListView(padding: const EdgeInsets.fromLTRB(0, 16, 0, 28), children: [
             ResponsiveCenter(
               maxWidth: 820,
@@ -1500,7 +1550,7 @@ class CoverHomeEditorScreen extends ConsumerWidget {
                 Text(
                   'A home layout used only when an iPhone Duo is folded onto its cover screen. Android fold/flip '
                   'devices, ordinary phones, tablets and the Duo\'s unfolded inner screen all keep the normal home. '
-                  'Off by default; changes apply to every device.',
+                  'Off by default; every change here applies live to any affected device, no relaunch.',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: 8),
@@ -1568,6 +1618,30 @@ class CoverHomeEditorScreen extends ConsumerWidget {
                       onChanged:
                           canEdit ? (v) => applyDisplay(context, ref, (x) => setCoverHomeControlsInStrip(x, v)) : null,
                     ),
+                  ]),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: Column(children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          const Text('Button positions', style: TextStyle(fontSize: 16)),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Move each floating button on the cover home — up, down, left or right '
+                            '(${coverButtonNudgeStep.round()} pt a tap). Each button moves on its own.',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ]),
+                      ),
+                    ),
+                    for (final b in CoverButton.values) ...[
+                      const Divider(height: 1),
+                      nudgeRow(b),
+                    ],
                   ]),
                 ),
                 const SizedBox(height: 8),

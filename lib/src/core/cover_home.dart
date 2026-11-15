@@ -26,6 +26,50 @@ enum CoverStripSide { left, right }
 
 CoverStripSide _sideOf(Object? v) => '${v ?? ''}' == 'left' ? CoverStripSide.left : CoverStripSide.right;
 
+/// The floating buttons on the cover home that the admin can reposition, each
+/// independently: the top-left menu, and the bottom-right map-control stack
+/// (overlays, map type, recenter). Each carries its own [CoverButtonOffset].
+enum CoverButton { menu, overlays, mapType, recenter }
+
+/// A single button's nudge off its default spot, in logical points: [dx] to the
+/// right, [dy] down (so negatives move it left / up). Clamped to
+/// [coverButtonOffsetLimit].
+typedef CoverButtonOffset = ({double dx, double dy});
+
+/// How far one up/down/left/right tap moves a button, and the furthest a button
+/// may be nudged from its default on each axis.
+const coverButtonNudgeStep = 8.0;
+const coverButtonOffsetLimit = 400.0;
+
+String _buttonKey(CoverButton b) => switch (b) {
+      CoverButton.menu => 'menu',
+      CoverButton.overlays => 'overlays',
+      CoverButton.mapType => 'mapType',
+      CoverButton.recenter => 'recenter',
+    };
+
+double _clampOffset(Object? v) {
+  final n = v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
+  return (n ?? 0).clamp(-coverButtonOffsetLimit, coverButtonOffsetLimit).toDouble();
+}
+
+Map<CoverButton, CoverButtonOffset> _offsetsOf(Object? raw) {
+  final m = raw is Map ? raw : const <dynamic, dynamic>{};
+  return <CoverButton, CoverButtonOffset>{
+    for (final b in CoverButton.values)
+      b: () {
+        final cell = m[_buttonKey(b)];
+        final cm = cell is Map ? cell : const <dynamic, dynamic>{};
+        return (dx: _clampOffset(cm['dx']), dy: _clampOffset(cm['dy']));
+      }(),
+  };
+}
+
+Map<String, dynamic> _offsetsToMap(Map<CoverButton, CoverButtonOffset> o) => <String, dynamic>{
+      for (final b in CoverButton.values)
+        _buttonKey(b): <String, dynamic>{'dx': (o[b] ?? (dx: 0.0, dy: 0.0)).dx, 'dy': (o[b] ?? (dx: 0.0, dy: 0.0)).dy},
+    };
+
 double _clampWidth(Object? v) {
   final n = v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
   return (n ?? coverStripDefaultWidth).clamp(coverStripMinWidth, coverStripMaxWidth).toDouble();
@@ -39,6 +83,7 @@ class CoverHomeConfig {
     required this.stripWidth,
     required this.trimSheet,
     required this.controlsInStrip,
+    required this.offsets,
   });
 
   /// The master switch: the cover layout is used only when this is on.
@@ -58,6 +103,13 @@ class CoverHomeConfig {
   /// their current vertical height — instead of hugging the screen edge.
   final bool controlsInStrip;
 
+  /// Each floating button's own nudge off its default spot. Always carries an
+  /// entry for every [CoverButton] (zero when untouched).
+  final Map<CoverButton, CoverButtonOffset> offsets;
+
+  /// One button's offset (zero when not set).
+  CoverButtonOffset offsetFor(CoverButton b) => offsets[b] ?? (dx: 0.0, dy: 0.0);
+
   factory CoverHomeConfig.fromMap(Object? raw) {
     final m = raw is Map ? raw : const <dynamic, dynamic>{};
     return CoverHomeConfig(
@@ -66,6 +118,7 @@ class CoverHomeConfig {
       stripWidth: _clampWidth(m['stripWidth']),
       trimSheet: m['trimSheet'] != false,
       controlsInStrip: m['controlsInStrip'] != false,
+      offsets: _offsetsOf(m['buttons']),
     );
   }
 
@@ -75,6 +128,7 @@ class CoverHomeConfig {
         'stripWidth': stripWidth,
         'trimSheet': trimSheet,
         'controlsInStrip': controlsInStrip,
+        'buttons': _offsetsToMap(offsets),
       };
 }
 
@@ -130,3 +184,21 @@ Map<String, dynamic> setCoverHomeTrimSheet(Map<String, dynamic> s, bool on) => _
 
 Map<String, dynamic> setCoverHomeControlsInStrip(Map<String, dynamic> s, bool on) =>
     _withCover(s, {'controlsInStrip': on});
+
+/// Sets one button's offset (clamped), leaving the other buttons as they are.
+Map<String, dynamic> setCoverButtonOffset(Map<String, dynamic> s, CoverButton b, double dx, double dy) {
+  final next = <CoverButton, CoverButtonOffset>{
+    ...coverHomeFromSettings(s).offsets,
+    b: (dx: _clampOffset(dx), dy: _clampOffset(dy)),
+  };
+  return _withCover(s, {'buttons': _offsetsToMap(next)});
+}
+
+/// Nudges one button by [ddx]/[ddy] (an up/down/left/right tap), clamped.
+Map<String, dynamic> nudgeCoverButton(Map<String, dynamic> s, CoverButton b, double ddx, double ddy) {
+  final o = coverHomeFromSettings(s).offsetFor(b);
+  return setCoverButtonOffset(s, b, o.dx + ddx, o.dy + ddy);
+}
+
+/// Puts one button back on its default spot.
+Map<String, dynamic> resetCoverButton(Map<String, dynamic> s, CoverButton b) => setCoverButtonOffset(s, b, 0, 0);
