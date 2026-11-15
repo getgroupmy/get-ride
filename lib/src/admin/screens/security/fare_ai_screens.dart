@@ -29,6 +29,23 @@ class AdminFareAiScreen extends ConsumerStatefulWidget {
   ConsumerState<AdminFareAiScreen> createState() => _FareAiState();
 }
 
+/// The two server lists that speak GET.route's API: Waze (GET.route) and
+/// Google Maps (the Traffic Scraper). [step] is the fare-order step, also the
+/// prefix of the widgets' keys.
+enum _ServerKind {
+  waze('waze', 'Waze servers', 'Waze server', 'https://route1.getride.my'),
+  gmap('gmap', 'Google Maps servers', 'Google Maps server', 'https://traffic.getride.my');
+
+  const _ServerKind(this.step, this.title, this.serverLabel, this.urlHint);
+
+  final String step;
+  final String title;
+  final String serverLabel;
+  final String urlHint;
+
+  List<WazeServer> of(FareAiConfig c) => this == waze ? c.wazeServers : c.gmapServers;
+}
+
 class _FareAiState extends ConsumerState<AdminFareAiScreen> {
   FareAiConfig? _config;
   Map<String, FareAiKeyState> _states = {};
@@ -40,7 +57,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
   /// Per-key text controllers so typing doesn't lose the cursor on rebuild.
   final _controllers = <String, ({TextEditingController label, TextEditingController key})>{};
 
-  /// The same for each Waze server.
+  /// The same for each Waze and Google Maps server.
   final _serverControllers =
       <String, ({TextEditingController label, TextEditingController url, TextEditingController key})>{};
   final _model = TextEditingController();
@@ -161,7 +178,8 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
 
   void _setKeys(List<FareAiKey> keys) => _update(_config!.withKeys(_config!.provider, keys));
 
-  void _setServers(List<WazeServer> servers) => _update(_config!.copyWith(wazeServers: servers));
+  void _setServers(List<WazeServer> servers, [_ServerKind kind = _ServerKind.waze]) => _update(
+      kind == _ServerKind.gmap ? _config!.copyWith(gmapServers: servers) : _config!.copyWith(wazeServers: servers));
 
   ({TextEditingController label, TextEditingController url, TextEditingController key}) _serverCtl(WazeServer s) =>
       _serverControllers.putIfAbsent(
@@ -173,10 +191,10 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
               ));
 
   /// One sample trip (KLCC to KL Sentral) through the server as typed, saved or not.
-  Future<void> _testServer(WazeServer s) async {
+  Future<void> _testServer(WazeServer s, [_ServerKind kind = _ServerKind.waze]) async {
     try {
       final r = await ref.read(securityRepositoryProvider).testWazeServer(s,
-          origin: (lat: 3.158, lng: 101.712), destination: (lat: 3.134, lng: 101.686));
+          origin: (lat: 3.158, lng: 101.712), destination: (lat: 3.134, lng: 101.686), kind: kind.step);
       if (!mounted) return;
       final e = r['estimate'];
       final ms = r['latency_ms'];
@@ -383,7 +401,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
           child: ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('Choose where trip distance & traffic-aware time for fares come from, and in what order. '
-                "Applies globally to all users. Add multiple AI keys or Waze servers — if one fails it's skipped for "
+                "Applies globally to all users. Add multiple AI keys or Waze / Google Maps servers — if one fails it's skipped for "
                 'the retry window below and the next one is tried automatically.'),
           ),
         ),
@@ -412,16 +430,19 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
               const SizedBox(height: 8),
               Text(
                 'Each step is asked only when the one before has no answer. Waze: live traffic, distance and tolls '
-                'from the GET.route pool on the office NAS. AI: the provider below. OSRM: road distance and time '
-                'without traffic, from the office NAS maps (or the OSRM server when the NAS is off).',
+                'from the GET.route pool on the office NAS. Google Maps: Google\'s recommended route and live time '
+                'from the Traffic Scraper on the office NAS (no toll prices). Waze and Google Maps share the same '
+                '3 seconds, so the next steps still answer in time. AI: the provider below. OSRM: road distance and '
+                'time without traffic, from the office NAS maps (or the OSRM server when the NAS is off).',
                 style: t.textTheme.bodySmall,
               ),
             ]),
           ),
         ),
-        if (c.uses('waze')) ..._wazeSection(c, canEdit),
+        if (c.uses('waze')) ..._serverSection(c, _ServerKind.waze, canEdit),
+        if (c.uses('gmap')) ..._serverSection(c, _ServerKind.gmap, canEdit),
         const SizedBox(height: 12),
-        Text(c.uses('waze') ? 'AI provider (after Waze)' : 'AI provider', style: t.textTheme.titleMedium),
+        Text(_aiTitle(c), style: t.textTheme.titleMedium),
         const SizedBox(height: 6),
         Opacity(
           opacity: c.uses('ai') ? 1 : 0.5,
@@ -550,26 +571,38 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
     );
   }
 
-  /// The GET.route servers: one per container on the office NAS, each for
-  /// an area or for any trip, asked most specific area first.
-  List<Widget> _wazeSection(FareAiConfig c, bool canEdit) {
+  /// "AI provider (after Waze and Google Maps)": the steps asked before it.
+  String _aiTitle(FareAiConfig c) {
+    final i = c.chain.indexOf('ai');
+    final before = [for (final s in i > 0 ? c.chain.sublist(0, i) : const <String>[]) fareSteps[s] ?? s];
+    return before.isEmpty ? 'AI provider' : 'AI provider (after ${before.join(' and ')})';
+  }
+
+  /// One kind's servers (Waze: GET.route; Google Maps: the Traffic Scraper):
+  /// one per container on the office NAS, each for an area or for any trip,
+  /// asked most specific area first.
+  List<Widget> _serverSection(FareAiConfig c, _ServerKind kind, bool canEdit) {
     final t = Theme.of(context);
-    final servers = c.wazeServers;
+    final servers = kind.of(c);
+    final what = kind == _ServerKind.gmap
+        ? 'Each Traffic Scraper container on the office NAS (getgroupmy/get.route.backup) is one server. It '
+            'reads Google Maps\' recommended route and live time; it is asked with the time Waze leaves.'
+        : 'Each GET.route container on the office NAS is one server.';
     return [
       const SizedBox(height: 16),
       Row(children: [
-        Expanded(child: Text('Waze servers', style: t.textTheme.titleMedium)),
+        Expanded(child: Text(kind.title, style: t.textTheme.titleMedium)),
         if (canEdit)
           TextButton.icon(
-            key: const ValueKey('add-waze-server'),
+            key: ValueKey('add-${kind.step}-server'),
             icon: const Icon(Icons.add),
             label: const Text('Add server'),
-            onPressed: () =>
-                _setServers([...servers, WazeServer.create(label: 'Waze server ${servers.length + 1}')]),
+            onPressed: () => _setServers(
+                [...servers, WazeServer.create(label: '${kind.serverLabel} ${servers.length + 1}')], kind),
           ),
       ]),
       Text(
-        'Each GET.route container on the office NAS is one server. Give a server a country, state, city or '
+        '$what Give a server a country, state, city or '
         'suburb to split the load: a trip asks the server for its pickup\'s smallest matching area first, then '
         'servers for all regions, then the others as a backup. A server that fails rests for ${retryLabel(c)}. '
         'Every minute each server is checked; admins with Fare AI access get a push when one has been offline '
@@ -583,25 +616,26 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
             title: Text('No servers yet. ${canEdit ? 'Tap "Add server" and paste the tunnel address and key.' : ''}'),
           ),
         ),
-      for (final (i, s) in servers.indexed) _serverCard(c, s, i, canEdit),
+      for (final (i, s) in servers.indexed) _serverCard(c, kind, s, i, canEdit),
     ];
   }
 
-  Widget _serverCard(FareAiConfig c, WazeServer s, int i, bool canEdit) {
+  Widget _serverCard(FareAiConfig c, _ServerKind kind, WazeServer s, int i, bool canEdit) {
     final st = _states[s.id];
     final cooling = isCoolingDown(st?.disabledUntil);
     final ctl = _serverCtl(s);
-    final servers = c.wazeServers;
+    final servers = kind.of(c);
+    void setServers(List<WazeServer> list) => _setServers(list, kind);
     List<WazeServer> patch(WazeServer Function(WazeServer) f) => [for (final x in servers) x.id == s.id ? f(x) : x];
     void move(int by) {
       final list = [...servers]..removeAt(i);
       list.insert(i + by, s);
-      _setServers(list);
+      setServers(list);
     }
 
     final problem = s.urlProblem;
     return Card(
-      key: ValueKey('waze-server-${s.id}'),
+      key: ValueKey('${kind.step}-server-${s.id}'),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -610,11 +644,11 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
               child: TextField(
                 controller: ctl.label,
                 readOnly: !canEdit,
-                decoration: InputDecoration(isDense: true, hintText: 'Waze server ${i + 1}', labelText: 'Name'),
-                onChanged: (v) => _setServers(patch((x) => x.copyWith(label: v))),
+                decoration: InputDecoration(isDense: true, hintText: '${kind.serverLabel} ${i + 1}', labelText: 'Name'),
+                onChanged: (v) => setServers(patch((x) => x.copyWith(label: v))),
               ),
             ),
-            Switch(value: s.enabled, onChanged: canEdit ? (v) => _setServers(patch((x) => x.copyWith(enabled: v))) : null),
+            Switch(value: s.enabled, onChanged: canEdit ? (v) => setServers(patch((x) => x.copyWith(enabled: v))) : null),
             if (canEdit) ...[
               IconButton(
                 tooltip: 'Ask earlier',
@@ -626,7 +660,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
                 icon: const Icon(Icons.delete_outline),
                 onPressed: () async {
                   if (await confirm(context, 'Remove server', 'Remove "${s.label}"? Save to apply.', ok: 'Remove')) {
-                    _setServers(servers.where((x) => x.id != s.id).toList());
+                    setServers(servers.where((x) => x.id != s.id).toList());
                   }
                 },
               ),
@@ -639,10 +673,10 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
             keyboardType: TextInputType.url,
             decoration: InputDecoration(
               labelText: 'Server URL',
-              hintText: 'https://route1.getride.my',
+              hintText: kind.urlHint,
               errorText: s.url.isEmpty ? null : problem,
             ),
-            onChanged: (v) => _setServers(patch((x) => x.copyWith(url: v))),
+            onChanged: (v) => setServers(patch((x) => x.copyWith(url: v))),
           ),
           if (canEdit)
             TextField(
@@ -651,7 +685,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
               autocorrect: false,
               enableSuggestions: false,
               decoration: const InputDecoration(labelText: 'Key', hintText: 'ROUTE_API_KEY from the server\'s .env'),
-              onChanged: (v) => _setServers(patch((x) => x.copyWith(key: v))),
+              onChanged: (v) => setServers(patch((x) => x.copyWith(key: v))),
             ),
           if (_health[s.id] case final h?)
             Padding(
@@ -676,7 +710,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
                     onPressed: () async {
                       final area = await pickRegionScope(context,
                           title: 'Area for ${s.label}', initial: s.area, allowAll: true);
-                      if (area != null) _setServers(patch((x) => x.copyWith(area: area)));
+                      if (area != null) setServers(patch((x) => x.copyWith(area: area)));
                     },
                     child: const Text('Change'),
                   )
@@ -709,9 +743,9 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
             Align(
               alignment: Alignment.centerLeft,
               child: BusyButton.text(
-                key: ValueKey('test-waze-server-${s.id}'),
+                key: ValueKey('test-${kind.step}-server-${s.id}'),
                 icon: const Icon(Icons.play_arrow_outlined),
-                onPressed: problem != null || s.key.trim().isEmpty ? null : () => _testServer(s),
+                onPressed: problem != null || s.key.trim().isEmpty ? null : () => _testServer(s, kind),
                 child: const Text('Test (KLCC to KL Sentral)'),
               ),
             ),

@@ -13,6 +13,9 @@
 // Servers that were removed or switched off, or all of them when Waze is not
 // in the fare order, are dropped quietly (waze_server_health_prune).
 //
+// The Google Maps servers (the Traffic Scraper, the fare order's "gmap" step)
+// answer the same /health, so they are checked here too, in the same table.
+//
 // Deployed --no-verify-jwt: it authenticates itself with the webhook secret.
 //
 // Deploy: supabase functions deploy waze-server-health --no-verify-jwt
@@ -20,7 +23,15 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { chainOf } from "../_shared/fare_chain.ts";
-import { healthVerdict, WAZE_HEALTH_TIMEOUT_MS, type WazeServer, wazeServersOf } from "../_shared/waze_route.ts";
+import {
+  GMAP_KIND,
+  healthVerdict,
+  routeServersOf,
+  type RouteServerKind,
+  WAZE_HEALTH_TIMEOUT_MS,
+  WAZE_KIND,
+  type WazeServer,
+} from "../_shared/waze_route.ts";
 
 const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "", {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -29,7 +40,7 @@ const db = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABA
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-async function check(server: WazeServer) {
+async function check({ server, kind }: { server: WazeServer; kind: RouteServerKind }) {
   let status: number | null = null;
   let body: unknown = null;
   let failure: string | undefined;
@@ -45,7 +56,7 @@ async function check(server: WazeServer) {
       ? `Health check: no answer within ${WAZE_HEALTH_TIMEOUT_MS / 1000} s.`
       : "Health check: couldn't reach the server.";
   }
-  const verdict = healthVerdict(status, body, failure);
+  const verdict = healthVerdict(status, body, failure, kind.sourceName);
   const { error } = await db.rpc("waze_server_health_report", {
     p_server_id: server.id,
     p_label: server.label,
@@ -68,9 +79,13 @@ Deno.serve(async (req) => {
     const { data, error } = await db.from("app_settings").select("value").eq("key", "fare_ai_provider").maybeSingle();
     if (error) throw error;
     const config = (data?.value ?? {}) as Record<string, unknown>;
-    const servers = chainOf(config).includes("waze") ? wazeServersOf(config) : [];
+    // Each kind's servers, while its step is in the fare order.
+    const chain = chainOf(config);
+    const servers = [WAZE_KIND, GMAP_KIND]
+      .filter((kind) => chain.includes(kind.provider))
+      .flatMap((kind) => routeServersOf(config, kind).map((server) => ({ server, kind })));
 
-    const { error: pruneErr } = await db.rpc("waze_server_health_prune", { p_keep: servers.map((s) => s.id) });
+    const { error: pruneErr } = await db.rpc("waze_server_health_prune", { p_keep: servers.map((s) => s.server.id) });
     if (pruneErr) console.log("[waze-server-health] prune:", pruneErr.message);
     if (servers.length === 0) return json({ servers: [] });
 

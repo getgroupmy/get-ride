@@ -79,14 +79,18 @@ import {
   areaOf,
   askWazeServer,
   cleanServerUrl,
+  GMAP_KIND,
+  GMAP_PROVIDER,
   type LatLng as WazeLatLng,
   orderServersFor,
   placeFromRegions,
   type RegionRow,
+  routeServersOf,
+  type RouteServerKind,
+  WAZE_KIND,
   WAZE_PROVIDER,
   WAZE_TRIP_BUDGET_MS,
   type WazeServer,
-  wazeServersOf,
 } from "../_shared/waze_route.ts";
 import { chainOf, OSRM_PROVIDER, osrmEstimate } from "../_shared/fare_chain.ts";
 import { nasRouteRequest, parseNasLink } from "../_shared/geo_nas.ts";
@@ -113,9 +117,11 @@ interface FareAIConfig {
   source?: unknown;
   /** GET.route servers, tried in order when the source is "waze". */
   wazeServers?: unknown;
+  /** Google Maps servers (the Traffic Scraper), for the "gmap" step. */
+  gmapServers?: unknown;
   /** When every Waze server fails: "ai" (default) or "none" (before chains). */
   wazeFallback?: unknown;
-  /** The order estimates are asked in: "waze" | "ai" | "osrm" (_shared/fare_chain.ts). */
+  /** The order estimates are asked in: "waze" | "gmap" | "ai" | "osrm" (_shared/fare_chain.ts). */
   chain?: unknown;
 }
 
@@ -136,7 +142,7 @@ interface RouteEstimate extends TrafficExtras {
   distance_km: number;
   duration_min: number;
   summary?: string;
-  provider?: Provider | typeof WAZE_PROVIDER | typeof OSRM_PROVIDER;
+  provider?: Provider | typeof WAZE_PROVIDER | typeof GMAP_PROVIDER | typeof OSRM_PROVIDER;
   toll_count?: number;
   toll_total?: number;
   tolls?: TollBooth[];
@@ -328,8 +334,9 @@ Deno.serve(async (req: Request) => {
   }
 
   const config = (settingsRow?.value ?? {}) as FareAIConfig;
-  if (body.test === "waze") {
-    return runWazeTest(req, supabaseUrl, body.server, config, origin, destination, stops);
+  if (body.test === "waze" || body.test === "gmap") {
+    const kind = body.test === "gmap" ? GMAP_KIND : WAZE_KIND;
+    return runWazeTest(req, supabaseUrl, body.server, config, origin, destination, stops, kind);
   }
   if (body.test === true) {
     const provider: Provider = config.provider ?? "gemini";
@@ -337,7 +344,7 @@ Deno.serve(async (req: Request) => {
     return runTest(req, supabaseUrl, body.request, config, provider, model, aiKeysOf(config, provider), origin, destination, stops);
   }
 
-  // The admin's order (Waze → AI → OSRM and the like): the first step with an
+  // The admin's order (Waze → Google Maps → AI → OSRM and the like): the first step with an
   // estimate answers. No step at all: the apps use their own fallback.
   const chain = chainOf(config as Record<string, unknown>);
   if (chain.length === 0) {
@@ -360,7 +367,9 @@ Deno.serve(async (req: Request) => {
   let reason = "no_estimate";
   for (const step of chain) {
     const r = step === "waze"
-      ? await estimateFromWaze(ctx)
+      ? await estimateFromRouteServers(ctx, WAZE_KIND)
+      : step === "gmap"
+      ? await estimateFromRouteServers(ctx, GMAP_KIND)
       : step === "ai"
       ? await estimateFromAi(ctx)
       : await estimateFromOsrm(ctx);
@@ -381,6 +390,10 @@ interface StepContext {
   cooldownMs: number;
   standardFuture: Promise<{ min: number; km: number } | null>;
   testFuture: Promise<boolean>;
+  /** When the live-traffic steps (Waze, Google Maps) must stop, set by the
+   * first one to run: together they get WAZE_TRIP_BUDGET_MS, as Waze alone
+   * did, so the AI and OSRM still answer before the rider app stops waiting. */
+  liveDeadline?: number;
 }
 
 type StepResult = { estimate: (RouteEstimate & { stops: number }) | null; reason: string };
@@ -549,13 +562,15 @@ async function estimateFromOsrm(ctx: StepContext): Promise<StepResult> {
     : { estimate: null, reason: "no_osrm_route" };
 }
 
-/** Asks the GET.route servers, the pickup's area first (see
+/** Asks one kind of server that speaks GET.route's API (Waze: GET.route;
+ * Google Maps: the Traffic Scraper), the pickup's area first (see
  * orderServersFor), skipping any cooling down after a failure, and logs
  * every attempt like an AI key's. The first answer wins. */
-async function estimateFromWaze(ctx: StepContext): Promise<StepResult> {
+async function estimateFromRouteServers(ctx: StepContext, kind: RouteServerKind): Promise<StepResult> {
   const { admin, config, origin, destination, stops, cooldownMs } = ctx;
-  let servers = wazeServersOf(config);
-  if (servers.length === 0) return { estimate: null, reason: "no_waze_servers" };
+  const p = kind.provider;
+  let servers = routeServersOf(config as Record<string, unknown>, kind);
+  if (servers.length === 0) return { estimate: null, reason: `no_${p}_servers` };
   if (anyArea(servers)) {
     // The pickup's country / state / city / suburb, as commission rules see it.
     const { data: rows, error } = await admin.rpc("regions_at", {
@@ -567,32 +582,34 @@ async function estimateFromWaze(ctx: StepContext): Promise<StepResult> {
   }
   const cooling = await coolingIds(ctx, servers.map((s) => s.id));
   const available = servers.filter((s) => !cooling.has(s.id));
-  if (available.length === 0) return { estimate: null, reason: "waze_servers_cooling_down" };
+  if (available.length === 0) return { estimate: null, reason: `${p}_servers_cooling_down` };
 
   const points: WazeLatLng[] = [origin, ...stops, destination];
   const trendSettings = resolveTrendSettings(config.trend);
-  // One budget for the whole Waze step, so the AI and OSRM still answer
-  // before the rider app stops waiting (WAZE_TRIP_BUDGET_MS).
-  const deadline = Date.now() + WAZE_TRIP_BUDGET_MS;
+  // One budget for the live-traffic steps together (Waze and Google Maps),
+  // so the AI and OSRM still answer before the rider app stops waiting
+  // (WAZE_TRIP_BUDGET_MS). The second one gets what the first left.
+  ctx.liveDeadline ??= Date.now() + WAZE_TRIP_BUDGET_MS;
+  const deadline = ctx.liveDeadline;
   for (const server of available) {
     const left = deadline - Date.now();
-    if (left < 300) return { estimate: null, reason: "waze_out_of_time" };
+    if (left < 300) return { estimate: null, reason: `${p}_out_of_time` };
     const started = Date.now();
-    const result = await askWazeServer(server, points, fetch, left);
+    const result = await askWazeServer(server, points, fetch, left, kind.sourceName);
     const latencyMs = Date.now() - started;
     const parsed: RouteEstimate | null = result.estimate ? { ...result.estimate } : null;
     const standard = await ctx.standardFuture;
     if (parsed) {
-      // Waze's live time against the empty-road time: the same arrows an AI gets.
+      // The live time against the empty-road time: the same arrows an AI gets.
       const trend = decideFareTrend(parsed.duration_min, standard?.min ?? null, {}, trendSettings, false);
       if (trend) parsed.trend = trend;
     }
     const success = !!parsed;
     await admin.from("fare_ai_responses").insert({
-      provider: WAZE_PROVIDER,
+      provider: p,
       key_id: server.id,
       key_label: server.label,
-      model: "GET.route",
+      model: kind.model,
       origin_lat: origin.latitude,
       origin_lng: origin.longitude,
       dest_lat: destination.latitude,
@@ -615,17 +632,18 @@ async function estimateFromWaze(ctx: StepContext): Promise<StepResult> {
     });
     await admin.rpc("fare_ai_record_usage", {
       p_key_id: server.id,
-      p_provider: WAZE_PROVIDER,
+      p_provider: p,
       p_success: success,
       p_disabled_until: success ? null : new Date(Date.now() + cooldownMs).toISOString(),
       p_error: result.error,
     });
-    if (parsed) return { estimate: { ...parsed, provider: WAZE_PROVIDER, stops: stops.length }, reason: "ok" };
+    if (parsed) return { estimate: { ...parsed, provider: p, stops: stops.length }, reason: "ok" };
   }
-  return { estimate: null, reason: "all_waze_servers_failed" };
+  return { estimate: null, reason: `all_${p}_servers_failed` };
 }
 
-/** Admin "Test" on a Waze server, saved or not: one trip, nothing recorded. */
+/** Admin "Test" on a Waze or Google Maps server, saved or not: one trip,
+ * nothing recorded. */
 async function runWazeTest(
   req: Request,
   supabaseUrl: string,
@@ -634,6 +652,7 @@ async function runWazeTest(
   origin: LatLng,
   destination: LatLng,
   stops: LatLng[],
+  kind: RouteServerKind,
 ): Promise<Response> {
   // Edit access to Fare AI: the admin may name any server and key here.
   const canEdit = await callerCanEdit({
@@ -650,7 +669,7 @@ async function runWazeTest(
   if (!key) return json({ ok: false, error: "The server needs its key" });
   const server: WazeServer = {
     id: typeof d.id === "string" ? d.id : "test",
-    label: typeof d.label === "string" && d.label.trim() ? d.label.trim() : "Waze server",
+    label: typeof d.label === "string" && d.label.trim() ? d.label.trim() : kind.serverLabel,
     url,
     key,
     enabled: true,
@@ -658,7 +677,7 @@ async function runWazeTest(
   };
   const started = Date.now();
   // A test may wake a cold container (Chrome takes 20-40 s), so it waits longer than a rider.
-  const result = await askWazeServer(server, [origin, ...stops, destination], fetch, 60_000);
+  const result = await askWazeServer(server, [origin, ...stops, destination], fetch, 60_000, kind.sourceName);
   const standard = await standardRoute(origin, destination, stops);
   const estimate: RouteEstimate | null = result.estimate ? { ...result.estimate } : null;
   if (estimate) {
@@ -668,7 +687,7 @@ async function runWazeTest(
   return json({
     ok: true,
     test: {
-      provider: WAZE_PROVIDER,
+      provider: kind.provider,
       server: server.label,
       url: server.url,
       raw: result.raw ? result.raw.substring(0, 4000) : null,

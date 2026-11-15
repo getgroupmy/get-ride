@@ -5,6 +5,8 @@ import {
   askWazeServer,
   cleanServerUrl,
   estimateFromLegs,
+  GMAP_KIND,
+  gmapServersOf,
   healthVerdict,
   legUrl,
   orderServersFor,
@@ -203,4 +205,74 @@ Deno.test("askWazeServer: a slow server is given up within the trip budget", asy
   assertEquals(r.estimate, null);
   assertEquals(r.error, "No answer within 0.2 s");
   assertEquals(Date.now() - started < 1000, true);
+});
+
+// ---- Google Maps (Traffic Scraper, getgroupmy/get.route.backup) ----------------------------------
+
+Deno.test("gmapServersOf: its own list, ids and labels", () => {
+  const config = {
+    wazeServers: [{ url: "https://route.getride.my", key: "w" }],
+    gmapServers: [
+      { url: "https://traffic.getride.my/", key: " k " },
+      { url: "http://insecure.example", key: "k" },
+      { url: "https://off.example", key: "k", enabled: false },
+    ],
+  };
+  assertEquals(gmapServersOf(config), [
+    { id: "gmap-1", label: "Google Maps server 1", url: "https://traffic.getride.my", key: "k", enabled: true },
+  ]);
+  assertEquals(wazeServersOf(config).map((s) => s.id), ["waze-1"]);
+  assertEquals(gmapServersOf({}), []);
+});
+
+Deno.test("askWazeServer: a Traffic Scraper answer becomes a Google Maps estimate", async () => {
+  // The answer the Traffic Scraper gave live (Adelaide CBD to the airport).
+  const answer = {
+    from: { lat: -34.9285, lng: 138.6007, place: null },
+    to: { lat: -34.9462, lng: 138.5312, place: null },
+    region: null, depart_at: null, arrive_at: null, count: 1,
+    routes: [{
+      name: "Sir Donald Bradman Dr/A6", duration_seconds: 840, distance_meters: 7800,
+      is_fastest: true, is_toll: false, traffic_status: "Fastest route, the usual traffic",
+      toll: null, jams: [], alerts: [], polyline: null,
+    }],
+    source: "google_maps",
+  };
+  const seen: string[] = [];
+  const fake = (url: string, init: RequestInit) => {
+    seen.push(`${url} ${(init.headers as Record<string, string>)["X-Route-Key"]}`);
+    return Promise.resolve(new Response(JSON.stringify(answer), { status: 200 }));
+  };
+  const server = gmapServersOf({ gmapServers: [{ url: "https://traffic.getride.my", key: "k" }] })[0];
+  const r = await askWazeServer(
+    server,
+    [{ latitude: -34.9285, longitude: 138.6007 }, { latitude: -34.9462, longitude: 138.5312 }],
+    fake,
+    3_000,
+    GMAP_KIND.sourceName,
+  );
+  assertEquals(r.error, null);
+  assertEquals(r.estimate, {
+    distance_km: 7.8,
+    duration_min: 14,
+    summary: "Via Sir Donald Bradman Dr/A6 (Google Maps live traffic)",
+    toll_count: 0,
+    toll_total: 0,
+    tolls: [],
+  });
+  assertEquals(seen, [
+    "https://traffic.getride.my/routes/search?from=-34.928500%2C138.600700&to=-34.946200%2C138.531200&max_routes=1 k",
+  ]);
+});
+
+Deno.test("healthVerdict: names Google Maps for its servers", () => {
+  const body = {
+    status: "ok",
+    waze: { last_ok_at: "2026-11-15T10:00:00Z", last_error_at: "2026-11-15T10:05:00Z", last_error: "Directions panel did not load" },
+  };
+  assertEquals(healthVerdict(200, body, undefined, GMAP_KIND.sourceName), {
+    state: "down",
+    detail: "Google Maps is refusing this server: Directions panel did not load",
+  });
+  assertEquals(healthVerdict(200, body).detail, "Waze is refusing this server: Directions panel did not load");
 });
