@@ -1,4 +1,4 @@
-// Region ride-display rules (0411): the AI-fare / distance-time switches
+// Region ride-display rules (0412): the AI-fare / distance-time switches
 // resolve narrowest-first, exactly like the commission rate.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/commission.dart' show Geo;

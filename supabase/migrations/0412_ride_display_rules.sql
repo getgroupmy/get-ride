@@ -1,5 +1,5 @@
 -- ============================================================================
--- Region ride-display rules (migration 0411)
+-- Region ride-display rules (migration 0412)
 --
 -- Two switches an admin sets per region, scoped exactly like a commission rate
 -- (migration 0216): Country / State / City / Suburb, plus one master default,
@@ -37,7 +37,7 @@ create table if not exists public.ride_display_rules (
 );
 
 comment on table public.ride_display_rules is
-  'Region ride-display rules (0411): per Country/State/City/Suburb (+ one master), '
+  'Region ride-display rules (0412): per Country/State/City/Suburb (+ one master), '
   'turn off the AI fare and/or the distance-time line. Resolved narrowest-first like commission_rates.';
 
 drop trigger if exists trg_ride_display_rules_updated_at on public.ride_display_rules;
