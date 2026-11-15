@@ -30,9 +30,10 @@ const fareChains = <List<String>>[
   [],
 ];
 
-/// "Waze → AI → OSRM", or "No data".
+/// "Waze, then AI, then OSRM", or "No data" (no arrow glyph: it is an empty
+/// box on some phones' fonts, test/no_arrow_glyph_test.dart).
 String fareChainLabel(List<String> chain) =>
-    chain.isEmpty ? 'No data (apps use their own fallback)' : chain.map((s) => fareSteps[s] ?? s).join(' → ');
+    chain.isEmpty ? 'No data (apps use their own fallback)' : chain.map((s) => fareSteps[s] ?? s).join(', then ');
 
 /// A chain as saved: known steps once each, OSRM last (nothing after it is
 /// ever asked: it answers every trip it can route).

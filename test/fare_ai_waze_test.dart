@@ -66,7 +66,7 @@ void main() {
       expect(normalizeFareAi({'chain': ['osrm', 'waze', 'waze', 'google', 'ai']}).chain, ['waze', 'ai', 'osrm']);
       final c = normalizeFareAi(null).copyWith(chain: ['waze', 'ai', 'osrm']);
       expect(normalizeFareAi(c.toJson()).chain, ['waze', 'ai', 'osrm']);
-      expect(fareChainLabel(c.chain), 'Waze → AI → OSRM');
+      expect(fareChainLabel(c.chain), 'Waze, then AI, then OSRM');
       expect(fareChainLabel(const []), 'No data (apps use their own fallback)');
       expect([fareAiProviderLabel('waze'), fareAiProviderLabel('osrm')], ['Waze (GET.route)', 'OSRM (no traffic)']);
     });
@@ -128,7 +128,7 @@ void main() {
     expect(find.text('Waze servers'), findsNothing, reason: 'only with Waze in the order');
     await tester.tap(find.text('AI'));                       // the current order
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Waze → AI → OSRM').last);
+    await tester.tap(find.text('Waze, then AI, then OSRM').last);
     await tester.pumpAndSettle();
     expect(find.text('Waze servers'), findsOneWidget);
     expect(find.text('AI provider (after Waze)'), findsOneWidget);
