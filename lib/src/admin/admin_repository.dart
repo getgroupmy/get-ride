@@ -555,6 +555,26 @@ class AdminRepository {
   Future<void> setCommissionRateActive(String id, bool active) =>
       _updateOne('commission_rates', id, {'active': active, 'updated_at': _now});
 
+  // ---- Ride display rules (0411) -------------------------------------------
+
+  /// Region AI-fare / distance-time switches, newest first.
+  Future<List<Map<String, dynamic>>> rideDisplayRules() async => List<Map<String, dynamic>>.from(
+        await _db.from('ride_display_rules').select().order('updated_at', ascending: false),
+      );
+
+  Future<void> saveRideDisplayRule(Map<String, dynamic> row) {
+    final data = {...row, 'updated_at': _now};
+    return row['id'] == null
+        ? _db.from('ride_display_rules').insert(data..remove('id'))
+        : _updateOne('ride_display_rules', row['id'] as String, data);
+  }
+
+  Future<void> deleteRideDisplayRule(String id) => _db.from('ride_display_rules').delete().eq('id', id);
+
+  /// Turns one rule on or off without touching the rest of it.
+  Future<void> setRideDisplayRuleActive(String id, bool active) =>
+      _updateOne('ride_display_rules', id, {'active': active, 'updated_at': _now});
+
   /// Every change to the rates, newest first (0216): who, when, before and
   /// after.
   Future<List<Map<String, dynamic>>> commissionHistory({int limit = 100}) async => List<Map<String, dynamic>>.from(

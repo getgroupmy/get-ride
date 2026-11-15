@@ -30,6 +30,7 @@ import '../../data/business_repository.dart';
 import '../business/business_booking.dart';
 import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
+import '../../data/ride_display_config.dart';
 import '../../core/driver_eta.dart';
 import '../../core/fare.dart';
 import '../../core/fare_info.dart' show demandIncludesNote, demandUplift, demandUpliftLabel, fareRateLines;
@@ -1179,9 +1180,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  /// The region's ride-display switches for the pickup (0411): whether to turn
+  /// off the AI fare and/or the distance·time line. Resolved on the device so
+  /// the gate works with no signal; "show everything" with no rule.
+  RideDisplay get _rideDisplay {
+    final rules = ref.read(rideDisplayRulesProvider).value ?? const <RideDisplayRule>[];
+    final a = _pickupArea;
+    return resolveRideDisplay(rules,
+        geo: Geo(country: a?.country, state: a?.state, city: a?.city, suburb: a?.suburb));
+  }
+
   ({double distanceKm, double durationMin})? get _basis {
     final r = _route;
-    return r == null ? null : fareBasis(routeKm: r.distanceKm, routeMin: r.durationMin, ai: _ai);
+    if (r == null) return null;
+    // "Turn off AI fare" prices on the plain route (no AI estimate).
+    final ai = _rideDisplay.aiFareOff ? null : _ai;
+    return fareBasis(routeKm: r.distanceKm, routeMin: r.durationMin, ai: ai);
   }
 
   Future<void> _addStop() async {
@@ -3371,7 +3385,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final homeLayout = HomeLayouts.fromSettings(blob).layoutFor(_optionPlace);
     _syncCars(sections.vehicleMarkersSwitch && homeLayout.shows(HomeSectionType.vehicles));
     final serviceIndex = _services.indexWhere((s) => s.name == _service.name);
-    final ai = _ai;
+    // Region ride-display switches (0411): rebuild when an admin saves.
+    final rideDisplayRules = ref.watch(rideDisplayRulesProvider).value ?? const <RideDisplayRule>[];
+    final rideDisplay = resolveRideDisplay(rideDisplayRules,
+        geo: Geo(
+            country: _pickupArea?.country,
+            state: _pickupArea?.state,
+            city: _pickupArea?.city,
+            suburb: _pickupArea?.suburb));
+    // "Turn off AI fare" hides the AI estimate (badge, "with traffic", toll
+    // charges) as well as pricing on it (see _basis).
+    final ai = rideDisplay.aiFareOff ? null : _ai;
     final tolls = display?.showAiTollBooths ?? true
         ? tollMarks(ai, [for (final p in _route?.points ?? const <LatLng>[]) (lat: p.latitude, lng: p.longitude)])
         : const <TollMark>[];
@@ -3409,7 +3433,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     // A fare off the usual, fixed or offered (bidding): inDrive's demand
     // band in the promo bar's place.
-    final demand = _basis != null && !_routing ? _ai?.trend : null;
+    final demand = _basis != null && !_routing ? ai?.trend : null;
     // The promo bar (0242) only when a code fits the trip: one applied, or
     // some to pick from. A demo rider's trips get none.
     _syncPromos(confirming);
@@ -4125,7 +4149,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       pickup: _pickup,
       drop: _drop,
       route: _route,
-      ai: _ai,
+      ai: ai,
+      hideDistanceTime: rideDisplay.distanceTimeOff,
       routing: _routing,
       services: _services,
       service: _service,
@@ -4357,6 +4382,7 @@ class _BookingPanel extends StatelessWidget {
     required this.drop,
     required this.route,
     this.ai,
+    this.hideDistanceTime = false,
     required this.routing,
     required this.services,
     required this.service,
@@ -4421,6 +4447,10 @@ class _BookingPanel extends StatelessWidget {
   final Place? drop;
   final RouteInfo? route;
   final RouteEstimate? ai;
+
+  /// The region "distance & time off" switch (0411): hide the "12 km · 24 min"
+  /// line. "AI fare off" is already carried by [ai] being null.
+  final bool hideDistanceTime;
 
   /// Admin → Display → Disclaimer box height / left-right.
   final Offset disclaimerOffset;
@@ -4541,15 +4571,18 @@ class _BookingPanel extends StatelessWidget {
           // first vehicle stays whole (its floor).
           MapSheetRestLine(
             child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
-                child: RouteBasisLine(
-                  route: route!,
-                  ai: ai,
-                  // The fare line says when the chosen fare includes high demand.
-                  demandNote: s0Uplift(),
+              // "Turn off distance & time" (0411) hides the "12 km · 24 min"
+              // line; the AI fare off is already carried by [ai] being null.
+              if (!hideDistanceTime)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+                  child: RouteBasisLine(
+                    route: route!,
+                    ai: ai,
+                    // The fare line says when the chosen fare includes high demand.
+                    demandNote: s0Uplift(),
+                  ),
                 ),
-              ),
               if (plus?.benefits case final b?)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(0, 0, 0, 8),

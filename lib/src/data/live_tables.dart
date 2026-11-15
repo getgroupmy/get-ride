@@ -26,6 +26,8 @@ const liveSettingTables = <String>[
   'meter_digital_settings',
   'get_coin_settings',
   'commission_rates',
+  // Region ride-display switches: AI fare off / distance-time off (0411).
+  'ride_display_rules',
   'airport_areas',
   'multi_gate',
   // Place types: each Multi-Gate place's icon and colour (0264).
