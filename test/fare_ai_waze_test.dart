@@ -29,6 +29,11 @@ class _Repo implements SecurityRepository {
   @override
   Future<Map<String, WazeServerHealth>> wazeServerHealth() async => health;
 
+  FareLiveBalanceState? balanceState;
+
+  @override
+  Future<FareLiveBalanceState?> fareLiveBalanceState() async => balanceState;
+
   @override
   Future<void> saveFareAiConfig(FareAiConfig c) async {
     config = normalizeFareAi(c.toJson());
@@ -125,6 +130,25 @@ void main() {
       expect(normalizeFareAi({'gmapServers': [{'url': 'https://traffic.getride.my', 'key': 'k'}]}).gmapServers.single.label,
           'Google Maps server');
       expect(normalizeFareAi(null).gmapServers, isEmpty);
+    });
+
+    test('the Waze / Google Maps balance: Waze first by default, fixed or automatic, survives a save', () {
+      expect(normalizeFareAi(null).liveBalance, FareLiveBalance.off);
+      expect(normalizeFareAi(null).toJson().containsKey('liveBalance'), isFalse, reason: 'unset stays unset');
+      expect(FareLiveBalance.off.label, 'Waze always first');
+
+      final fixed = normalizeFareAi(null).copyWith(liveBalance: const FareLiveBalance(gmapFirstPct: 20));
+      expect(normalizeFareAi(fixed.toJson()).liveBalance, const FareLiveBalance(gmapFirstPct: 20));
+      expect(fixed.toJson()['liveBalance'], {'mode': 'fixed', 'gmapFirstPct': 20, 'minPct': 5, 'maxPct': 40});
+      expect(fixed.liveBalance.label, 'Google Maps first for 20% of fares');
+
+      final auto = normalizeFareAi({'liveBalance': {'mode': 'auto', 'minPct': 60, 'maxPct': 10}});
+      expect(auto.liveBalance, const FareLiveBalance(auto: true, minPct: 10, maxPct: 60), reason: 'range put in order');
+      expect(auto.liveBalance.label, 'Automatic, 10–60% Google Maps first');
+      expect(normalizeFareAi({'liveBalance': {'gmapFirstPct': 250}}).liveBalance.gmapFirstPct, 100);
+
+      final st = FareLiveBalanceState.fromRow({'gmap_first_pct': 15, 'reason': 'Waze answers more often', 'updated_at': null});
+      expect([st.gmapFirstPct, st.reason], [15, 'Waze answers more often']);
     });
 
     test('a server needs an https address and a key to be used', () {
@@ -228,6 +252,51 @@ void main() {
     expect(c.chain, ['waze', 'gmap', 'ai', 'osrm']);
     expect(c.wazeServers, isEmpty);
     expect([for (final s in c.gmapServers) (s.url, s.key)], [('https://traffic.getride.my', 'm4ps')]);
+  });
+
+  testWidgets('the balance card: only with both steps; Fixed, then Automatic with the live share', (tester) async {
+    tester.view.physicalSize = const Size(900, 5000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repo = _Repo(normalizeFareAi(null).copyWith(chain: ['waze', 'gmap', 'ai', 'osrm']))
+      ..balanceState = const FareLiveBalanceState(gmapFirstPct: 12, reason: 'Waze answers more often: Waze 95% of 40, Google Maps 70% of 10 answered');
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        securityRepositoryProvider.overrideWithValue(repo),
+        adminAccessProvider.overrideWith((ref) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+      ],
+      child: const MaterialApp(home: AdminFareAiScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Waze / Google Maps balance'), findsOneWidget);
+    expect(find.text('Waze always first (Google Maps only when Waze has no answer)'), findsOneWidget);
+    expect(find.byKey(const ValueKey('live-balance-fixed')), findsOneWidget);
+
+    await tester.tap(find.text('Automatic'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('live-balance-range')), findsOneWidget);
+    expect(find.text('Google Maps first for between 5% and 40% of fares'), findsOneWidget);
+    expect(find.textContaining('Now: Google Maps first for 12%'), findsOneWidget);
+    expect(find.textContaining('Waze answers more often'), findsOneWidget);
+
+    await tester.tap(find.text('Save changes'));
+    await tester.pumpAndSettle();
+    expect(repo.saved.single.liveBalance, const FareLiveBalance(auto: true, minPct: 5, maxPct: 40));
+    expect(repo.saved.single.toJson()['liveBalance']['mode'], 'auto');
+
+    // Without both steps there is nothing to balance.
+    repo.config = normalizeFareAi(null).copyWith(chain: ['gmap', 'ai', 'osrm']);
+    await tester.pumpWidget(ProviderScope(
+      key: UniqueKey(),
+      overrides: [
+        securityRepositoryProvider.overrideWithValue(repo),
+        adminAccessProvider.overrideWith((ref) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+      ],
+      child: const MaterialApp(home: AdminFareAiScreen()),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Waze / Google Maps balance'), findsNothing);
   });
 
   testWidgets('each server card shows its health', (tester) async {

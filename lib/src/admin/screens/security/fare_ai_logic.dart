@@ -212,6 +212,7 @@ class FareAiConfig {
     this.trend = FareTrendSettings.off,
     this.wazeServers = const [],
     this.gmapServers = const [],
+    this.liveBalance = FareLiveBalance.off,
   });
 
   /// The order estimates are asked in ([fareSteps]); empty = no estimate.
@@ -222,6 +223,9 @@ class FareAiConfig {
 
   /// The Google Maps servers (Traffic Scraper), for the "gmap" step.
   final List<WazeServer> gmapServers;
+
+  /// Which of Waze and Google Maps a fare asks first, when both are in [chain].
+  final FareLiveBalance liveBalance;
 
   /// Any estimates at all (the old on/off switch, still saved for older proxies).
   bool get serviceEnabled => chain.isNotEmpty;
@@ -251,6 +255,7 @@ class FareAiConfig {
     List<String>? chain,
     List<WazeServer>? wazeServers,
     List<WazeServer>? gmapServers,
+    FareLiveBalance? liveBalance,
     String? provider,
     int? retryAfterValue,
     String? retryAfterUnit,
@@ -263,6 +268,7 @@ class FareAiConfig {
         chain: chain ?? this.chain,
         wazeServers: wazeServers ?? this.wazeServers,
         gmapServers: gmapServers ?? this.gmapServers,
+        liveBalance: liveBalance ?? this.liveBalance,
         provider: provider ?? this.provider,
         retryAfterValue: retryAfterValue ?? this.retryAfterValue,
         retryAfterUnit: retryAfterUnit ?? this.retryAfterUnit,
@@ -282,6 +288,7 @@ class FareAiConfig {
         'wazeFallback': uses('ai') ? 'ai' : 'none',
         'wazeServers': [for (final s in wazeServers) s.toJson()],
         'gmapServers': [for (final s in gmapServers) s.toJson()],
+        if (liveBalance != FareLiveBalance.off) 'liveBalance': liveBalance.toJson(),
         'provider': provider,
         'retryAfterValue': retryAfterValue,
         'retryAfterUnit': retryAfterUnit,
@@ -351,6 +358,7 @@ FareAiConfig normalizeFareAi(Object? raw) {
     chain: chain,
     wazeServers: _wazeServerList(o['wazeServers']),
     gmapServers: _wazeServerList(o['gmapServers'], defaultLabel: 'Google Maps server'),
+    liveBalance: FareLiveBalance.fromJson(o['liveBalance']),
     provider: provider,
     retryAfterValue: retryValue,
     retryAfterUnit: retryUnit,
@@ -860,4 +868,77 @@ class WazeServerHealth {
         'offline' => 'Offline since ${formatRelative(failingSince, now: now)}${detail != null ? ' — $detail' : ''}',
         _ => 'Not checked yet',
       };
+}
+
+/// The Waze / Google Maps balance (`fare_ai_provider.liveBalance`,
+/// `_shared/live_balance.ts`): which of the two live-traffic steps a fare
+/// asks first. Fixed: [gmapFirstPct] % of fares ask Google Maps first.
+/// Automatic: the share moves inside [minPct]-[maxPct], set every minute
+/// from the last 15 minutes (`fare_live_balance`, migration 0414).
+class FareLiveBalance {
+  const FareLiveBalance({this.auto = false, this.gmapFirstPct = 0, this.minPct = 5, this.maxPct = 40});
+
+  /// Waze always first: what a config without a balance does.
+  static const off = FareLiveBalance();
+
+  factory FareLiveBalance.fromJson(Object? raw) {
+    if (raw is! Map) return off;
+    int pct(Object? v, int fallback) => v is num ? v.round().clamp(0, 100) : fallback;
+    var lo = pct(raw['minPct'], off.minPct), hi = pct(raw['maxPct'], off.maxPct);
+    if (lo > hi) (lo, hi) = (hi, lo);
+    return FareLiveBalance(
+      auto: raw['mode'] == 'auto',
+      gmapFirstPct: pct(raw['gmapFirstPct'], off.gmapFirstPct),
+      minPct: lo,
+      maxPct: hi,
+    );
+  }
+
+  final bool auto;
+  final int gmapFirstPct;
+  final int minPct;
+  final int maxPct;
+
+  FareLiveBalance copyWith({bool? auto, int? gmapFirstPct, int? minPct, int? maxPct}) => FareLiveBalance(
+        auto: auto ?? this.auto,
+        gmapFirstPct: gmapFirstPct ?? this.gmapFirstPct,
+        minPct: minPct ?? this.minPct,
+        maxPct: maxPct ?? this.maxPct,
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'mode': auto ? 'auto' : 'fixed', 'gmapFirstPct': gmapFirstPct, 'minPct': minPct, 'maxPct': maxPct};
+
+  /// "Google Maps first for 20% of fares" / "Automatic, 5–40% Google Maps first".
+  String get label => auto
+      ? 'Automatic, $minPct–$maxPct% Google Maps first'
+      : gmapFirstPct == 0
+          ? 'Waze always first'
+          : 'Google Maps first for $gmapFirstPct% of fares';
+
+  @override
+  bool operator ==(Object other) =>
+      other is FareLiveBalance &&
+      other.auto == auto &&
+      other.gmapFirstPct == gmapFirstPct &&
+      other.minPct == minPct &&
+      other.maxPct == maxPct;
+
+  @override
+  int get hashCode => Object.hash(auto, gmapFirstPct, minPct, maxPct);
+}
+
+/// The automatic share right now (`fare_live_balance`, migration 0414).
+class FareLiveBalanceState {
+  const FareLiveBalanceState({required this.gmapFirstPct, this.reason, this.updatedAt});
+
+  factory FareLiveBalanceState.fromRow(Map<String, dynamic> r) => FareLiveBalanceState(
+        gmapFirstPct: (r['gmap_first_pct'] as num?)?.round() ?? 0,
+        reason: r['reason'] as String?,
+        updatedAt: r['updated_at'] as String?,
+      );
+
+  final int gmapFirstPct;
+  final String? reason;
+  final String? updatedAt;
 }

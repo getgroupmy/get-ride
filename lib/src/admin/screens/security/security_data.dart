@@ -426,6 +426,17 @@ class SecurityRepository {
     }
   }
 
+  /// The automatic Waze / Google Maps share right now (`fare_live_balance`,
+  /// migration 0414), or null when it can't be read (older database).
+  Future<FareLiveBalanceState?> fareLiveBalanceState() async {
+    try {
+      final r = await _db.from('fare_live_balance').select('gmap_first_pct, reason, updated_at').maybeSingle();
+      return r == null ? null : FareLiveBalanceState.fromRow(r);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Asks one GET.route server (saved or not) for a trip through
   /// `ai-route-proxy` (admins only): its answer, the estimate made from it
   /// and how long it took. Nothing is logged or counted.

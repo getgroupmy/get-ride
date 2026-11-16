@@ -50,6 +50,9 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
   FareAiConfig? _config;
   Map<String, FareAiKeyState> _states = {};
   Map<String, WazeServerHealth> _health = {};
+
+  /// The automatic Waze / Google Maps share right now (null: not read yet).
+  FareLiveBalanceState? _balanceState;
   Object? _error;
   bool _dirty = false;
   bool _saving = false;
@@ -114,6 +117,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
       });
       _syncFields(c);
       _loadTrendSample();
+      _loadBalanceState();
     } catch (e) {
       if (mounted) setState(() => _error = e);
     }
@@ -155,6 +159,16 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
       });
     }
     await _loadTrendSample();
+    await _loadBalanceState();
+  }
+
+  Future<void> _loadBalanceState() async {
+    try {
+      final b = await ref.read(securityRepositoryProvider).fareLiveBalanceState();
+      if (mounted) setState(() => _balanceState = b);
+    } catch (_) {
+      // An older database without fare_live_balance: the card just doesn't show it.
+    }
   }
 
   void _syncFields(FareAiConfig c) {
@@ -215,7 +229,8 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
     final ok = await runAdminAction(context, () => ref.read(securityRepositoryProvider).saveFareAiConfig(c),
         success: c.chain.isEmpty
             ? 'Fare estimates are off: fares use the routing engine fallback.'
-            : 'Fare estimates now come from ${fareChainLabel(c.chain)} for all users.');
+            : 'Fare estimates now come from ${fareChainLabel(c.chain)} for all users.'
+                '${c.uses('waze') && c.uses('gmap') ? ' ${c.liveBalance.label}.' : ''}');
     if (!mounted) return;
     setState(() {
       _saving = false;
@@ -441,6 +456,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
         ),
         if (c.uses('waze')) ..._serverSection(c, _ServerKind.waze, canEdit),
         if (c.uses('gmap')) ..._serverSection(c, _ServerKind.gmap, canEdit),
+        if (c.uses('waze') && c.uses('gmap')) ..._balanceSection(c, canEdit),
         const SizedBox(height: 12),
         Text(_aiTitle(c), style: t.textTheme.titleMedium),
         const SizedBox(height: 6),
@@ -569,6 +585,87 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
         ),
       ]),
     );
+  }
+
+  /// Which of Waze and Google Maps a fare asks first: a fixed share, or an
+  /// automatic one inside a range (`_shared/live_balance.ts`).
+  List<Widget> _balanceSection(FareAiConfig c, bool canEdit) {
+    final t = Theme.of(context);
+    final b = c.liveBalance;
+    void set(FareLiveBalance next) => _update(c.copyWith(liveBalance: next));
+    final live = _balanceState;
+    return [
+      const SizedBox(height: 16),
+      Card(
+        key: const ValueKey('live-balance-card'),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Waze / Google Maps balance', style: t.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'Which one a fare asks first. The other is that fare\'s backup, in the same 3 seconds. '
+              'Waze answers about 368 lookups a minute (GET.route pool); Google Maps about 70 (one NAS).',
+              style: t.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<bool>(
+              key: const ValueKey('live-balance-mode'),
+              segments: const [
+                ButtonSegment(value: false, label: Text('Fixed'), icon: Icon(Icons.tune)),
+                ButtonSegment(value: true, label: Text('Automatic'), icon: Icon(Icons.autorenew)),
+              ],
+              selected: {b.auto},
+              onSelectionChanged: canEdit ? (v) => set(b.copyWith(auto: v.first)) : null,
+            ),
+            const SizedBox(height: 12),
+            if (!b.auto) ...[
+              Text(b.gmapFirstPct == 0
+                  ? 'Waze always first (Google Maps only when Waze has no answer)'
+                  : 'Google Maps first for ${b.gmapFirstPct}% of fares, Waze first for ${100 - b.gmapFirstPct}%'),
+              Slider(
+                key: const ValueKey('live-balance-fixed'),
+                value: b.gmapFirstPct.toDouble(),
+                max: 100,
+                divisions: 20,
+                label: '${b.gmapFirstPct}%',
+                onChanged: canEdit ? (v) => set(b.copyWith(gmapFirstPct: v.round())) : null,
+              ),
+            ] else ...[
+              Text('Google Maps first for between ${b.minPct}% and ${b.maxPct}% of fares'),
+              RangeSlider(
+                key: const ValueKey('live-balance-range'),
+                values: RangeValues(b.minPct.toDouble(), b.maxPct.toDouble()),
+                max: 100,
+                divisions: 20,
+                labels: RangeLabels('${b.minPct}%', '${b.maxPct}%'),
+                onChanged: canEdit ? (v) => set(b.copyWith(minPct: v.start.round(), maxPct: v.end.round())) : null,
+              ),
+              Text(
+                'Every minute the share moves a few points toward whichever answered more of the last 15 minutes\' '
+                'fares, down when Google Maps gets too slow for the 3 seconds, and straight to the edge of the range '
+                'when one is offline.',
+                style: t.textTheme.bodySmall,
+              ),
+              const SizedBox(height: 8),
+              Row(children: [
+                const Icon(Icons.speed, size: 18),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    live == null
+                        ? 'Now: not set yet (the first check after saving sets it)'
+                        : 'Now: Google Maps first for ${live.gmapFirstPct.clamp(b.minPct, b.maxPct)}% · '
+                            'updated ${formatRelative(live.updatedAt)}${live.reason != null ? '\n${live.reason}' : ''}',
+                    key: const ValueKey('live-balance-now'),
+                  ),
+                ),
+              ]),
+            ],
+          ]),
+        ),
+      ),
+    ];
   }
 
   /// "AI provider (after Waze and Google Maps)": the steps asked before it.
