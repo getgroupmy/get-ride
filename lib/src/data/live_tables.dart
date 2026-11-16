@@ -30,6 +30,7 @@ const liveSettingTables = <String>[
   'ride_display_rules',
   // Per-service / per-region advance-booking surcharge overrides (0415).
   'scheduling_surcharge_rates',
+  'dispatch_ladder_rules',
   'airport_areas',
   'multi_gate',
   // Place types: each Multi-Gate place's icon and colour (0264).

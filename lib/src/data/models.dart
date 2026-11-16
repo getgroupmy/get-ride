@@ -350,6 +350,15 @@ class RideRequest {
   DateTime? get fallbackPushedAt => _t(raw['fallback_pushed_at']);
   DateTime? get widenedPushedAt => _t(raw['widened_pushed_at']);
 
+  /// The staged dispatch ladder frozen on this request (migration 0417): the
+  /// rings `{after_sec, radius_km}` the server widens through, when it opened to
+  /// all (`dispatchOpenedAt`), and how many rings it has pushed so far
+  /// (`dispatchStep`). Null/0 on an older backend or a request not dispatched by
+  /// the ladder (the partner list then uses the service's max search radius).
+  Object? get dispatchLadder => raw['dispatch_ladder'];
+  DateTime? get dispatchOpenedAt => _t(raw['dispatch_opened_at']);
+  int get dispatchStep => (raw['dispatch_step'] as num?)?.toInt() ?? 0;
+
   /// GET.now (migration 0161): the driver booked directly with their QR
   /// code, and the code it was booked through. Null on every other request.
   String? get directDriverId => raw['direct_driver_id'] as String?;
