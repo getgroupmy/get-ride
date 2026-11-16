@@ -95,6 +95,18 @@ create policy "scheduling_surcharge admin delete"
   on public.scheduling_surcharge_rates for delete to authenticated
   using ((select public.scheduling_surcharge_caller_can_edit()));
 
+-- Live: the booking sheet's fee preview refetches the moment an admin saves
+-- (live_tables.dart / live_admin_changes.sql).
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'scheduling_surcharge_rates'
+  ) then
+    alter publication supabase_realtime add table public.scheduling_surcharge_rates;
+  end if;
+end $$;
+
 -- ----------------------------------------------------------------------------
 -- Resolver (region already named): the surcharge on a scheduled booking of
 -- [p_service] in the given region for a fare of [p_fare]. A service-specific
