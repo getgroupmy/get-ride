@@ -707,6 +707,18 @@ const rideTrackingLayoutItems = [
   LayoutItem('prRecenterHorizontal', 'Partner: recenter left/right', 'Recenter button on the partner ride map $_hDesc', -300, 300, 5),
 ];
 
+/// Where the driver map's menu (≡) button and the collapsible shortcuts toolbar
+/// sit, moved independently by the admin (read by partner_screen.dart).
+const partnerMenuVerticalKey = 'partnerMenuVertical';
+const partnerToolbarVerticalKey = 'partnerToolbarVertical';
+
+const partnerToolbarLayoutItems = [
+  LayoutItem(partnerMenuVerticalKey, 'Menu button up/down',
+      'Moves the driver map menu (≡) button $_vDesc', -300, 300, 5),
+  LayoutItem(partnerToolbarVerticalKey, 'Shortcuts toolbar up/down',
+      'Moves the collapsible shortcuts toolbar (the icons under the menu) $_vDesc', -300, 300, 5),
+];
+
 /// Home-screen switches for what sits over the map. The parts under it
 /// (search bar, vehicle bar, recent places, service boxes and the rest) are
 /// laid out on Display Settings → Home page (core/home_layout.dart).

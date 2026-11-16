@@ -78,6 +78,9 @@ void main() {
   // The Meter Digital button spins while its checks run, and behind the
   // permit dialog until that is answered, so this doesn't wait to settle.
   Future<void> openMeter(WidgetTester tester) async {
+    // On the phone layout the shortcuts live behind the collapsible toolbar.
+    await tester.tap(find.byKey(const ValueKey('partner-toolbar-toggle')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Meter Digital'));
     await tester.pump();
     for (var i = 0; i < 10; i++) {
