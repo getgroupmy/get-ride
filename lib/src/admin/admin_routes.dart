@@ -7,6 +7,7 @@ import 'screens/fare_tariffs_screen.dart';
 import 'screens/god_view_screen.dart';
 import 'screens/messaging_screen.dart';
 import 'screens/ride_display_screen.dart';
+import 'screens/scheduling_surcharge_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/dispatch/admin_dispatch_screen.dart';
 import 'screens/documents_screen.dart';
@@ -61,6 +62,7 @@ final adminRoute = ShellRoute(
     GoRoute(path: '/admin/push', builder: (_, _) => const AdminPushScreen()),
     GoRoute(path: '/admin/commission', builder: (_, _) => const AdminCommissionScreen()),
     GoRoute(path: '/admin/ride-display', builder: (_, _) => const AdminRideDisplayScreen()),
+    GoRoute(path: '/admin/scheduling-surcharge', builder: (_, _) => const AdminSchedulingSurchargeScreen()),
     GoRoute(path: '/admin/fare-tariffs', builder: (_, _) => const AdminFareTariffsScreen()),
     GoRoute(path: '/admin/messaging', builder: (_, _) => const AdminMessagingScreen()),
     GoRoute(path: '/admin/dispatch', builder: (_, _) => const AdminDispatchScreen()),

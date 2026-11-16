@@ -103,6 +103,8 @@ final adminModules = <String, AdminModule>{
   'push': const AdminModule('push', 'Push notifications', ['admin-settings-push-notification']),
   'commission': const AdminModule('commission', 'Commission rates', ['admin-settings-commission']),
   'ride-display': const AdminModule('ride-display', 'Ride display', ['admin-settings-ride-display']),
+  'scheduling-surcharge':
+      const AdminModule('scheduling-surcharge', 'Advance-booking surcharge', ['admin-settings-scheduling-surcharge']),
   'fare-tariffs': const AdminModule('fare-tariffs', 'Fare tariffs', ['admin-settings-fare-tariffs']),
   'messaging': const AdminModule('messaging', 'SMS / WhatsApp', ['admin-settings-messaging']),
   // Order dispatch (0251): the console, stands, groups and fleets, IDs.
