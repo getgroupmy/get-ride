@@ -16,6 +16,14 @@
  * Only an order with both "waze" and "gmap" is ever changed, and only by
  * swapping those two; every other step keeps its place.
  *
+ * Apple Maps has a share of its own (`liveBalance.apple`, the same fixed or
+ * auto modes; auto set by waze-server-health into fare_live_balance's
+ * apple_first_pct, migration 0416). It is taken from Waze's part: with
+ * Google Maps first for 20 % and Apple Maps first for 15 %, Waze goes first
+ * for the other 65 % (pickLiveFirst). The Google Maps share is never changed
+ * by it. An Apple-first fare moves Apple Maps in front of the other
+ * live-traffic steps, which keep their order (orderForFirst).
+ *
  * Pure: see live_balance_test.ts.
  */
 
@@ -74,6 +82,78 @@ export function orderFor(chain: readonly FareStep[], gmapFirst: boolean): FareSt
  * [random] is in [0, 1). */
 export const pickGmapFirst = (sharePct: number, random: number) => random * 100 < sharePct;
 
+// ---- Apple Maps' share ---------------------------------------------------------------------------
+
+/** The live-traffic steps: the balance chooses which of them goes first. */
+export const LIVE_STEPS: readonly FareStep[] = ["waze", "gmap", "apple"];
+export type LiveFirst = "waze" | "gmap" | "apple";
+
+export interface AppleBalance {
+  mode: BalanceMode;
+  /** Fixed mode: share of fares asking Apple Maps first, 0-100. */
+  firstPct: number;
+  /** Auto mode: the range the share moves in. */
+  minPct: number;
+  maxPct: number;
+}
+
+/** A config without an Apple share: Apple Maps keeps its place in the order. */
+export const DEFAULT_APPLE_BALANCE: AppleBalance = { mode: "fixed", firstPct: 0, minPct: 0, maxPct: 30 };
+
+/** The saved Apple Maps share (`liveBalance.apple`), tolerant of bad fields. */
+export function appleBalanceOf(config: Record<string, unknown> | null | undefined): AppleBalance {
+  const lb = config?.liveBalance;
+  const raw = lb && typeof lb === "object" ? (lb as Record<string, unknown>).apple : null;
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_APPLE_BALANCE };
+  const o = raw as Record<string, unknown>;
+  let minPct = pct(o.minPct, DEFAULT_APPLE_BALANCE.minPct);
+  let maxPct = pct(o.maxPct, DEFAULT_APPLE_BALANCE.maxPct);
+  if (minPct > maxPct) [minPct, maxPct] = [maxPct, minPct];
+  return {
+    mode: o.mode === "auto" ? "auto" : "fixed",
+    firstPct: pct(o.firstPct, DEFAULT_APPLE_BALANCE.firstPct),
+    minPct,
+    maxPct,
+  };
+}
+
+/** True when Apple Maps and another live-traffic step are in the order. */
+export const appleBalanceApplies = (chain: readonly FareStep[]) =>
+  chain.includes("apple") && (chain.includes("waze") || chain.includes("gmap"));
+
+/** Which live-traffic step this fare asks first: Google Maps for [gmapPct] %
+ * of fares, Apple Maps for the next [applePct] % (never more than is left),
+ * Waze for the rest. [random] is in [0, 1). The Google Maps part is exactly
+ * pickGmapFirst's. */
+export function pickLiveFirst(gmapPct: number, applePct: number, random: number): LiveFirst {
+  const r = random * 100;
+  const g = Math.max(0, Math.min(100, gmapPct));
+  if (r < g) return "gmap";
+  if (r < g + Math.max(0, Math.min(100 - g, applePct))) return "apple";
+  return "waze";
+}
+
+/** The order for one fare with [first] going first among the live-traffic
+ * steps. Waze or Google Maps first is exactly orderFor. Apple Maps first
+ * starts from Waze-before-Google order and moves Apple Maps in front of the
+ * live-traffic steps; everything else keeps its place. */
+export function orderForFirst(chain: readonly FareStep[], first: LiveFirst): FareStep[] {
+  if (first !== "apple") return orderFor(chain, first === "gmap");
+  const out = orderFor(chain, false);
+  if (!out.includes("apple")) return out;
+  const firstLive = out.findIndex((s) => LIVE_STEPS.includes(s));
+  const a = out.indexOf("apple");
+  if (a > firstLive) {
+    out.splice(a, 1);
+    out.splice(firstLive, 0, "apple");
+  }
+  return out;
+}
+
+/** The first live-traffic step of an order (for the log), if any. */
+export const liveFirstOf = (chain: readonly FareStep[]): LiveFirst | undefined =>
+  chain.find((s) => LIVE_STEPS.includes(s)) as LiveFirst | undefined;
+
 // ---- automatic share -----------------------------------------------------------------------------
 
 /** One provider's last 15 minutes, from fare_ai_responses. */
@@ -130,6 +210,53 @@ export function nextAutoShare(prevPct: number, waze: StepStats, gmap: StepStats,
   return {
     pct: next,
     reason: `${why}: Waze ${pctTxt(rw)} of ${waze.attempts}, Google Maps ${pctTxt(rg)} of ${gmap.attempts} answered`,
+  };
+}
+
+/** An Apple Maps median this slow is too close to its own 1.5 s. */
+export const SLOW_APPLE_MS = 1_200;
+
+/** Apple Maps' last 15 minutes, plus how many of its answers were its quota
+ * guard refusing (503 / 429: the day's or the minute's calls used up). */
+export interface AppleStats extends StepStats {
+  quotaRefusals: number;
+}
+
+/** The next automatic Apple Maps share, against Waze (whose part it takes):
+ *  - Apple Maps offline, or refusing for its quota: the bottom of the range;
+ *  - Waze offline: the top of the range;
+ *  - with enough attempts on both, toward the one that answers more often
+ *    (up to MAX_STEP points a minute), and down when Apple Maps is slow;
+ *  - otherwise it stays, kept inside the range. */
+export function nextAppleShare(prevPct: number, waze: StepStats, apple: AppleStats, b: AppleBalance): AutoDecision {
+  const keep = (v: number) => Math.min(b.maxPct, Math.max(b.minPct, Math.round(v)));
+  if (apple.offline && !waze.offline) {
+    return { pct: b.minPct, reason: "Apple Maps servers are offline: Apple Maps first as little as allowed" };
+  }
+  if (apple.quotaRefusals > 0) {
+    return {
+      pct: b.minPct,
+      reason: `Apple Maps refused ${apple.quotaRefusals} in the last 15 minutes for its quota: Apple Maps first as little as allowed`,
+    };
+  }
+  if (waze.offline && !apple.offline) {
+    return { pct: b.maxPct, reason: "Waze servers are offline: Apple Maps first as much as allowed" };
+  }
+  const prev = keep(prevPct);
+  if (waze.attempts < MIN_ATTEMPTS || apple.attempts < MIN_ATTEMPTS) {
+    return { pct: prev, reason: `Not enough lookups in the last 15 minutes to compare (Waze ${waze.attempts}, Apple Maps ${apple.attempts})` };
+  }
+  const rw = rate(waze), ra = rate(apple);
+  let step = Math.max(-MAX_STEP, Math.min(MAX_STEP, (ra - rw) * 20));
+  const slow = apple.medianMs !== null && apple.medianMs > SLOW_APPLE_MS;
+  if (slow) step = Math.min(step, -2);
+  const pctTxt = (r: number) => `${Math.round(r * 100)}%`;
+  const why = slow
+    ? `Apple Maps is slow (median ${(apple.medianMs! / 1000).toFixed(1)} s)`
+    : ra > rw ? "Apple Maps answers more often" : ra < rw ? "Waze answers more often" : "both answer equally";
+  return {
+    pct: keep(prev + step),
+    reason: `${why}: Waze ${pctTxt(rw)} of ${waze.attempts}, Apple Maps ${pctTxt(ra)} of ${apple.attempts} answered`,
   };
 }
 

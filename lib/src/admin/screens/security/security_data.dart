@@ -426,11 +426,12 @@ class SecurityRepository {
     }
   }
 
-  /// The automatic Waze / Google Maps share right now (`fare_live_balance`,
+  /// The automatic Google Maps and Apple Maps shares right now (`fare_live_balance`,
   /// migration 0414), or null when it can't be read (older database).
   Future<FareLiveBalanceState?> fareLiveBalanceState() async {
     try {
-      final r = await _db.from('fare_live_balance').select('gmap_first_pct, reason, updated_at').maybeSingle();
+      // `*`: a database without 0416's Apple columns still gives the Google Maps share.
+      final r = await _db.from('fare_live_balance').select('*').maybeSingle();
       return r == null ? null : FareLiveBalanceState.fromRow(r);
     } catch (_) {
       return null;

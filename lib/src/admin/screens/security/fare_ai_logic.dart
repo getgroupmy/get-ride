@@ -921,13 +921,28 @@ class WazeServerHealth {
       };
 }
 
-/// The Waze / Google Maps balance (`fare_ai_provider.liveBalance`,
-/// `_shared/live_balance.ts`): which of the two live-traffic steps a fare
-/// asks first. Fixed: [gmapFirstPct] % of fares ask Google Maps first.
-/// Automatic: the share moves inside [minPct]-[maxPct], set every minute
+/// The Waze / Google Maps / Apple Maps balance (`fare_ai_provider.liveBalance`,
+/// `_shared/live_balance.ts`): which live-traffic step a fare asks first.
+///
+/// Google Maps: fixed, [gmapFirstPct] % of fares ask Google Maps first;
+/// automatic, the share moves inside [minPct]-[maxPct], set every minute
 /// from the last 15 minutes (`fare_live_balance`, migration 0414).
+///
+/// Apple Maps (`liveBalance.apple`): the same two modes with its own numbers
+/// ([appleFirstPct], [appleMinPct]-[appleMaxPct], migration 0416), taken from
+/// Waze's part; the Google Maps share is never changed by it. Waze goes
+/// first for the rest.
 class FareLiveBalance {
-  const FareLiveBalance({this.auto = false, this.gmapFirstPct = 0, this.minPct = 5, this.maxPct = 40});
+  const FareLiveBalance({
+    this.auto = false,
+    this.gmapFirstPct = 0,
+    this.minPct = 5,
+    this.maxPct = 40,
+    this.appleAuto = false,
+    this.appleFirstPct = 0,
+    this.appleMinPct = 0,
+    this.appleMaxPct = 30,
+  });
 
   /// Waze always first: what a config without a balance does.
   static const off = FareLiveBalance();
@@ -937,11 +952,18 @@ class FareLiveBalance {
     int pct(Object? v, int fallback) => v is num ? v.round().clamp(0, 100) : fallback;
     var lo = pct(raw['minPct'], off.minPct), hi = pct(raw['maxPct'], off.maxPct);
     if (lo > hi) (lo, hi) = (hi, lo);
+    final a = raw['apple'] is Map ? raw['apple'] as Map : const {};
+    var alo = pct(a['minPct'], off.appleMinPct), ahi = pct(a['maxPct'], off.appleMaxPct);
+    if (alo > ahi) (alo, ahi) = (ahi, alo);
     return FareLiveBalance(
       auto: raw['mode'] == 'auto',
       gmapFirstPct: pct(raw['gmapFirstPct'], off.gmapFirstPct),
       minPct: lo,
       maxPct: hi,
+      appleAuto: a['mode'] == 'auto',
+      appleFirstPct: pct(a['firstPct'], off.appleFirstPct),
+      appleMinPct: alo,
+      appleMaxPct: ahi,
     );
   }
 
@@ -950,15 +972,49 @@ class FareLiveBalance {
   final int minPct;
   final int maxPct;
 
-  FareLiveBalance copyWith({bool? auto, int? gmapFirstPct, int? minPct, int? maxPct}) => FareLiveBalance(
+  /// Apple Maps' share: automatic or fixed, its fixed share and its range.
+  final bool appleAuto;
+  final int appleFirstPct;
+  final int appleMinPct;
+  final int appleMaxPct;
+
+  bool get _appleIsOff =>
+      !appleAuto && appleFirstPct == off.appleFirstPct && appleMinPct == off.appleMinPct && appleMaxPct == off.appleMaxPct;
+
+  FareLiveBalance copyWith({
+    bool? auto,
+    int? gmapFirstPct,
+    int? minPct,
+    int? maxPct,
+    bool? appleAuto,
+    int? appleFirstPct,
+    int? appleMinPct,
+    int? appleMaxPct,
+  }) =>
+      FareLiveBalance(
         auto: auto ?? this.auto,
         gmapFirstPct: gmapFirstPct ?? this.gmapFirstPct,
         minPct: minPct ?? this.minPct,
         maxPct: maxPct ?? this.maxPct,
+        appleAuto: appleAuto ?? this.appleAuto,
+        appleFirstPct: appleFirstPct ?? this.appleFirstPct,
+        appleMinPct: appleMinPct ?? this.appleMinPct,
+        appleMaxPct: appleMaxPct ?? this.appleMaxPct,
       );
 
-  Map<String, dynamic> toJson() =>
-      {'mode': auto ? 'auto' : 'fixed', 'gmapFirstPct': gmapFirstPct, 'minPct': minPct, 'maxPct': maxPct};
+  Map<String, dynamic> toJson() => {
+        'mode': auto ? 'auto' : 'fixed',
+        'gmapFirstPct': gmapFirstPct,
+        'minPct': minPct,
+        'maxPct': maxPct,
+        if (!_appleIsOff)
+          'apple': {
+            'mode': appleAuto ? 'auto' : 'fixed',
+            'firstPct': appleFirstPct,
+            'minPct': appleMinPct,
+            'maxPct': appleMaxPct,
+          },
+      };
 
   /// "Google Maps first for 20% of fares" / "Automatic, 5–40% Google Maps first".
   String get label => auto
@@ -967,29 +1023,65 @@ class FareLiveBalance {
           ? 'Waze always first'
           : 'Google Maps first for $gmapFirstPct% of fares';
 
+  /// "Apple Maps first for 10% of fares" / "Automatic, 0–30% Apple Maps first".
+  String get appleLabel => appleAuto
+      ? 'Automatic, $appleMinPct–$appleMaxPct% Apple Maps first'
+      : appleFirstPct == 0
+          ? 'Apple Maps keeps its place in the order'
+          : 'Apple Maps first for $appleFirstPct% of fares';
+
   @override
   bool operator ==(Object other) =>
       other is FareLiveBalance &&
       other.auto == auto &&
       other.gmapFirstPct == gmapFirstPct &&
       other.minPct == minPct &&
-      other.maxPct == maxPct;
+      other.maxPct == maxPct &&
+      other.appleAuto == appleAuto &&
+      other.appleFirstPct == appleFirstPct &&
+      other.appleMinPct == appleMinPct &&
+      other.appleMaxPct == appleMaxPct;
 
   @override
-  int get hashCode => Object.hash(auto, gmapFirstPct, minPct, maxPct);
+  int get hashCode =>
+      Object.hash(auto, gmapFirstPct, minPct, maxPct, appleAuto, appleFirstPct, appleMinPct, appleMaxPct);
 }
 
-/// The automatic share right now (`fare_live_balance`, migration 0414).
+/// True when the order has Apple Maps and another live-traffic step, so an
+/// Apple Maps share applies (`appleBalanceApplies`).
+bool appleBalanceApplies(List<String> chain) =>
+    chain.contains('apple') && (chain.contains('waze') || chain.contains('gmap'));
+
+/// "Waze / Google Maps / Apple Maps": the live-traffic steps in the order.
+String liveBalanceTitle(List<String> chain) =>
+    '${[for (final s in const ['waze', 'gmap', 'apple']) if (chain.contains(s)) fareSteps[s]].join(' / ')} balance';
+
+/// The automatic shares right now (`fare_live_balance`, migrations 0414 and 0416).
 class FareLiveBalanceState {
-  const FareLiveBalanceState({required this.gmapFirstPct, this.reason, this.updatedAt});
+  const FareLiveBalanceState({
+    required this.gmapFirstPct,
+    this.reason,
+    this.updatedAt,
+    this.appleFirstPct = 0,
+    this.appleReason,
+    this.appleUpdatedAt,
+  });
 
   factory FareLiveBalanceState.fromRow(Map<String, dynamic> r) => FareLiveBalanceState(
         gmapFirstPct: (r['gmap_first_pct'] as num?)?.round() ?? 0,
         reason: r['reason'] as String?,
         updatedAt: r['updated_at'] as String?,
+        appleFirstPct: (r['apple_first_pct'] as num?)?.round() ?? 0,
+        appleReason: r['apple_reason'] as String?,
+        appleUpdatedAt: r['apple_updated_at'] as String?,
       );
 
   final int gmapFirstPct;
   final String? reason;
   final String? updatedAt;
+
+  /// Apple Maps' automatic share (migration 0416; 0 and null before it).
+  final int appleFirstPct;
+  final String? appleReason;
+  final String? appleUpdatedAt;
 }
