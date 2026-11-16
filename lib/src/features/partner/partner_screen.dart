@@ -1518,7 +1518,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
           ),
           // While requests are on the map the toolbar tucks fully away (toggle
           // and all), so it never sits over a floating request card.
-          if (!showRequests)
+          if (!(_online && (ref.watch(openRequestsProvider).value?.isNotEmpty ?? false)))
             Positioned(
               left: 16,
               right: 16,
