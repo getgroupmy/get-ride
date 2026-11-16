@@ -28,6 +28,8 @@ const liveSettingTables = <String>[
   'commission_rates',
   // Region ride-display switches: AI fare off / distance-time off (0411).
   'ride_display_rules',
+  // Per-service / per-region advance-booking surcharge overrides (0414).
+  'scheduling_surcharge_rates',
   'airport_areas',
   'multi_gate',
   // Place types: each Multi-Gate place's icon and colour (0264).

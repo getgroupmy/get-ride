@@ -31,6 +31,7 @@ import '../business/business_booking.dart';
 import '../../core/book_for.dart';
 import '../../core/commission.dart' show Geo;
 import '../../data/ride_display_config.dart';
+import '../../data/scheduling_surcharge_config.dart';
 import '../../core/driver_eta.dart';
 import '../../core/fare.dart';
 import '../../core/fare_info.dart' show demandIncludesNote, demandUplift, demandUpliftLabel, fareRateLines;
@@ -2759,9 +2760,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// "Later": the pickup time from the Choose date and time sheet; null
   /// (nothing booked) when it is closed.
   Future<DateTime?> _pickLater(ScheduledRidesConfig c) {
-    final fee = schedulingFee(_fareFor(_service), c);
+    final fee = _schedulingSurchargeFor(_fareFor(_service), c);
     return showPickupTimeSheet(context, c,
         initial: _scheduleAt, note: fee > 0 ? '+ ${formatMoney(fee, _currency)} scheduling fee' : null);
+  }
+
+  /// The advance-booking surcharge previewed before booking (0414): a
+  /// per-service/per-region override where the admin set one, else the global
+  /// scheduling fee. Mirrors the server's scheduling_surcharge_fee.
+  double _schedulingSurchargeFor(double fare, ScheduledRidesConfig c) {
+    final rules = ref.read(schedulingSurchargeRatesProvider).value ?? const <SchedulingSurchargeRule>[];
+    final a = _pickupArea;
+    return resolveSchedulingSurcharge(rules, c,
+        fare: fare,
+        service: _service.name,
+        geo: Geo(country: a?.country, state: a?.state, city: a?.city, suburb: a?.suburb));
   }
 
   /// The footer Later button's book-immediately path (used when the Later
@@ -3445,6 +3458,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final homeLayout = HomeLayouts.fromSettings(blob).layoutFor(_optionPlace);
     _syncCars(sections.vehicleMarkersSwitch && homeLayout.shows(HomeSectionType.vehicles));
     final serviceIndex = _services.indexWhere((s) => s.name == _service.name);
+    // Advance-booking surcharge overrides (0414): load them so the Later
+    // sheet's fee preview matches what the server charges; rebuild on save.
+    ref.watch(schedulingSurchargeRatesProvider);
     // Region ride-display switches (0411): rebuild when an admin saves.
     final rideDisplayRules = ref.watch(rideDisplayRulesProvider).value ?? const <RideDisplayRule>[];
     final rideDisplay = resolveRideDisplay(rideDisplayRules,

@@ -32,6 +32,7 @@ const _nav = [
   _NavItem('push', Icons.campaign_outlined),
   _NavItem('commission', Icons.percent),
   _NavItem('ride-display', Icons.visibility_outlined),
+  _NavItem('scheduling-surcharge', Icons.more_time_outlined),
   _NavItem('fare-tariffs', Icons.price_change_outlined),
   _NavItem('messaging', Icons.sms_outlined),
   _NavItem('dispatch', Icons.storefront_outlined),

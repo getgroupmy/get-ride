@@ -575,6 +575,27 @@ class AdminRepository {
   Future<void> setRideDisplayRuleActive(String id, bool active) =>
       _updateOne('ride_display_rules', id, {'active': active, 'updated_at': _now});
 
+  // ---- Advance-booking surcharge rates (0414) ------------------------------
+
+  /// Per-service / per-region scheduled-ride surcharge rows, newest first.
+  Future<List<Map<String, dynamic>>> schedulingSurchargeRates() async => List<Map<String, dynamic>>.from(
+        await _db.from('scheduling_surcharge_rates').select().order('updated_at', ascending: false),
+      );
+
+  Future<void> saveSchedulingSurchargeRate(Map<String, dynamic> row) {
+    final data = {...row, 'updated_at': _now};
+    return row['id'] == null
+        ? _db.from('scheduling_surcharge_rates').insert(data..remove('id'))
+        : _updateOne('scheduling_surcharge_rates', row['id'] as String, data);
+  }
+
+  Future<void> deleteSchedulingSurchargeRate(String id) =>
+      _db.from('scheduling_surcharge_rates').delete().eq('id', id);
+
+  /// Turns one rate on or off without touching the rest of it.
+  Future<void> setSchedulingSurchargeRateActive(String id, bool active) =>
+      _updateOne('scheduling_surcharge_rates', id, {'active': active, 'updated_at': _now});
+
   /// Every change to the rates, newest first (0216): who, when, before and
   /// after.
   Future<List<Map<String, dynamic>>> commissionHistory({int limit = 100}) async => List<Map<String, dynamic>>.from(
