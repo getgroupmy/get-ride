@@ -79,8 +79,11 @@ import {
   areaOf,
   askWazeServer,
   cleanServerUrl,
+  APPLE_KIND,
+  APPLE_PROVIDER,
   GMAP_KIND,
   GMAP_PROVIDER,
+  restMs,
   type LatLng as WazeLatLng,
   orderServersFor,
   placeFromRegions,
@@ -120,9 +123,11 @@ interface FareAIConfig {
   wazeServers?: unknown;
   /** Google Maps servers (the Traffic Scraper), for the "gmap" step. */
   gmapServers?: unknown;
+  /** Apple Maps servers (GET.route Apple Maps), for the "apple" step. */
+  appleServers?: unknown;
   /** When every Waze server fails: "ai" (default) or "none" (before chains). */
   wazeFallback?: unknown;
-  /** The order estimates are asked in: "waze" | "gmap" | "ai" | "osrm" (_shared/fare_chain.ts). */
+  /** The order estimates are asked in: "waze" | "gmap" | "apple" | "ai" | "osrm" (_shared/fare_chain.ts). */
   chain?: unknown;
   /** Waze / Google Maps balance: which of the two goes first (_shared/live_balance.ts). */
   liveBalance?: unknown;
@@ -145,7 +150,7 @@ interface RouteEstimate extends TrafficExtras {
   distance_km: number;
   duration_min: number;
   summary?: string;
-  provider?: Provider | typeof WAZE_PROVIDER | typeof GMAP_PROVIDER | typeof OSRM_PROVIDER;
+  provider?: Provider | typeof WAZE_PROVIDER | typeof GMAP_PROVIDER | typeof APPLE_PROVIDER | typeof OSRM_PROVIDER;
   toll_count?: number;
   toll_total?: number;
   tolls?: TollBooth[];
@@ -337,8 +342,8 @@ Deno.serve(async (req: Request) => {
   }
 
   const config = (settingsRow?.value ?? {}) as FareAIConfig;
-  if (body.test === "waze" || body.test === "gmap") {
-    const kind = body.test === "gmap" ? GMAP_KIND : WAZE_KIND;
+  if (body.test === "waze" || body.test === "gmap" || body.test === "apple") {
+    const kind = body.test === "gmap" ? GMAP_KIND : body.test === "apple" ? APPLE_KIND : WAZE_KIND;
     return runWazeTest(req, supabaseUrl, body.server, config, origin, destination, stops, kind);
   }
   if (body.test === true) {
@@ -381,6 +386,8 @@ Deno.serve(async (req: Request) => {
       ? await estimateFromRouteServers(ctx, WAZE_KIND)
       : step === "gmap"
       ? await estimateFromRouteServers(ctx, GMAP_KIND)
+      : step === "apple"
+      ? await estimateFromRouteServers(ctx, APPLE_KIND)
       : step === "ai"
       ? await estimateFromAi(ctx)
       : await estimateFromOsrm(ctx);
@@ -614,9 +621,15 @@ async function estimateFromRouteServers(ctx: StepContext, kind: RouteServerKind)
   const trendSettings = resolveTrendSettings(config.trend);
   // One budget for the live-traffic steps together (Waze and Google Maps),
   // so the AI and OSRM still answer before the rider app stops waiting
-  // (WAZE_TRIP_BUDGET_MS). The second one gets what the first left.
-  ctx.liveDeadline ??= Date.now() + WAZE_TRIP_BUDGET_MS;
-  const deadline = ctx.liveDeadline;
+  // (WAZE_TRIP_BUDGET_MS). The second one gets what the first left. A kind
+  // with its own budget (Apple Maps: one HTTPS call, no browser) gets that.
+  let deadline: number;
+  if (kind.budgetMs) {
+    deadline = Date.now() + kind.budgetMs;
+  } else {
+    ctx.liveDeadline ??= Date.now() + WAZE_TRIP_BUDGET_MS;
+    deadline = ctx.liveDeadline;
+  }
   for (const server of available) {
     const left = deadline - Date.now();
     if (left < 300) return { estimate: null, reason: `${p}_out_of_time` };
@@ -660,7 +673,7 @@ async function estimateFromRouteServers(ctx: StepContext, kind: RouteServerKind)
       p_key_id: server.id,
       p_provider: p,
       p_success: success,
-      p_disabled_until: success ? null : new Date(Date.now() + cooldownMs).toISOString(),
+      p_disabled_until: success ? null : new Date(Date.now() + restMs(cooldownMs, result.retryAfterSeconds)).toISOString(),
       p_error: result.error,
     });
     if (parsed) return { estimate: { ...parsed, provider: p, stops: stops.length }, reason: "ok" };
@@ -668,7 +681,7 @@ async function estimateFromRouteServers(ctx: StepContext, kind: RouteServerKind)
   return { estimate: null, reason: `all_${p}_servers_failed` };
 }
 
-/** Admin "Test" on a Waze or Google Maps server, saved or not: one trip,
+/** Admin "Test" on a Waze, Google Maps or Apple Maps server, saved or not: one trip,
  * nothing recorded. */
 async function runWazeTest(
   req: Request,

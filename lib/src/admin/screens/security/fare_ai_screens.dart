@@ -29,12 +29,13 @@ class AdminFareAiScreen extends ConsumerStatefulWidget {
   ConsumerState<AdminFareAiScreen> createState() => _FareAiState();
 }
 
-/// The two server lists that speak GET.route's API: Waze (GET.route) and
-/// Google Maps (the Traffic Scraper). [step] is the fare-order step, also the
-/// prefix of the widgets' keys.
+/// The server lists that speak GET.route's API: Waze (GET.route), Google Maps
+/// (the Traffic Scraper) and Apple Maps (GET.route Apple Maps). [step] is the
+/// fare-order step, also the prefix of the widgets' keys.
 enum _ServerKind {
   waze('waze', 'Waze servers', 'Waze server', 'https://route1.getride.my'),
-  gmap('gmap', 'Google Maps servers', 'Google Maps server', 'https://traffic.getride.my');
+  gmap('gmap', 'Google Maps servers', 'Google Maps server', 'https://traffic.getride.my'),
+  apple('apple', 'Apple Maps servers', 'Apple Maps server', 'https://apple.getride.my');
 
   const _ServerKind(this.step, this.title, this.serverLabel, this.urlHint);
 
@@ -43,7 +44,11 @@ enum _ServerKind {
   final String serverLabel;
   final String urlHint;
 
-  List<WazeServer> of(FareAiConfig c) => this == waze ? c.wazeServers : c.gmapServers;
+  List<WazeServer> of(FareAiConfig c) => switch (this) {
+        waze => c.wazeServers,
+        gmap => c.gmapServers,
+        apple => c.appleServers,
+      };
 }
 
 class _FareAiState extends ConsumerState<AdminFareAiScreen> {
@@ -192,8 +197,11 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
 
   void _setKeys(List<FareAiKey> keys) => _update(_config!.withKeys(_config!.provider, keys));
 
-  void _setServers(List<WazeServer> servers, [_ServerKind kind = _ServerKind.waze]) => _update(
-      kind == _ServerKind.gmap ? _config!.copyWith(gmapServers: servers) : _config!.copyWith(wazeServers: servers));
+  void _setServers(List<WazeServer> servers, [_ServerKind kind = _ServerKind.waze]) => _update(switch (kind) {
+        _ServerKind.waze => _config!.copyWith(wazeServers: servers),
+        _ServerKind.gmap => _config!.copyWith(gmapServers: servers),
+        _ServerKind.apple => _config!.copyWith(appleServers: servers),
+      });
 
   ({TextEditingController label, TextEditingController url, TextEditingController key}) _serverCtl(WazeServer s) =>
       _serverControllers.putIfAbsent(
@@ -448,7 +456,10 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
                 'from the GET.route pool on the office NAS. Google Maps: Google\'s recommended route and live time '
                 'from the Traffic Scraper on the office NAS (no toll prices). Waze and Google Maps share the same '
                 '3 seconds, so the next steps still answer in time. AI: the provider below. OSRM: road distance and '
-                'time without traffic, from the office NAS maps (or the OSRM server when the NAS is off).',
+                'time without traffic, from the office NAS maps (or the OSRM server when the NAS is off). '
+                'Apple Maps: Apple\'s route and time from GET.route Apple Maps on the office NAS (Apple\'s official '
+                'Maps Server API, 25,000 calls a day, no toll prices); it has its own 1.5 seconds. The Waze / Google '
+                'Maps balance only swaps those two; Apple Maps keeps its place.',
                 style: t.textTheme.bodySmall,
               ),
             ]),
@@ -456,6 +467,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
         ),
         if (c.uses('waze')) ..._serverSection(c, _ServerKind.waze, canEdit),
         if (c.uses('gmap')) ..._serverSection(c, _ServerKind.gmap, canEdit),
+        if (c.uses('apple')) ..._serverSection(c, _ServerKind.apple, canEdit),
         if (c.uses('waze') && c.uses('gmap')) ..._balanceSection(c, canEdit),
         const SizedBox(height: 12),
         Text(_aiTitle(c), style: t.textTheme.titleMedium),
@@ -681,10 +693,14 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
   List<Widget> _serverSection(FareAiConfig c, _ServerKind kind, bool canEdit) {
     final t = Theme.of(context);
     final servers = kind.of(c);
-    final what = kind == _ServerKind.gmap
-        ? 'Each Traffic Scraper container on the office NAS (getgroupmy/get.route.backup) is one server. It '
-            'reads Google Maps\' recommended route and live time; it is asked with the time Waze leaves.'
-        : 'Each GET.route container on the office NAS is one server.';
+    final what = switch (kind) {
+      _ServerKind.gmap => 'Each Traffic Scraper container on the office NAS (getgroupmy/get.route.backup) is one '
+          'server. It reads Google Maps\' recommended route and live time; it is asked with the time Waze leaves.',
+      _ServerKind.apple => 'Each GET.route Apple Maps container on the office NAS (getgroupmy/get.route.apple) is '
+          'one server. It asks Apple\'s official Maps Server API (25,000 calls a day for the team); when the day\'s '
+          'calls are used up the server rests until Apple\'s quota resets.',
+      _ServerKind.waze => 'Each GET.route container on the office NAS is one server.',
+    };
     return [
       const SizedBox(height: 16),
       Row(children: [

@@ -132,6 +132,47 @@ void main() {
       expect(normalizeFareAi(null).gmapServers, isEmpty);
     });
 
+    test('Apple Maps is a step of its own, with its own servers', () {
+      expect(fareSteps['apple'], 'Apple Maps');
+      expect(fareAiProviderLabel('apple'), 'Apple Maps (GET.route Apple Maps)');
+      expect(fareChainLabel(['waze', 'gmap', 'apple', 'ai', 'osrm']),
+          'Waze, then Google Maps, then Apple Maps, then AI, then OSRM');
+      expect(normalizeFareAi({'chain': ['osrm', 'apple', 'waze', 'apple']}).chain, ['apple', 'waze', 'osrm']);
+
+      final c = normalizeFareAi(null).copyWith(
+        chain: ['waze', 'gmap', 'apple', 'ai', 'osrm'],
+        appleServers: [WazeServer.create(id: 'a1', label: 'Apple NAS', url: 'https://apple.getride.my', key: 'ka')],
+      );
+      final back = normalizeFareAi(c.toJson());
+      expect(back.chain, ['waze', 'gmap', 'apple', 'ai', 'osrm']);
+      expect([for (final s in back.appleServers) (s.id, s.label, s.url, s.key)],
+          [('a1', 'Apple NAS', 'https://apple.getride.my', 'ka')]);
+      expect(back.activeAppleServerCount, 1);
+      expect(back.wazeServers, isEmpty, reason: 'Apple servers are not Waze servers');
+      expect(normalizeFareAi({'appleServers': [{'url': 'https://apple.getride.my', 'key': 'k'}]}).appleServers.single.label,
+          'Apple Maps server');
+      expect(normalizeFareAi(null).appleServers, isEmpty);
+    });
+
+    test('every fare order is offered: common ones first, OSRM only last, each once, No data last', () {
+      expect(fareChains.first, ['waze', 'gmap', 'ai', 'osrm']);
+      expect(fareChains.last, isEmpty);
+      final keys = [for (final c in fareChains) c.join(',')];
+      expect(keys.toSet().length, keys.length, reason: 'no order twice');
+      // 64 orders of Waze, Google Maps, Apple Maps and AI (1 to 4 of them),
+      // each with and without OSRM after, plus OSRM alone and No data.
+      expect(fareChains.length, 130);
+      for (final c in fareChains) {
+        expect(cleanFareChain(c), c, reason: '$c is saved as offered');
+      }
+      expect(keys, containsAll(['apple', 'apple,osrm', 'gmap,apple,waze,ai,osrm', 'ai,apple', 'waze,gmap,apple,ai,osrm']));
+      // after the common ones, longest first
+      final rest = fareChains.sublist(14, fareChains.length - 1);
+      for (var i = 1; i < rest.length; i++) {
+        expect(rest[i].length <= rest[i - 1].length, isTrue, reason: '${rest[i]} after ${rest[i - 1]}');
+      }
+    });
+
     test('the Waze / Google Maps balance: Waze first by default, fixed or automatic, survives a save', () {
       expect(normalizeFareAi(null).liveBalance, FareLiveBalance.off);
       expect(normalizeFareAi(null).toJson().containsKey('liveBalance'), isFalse, reason: 'unset stays unset');
@@ -254,6 +295,52 @@ void main() {
     expect([for (final s in c.gmapServers) (s.url, s.key)], [('https://traffic.getride.my', 'm4ps')]);
   });
 
+  testWidgets('admin picks Waze, Apple Maps, AI, OSRM from the search and adds an Apple Maps server', (tester) async {
+    tester.view.physicalSize = const Size(900, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repo = _Repo(normalizeFareAi(null));
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        securityRepositoryProvider.overrideWithValue(repo),
+        adminAccessProvider.overrideWith((ref) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+      ],
+      child: const MaterialApp(home: AdminFareAiScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Apple Maps servers'), findsNothing, reason: 'only with Apple Maps in the order');
+    await tester.tap(find.text('AI'));                       // the current order
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'apple maps, then ai');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Waze, then Apple Maps, then AI, then OSRM').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Apple Maps servers'), findsOneWidget);
+    expect(find.text('Google Maps servers'), findsNothing);
+    expect(find.text('Waze / Google Maps balance'), findsNothing, reason: 'the balance is Waze and Google Maps only');
+
+    await tester.tap(find.byKey(const ValueKey('add-apple-server')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Server URL'), 'https://apple.getride.my');
+    await tester.enterText(find.widgetWithText(TextField, 'Key'), 'appl3');
+    await tester.pump();
+
+    await tester.tap(find.textContaining('Test (KLCC'));
+    await tester.pumpAndSettle();
+    expect(repo.testedKinds, ['apple'], reason: 'the proxy is asked to test it as an Apple Maps server');
+    expect(repo.tested.single.label, 'Apple Maps server 1');
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Save changes'));
+    await tester.pumpAndSettle();
+    final c = repo.saved.single;
+    expect(c.chain, ['waze', 'apple', 'ai', 'osrm']);
+    expect(c.wazeServers, isEmpty);
+    expect([for (final s in c.appleServers) (s.url, s.key)], [('https://apple.getride.my', 'appl3')]);
+  });
+
   testWidgets('the balance card: only with both steps; Fixed, then Automatic with the live share', (tester) async {
     tester.view.physicalSize = const Size(900, 5000);
     tester.view.devicePixelRatio = 1;
@@ -326,3 +413,4 @@ void main() {
     expect(find.text('Online · checked just now'), findsOneWidget);
   });
 }
+

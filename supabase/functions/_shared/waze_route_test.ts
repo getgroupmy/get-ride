@@ -1,5 +1,8 @@
 import { assertEquals } from "jsr:@std/assert@1.0.19";
 import {
+  APPLE_KIND,
+  APPLE_TRIP_BUDGET_MS,
+  appleServersOf,
   areaMatch,
   areaOf,
   askWazeServer,
@@ -11,6 +14,9 @@ import {
   legUrl,
   orderServersFor,
   placeFromRegions,
+  restMs,
+  routeServersOf,
+  WAZE_KIND,
   wazeServersOf,
 } from "./waze_route.ts";
 
@@ -275,4 +281,72 @@ Deno.test("healthVerdict: names Google Maps for its servers", () => {
     detail: "Google Maps is refusing this server: Directions panel did not load",
   });
   assertEquals(healthVerdict(200, body).detail, "Waze is refusing this server: Directions panel did not load");
+});
+
+Deno.test("appleServersOf: its own list, ids, labels and its own time", () => {
+  const config = {
+    wazeServers: [{ url: "https://route.getride.my", key: "w" }],
+    appleServers: [
+      { url: "https://apple.getride.my", key: "a" },
+      { url: "https://apple2.getride.my", key: "", enabled: true },
+    ],
+  };
+  assertEquals(appleServersOf(config), [
+    { id: "apple-1", label: "Apple Maps server 1", url: "https://apple.getride.my", key: "a", enabled: true },
+  ]);
+  assertEquals(routeServersOf(config, WAZE_KIND).map((s) => s.url), ["https://route.getride.my"]);
+  assertEquals(appleServersOf({}), []);
+  assertEquals(APPLE_KIND.provider, "apple");
+  assertEquals(APPLE_KIND.budgetMs, APPLE_TRIP_BUDGET_MS);
+  assertEquals(WAZE_KIND.budgetMs, undefined, "Waze and Google Maps share the live-traffic time");
+});
+
+Deno.test("askWazeServer: an Apple Maps answer (GET.route Apple Maps) becomes an estimate", async () => {
+  const answer = {
+    count: 2,
+    routes: [
+      { name: "E7", duration_seconds: 2940, distance_meters: 48213, is_fastest: true, is_toll: true, toll: null },
+      { name: "Jalan Cheras", duration_seconds: 3300, distance_meters: 44100, is_fastest: false, is_toll: false },
+    ],
+    source: "apple_maps",
+  };
+  const fake = () => Promise.resolve(new Response(JSON.stringify(answer), { status: 200 }));
+  const server = appleServersOf({ appleServers: [{ url: "https://apple.getride.my", key: "a" }] })[0];
+  const r = await askWazeServer(server, [klcc, klia], fake, APPLE_TRIP_BUDGET_MS, APPLE_KIND.sourceName);
+  assertEquals(r.estimate, {
+    distance_km: 48.2,
+    duration_min: 49,
+    summary: "Via E7 (Apple Maps live traffic)",
+    toll_count: 0,
+    toll_total: 0,
+    tolls: [],
+  });
+  assertEquals(r.retryAfterSeconds, undefined);
+});
+
+Deno.test("askWazeServer: Apple's quota used up (503) says when to come back", async () => {
+  const fake = () =>
+    Promise.resolve(
+      new Response(
+        JSON.stringify({ error: "Used today's 24000 Apple Maps calls (DAILY_LIMIT); resets at 00:00 UTC", retry_after_seconds: 3600 }),
+        { status: 503, headers: { "Retry-After": "3600" } },
+      ),
+    );
+  const server = appleServersOf({ appleServers: [{ url: "https://apple.getride.my", key: "a" }] })[0];
+  const r = await askWazeServer(server, [klcc, klia], fake, APPLE_TRIP_BUDGET_MS, APPLE_KIND.sourceName);
+  assertEquals(r.estimate, null);
+  assertEquals(r.httpStatus, 503);
+  assertEquals(r.retryAfterSeconds, 3600);
+  assertEquals(r.error, "HTTP 503: Used today's 24000 Apple Maps calls (DAILY_LIMIT); resets at 00:00 UTC");
+
+  // A plain 500 asks for nothing.
+  const r500 = await askWazeServer(server, [klcc, klia], () => Promise.resolve(new Response("{}", { status: 500 })));
+  assertEquals(r500.retryAfterSeconds, undefined);
+});
+
+Deno.test("restMs: the retry setting, or longer when the server asked, at most a day", () => {
+  assertEquals(restMs(60_000), 60_000);
+  assertEquals(restMs(60_000, 30), 60_000);
+  assertEquals(restMs(60_000, 3600), 3_600_000);
+  assertEquals(restMs(60_000, 999_999), 86_400_000);
 });

@@ -37,3 +37,9 @@ Deno.test("osrmEstimate: road distance and time, no tolls", () => {
   assertEquals(osrmEstimate(null), null);
   assertEquals(osrmEstimate({ km: 0, min: 3 }), null);
 });
+
+Deno.test("chainOf: Apple Maps (apple) is a step like the others", () => {
+  assertEquals(chainOf({ chain: ["waze", "gmap", "apple", "ai", "osrm"] }), ["waze", "gmap", "apple", "ai", "osrm"]);
+  assertEquals(chainOf({ chain: ["apple", "osrm", "waze"] }), ["apple", "waze", "osrm"]);
+  assertEquals(chainOf({ chain: ["apple", "apple"] }), ["apple"]);
+});

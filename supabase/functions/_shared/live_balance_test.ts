@@ -86,3 +86,10 @@ Deno.test("median", () => {
   assertEquals(median([5, 1, 3]), 3);
   assertEquals(median([1, 2, 3, 4]), 3);
 });
+
+Deno.test("orderFor: the Waze / Google Maps balance leaves Apple Maps where it stands", () => {
+  assertEquals(orderFor(["waze", "gmap", "apple", "ai", "osrm"], true), ["gmap", "waze", "apple", "ai", "osrm"]);
+  assertEquals(orderFor(["waze", "apple", "gmap", "osrm"], true), ["gmap", "apple", "waze", "osrm"]);
+  assertEquals(orderFor(["waze", "apple", "ai", "osrm"], true), ["waze", "apple", "ai", "osrm"]);
+  assert(!balanceApplies(["waze", "apple", "ai", "osrm"]));
+});

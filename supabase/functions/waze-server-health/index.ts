@@ -14,7 +14,8 @@
 // in the fare order, are dropped quietly (waze_server_health_prune).
 //
 // The Google Maps servers (the Traffic Scraper, the fare order's "gmap" step)
-// answer the same /health, so they are checked here too, in the same table.
+// answer the same /health, so they are checked here too, in the same table,
+// and so are the Apple Maps servers (GET.route Apple Maps, the "apple" step).
 //
 // With the Waze / Google Maps balance on "auto" (fare_ai_provider.liveBalance,
 // _shared/live_balance.ts), it also sets the share of fares asking Google
@@ -30,6 +31,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { chainOf } from "../_shared/fare_chain.ts";
 import { balanceApplies, balanceOf, median, nextAutoShare, type StepStats } from "../_shared/live_balance.ts";
 import {
+  APPLE_KIND,
   GMAP_KIND,
   healthVerdict,
   routeServersOf,
@@ -116,7 +118,7 @@ Deno.serve(async (req) => {
     const config = (data?.value ?? {}) as Record<string, unknown>;
     // Each kind's servers, while its step is in the fare order.
     const chain = chainOf(config);
-    const servers = [WAZE_KIND, GMAP_KIND]
+    const servers = [WAZE_KIND, GMAP_KIND, APPLE_KIND]
       .filter((kind) => chain.includes(kind.provider))
       .flatMap((kind) => routeServersOf(config, kind).map((server) => ({ server, kind })));
 

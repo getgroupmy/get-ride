@@ -27,6 +27,14 @@
  * /routes/search and /health. Its servers are `gmapServers`; GMAP_KIND names
  * what differs (config field, default names, summary, log provider).
  *
+ * And the "apple" step: Apple Maps' route and time from GET.route Apple Maps
+ * (getgroupmy/get.route.apple), which calls Apple's official Maps Server API
+ * and answers the same /routes/search and /health. Its servers are
+ * `appleServers` (APPLE_KIND). It needs no browser, so it is not part of the
+ * live-traffic time Waze and Google Maps share: it has its own
+ * APPLE_TRIP_BUDGET_MS. When Apple's daily quota is used up the server answers
+ * 503 with `retry_after_seconds`; that is passed on as [WazeResult.retryAfterSeconds].
+ *
  * Pure apart from the injected fetch; see waze_route_test.ts.
  *
  *     deno test supabase/functions/_shared/waze_route_test.ts
@@ -35,12 +43,13 @@
 /** The `provider` an estimate and its log row carry. */
 export const WAZE_PROVIDER = "waze";
 export const GMAP_PROVIDER = "gmap";
+export const APPLE_PROVIDER = "apple";
 
 /** What differs between the server lists that speak GET.route's API. */
 export interface RouteServerKind {
-  provider: typeof WAZE_PROVIDER | typeof GMAP_PROVIDER;
+  provider: typeof WAZE_PROVIDER | typeof GMAP_PROVIDER | typeof APPLE_PROVIDER;
   /** The fare_ai_provider field holding the list. */
-  configField: "wazeServers" | "gmapServers";
+  configField: "wazeServers" | "gmapServers" | "appleServers";
   /** Default id prefix and label for a server saved without one. */
   idPrefix: string;
   serverLabel: string;
@@ -48,6 +57,9 @@ export interface RouteServerKind {
   sourceName: string;
   /** The `model` column of its log rows. */
   model: string;
+  /** Its own time per trip. Absent: it shares the live-traffic time
+   * (WAZE_TRIP_BUDGET_MS) with the other kinds that have none. */
+  budgetMs?: number;
 }
 
 export const WAZE_KIND: RouteServerKind = {
@@ -66,6 +78,21 @@ export const GMAP_KIND: RouteServerKind = {
   serverLabel: "Google Maps server",
   sourceName: "Google Maps",
   model: "Traffic Scraper",
+};
+
+/** How long the Apple Maps step may take for one trip. One HTTPS call to
+ * Apple per leg (no browser) answers in well under a second; 1.5 s keeps
+ * the AI and OSRM in time when Apple comes after Waze. */
+export const APPLE_TRIP_BUDGET_MS = 1_500;
+
+export const APPLE_KIND: RouteServerKind = {
+  provider: APPLE_PROVIDER,
+  configField: "appleServers",
+  idPrefix: "apple",
+  serverLabel: "Apple Maps server",
+  sourceName: "Apple Maps",
+  model: "Apple Maps Server API",
+  budgetMs: APPLE_TRIP_BUDGET_MS,
 };
 
 /** A place by name; a blank level means "any". */
@@ -112,6 +139,9 @@ export interface WazeResult {
   error: string | null;
   /** The servers' answers, for the response log (trimmed by the caller). */
   raw: string | null;
+  /** The server asked not to be called for this long (a 503 with
+   * `retry_after_seconds` or Retry-After: Apple's quota is used up). */
+  retryAfterSeconds?: number;
 }
 
 /** A server URL GET.ride may call: https, no credentials, no query. */
@@ -135,6 +165,11 @@ export function wazeServersOf(config: { wazeServers?: unknown } | null | undefin
 /** The enabled Google Maps (Traffic Scraper) servers, as wazeServersOf. */
 export function gmapServersOf(config: { gmapServers?: unknown } | null | undefined): WazeServer[] {
   return routeServersOf(config, GMAP_KIND);
+}
+
+/** The enabled Apple Maps (GET.route Apple Maps) servers, as wazeServersOf. */
+export function appleServersOf(config: { appleServers?: unknown } | null | undefined): WazeServer[] {
+  return routeServersOf(config, APPLE_KIND);
 }
 
 /** The enabled servers of one kind that have a URL and a key, in order. */
@@ -341,11 +376,21 @@ export async function askWazeServer(
       raws.push(text.substring(0, 2000));
       if (!res.ok) {
         let msg = `HTTP ${res.status}`;
+        let retryAfter = res.status === 503 || res.status === 429 ? Number(res.headers.get("Retry-After")) : NaN;
         try {
-          const e = JSON.parse(text)?.error;
+          const body = JSON.parse(text);
+          const e = body?.error;
           if (typeof e === "string" && e) msg += `: ${e}`;
+          const r = Number(body?.retry_after_seconds);
+          if ((res.status === 503 || res.status === 429) && Number.isFinite(r)) retryAfter = r;
         } catch { /* not JSON */ }
-        return { estimate: null, httpStatus: status, error: msg, raw: raws.join("\n") };
+        return {
+          estimate: null,
+          httpStatus: status,
+          error: msg,
+          raw: raws.join("\n"),
+          ...(Number.isFinite(retryAfter) && retryAfter > 0 ? { retryAfterSeconds: Math.ceil(retryAfter) } : {}),
+        };
       }
     } catch (e) {
       return {
@@ -371,6 +416,14 @@ export async function askWazeServer(
     error: estimate ? null : "Route without distance or time",
     raw: raws.join("\n"),
   };
+}
+
+/** How long a failed server rests: the Fare AI retry setting, or longer
+ * when the server said when to come back (Apple Maps' daily quota: until
+ * 00:00 UTC), at most a day. */
+export function restMs(cooldownMs: number, retryAfterSeconds?: number): number {
+  const asked = retryAfterSeconds && retryAfterSeconds > 0 ? Math.min(retryAfterSeconds, 86_400) * 1000 : 0;
+  return Math.max(cooldownMs, asked);
 }
 
 // ---- health (waze-server-health, migration 0411) ------------------------------------------------
