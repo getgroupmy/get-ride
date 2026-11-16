@@ -18,6 +18,7 @@ import {
   resolveTrendSettings,
   retryPolicyMs,
   templateProblem,
+  implausibleDistance,
 } from "./fare_ai_request.ts";
 
 const a = { latitude: 3.158, longitude: 101.712 };
@@ -201,4 +202,24 @@ Deno.test("fare trend: the admin's colours ride with the arrows they belong to",
   const down = decideFareTrend(17, 20, {}, s, false)!;
   assertEquals([down.color_light, down.color_dark], ["#00AA00", undefined]);
   assertEquals(decideFareTrend(21, 20, {}, s, false)!.color_light, undefined, "no arrows, no colour");
+});
+
+Deno.test("implausibleDistance: today's 15,420 km answer, and far off the road distance either way", () => {
+  assertEquals(implausibleDistance(15420.5, null), "Distance not believable: 15420.5 km is over 3,000 km");
+  assertEquals(
+    implausibleDistance(245.5, 60),
+    "Distance not believable: 245.5 km is over 3 times the road distance (60 km)",
+  );
+  assertEquals(
+    implausibleDistance(12, 178.5),
+    "Distance not believable: 12 km is under a third of the road distance (178.5 km)",
+  );
+});
+
+Deno.test("implausibleDistance: believable answers pass", () => {
+  assertEquals(implausibleDistance(42.5, 35.5), null, "the usual AI spread");
+  assertEquals(implausibleDistance(245.5, 178.5), null, "1.4 times: high, but not past the check");
+  assertEquals(implausibleDistance(4, 1), null, "4 times, but only 3 km off: a short trip");
+  assertEquals(implausibleDistance(42.5, null), null, "no road distance to compare: only the 3,000 km cap");
+  assertEquals(implausibleDistance(0, 10), null);
 });
