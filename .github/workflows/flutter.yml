@@ -21,7 +21,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter test
+      - run: flutter test -r compact
 
   release-scripts:
     # The Play upload script's decisions (tracks, refusal messages), so a
