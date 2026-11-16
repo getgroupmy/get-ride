@@ -1516,23 +1516,25 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               ),
             ),
           ),
-          Positioned(
-            left: 16,
-            right: 16,
-            top: 72,
-            child: _PartnerToolbarOffset(
-              settingsKey: partnerToolbarVerticalKey,
-              child: FocusLast(child: SafeArea(
-                bottom: false,
-                child: PartnerActionToolbar(
-                  open: _toolbarOpen,
-                  onToggle: () => setState(() => _toolbarOpen = !_toolbarOpen),
-                  forceCollapsed: _online && (ref.watch(openRequestsProvider).value?.isNotEmpty ?? false),
-                  actions: _shortcutButtons(onTap: _collapseToolbar),
-                ),
-              )),
+          // While requests are on the map the toolbar tucks fully away (toggle
+          // and all), so it never sits over a floating request card.
+          if (!showRequests)
+            Positioned(
+              left: 16,
+              right: 16,
+              top: 72,
+              child: _PartnerToolbarOffset(
+                settingsKey: partnerToolbarVerticalKey,
+                child: FocusLast(child: SafeArea(
+                  bottom: false,
+                  child: PartnerActionToolbar(
+                    open: _toolbarOpen,
+                    onToggle: () => setState(() => _toolbarOpen = !_toolbarOpen),
+                    actions: _shortcutButtons(onTap: _collapseToolbar),
+                  ),
+                )),
+              ),
             ),
-          ),
         ],
         // A new request on a phone: inDrive's sheet up from the bottom, over
         // everything (the desktop has it over the map instead).
