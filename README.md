@@ -1,4 +1,4 @@
-# GET.ride — Flutter
+# GET.ride
 
 Flutter client for **GET.ride** that runs on **web, desktop (macOS / Windows / Linux), iOS and Android** from one codebase. It talks to the **same Supabase project** as the Expo app in [getgroupmy/get.ride](https://github.com/getgroupmy/get.ride), so accounts, rides, wallets and support chats are shared between both apps. The backend itself — schema, migrations, seed data and edge functions — lives in [`supabase/`](supabase) in this repository (moved from get.ride); see [docs/backend.md](docs/backend.md).
 
