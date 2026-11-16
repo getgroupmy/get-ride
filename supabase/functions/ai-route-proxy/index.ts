@@ -92,7 +92,6 @@ import {
   type RouteServerKind,
   WAZE_KIND,
   WAZE_PROVIDER,
-  WAZE_TRIP_BUDGET_MS,
   type WazeServer,
 } from "../_shared/waze_route.ts";
 import { chainOf, OSRM_PROVIDER, osrmEstimate } from "../_shared/fare_chain.ts";
@@ -107,6 +106,15 @@ import {
   pickLiveFirst,
 } from "../_shared/live_balance.ts";
 import { nasRouteRequest, parseNasLink } from "../_shared/geo_nas.ts";
+import {
+  appTimingOf,
+  deviceChain,
+  deviceReportOf,
+  fetchWithin,
+  resumeSteps,
+  type ServerTiming,
+  serverTimingOf,
+} from "../_shared/fare_timing.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -140,6 +148,8 @@ interface FareAIConfig {
   chain?: unknown;
   /** Waze / Google Maps balance: which of the two goes first (_shared/live_balance.ts). */
   liveBalance?: unknown;
+  /** Time limits per step, in seconds (_shared/fare_timing.ts). */
+  timing?: unknown;
 }
 
 interface LatLng {
@@ -159,7 +169,7 @@ interface RouteEstimate extends TrafficExtras {
   distance_km: number;
   duration_min: number;
   summary?: string;
-  provider?: Provider | typeof WAZE_PROVIDER | typeof GMAP_PROVIDER | typeof APPLE_PROVIDER | typeof OSRM_PROVIDER;
+  provider?: Provider | typeof WAZE_PROVIDER | typeof GMAP_PROVIDER | typeof APPLE_PROVIDER | typeof OSRM_PROVIDER | "apple_device";
   toll_count?: number;
   toll_total?: number;
   tolls?: TollBooth[];
@@ -300,8 +310,29 @@ Deno.serve(async (req: Request) => {
   if (!userId) {
     return json({ ok: false, error: "sign_in_required" }, 401);
   }
+  let body: {
+    origin?: unknown;
+    destination?: unknown;
+    waypoints?: unknown;
+    test?: unknown;
+    request?: unknown;
+    server?: unknown;
+    /** "ios_mapkit": an iPhone that asks Apple Maps itself (_shared/fare_timing.ts). */
+    device?: unknown;
+    /** The steps to go on with after Apple Maps on the phone missed. */
+    resume?: unknown;
+    /** The phone's Apple Maps answer, for the response log. */
+    report?: unknown;
+  };
+  try {
+    body = await req.json();
+  } catch {
+    return json({ ok: false, error: "Invalid JSON body" }, 400);
+  }
   const { data: wait, error: rateErr } = await admin.rpc("auth_rate_take", {
-    p_bucket: "ai_route",
+    // A phone's report and its "go on after Apple Maps" have their own
+    // buckets, so an iPhone fare doesn't spend two or three estimates.
+    p_bucket: body.report ? "ai_route_report" : Array.isArray(body.resume) ? "ai_route_resume" : "ai_route",
     p_key: userId,
     p_limit: ROUTE_ESTIMATES_PER_WINDOW,
     p_window: ROUTE_ESTIMATE_WINDOW,
@@ -315,19 +346,6 @@ Deno.serve(async (req: Request) => {
     return json({ ok: false, error: "rate_limited", retry_after: wait }, 429);
   }
 
-  let body: {
-    origin?: unknown;
-    destination?: unknown;
-    waypoints?: unknown;
-    test?: unknown;
-    request?: unknown;
-    server?: unknown;
-  };
-  try {
-    body = await req.json();
-  } catch {
-    return json({ ok: false, error: "Invalid JSON body" }, 400);
-  }
 
   if (!isValidCoord(body.origin) || !isValidCoord(body.destination)) {
     return json({ ok: false, error: "origin/destination must be { latitude, longitude }" }, 400);
@@ -361,16 +379,26 @@ Deno.serve(async (req: Request) => {
     return runTest(req, supabaseUrl, body.request, config, provider, model, aiKeysOf(config, provider), origin, destination, stops);
   }
 
+  if (body.report) {
+    return logDeviceReport(admin, userId, origin, destination, stops, body.report);
+  }
+
   // The admin's order (Waze → Google Maps → AI → OSRM and the like): the first step with an
   // estimate answers. No step at all: the apps use their own fallback.
   let chain = chainOf(config as Record<string, unknown>);
   if (chain.length === 0) {
     return json({ ok: true, estimate: null, reason: "service_disabled" });
   }
+  // An iPhone that asks Apple Maps itself (fare_timing.deviceApple): Apple
+  // Maps' place in the order is handed to the phone.
+  const onDevice = body.device === "ios_mapkit" && await deviceAppleOn(admin);
+  if (onDevice) chain = deviceChain(chain);
+  const resuming = Array.isArray(body.resume);
+  if (resuming) chain = resumeSteps(chain, body.resume);
   // Waze / Google Maps / Apple Maps balance: a share of fares asks Google
   // Maps first, another share Apple Maps, the rest Waze (_shared/live_balance.ts).
   let liveFirst: LiveFirst | undefined;
-  const gmapOn = balanceApplies(chain), appleOn = appleBalanceApplies(chain);
+  const gmapOn = !resuming && balanceApplies(chain), appleOn = !resuming && appleBalanceApplies(chain);
   if (gmapOn || appleOn) {
     const shares = await liveShares(admin, config, gmapOn, appleOn);
     chain = orderForFirst(chain, pickLiveFirst(shares.gmap, shares.apple, Math.random()));
@@ -390,9 +418,14 @@ Deno.serve(async (req: Request) => {
     // Test traffic (0241): a label for the log only. Any failure answers "real".
     testFuture: testAccountCheck(rpcTestAccountLookup((fn, args) => admin.rpc(fn, args)))(userId),
     liveFirst,
+    timing: serverTimingOf(config as Record<string, unknown>),
   };
   let reason = "no_estimate";
-  for (const step of chain) {
+  for (const [i, step] of chain.entries()) {
+    if (step === "apple" && onDevice) {
+      // The phone asks Apple Maps now; it comes back with these if it misses.
+      return json({ ok: true, estimate: null, reason: "device_apple", remaining: chain.slice(i + 1) });
+    }
     const r = step === "waze"
       ? await estimateFromRouteServers(ctx, WAZE_KIND)
       : step === "gmap"
@@ -419,12 +452,58 @@ interface StepContext {
   cooldownMs: number;
   standardFuture: Promise<{ min: number; km: number } | null>;
   testFuture: Promise<boolean>;
-  /** When the live-traffic steps (Waze, Google Maps) must stop, set by the
-   * first one to run: together they get WAZE_TRIP_BUDGET_MS, as Waze alone
-   * did, so the AI and OSRM still answer before the rider app stops waiting. */
-  liveDeadline?: number;
   /** Which live-traffic step went first for this fare (balance), for the log. */
   liveFirst?: LiveFirst;
+  /** The time limits per step (Admin › Fare AI › Time limits). */
+  timing: ServerTiming;
+}
+
+/** Whether iPhones ask Apple Maps themselves (`fare_timing.deviceApple`,
+ * on unless an admin turned it off). An unreadable setting: on. */
+// deno-lint-ignore no-explicit-any
+async function deviceAppleOn(admin: any): Promise<boolean> {
+  const { data, error } = await admin.from("app_settings").select("value").eq("key", "fare_timing").maybeSingle();
+  if (error) return true;
+  return appTimingOf(data?.value).deviceApple;
+}
+
+/** Logs a phone's Apple Maps (MapKit) answer in the response log, as
+ * "apple_device" (it touched no server and no key). */
+async function logDeviceReport(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  userId: string,
+  origin: LatLng,
+  destination: LatLng,
+  stops: LatLng[],
+  raw: unknown,
+): Promise<Response> {
+  const r = deviceReportOf(raw);
+  if (!r) return json({ ok: false, error: "report must be { success, distance_km, duration_min, latency_ms }" }, 400);
+  const test = await testAccountCheck(rpcTestAccountLookup((fn, args) => admin.rpc(fn, args)))(userId);
+  const standard = r.success ? await standardRoute(origin, destination, stops) : null;
+  const { error } = await admin.from("fare_ai_responses").insert({
+    provider: "apple_device",
+    key_id: null,
+    key_label: "iPhone (Apple Maps on the phone)",
+    model: "MapKit",
+    origin_lat: origin.latitude,
+    origin_lng: origin.longitude,
+    dest_lat: destination.latitude,
+    dest_lng: destination.longitude,
+    success: r.success,
+    distance_km: r.distance_km,
+    duration_min: r.duration_min,
+    summary: r.success ? "Apple Maps on the iPhone" : null,
+    error: r.error,
+    latency_ms: r.latency_ms,
+    extra: withStops(null, stops),
+    standard_duration_min: standard?.min ?? null,
+    standard_distance_km: standard?.km ?? null,
+    ...(test ? { is_test: true } : {}),
+  });
+  if (error) console.error("ai-route-proxy: device report", error.message);
+  return json({ ok: true });
 }
 
 /** The shares of fares (percent) that ask Google Maps, and Apple Maps,
@@ -503,7 +582,7 @@ async function estimateFromAi(ctx: StepContext): Promise<StepResult> {
     const started = Date.now();
     let result: CallResult;
     try {
-      result = await callProvider(provider, prompt, cand.key, model, request);
+      result = await callProvider(provider, prompt, cand.key, model, request, fetchWithin(ctx.timing.aiMs));
     } catch (e) {
       result = {
         content: null,
@@ -583,7 +662,7 @@ async function estimateFromOsrm(ctx: StepContext): Promise<StepResult> {
       label = "Office NAS";
       const points = [origin, ...stops, destination].map((p) => [p.latitude, p.longitude] as [number, number]);
       const r = nasRouteRequest(link, points);
-      const res = await fetch(r.url, { headers: r.headers, signal: AbortSignal.timeout(Math.max(r.timeoutMs ?? 1500, 3000)) });
+      const res = await fetch(r.url, { headers: r.headers, signal: AbortSignal.timeout(ctx.timing.osrmMs) });
       const body = res.ok ? await res.json() : null;
       const m = Number(body?.routes?.[0]?.distance), sec = Number(body?.routes?.[0]?.duration);
       if (m > 0 && sec > 0) route = { km: m / 1000, min: sec / 60 };
@@ -651,13 +730,10 @@ async function estimateFromRouteServers(ctx: StepContext, kind: RouteServerKind)
   // so the AI and OSRM still answer before the rider app stops waiting
   // (WAZE_TRIP_BUDGET_MS). The second one gets what the first left. A kind
   // with its own budget (Apple Maps: one HTTPS call, no browser) gets that.
-  let deadline: number;
-  if (kind.budgetMs) {
-    deadline = Date.now() + kind.budgetMs;
-  } else {
-    ctx.liveDeadline ??= Date.now() + WAZE_TRIP_BUDGET_MS;
-    deadline = ctx.liveDeadline;
-  }
+  // Each kind has its own time (Admin › Fare AI › Time limits, fare_timing.ts),
+  // every server of the kind included.
+  const deadline = Date.now() +
+    (kind.provider === "waze" ? ctx.timing.wazeMs : kind.provider === "gmap" ? ctx.timing.gmapMs : ctx.timing.appleMs);
   for (const server of available) {
     const left = deadline - Date.now();
     if (left < 300) return { estimate: null, reason: `${p}_out_of_time` };

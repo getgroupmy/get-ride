@@ -279,7 +279,7 @@ void main() {
   });
 
   testWidgets('admin picks Waze → Google Maps → AI → OSRM and adds a Google Maps server', (tester) async {
-    tester.view.physicalSize = const Size(900, 4000);
+    tester.view.physicalSize = const Size(900, 6000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final repo = _Repo(normalizeFareAi(null));
@@ -323,7 +323,7 @@ void main() {
   });
 
   testWidgets('admin picks Waze, Apple Maps, AI, OSRM from the search and adds an Apple Maps server', (tester) async {
-    tester.view.physicalSize = const Size(900, 4000);
+    tester.view.physicalSize = const Size(900, 6000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final repo = _Repo(normalizeFareAi(null));
@@ -457,6 +457,49 @@ void main() {
     final b = repo.saved.single.liveBalance;
     expect([b.auto, b.gmapFirstPct, b.appleAuto, b.appleMinPct, b.appleMaxPct], [false, 20, true, 0, 30]);
     expect(repo.saved.single.toJson()['liveBalance']['apple']['mode'], 'auto');
+  });
+
+  testWidgets('Time limits: each step\'s seconds, the iPhone switch, a warning when too long', (tester) async {
+    tester.view.physicalSize = const Size(900, 7000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repo = _Repo(normalizeFareAi(null).copyWith(chain: ['waze', 'gmap', 'apple', 'ai', 'osrm']));
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        securityRepositoryProvider.overrideWithValue(repo),
+        adminAccessProvider.overrideWith((ref) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+      ],
+      child: const MaterialApp(home: AdminFareAiScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Time limits'), findsOneWidget);
+    for (final k in ['wazeSeconds', 'gmapSeconds', 'appleSeconds', 'aiSeconds', 'osrmSeconds', 'appWaitSeconds', 'deviceAppleSeconds']) {
+      expect(find.byKey(ValueKey('timing-$k')), findsOneWidget, reason: k);
+    }
+    // 2 + 2 + 1.5 s: past the app's 5 s.
+    expect(find.byKey(const ValueKey('timing-too-long')), findsOneWidget);
+    expect(find.textContaining('can take 5.5 s'), findsOneWidget);
+
+    // Google Maps down to the bottom (0.5 s): 4 s, inside the wait.
+    await tester.drag(find.byKey(const ValueKey('timing-gmapSeconds')), const Offset(-2000, 0));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('timing-too-long')), findsNothing);
+
+    // Waze to the top (15 s): past it again.
+    await tester.drag(find.byKey(const ValueKey('timing-wazeSeconds')), const Offset(2000, 0));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('timing-too-long')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('timing-deviceApple')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('timing-deviceAppleSeconds')), findsNothing);
+
+    await tester.tap(find.text('Save changes'));
+    await tester.pumpAndSettle();
+    final f = repo.saved.single.timing;
+    expect([f.wazeSeconds, f.gmapSeconds, f.deviceApple], [15, 0.5, false]);
+    expect(repo.saved.single.toJson()['timing']['wazeSeconds'], 15);
   });
 
   testWidgets('each server card shows its health', (tester) async {

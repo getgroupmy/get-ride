@@ -88,7 +88,7 @@ enum EstimateSource {
   static EstimateSource of(RouteEstimate e) => switch (e.provider) {
         'waze' => EstimateSource.waze,
         'gmap' => EstimateSource.gmap,
-        'apple' => EstimateSource.apple,
+        'apple' || 'apple_device' => EstimateSource.apple,
         'osrm' => EstimateSource.road,
         _ => EstimateSource.ai,
       };

@@ -10,6 +10,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../config.dart';
+import '../../core/fare_timing.dart';
 import '../../core/booking_modules.dart' show familyModuleHire, familyModuleRide;
 import '../../core/window_class.dart' show verticalSplitFor, windowMetricsFor;
 import '../../core/launch_destination.dart' show isFoldedCoverSize, mapButtonsRightInset;
@@ -194,6 +195,8 @@ const homeStreetZoom = 17.0;
 /// How long the AI fare estimate is waited for (PERF-33: was 30 s). The
 /// confirm step shows "Calculating fare" meanwhile; past this, the standard
 /// tariff's fare shows instead, and an AI answer later still is ignored.
+/// The default wait for a fare estimate; Admin › Fare AI provider › Time
+/// limits sets it (`fare_timing.appWaitSeconds`, [FareTiming.appWait]).
 const aiEstimateTimeout = Duration(seconds: 5);
 
 /// A point of a trip GET.ride can't serve ([UnavailableAt]; [stop] is the
@@ -1145,10 +1148,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // The proxy may try several keys; past this (or on an error) the map
     // route prices it with the standard tariff, and an AI answer that comes
     // later still is dropped with the timed-out future.
+    // How long to wait, and whether an iPhone asks Apple Maps itself: Admin ›
+    // Fare AI provider › Time limits (`fare_timing`; the defaults until read).
+    // Read once and kept; the first read waits at most a moment for it.
+    final timing = ref.read(fareTimingProvider).value ??
+        await ref
+            .read(fareTimingProvider.future)
+            .timeout(const Duration(milliseconds: 400), onTimeout: () => FareTiming.defaults)
+            .catchError((_) => FareTiming.defaults);
+    if (!mounted || seq != _routeSeq) return;
     final aiFuture = ref
         .read(routeEstimateRepositoryProvider)
-        .estimateDetailed(a.point, b.point, via: via)
-        .timeout(aiEstimateTimeout, onTimeout: () => null);
+        .estimateDetailed(a.point, b.point, via: via, timing: timing)
+        .timeout(timing.appWait, onTimeout: () => null);
     final r = await ref.read(geoServiceProvider).route(a.point, b.point, via: via);
     if (!mounted || seq != _routeSeq) return;
     setState(() => _route = r);

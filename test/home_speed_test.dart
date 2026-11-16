@@ -21,6 +21,7 @@ import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/route_estimate_repository.dart';
 import 'package:get_ride/src/features/meter/meter_auto_launch.dart';
 import 'package:get_ride/src/core/region_pricing.dart';
+import 'package:get_ride/src/core/fare_timing.dart';
 import 'package:get_ride/src/core/route_estimate.dart';
 import 'package:get_ride/src/features/ride/confirm_parts.dart' show ConfirmServiceCard;
 import 'package:get_ride/src/core/format.dart';
@@ -80,6 +81,7 @@ class _TimedAi implements RouteEstimateRepository {
     LatLng from,
     LatLng to, {
     List<LatLng> via = const [],
+    FareTiming timing = FareTiming.defaults,
   }) => Future.delayed(after, () => fails ? throw StateError('AI down') : _aiEstimate);
 
   @override
