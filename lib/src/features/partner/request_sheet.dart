@@ -170,9 +170,16 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
       setState(() => _pickupEta = apple);
       return;
     }
-    final est = await ref.read(routeEstimateRepositoryProvider).estimate(me, a);
-    if (!mounted || est == null) return;
-    setState(() => _pickupEta = pickupEtaFromEstimate(est.distanceKm, est.durationMin));
+    // The fare chain needs a Supabase session; reading the repository (or the
+    // estimate) throws without one (offline, a legacy local-PIN session, a test
+    // that didn't configure Supabase). Any failure just keeps the heuristic.
+    try {
+      final est = await ref.read(routeEstimateRepositoryProvider).estimate(me, a);
+      if (!mounted || est == null) return;
+      setState(() => _pickupEta = pickupEtaFromEstimate(est.distanceKm, est.durationMin));
+    } catch (_) {
+      // Keep awayKm / pickupMinutes.
+    }
   }
 
   void _markViewed() {
