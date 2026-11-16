@@ -27,6 +27,8 @@ begin
     'ride_display_rules',
     -- Advance-booking surcharge overrides (migration 0415).
     'scheduling_surcharge_rates',
+    -- Staged dispatch ladder rules (migration 0417).
+    'dispatch_ladder_rules',
     -- Admin pages (liveAdminTables, migration 0136).
     'vehicle_user_assignment', 'ride_requests', 'support_tickets', 'push_notifications',
     'ev_orders', 'help_articles', 'help_questions', 'fare_ai_responses', 'fare_ai_key_states',
