@@ -1,4 +1,4 @@
-// Admin → Advance-booking surcharge (migration 0414): per service type AND
+// Admin → Advance-booking surcharge (migration 0415): per service type AND
 // region (Country / State / City / Suburb, plus one master), a flat amount
 // and/or a percentage of the fare charged on a future-dated ("Later") booking.
 // Scoped and resolved like the commission rate / ride-display rule; with no

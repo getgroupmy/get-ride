@@ -575,7 +575,7 @@ class AdminRepository {
   Future<void> setRideDisplayRuleActive(String id, bool active) =>
       _updateOne('ride_display_rules', id, {'active': active, 'updated_at': _now});
 
-  // ---- Advance-booking surcharge rates (0414) ------------------------------
+  // ---- Advance-booking surcharge rates (0415) ------------------------------
 
   /// Per-service / per-region scheduled-ride surcharge rows, newest first.
   Future<List<Map<String, dynamic>>> schedulingSurchargeRates() async => List<Map<String, dynamic>>.from(

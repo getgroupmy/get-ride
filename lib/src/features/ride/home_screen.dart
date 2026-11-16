@@ -2765,7 +2765,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         initial: _scheduleAt, note: fee > 0 ? '+ ${formatMoney(fee, _currency)} scheduling fee' : null);
   }
 
-  /// The advance-booking surcharge previewed before booking (0414): a
+  /// The advance-booking surcharge previewed before booking (0415): a
   /// per-service/per-region override where the admin set one, else the global
   /// scheduling fee. Mirrors the server's scheduling_surcharge_fee.
   double _schedulingSurchargeFor(double fare, ScheduledRidesConfig c) {
@@ -3458,7 +3458,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final homeLayout = HomeLayouts.fromSettings(blob).layoutFor(_optionPlace);
     _syncCars(sections.vehicleMarkersSwitch && homeLayout.shows(HomeSectionType.vehicles));
     final serviceIndex = _services.indexWhere((s) => s.name == _service.name);
-    // Advance-booking surcharge overrides (0414): load them so the Later
+    // Advance-booking surcharge overrides (0415): load them so the Later
     // sheet's fee preview matches what the server charges; rebuild on save.
     ref.watch(schedulingSurchargeRatesProvider);
     // Region ride-display switches (0411): rebuild when an admin saves.
