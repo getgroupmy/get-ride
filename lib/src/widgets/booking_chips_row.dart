@@ -195,10 +195,12 @@ class NowLaterToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    // Two pills sized to their own content (so the booked time is never
-    // clipped), the selected one accent-filled. The fill and border animate
-    // when the selection flips, so switching Now ⇄ Later reads as a toggle.
-    Widget pill(Key key, bool selected, IconData icon, String text, VoidCallback onTap, {bool chevron = false}) {
+    // One connected toggle track holding the two flush segments (no gap), the
+    // active one a filled stadium pill. The fill animates when the selection
+    // flips, so Now ⇄ Later reads as a single segmented toggle (the mockup),
+    // not two separate chips. Each segment sizes to its own content, so the
+    // booked time is never clipped.
+    Widget seg(Key key, bool selected, IconData icon, String text, VoidCallback onTap, {bool chevron = false}) {
       final fg = selected ? cs.onPrimaryContainer : cs.onSurfaceVariant;
       return GestureDetector(
         key: key,
@@ -207,12 +209,10 @@ class NowLaterToggle extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: ShapeDecoration(
-            color: selected ? cs.primaryContainer : cs.surfaceContainerHighest,
-            shape: StadiumBorder(
-              side: BorderSide(color: selected ? cs.primary : cs.outlineVariant, width: selected ? 1.5 : 1),
-            ),
+            color: selected ? cs.primaryContainer : Colors.transparent,
+            shape: const StadiumBorder(),
           ),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Icon(icon, size: 15, color: fg),
@@ -224,7 +224,7 @@ class NowLaterToggle extends StatelessWidget {
                   style: TextStyle(color: fg, fontWeight: FontWeight.w600, fontSize: 13.5)),
             ],
             if (chevron) ...[
-              const SizedBox(width: 3),
+              const SizedBox(width: 2),
               Icon(Icons.keyboard_arrow_down, size: 15, color: fg.withValues(alpha: .7)),
             ],
           ]),
@@ -232,10 +232,16 @@ class NowLaterToggle extends StatelessWidget {
       );
     }
 
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      pill(const ValueKey('nl-now'), !laterSelected, Icons.schedule, nowLabel, onNow),
-      const SizedBox(width: 6),
-      pill(const ValueKey('nl-later'), laterSelected, Icons.calendar_today_outlined, laterLabel, onLater, chevron: true),
-    ]);
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: ShapeDecoration(
+        color: cs.surfaceContainerHighest,
+        shape: StadiumBorder(side: BorderSide(color: cs.outlineVariant)),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        seg(const ValueKey('nl-now'), !laterSelected, Icons.schedule, nowLabel, onNow),
+        seg(const ValueKey('nl-later'), laterSelected, Icons.calendar_today_outlined, laterLabel, onLater, chevron: true),
+      ]),
+    );
   }
 }
