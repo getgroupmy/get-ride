@@ -452,10 +452,6 @@ interface StepContext {
   cooldownMs: number;
   standardFuture: Promise<{ min: number; km: number } | null>;
   testFuture: Promise<boolean>;
-  /** When the live-traffic steps (Waze, Google Maps) must stop, set by the
-   * first one to run: together they get WAZE_TRIP_BUDGET_MS, as Waze alone
-   * did, so the AI and OSRM still answer before the rider app stops waiting. */
-  liveDeadline?: number;
   /** Which live-traffic step went first for this fare (balance), for the log. */
   liveFirst?: LiveFirst;
   /** The time limits per step (Admin › Fare AI › Time limits). */
@@ -734,14 +730,10 @@ async function estimateFromRouteServers(ctx: StepContext, kind: RouteServerKind)
   // so the AI and OSRM still answer before the rider app stops waiting
   // (WAZE_TRIP_BUDGET_MS). The second one gets what the first left. A kind
   // with its own budget (Apple Maps: one HTTPS call, no browser) gets that.
-  // Times from Admin › Fare AI › Time limits (fare_timing.ts).
-  let deadline: number;
-  if (kind.budgetMs) {
-    deadline = Date.now() + ctx.timing.appleMs;
-  } else {
-    ctx.liveDeadline ??= Date.now() + ctx.timing.liveMs;
-    deadline = ctx.liveDeadline;
-  }
+  // Each kind has its own time (Admin › Fare AI › Time limits, fare_timing.ts),
+  // every server of the kind included.
+  const deadline = Date.now() +
+    (kind.provider === "waze" ? ctx.timing.wazeMs : kind.provider === "gmap" ? ctx.timing.gmapMs : ctx.timing.appleMs);
   for (const server of available) {
     const left = deadline - Date.now();
     if (left < 300) return { estimate: null, reason: `${p}_out_of_time` };

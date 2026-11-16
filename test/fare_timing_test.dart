@@ -13,14 +13,14 @@ void main() {
   group('FareTiming', () {
     test('defaults as the server has them; seconds bounded; two settings', () {
       const d = FareTiming.defaults;
-      expect([d.liveSeconds, d.appleSeconds, d.aiSeconds, d.osrmSeconds, d.appWaitSeconds, d.deviceApple, d.deviceAppleSeconds],
-          [3, 1.5, 5, 3, 5, true, 1.5]);
+      expect([d.wazeSeconds, d.gmapSeconds, d.appleSeconds, d.aiSeconds, d.osrmSeconds, d.appWaitSeconds, d.deviceApple, d.deviceAppleSeconds],
+          [2, 2, 1.5, 5, 3, 5, true, 1.5]);
       expect(d.appWait, const Duration(seconds: 5));
       final t = FareTiming.fromJson(
-        server: {'liveSeconds': 2, 'appleSeconds': 99, 'aiSeconds': 'x', 'osrmSeconds': 0.1},
+        server: {'wazeSeconds': 2.5, 'gmapSeconds': 1, 'appleSeconds': 99, 'aiSeconds': 'x', 'osrmSeconds': 0.1},
         app: {'appWaitSeconds': 7.5, 'deviceApple': false, 'deviceAppleSeconds': 1},
       );
-      expect([t.liveSeconds, t.appleSeconds, t.aiSeconds, t.osrmSeconds], [2, 10, 5, 0.5]);
+      expect([t.wazeSeconds, t.gmapSeconds, t.appleSeconds, t.aiSeconds, t.osrmSeconds], [2.5, 1, 10, 5, 0.5]);
       expect([t.appWaitSeconds, t.deviceApple, t.deviceAppleSeconds], [7.5, false, 1]);
       expect(FareTiming.fromJson(server: t.serverJson(), app: t.appJson()), t);
       expect(t.appJson().keys, ['appWaitSeconds', 'deviceApple', 'deviceAppleSeconds']);

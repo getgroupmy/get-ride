@@ -455,8 +455,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
               Text(
                 'Each step is asked only when the one before has no answer. Waze: live traffic, distance and tolls '
                 'from the GET.route pool on the office NAS. Google Maps: Google\'s recommended route and live time '
-                'from the Traffic Scraper on the office NAS (no toll prices). Waze and Google Maps share the same '
-                '3 seconds, so the next steps still answer in time. AI: the provider below. OSRM: road distance and '
+                'from the Traffic Scraper on the office NAS (no toll prices). Each step has its own time (Time limits below). AI: the provider below. OSRM: road distance and '
                 'time without traffic, from the office NAS maps (or the OSRM server when the NAS is off). '
                 'Apple Maps: Apple\'s route and time from GET.route Apple Maps on the office NAS (Apple\'s official '
                 'Maps Server API, 25,000 calls a day, no toll prices); it has its own 1.5 seconds. The Waze / Google '
@@ -633,7 +632,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
     return [
             const SizedBox(height: 4),
             Text(
-              'Which one a fare asks first. The other is that fare\'s backup, in the same 3 seconds. '
+              'Which one a fare asks first. The other is that fare\'s backup, in its own time (Time limits). '
               'Waze answers about 368 lookups a minute (GET.route pool); Google Maps about 70 (one NAS).',
               style: t.textTheme.bodySmall,
             ),
@@ -803,10 +802,9 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
       ]);
     }
 
-    final live = c.uses('waze') || c.uses('gmap');
     // The longest the live-traffic steps can take before the AI and OSRM:
-    // Waze and Google Maps, then Apple Maps on the server or the phone.
-    final before = (live ? f.liveSeconds : 0) +
+    // Waze, then Google Maps, then Apple Maps on the server or the phone.
+    final before = (c.uses('waze') ? f.wazeSeconds : 0) + (c.uses('gmap') ? f.gmapSeconds : 0) +
         [if (c.uses('apple')) f.appleSeconds, if (f.deviceApple) f.deviceAppleSeconds, 0.0].reduce((a, b) => a > b ? a : b);
     final tooLong = (c.uses('ai') || c.uses('osrm')) && before >= f.appWaitSeconds;
     return [
@@ -823,10 +821,12 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
               'next fares for ${retryLabel(c)}.',
               style: t.textTheme.bodySmall,
             ),
-            if (live)
-              row('liveSeconds', 'Waze and Google Maps',
-                  'Shared: the first one asked may use all of it, the second gets what is left.', f.liveSeconds,
-                  (v) => set(f.copyWith(liveSeconds: v))),
+            if (c.uses('waze'))
+              row('wazeSeconds', 'Waze', 'Every Waze server tried, together.', f.wazeSeconds,
+                  (v) => set(f.copyWith(wazeSeconds: v))),
+            if (c.uses('gmap'))
+              row('gmapSeconds', 'Google Maps', 'Every Google Maps server tried, together.', f.gmapSeconds,
+                  (v) => set(f.copyWith(gmapSeconds: v))),
             if (c.uses('apple'))
               row('appleSeconds', 'Apple Maps server', 'GET.route Apple Maps on the office NAS.', f.appleSeconds,
                   (v) => set(f.copyWith(appleSeconds: v))),

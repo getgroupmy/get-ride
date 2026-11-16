@@ -4,7 +4,9 @@
  *
  * Server steps, in `fare_ai_provider.timing` (admins only):
  *
- *   liveSeconds   Waze and Google Maps together, shared (default 3)
+ *   wazeSeconds   Waze (default 2)
+ *   gmapSeconds   Google Maps (default 2); each has its own time, so the
+ *                 second one asked always gets a full try
  *   appleSeconds  the Apple Maps server step (default 1.5)
  *   aiSeconds     each AI call (default 5)
  *   osrmSeconds   the office NAS OSRM (default 3)
@@ -34,17 +36,19 @@
 import type { FareStep } from "./fare_chain.ts";
 
 export interface ServerTiming {
-  liveMs: number;
+  wazeMs: number;
+  gmapMs: number;
   appleMs: number;
   aiMs: number;
   osrmMs: number;
 }
 
-export const DEFAULT_SERVER_TIMING: ServerTiming = { liveMs: 3_000, appleMs: 1_500, aiMs: 5_000, osrmMs: 3_000 };
+export const DEFAULT_SERVER_TIMING: ServerTiming = { wazeMs: 2_000, gmapMs: 2_000, appleMs: 1_500, aiMs: 5_000, osrmMs: 3_000 };
 
 /** The bounds an admin may set, in seconds. */
 export const TIMING_BOUNDS = {
-  liveSeconds: [0.5, 15],
+  wazeSeconds: [0.5, 15],
+  gmapSeconds: [0.5, 15],
   appleSeconds: [0.5, 10],
   aiSeconds: [1, 30],
   osrmSeconds: [0.5, 10],
@@ -68,7 +72,8 @@ export function serverTimingOf(config: Record<string, unknown> | null | undefine
   const t = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
   const d = DEFAULT_SERVER_TIMING;
   return {
-    liveMs: ms(t.liveSeconds, "liveSeconds", d.liveMs),
+    wazeMs: ms(t.wazeSeconds, "wazeSeconds", d.wazeMs),
+    gmapMs: ms(t.gmapSeconds, "gmapSeconds", d.gmapMs),
     appleMs: ms(t.appleSeconds, "appleSeconds", d.appleMs),
     aiMs: ms(t.aiSeconds, "aiSeconds", d.aiMs),
     osrmMs: ms(t.osrmSeconds, "osrmSeconds", d.osrmMs),

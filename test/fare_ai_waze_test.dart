@@ -474,13 +474,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Time limits'), findsOneWidget);
-    for (final k in ['liveSeconds', 'appleSeconds', 'aiSeconds', 'osrmSeconds', 'appWaitSeconds', 'deviceAppleSeconds']) {
+    for (final k in ['wazeSeconds', 'gmapSeconds', 'appleSeconds', 'aiSeconds', 'osrmSeconds', 'appWaitSeconds', 'deviceAppleSeconds']) {
       expect(find.byKey(ValueKey('timing-$k')), findsOneWidget, reason: k);
     }
-    expect(find.byKey(const ValueKey('timing-too-long')), findsNothing, reason: '3 + 1.5 s is under 5 s');
+    // 2 + 2 + 1.5 s: past the app's 5 s.
+    expect(find.byKey(const ValueKey('timing-too-long')), findsOneWidget);
+    expect(find.textContaining('can take 5.5 s'), findsOneWidget);
 
-    // Waze / Google Maps to the top (15 s): past the app's wait.
-    await tester.drag(find.byKey(const ValueKey('timing-liveSeconds')), const Offset(2000, 0));
+    // Google Maps down to the bottom (0.5 s): 4 s, inside the wait.
+    await tester.drag(find.byKey(const ValueKey('timing-gmapSeconds')), const Offset(-2000, 0));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('timing-too-long')), findsNothing);
+
+    // Waze to the top (15 s): past it again.
+    await tester.drag(find.byKey(const ValueKey('timing-wazeSeconds')), const Offset(2000, 0));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('timing-too-long')), findsOneWidget);
 
@@ -491,8 +498,8 @@ void main() {
     await tester.tap(find.text('Save changes'));
     await tester.pumpAndSettle();
     final f = repo.saved.single.timing;
-    expect([f.liveSeconds, f.deviceApple], [15, false]);
-    expect(repo.saved.single.toJson()['timing']['liveSeconds'], 15);
+    expect([f.wazeSeconds, f.gmapSeconds, f.deviceApple], [15, 0.5, false]);
+    expect(repo.saved.single.toJson()['timing']['wazeSeconds'], 15);
   });
 
   testWidgets('each server card shows its health', (tester) async {

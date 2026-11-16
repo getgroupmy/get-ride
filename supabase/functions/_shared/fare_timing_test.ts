@@ -10,13 +10,13 @@ import {
   serverTimingOf,
 } from "./fare_timing.ts";
 
-Deno.test("serverTimingOf: defaults as before (3 s, 1.5 s, 5 s, 3 s), seconds in, bounded", () => {
+Deno.test("serverTimingOf: Waze and Google Maps 2 s each, Apple 1.5 s, AI 5 s, OSRM 3 s; seconds in, bounded", () => {
   assertEquals(serverTimingOf(null), DEFAULT_SERVER_TIMING);
-  assertEquals(serverTimingOf({ timing: { liveSeconds: 2, appleSeconds: 1, aiSeconds: 4, osrmSeconds: 2.5 } }), {
-    liveMs: 2_000, appleMs: 1_000, aiMs: 4_000, osrmMs: 2_500,
+  assertEquals(serverTimingOf({ timing: { wazeSeconds: 2.5, gmapSeconds: 1, appleSeconds: 1, aiSeconds: 4, osrmSeconds: 2.5 } }), {
+    wazeMs: 2_500, gmapMs: 1_000, appleMs: 1_000, aiMs: 4_000, osrmMs: 2_500,
   });
-  assertEquals(serverTimingOf({ timing: { liveSeconds: 0, aiSeconds: 999, osrmSeconds: "x" } }), {
-    liveMs: 500, appleMs: 1_500, aiMs: 30_000, osrmMs: 3_000,
+  assertEquals(serverTimingOf({ timing: { wazeSeconds: 0, gmapSeconds: 99, aiSeconds: 999, osrmSeconds: "x" } }), {
+    wazeMs: 500, gmapMs: 15_000, appleMs: 1_500, aiMs: 30_000, osrmMs: 3_000,
   });
 });
 

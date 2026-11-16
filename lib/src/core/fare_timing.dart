@@ -14,7 +14,8 @@ const fareTimingSettingKey = 'fare_timing';
 
 class FareTiming {
   const FareTiming({
-    this.liveSeconds = 3,
+    this.wazeSeconds = 2,
+    this.gmapSeconds = 2,
     this.appleSeconds = 1.5,
     this.aiSeconds = 5,
     this.osrmSeconds = 3,
@@ -27,7 +28,8 @@ class FareTiming {
 
   /// The bounds an admin may set, in seconds (as `TIMING_BOUNDS`).
   static const bounds = <String, (double, double)>{
-    'liveSeconds': (0.5, 15),
+    'wazeSeconds': (0.5, 15),
+    'gmapSeconds': (0.5, 15),
     'appleSeconds': (0.5, 10),
     'aiSeconds': (1, 30),
     'osrmSeconds': (0.5, 10),
@@ -35,8 +37,11 @@ class FareTiming {
     'deviceAppleSeconds': (0.5, 10),
   };
 
-  /// Waze and Google Maps together, shared.
-  final double liveSeconds;
+  /// Waze (every server of it).
+  final double wazeSeconds;
+
+  /// Google Maps (every server of it).
+  final double gmapSeconds;
 
   /// The Apple Maps server step.
   final double appleSeconds;
@@ -69,7 +74,8 @@ class FareTiming {
     final a = app is Map ? app : const {};
     const d = defaults;
     return FareTiming(
-      liveSeconds: _sec(s['liveSeconds'], 'liveSeconds', d.liveSeconds),
+      wazeSeconds: _sec(s['wazeSeconds'], 'wazeSeconds', d.wazeSeconds),
+      gmapSeconds: _sec(s['gmapSeconds'], 'gmapSeconds', d.gmapSeconds),
       appleSeconds: _sec(s['appleSeconds'], 'appleSeconds', d.appleSeconds),
       aiSeconds: _sec(s['aiSeconds'], 'aiSeconds', d.aiSeconds),
       osrmSeconds: _sec(s['osrmSeconds'], 'osrmSeconds', d.osrmSeconds),
@@ -80,7 +86,7 @@ class FareTiming {
   }
 
   Map<String, dynamic> serverJson() =>
-      {'liveSeconds': liveSeconds, 'appleSeconds': appleSeconds, 'aiSeconds': aiSeconds, 'osrmSeconds': osrmSeconds};
+      {'wazeSeconds': wazeSeconds, 'gmapSeconds': gmapSeconds, 'appleSeconds': appleSeconds, 'aiSeconds': aiSeconds, 'osrmSeconds': osrmSeconds};
 
   Map<String, dynamic> appJson() =>
       {'appWaitSeconds': appWaitSeconds, 'deviceApple': deviceApple, 'deviceAppleSeconds': deviceAppleSeconds};
@@ -89,7 +95,8 @@ class FareTiming {
   Duration get deviceAppleWait => Duration(milliseconds: (deviceAppleSeconds * 1000).round());
 
   FareTiming copyWith({
-    double? liveSeconds,
+    double? wazeSeconds,
+    double? gmapSeconds,
     double? appleSeconds,
     double? aiSeconds,
     double? osrmSeconds,
@@ -98,7 +105,8 @@ class FareTiming {
     double? deviceAppleSeconds,
   }) =>
       FareTiming(
-        liveSeconds: liveSeconds ?? this.liveSeconds,
+        wazeSeconds: wazeSeconds ?? this.wazeSeconds,
+        gmapSeconds: gmapSeconds ?? this.gmapSeconds,
         appleSeconds: appleSeconds ?? this.appleSeconds,
         aiSeconds: aiSeconds ?? this.aiSeconds,
         osrmSeconds: osrmSeconds ?? this.osrmSeconds,
@@ -110,7 +118,8 @@ class FareTiming {
   @override
   bool operator ==(Object other) =>
       other is FareTiming &&
-      other.liveSeconds == liveSeconds &&
+      other.wazeSeconds == wazeSeconds &&
+      other.gmapSeconds == gmapSeconds &&
       other.appleSeconds == appleSeconds &&
       other.aiSeconds == aiSeconds &&
       other.osrmSeconds == osrmSeconds &&
@@ -120,5 +129,5 @@ class FareTiming {
 
   @override
   int get hashCode =>
-      Object.hash(liveSeconds, appleSeconds, aiSeconds, osrmSeconds, appWaitSeconds, deviceApple, deviceAppleSeconds);
+      Object.hash(wazeSeconds, gmapSeconds, appleSeconds, aiSeconds, osrmSeconds, appWaitSeconds, deviceApple, deviceAppleSeconds);
 }

@@ -2,8 +2,8 @@
  * Waze / Google Maps balance (Admin › Settings › Fare AI provider,
  * `fare_ai_provider.liveBalance`).
  *
- * The fare order asks the two live-traffic steps one after the other within
- * one shared budget (WAZE_TRIP_BUDGET_MS). By default Waze goes first and
+ * The fare order asks the two live-traffic steps one after the other, each
+ * within its own time (Admin › Time limits, _shared/fare_timing.ts). By default Waze goes first and
  * Google Maps only sees the trips Waze missed. The balance sends a share of
  * fares Google Maps first instead (Waze is then that trip's backup):
  *
