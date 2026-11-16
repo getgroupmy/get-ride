@@ -1,4 +1,4 @@
-// Advance-booking surcharge rates (migration 0414): the booking sheet reads the
+// Advance-booking surcharge rates (migration 0415): the booking sheet reads the
 // active rows live and previews the "+ RM x scheduling fee" the server will
 // charge. Empty where the table isn't in the database yet (older backend) — the
 // booking then falls back to the global scheduled-rides fee, as before.
