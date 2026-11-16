@@ -206,7 +206,6 @@ declare
   v_suburb  text := nullif(btrim(p_suburb), '');
   v_steps   jsonb;
   v_every   boolean;
-  cfg       jsonb;
 begin
   select d.steps, d.offer_everyone into v_steps, v_every
     from public.dispatch_ladder_rules d
@@ -241,14 +240,10 @@ begin
     return public.dispatch_ladder_expand(v_steps, v_every);
   end if;
 
-  -- No ladder configured here: the legacy per-service two-ring behaviour as a
-  -- ladder -- min, then max after widenAfter, then everybody.
-  cfg := public.vehicle_service_dispatch_config(v_service);
-  return public.dispatch_ladder_expand(
-    jsonb_build_array(
-      jsonb_build_object('radius_km', (cfg->>'search_radius_min_km')::numeric, 'hold_sec', (cfg->>'widen_after_sec')::int),
-      jsonb_build_object('radius_km', (cfg->>'search_radius_max_km')::numeric, 'hold_sec', (cfg->>'widen_after_sec')::int)),
-    true);
+  -- No ladder configured here: NULL, so the caller keeps the legacy per-service
+  -- min/max/widen dispatch unchanged. The ladder is purely additive -- it only
+  -- changes dispatch where an admin set one.
+  return null;
 end;
 $$;
 
@@ -380,8 +375,14 @@ begin
   v_ladder := r.dispatch_ladder;
   v_opened := r.dispatch_opened_at;
   if v_ladder is null then
-    v_opened := coalesce(r.fallback_pushed_at, r.dispatch_opened_at, r.created_at, now());
+    -- No frozen ladder yet: resolve from the pickup. NULL means no ladder is
+    -- configured here, so this request belongs to the legacy min/max path --
+    -- not ours.
     v_ladder := public.dispatch_ladder_for(r.service, r.pickup_lat, r.pickup_lng);
+    if v_ladder is null then
+      return -1;
+    end if;
+    v_opened := coalesce(r.fallback_pushed_at, r.dispatch_opened_at, r.created_at, now());
     update public.ride_requests
        set dispatch_ladder = v_ladder, dispatch_opened_at = v_opened
      where id = p_request;
@@ -446,9 +447,12 @@ security definer
 set search_path = public, extensions, vault
 as $$
 declare
+  cfg       jsonb;
   v_raised  boolean := tg_op = 'UPDATE';
   v_msg     jsonb;
   v_driver  uuid;
+  v_radius  double precision;
+  v_told    int := 0;
   v_reach   double precision;
   v_elapsed double precision;
 begin
@@ -488,22 +492,39 @@ begin
     return new;
   end if;
 
-  -- Open to all.
-  if not v_raised then
-    -- Fresh request: walk the ladder frozen on the row by the insert trigger.
-    perform public.ride_request_dispatch_advance(new.id);
+  -- Open to all with a configured ladder (0417): the ladder drives the push.
+  if new.dispatch_ladder is not null then
+    if not v_raised then
+      -- Fresh request: walk the ladder frozen on the row by the insert trigger.
+      perform public.ride_request_dispatch_advance(new.id);
+      return new;
+    end if;
+    -- Fare raised: re-ping whoever the ladder has already reached.
+    v_msg := public.ride_request_push_message(new.id, new.pickup_name, new.pickup_address, new.fare, new.currency, 'raised');
+    v_elapsed := extract(epoch from (now() - coalesce(new.dispatch_opened_at, new.created_at)));
+    v_reach := public.dispatch_ladder_reached_km(new.dispatch_ladder, v_elapsed);
+    if v_reach = -1 then
+      perform public.ride_request_push_everyone(new.id, v_msg, 'raised');
+    elsif v_reach is not null and v_reach > 0 then
+      perform public.ride_request_push_nearby(new.id, new.rider_id, new.pickup_lat, new.pickup_lng,
+                                              v_reach, v_msg, 'raised', false);
+    end if;
     return new;
   end if;
 
-  -- Fare raised: re-ping whoever the ladder has already reached.
-  v_msg := public.ride_request_push_message(new.id, new.pickup_name, new.pickup_address, new.fare, new.currency, 'raised');
-  v_elapsed := extract(epoch from (now() - coalesce(new.dispatch_opened_at, new.created_at)));
-  v_reach := public.dispatch_ladder_reached_km(new.dispatch_ladder, v_elapsed);
-  if v_reach = -1 or new.dispatch_ladder is null then
-    perform public.ride_request_push_everyone(new.id, v_msg, 'raised');
-  elsif v_reach is not null and v_reach > 0 then
-    perform public.ride_request_push_nearby(new.id, new.rider_id, new.pickup_lat, new.pickup_lng,
-                                            v_reach, v_msg, 'raised', false);
+  -- Open to all, no configured ladder: the legacy per-service min/max push
+  -- (0251), unchanged -- the drivers near the pickup at the min radius, or the
+  -- max once widened, or every driver when nobody is known nearby.
+  cfg := public.vehicle_service_dispatch_config(new.service);
+  v_radius := case when new.widened_pushed_at is not null
+                   then (cfg->>'search_radius_max_km')::double precision
+                   else (cfg->>'search_radius_min_km')::double precision end;
+  v_msg := public.ride_request_push_message(new.id, new.pickup_name, new.pickup_address, new.fare, new.currency,
+                                            case when v_raised then 'raised' else 'new' end);
+  v_told := public.ride_request_push_nearby(new.id, new.rider_id, new.pickup_lat, new.pickup_lng, v_radius, v_msg,
+                                            case when v_raised then 'raised' else 'nearby' end, false);
+  if v_told = 0 then
+    perform public.ride_request_push_everyone(new.id, v_msg, case when v_raised then 'raised' else 'everyone' end);
   end if;
   return new;
 exception when others then
@@ -604,13 +625,15 @@ begin
   if new.status = 'open' and new.targeted_until is null
      and not coalesce(new.airport_hold, false)
      and (new.stand_id is null or new.dispatch_mode = 'nearby') then
-    new.dispatch_opened_at := now();
-    new.dispatch_step := 0;
     begin
       new.dispatch_ladder := public.dispatch_ladder_for(new.service, new.pickup_lat, new.pickup_lng);
     exception when others then
       new.dispatch_ladder := null;
     end;
+    if new.dispatch_ladder is not null then
+      new.dispatch_opened_at := now();
+      new.dispatch_step := 0;
+    end if;
   end if;
   return new;
 end;
@@ -662,8 +685,10 @@ revoke execute on function public.ride_requests_my_ride_guard() from public, ano
 
 -- ----------------------------------------------------------------------------
 -- The favourites window of [p_request] is over (or the rider ended it): open it
--- to everybody, freeze the ladder from here, and start walking it. Returns how
--- many rings were pushed (-1 when there was nothing to do).
+-- to everybody. With a configured ladder (0417) freeze it here and start
+-- walking it; otherwise the legacy behaviour (0160) -- the min radius, the max
+-- where nobody is that close, or everybody where nobody is within that. Returns
+-- how many drivers / rings were pushed (-1 when there was nothing to do).
 -- ----------------------------------------------------------------------------
 create or replace function public.ride_request_open_to_all(p_request uuid)
 returns integer
@@ -674,14 +699,20 @@ as $$
 declare
   r public.ride_requests;
   v_ladder jsonb;
+  cfg jsonb;
+  v_msg jsonb;
+  v_min double precision;
+  v_max double precision;
+  v_told int := 0;
+  v_widened timestamptz;
 begin
   select * into r from public.ride_requests where id = p_request for update;
   if not found or r.status <> 'open' or r.targeted_until is null or r.fallback_pushed_at is not null then
     return -1;
   end if;
 
-  -- Resolve the ladder from the pickup point; a resolver error leaves it NULL
-  -- for advance() to stamp lazily rather than wedging the window-end.
+  -- Resolve any configured ladder from the pickup point; a resolver error (or no
+  -- rule) leaves it NULL -> the legacy path below.
   begin
     v_ladder := public.dispatch_ladder_for(r.service, r.pickup_lat, r.pickup_lng);
   exception when others then
@@ -692,25 +723,84 @@ begin
      set targeted_until = least(targeted_until, now()),
          fallback_pushed_at = now(),
          dispatch_ladder = v_ladder,
-         dispatch_opened_at = now(),
+         dispatch_opened_at = case when v_ladder is not null then now() else dispatch_opened_at end,
          dispatch_step = 0
    where id = p_request;
 
-  return public.ride_request_dispatch_advance(p_request);
+  if v_ladder is not null then
+    return public.ride_request_dispatch_advance(p_request);
+  end if;
+
+  -- Legacy (no configured ladder): min, then max where nobody is that close,
+  -- then everybody.
+  cfg := public.vehicle_service_dispatch_config(r.service);
+  v_min := (cfg->>'search_radius_min_km')::double precision;
+  v_max := (cfg->>'search_radius_max_km')::double precision;
+  begin
+    v_msg := public.ride_request_push_message(r.id, r.pickup_name, r.pickup_address, r.fare, r.currency, 'new');
+    v_told := public.ride_request_push_nearby(r.id, r.rider_id, r.pickup_lat, r.pickup_lng, v_min, v_msg, 'fallback', true);
+    if not exists (select 1 from public.nearby_online_drivers(r.pickup_lat, r.pickup_lng, v_min) d
+                    where d is distinct from r.rider_id) then
+      v_widened := now();
+      v_told := v_told + public.ride_request_push_nearby(r.id, r.rider_id, r.pickup_lat, r.pickup_lng, v_max, v_msg,
+                                                         'fallback', true);
+      if v_told = 0
+         and not exists (select 1 from public.nearby_online_drivers(r.pickup_lat, r.pickup_lng, v_max) d
+                          where d is distinct from r.rider_id) then
+        perform public.ride_request_push_everyone(r.id, v_msg, 'everyone');
+      end if;
+    end if;
+  exception when others then
+    null;  -- a push failure never keeps the request from opening
+  end;
+  if v_widened is not null then
+    update public.ride_requests set widened_pushed_at = v_widened where id = p_request and widened_pushed_at is null;
+  end if;
+  return v_told;
 end;
 $$;
 
 revoke execute on function public.ride_request_open_to_all(uuid) from public, anon, authenticated;
 
--- Kept for compatibility: widening is now one more turn of the ladder.
+-- A configured ladder widens by one more ring (advance); otherwise the legacy
+-- single widen to the max radius (0160).
 create or replace function public.ride_request_widen(p_request uuid)
 returns integer
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  r public.ride_requests;
+  cfg jsonb;
+  v_msg jsonb;
+  v_told int := 0;
 begin
-  return public.ride_request_dispatch_advance(p_request);
+  select * into r from public.ride_requests where id = p_request for update;
+  if not found then
+    return -1;
+  end if;
+  if r.dispatch_ladder is not null then
+    return public.ride_request_dispatch_advance(p_request);
+  end if;
+  -- Legacy widen.
+  if r.status <> 'open' or r.widened_pushed_at is not null
+     or (r.targeted_until is not null and r.fallback_pushed_at is null) then
+    return -1;
+  end if;
+  cfg := public.vehicle_service_dispatch_config(r.service);
+  if coalesce(r.fallback_pushed_at, r.created_at) > now() - make_interval(secs => (cfg->>'widen_after_sec')::int) then
+    return -1;
+  end if;
+  update public.ride_requests set widened_pushed_at = now() where id = p_request;
+  begin
+    v_msg := public.ride_request_push_message(r.id, r.pickup_name, r.pickup_address, r.fare, r.currency, 'new');
+    v_told := public.ride_request_push_nearby(r.id, r.rider_id, r.pickup_lat, r.pickup_lng,
+                                              (cfg->>'search_radius_max_km')::double precision, v_msg, 'widened', true);
+  exception when others then
+    null;
+  end;
+  return v_told;
 end;
 $$;
 
@@ -753,9 +843,10 @@ begin
        and (targeted_until is null or fallback_pushed_at is not null)
        and direct_driver_id is null
        and not airport_hold
-       and (dispatch_ladder is null or dispatch_step < jsonb_array_length(dispatch_ladder))
+       and ((dispatch_ladder is not null and dispatch_step < jsonb_array_length(dispatch_ladder))
+            or (dispatch_ladder is null and widened_pushed_at is null))
   loop
-    if public.ride_request_dispatch_advance(v_id) >= 0 then
+    if public.ride_request_widen(v_id) >= 0 then
       n := n + 1;
     end if;
   end loop;

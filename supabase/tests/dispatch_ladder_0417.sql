@@ -119,13 +119,11 @@ select pg_temp.raised(
 -- 4. Resolver: legacy fallback, a master rule, service-specific beats
 --    all-service, a country level beats master, inactive ignored.
 -- ---------------------------------------------------------------------------
--- 4a. No rows: the legacy per-service two-ring ladder. An unconfigured service
---     has no vehicle-services entry, so the config defaults apply (3 km, 15 km,
---     widen 30 s) + everybody -- independent of what seed.sql configures.
+-- 4a. No matching rule: NULL, so the caller keeps the legacy per-service
+--     min/max/widen dispatch (the ladder is purely additive).
 select pg_temp.check(
-  public.dispatch_ladder_at('zzz_unconfigured_service', 'Nowhere', null, null, null)
-  = '[{"after_sec":0,"radius_km":3},{"after_sec":30,"radius_km":15},{"after_sec":60,"radius_km":null}]'::jsonb,
-  'resolver: no rule -> legacy min/max/widen ladder');
+  public.dispatch_ladder_at('zzz_unconfigured_service', 'Nowhere', null, null, null) is null,
+  'resolver: no rule -> NULL (legacy dispatch unchanged)');
 
 -- 4b. A master all-service ladder wins everywhere.
 insert into public.dispatch_ladder_rules (level, service, steps, offer_everyone)
