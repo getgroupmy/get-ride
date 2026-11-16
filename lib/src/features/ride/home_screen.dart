@@ -1634,7 +1634,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       toggle = NowLaterToggle(
         laterSelected: at != null,
         nowLabel: nowLabel,
-        laterLabel: at != null ? pickupLabel(at) : (laterChip.label.trim().isEmpty ? 'Later' : laterChip.label),
+        laterLabel: at != null ? formatPickupChip(at) : (laterChip.label.trim().isEmpty ? 'Later' : laterChip.label),
         onNow: _selectNow,
         onLater: () => unawaited(_openLaterFromChip()),
       );
