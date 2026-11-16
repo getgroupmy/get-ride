@@ -20,6 +20,7 @@ import '../../admin_providers.dart';
 import 'api_keys_logic.dart';
 import 'claude_access_logic.dart';
 import 'elife_logic.dart';
+import '../../../core/fare_timing.dart';
 import 'fare_ai_logic.dart';
 import 'fraud_detection.dart';
 import 'ip_access_logic.dart';
@@ -320,9 +321,27 @@ class SecurityRepository {
     }
   }
 
-  Future<FareAiConfig> fareAiConfig() async => normalizeFareAi(await _appSetting(fareAiRemoteKey));
+  /// The Fare AI config, with the apps' time limits from the readable
+  /// `fare_timing` setting (the Time limits card edits both).
+  Future<FareAiConfig> fareAiConfig() async {
+    final raw = await _appSetting(fareAiRemoteKey);
+    Object? app;
+    try {
+      app = await _appSetting(fareTimingSettingKey);
+    } catch (_) {
+      app = null;
+    }
+    final o = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    return normalizeFareAi({...o, 'appTiming': app});
+  }
 
-  Future<void> saveFareAiConfig(FareAiConfig c) => _saveAppSetting(fareAiRemoteKey, normalizeFareAi(c.toJson()).toJson());
+  /// Saves the Fare AI config, and the apps' time limits as `fare_timing`
+  /// (readable by every app; `appTiming` is not kept in the admin-only row).
+  Future<void> saveFareAiConfig(FareAiConfig c) async {
+    final json = normalizeFareAi(c.toJson()).toJson()..remove('appTiming');
+    await _saveAppSetting(fareAiRemoteKey, json);
+    await _saveAppSetting(fareTimingSettingKey, c.timing.appJson());
+  }
 
   Future<Map<String, FareAiKeyState>> fareAiKeyStates() async {
     try {

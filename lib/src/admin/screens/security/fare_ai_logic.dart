@@ -5,6 +5,7 @@ library;
 
 import 'package:uuid/uuid.dart';
 
+import '../../../core/fare_timing.dart';
 import '../../../core/partner_type_rules.dart' show RegionScope;
 
 const fareAiRemoteKey = 'fare_ai_provider';
@@ -255,6 +256,7 @@ class FareAiConfig {
     this.gmapServers = const [],
     this.appleServers = const [],
     this.liveBalance = FareLiveBalance.off,
+    this.timing = FareTiming.defaults,
   });
 
   /// The order estimates are asked in ([fareSteps]); empty = no estimate.
@@ -271,6 +273,10 @@ class FareAiConfig {
 
   /// Which of Waze and Google Maps a fare asks first, when both are in [chain].
   final FareLiveBalance liveBalance;
+
+  /// The time limits per step ([FareTiming]); the server's are saved here
+  /// (`timing`), the apps' in the readable `fare_timing` setting.
+  final FareTiming timing;
 
   /// Any estimates at all (the old on/off switch, still saved for older proxies).
   bool get serviceEnabled => chain.isNotEmpty;
@@ -304,6 +310,7 @@ class FareAiConfig {
     List<WazeServer>? gmapServers,
     List<WazeServer>? appleServers,
     FareLiveBalance? liveBalance,
+    FareTiming? timing,
     String? provider,
     int? retryAfterValue,
     String? retryAfterUnit,
@@ -318,6 +325,7 @@ class FareAiConfig {
         gmapServers: gmapServers ?? this.gmapServers,
         appleServers: appleServers ?? this.appleServers,
         liveBalance: liveBalance ?? this.liveBalance,
+        timing: timing ?? this.timing,
         provider: provider ?? this.provider,
         retryAfterValue: retryAfterValue ?? this.retryAfterValue,
         retryAfterUnit: retryAfterUnit ?? this.retryAfterUnit,
@@ -339,6 +347,9 @@ class FareAiConfig {
         'gmapServers': [for (final s in gmapServers) s.toJson()],
         'appleServers': [for (final s in appleServers) s.toJson()],
         if (liveBalance != FareLiveBalance.off) 'liveBalance': liveBalance.toJson(),
+        'timing': timing.serverJson(),
+        // Not stored in this setting: SecurityRepository saves it as `fare_timing`.
+        'appTiming': timing.appJson(),
         'provider': provider,
         'retryAfterValue': retryAfterValue,
         'retryAfterUnit': retryAfterUnit,
@@ -410,6 +421,7 @@ FareAiConfig normalizeFareAi(Object? raw) {
     gmapServers: _wazeServerList(o['gmapServers'], defaultLabel: 'Google Maps server'),
     appleServers: _wazeServerList(o['appleServers'], defaultLabel: 'Apple Maps server'),
     liveBalance: FareLiveBalance.fromJson(o['liveBalance']),
+    timing: FareTiming.fromJson(server: o['timing'], app: o['appTiming']),
     provider: provider,
     retryAfterValue: retryValue,
     retryAfterUnit: retryUnit,

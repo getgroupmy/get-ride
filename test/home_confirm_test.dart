@@ -26,6 +26,7 @@ import 'package:get_ride/src/core/ride_draft.dart';
 import 'package:get_ride/src/core/ride_rebook.dart';
 import 'package:get_ride/src/core/saved_drafts.dart';
 import 'package:get_ride/src/data/ride_draft_store.dart' show rideDraftOfferedThisRun;
+import 'package:get_ride/src/core/fare_timing.dart';
 import 'package:get_ride/src/core/route_estimate.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/coin_trade_repository.dart';
@@ -100,6 +101,7 @@ class _SlowAi implements RouteEstimateRepository {
     LatLng from,
     LatLng to, {
     List<LatLng> via = const [],
+    FareTiming timing = FareTiming.defaults,
   }) => answer.future;
 
   @override
@@ -118,6 +120,7 @@ class _StopsAi implements RouteEstimateRepository {
     LatLng from,
     LatLng to, {
     List<LatLng> via = const [],
+    FareTiming timing = FareTiming.defaults,
   }) async {
     asked.add(via);
     return (

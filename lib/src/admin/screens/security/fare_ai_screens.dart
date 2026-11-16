@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/fare_timing.dart';
 import '../../../widgets/busy.dart';
 import '../../../widgets/common.dart';
 import '../../../widgets/loading_skeleton.dart';
@@ -469,6 +470,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
         if (c.uses('gmap')) ..._serverSection(c, _ServerKind.gmap, canEdit),
         if (c.uses('apple')) ..._serverSection(c, _ServerKind.apple, canEdit),
         if ((c.uses('waze') && c.uses('gmap')) || appleBalanceApplies(c.chain)) ..._balanceSection(c, canEdit),
+        if (c.chain.isNotEmpty) ..._timingSection(c, canEdit),
         const SizedBox(height: 12),
         Text(_aiTitle(c), style: t.textTheme.titleMedium),
         const SizedBox(height: 6),
@@ -769,6 +771,105 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
           ),
         ]),
       ],
+    ];
+  }
+
+  /// Time limits (Admin › Fare AI provider): how long each step may take
+  /// before the fare goes to the next, and how long the rider app waits in
+  /// all (`_shared/fare_timing.ts`, [FareTiming]).
+  List<Widget> _timingSection(FareAiConfig c, bool canEdit) {
+    final t = Theme.of(context);
+    final f = c.timing;
+    void set(FareTiming next) => _update(c.copyWith(timing: next));
+    String secs(double v) => '${v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(1)} s';
+    Widget row(String key, String label, String help, double value, ValueChanged<double> onChanged) {
+      final (lo, hi) = FareTiming.bounds[key]!;
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const SizedBox(height: 8),
+        Row(children: [
+          Expanded(child: Text(label, style: t.textTheme.bodyLarge)),
+          Text(secs(value), key: ValueKey('timing-$key-value'), style: t.textTheme.titleSmall),
+        ]),
+        Text(help, style: t.textTheme.bodySmall),
+        Slider(
+          key: ValueKey('timing-$key'),
+          value: value.clamp(lo, hi),
+          min: lo,
+          max: hi,
+          divisions: ((hi - lo) * 2).round(),
+          label: secs(value),
+          onChanged: canEdit ? (v) => onChanged((v * 2).round() / 2) : null,
+        ),
+      ]);
+    }
+
+    final live = c.uses('waze') || c.uses('gmap');
+    // The longest the live-traffic steps can take before the AI and OSRM:
+    // Waze and Google Maps, then Apple Maps on the server or the phone.
+    final before = (live ? f.liveSeconds : 0) +
+        [if (c.uses('apple')) f.appleSeconds, if (f.deviceApple) f.deviceAppleSeconds, 0.0].reduce((a, b) => a > b ? a : b);
+    final tooLong = (c.uses('ai') || c.uses('osrm')) && before >= f.appWaitSeconds;
+    return [
+      const SizedBox(height: 16),
+      Card(
+        key: const ValueKey('fare-timing-card'),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Time limits', style: t.textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              'How long each step may take before the fare goes to the next one. A step that fails is skipped on the '
+              'next fares for ${retryLabel(c)}.',
+              style: t.textTheme.bodySmall,
+            ),
+            if (live)
+              row('liveSeconds', 'Waze and Google Maps',
+                  'Shared: the first one asked may use all of it, the second gets what is left.', f.liveSeconds,
+                  (v) => set(f.copyWith(liveSeconds: v))),
+            if (c.uses('apple'))
+              row('appleSeconds', 'Apple Maps server', 'GET.route Apple Maps on the office NAS.', f.appleSeconds,
+                  (v) => set(f.copyWith(appleSeconds: v))),
+            if (c.uses('ai'))
+              row('aiSeconds', 'AI, each key', 'Each AI key tried, one after another.', f.aiSeconds, (v) => set(f.copyWith(aiSeconds: v))),
+            if (c.uses('osrm'))
+              row('osrmSeconds', 'OSRM (office NAS)', 'Else the public OSRM server\'s answer is used.', f.osrmSeconds,
+                  (v) => set(f.copyWith(osrmSeconds: v))),
+            row('appWaitSeconds', 'Rider app waits in all',
+                '"Calculating fare". Past it the app prices the plain route on the phone.', f.appWaitSeconds,
+                (v) => set(f.copyWith(appWaitSeconds: v))),
+            const Divider(height: 24),
+            SwitchListTile(
+              key: const ValueKey('timing-deviceApple'),
+              contentPadding: EdgeInsets.zero,
+              title: const Text('iPhones ask Apple Maps themselves'),
+              subtitle: const Text(
+                'In Apple Maps\' place in the order, or right after Waze and Google Maps when it isn\'t in it. On the '
+                'phone (MapKit): no server and no quota. Shown and logged as "Apple Maps (iPhone)".',
+              ),
+              value: f.deviceApple,
+              onChanged: canEdit ? (v) => set(f.copyWith(deviceApple: v)) : null,
+            ),
+            if (f.deviceApple)
+              row('deviceAppleSeconds', 'Apple Maps on the iPhone', 'How long the phone waits for Apple Maps.',
+                  f.deviceAppleSeconds, (v) => set(f.copyWith(deviceAppleSeconds: v))),
+            if (tooLong) ...[
+              const SizedBox(height: 8),
+              Row(key: const ValueKey('timing-too-long'), children: [
+                Icon(Icons.warning_amber_rounded, color: t.colorScheme.error, size: 20),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Waze, Google Maps and Apple Maps together can take ${secs(before)}, as long as the '
+                    'app waits (${secs(f.appWaitSeconds)}): when they all miss, the AI and OSRM answer too late.',
+                    style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.error),
+                  ),
+                ),
+              ]),
+            ],
+          ]),
+        ),
+      ),
     ];
   }
 
