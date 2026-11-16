@@ -138,14 +138,22 @@ class BookingChipsRow extends StatelessWidget {
       ));
     }
     return Padding(
-      padding: const EdgeInsets.only(top: 8, bottom: 2),
+      padding: const EdgeInsets.only(top: 2, bottom: 2),
       child: LayoutBuilder(
         builder: (context, c) => SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: padding,
           child: ConstrainedBox(
             constraints: BoxConstraints(minWidth: (c.maxWidth - padding.horizontal).clamp(0.0, double.infinity)),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: items),
+            // The "NEW" badge perches above a chip's top-right corner, so it
+            // overflows the pill. Reserve that room *inside* the scroll
+            // viewport (which clips its content): 8px of headroom for the top
+            // overhang and 2px on the right for the badge's side overhang — so
+            // the badge is never shaved by the scroll view's edge.
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8, right: 2),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: items),
+            ),
           ),
         ),
       ),
