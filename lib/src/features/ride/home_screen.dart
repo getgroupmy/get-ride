@@ -55,7 +55,7 @@ import '../../core/booking_chips.dart'
         bookingChipsEnabled,
         resolveBookingChips;
 import 'booking_chip_sheets.dart' show showLuggageSheet, showPassengersSheet;
-import '../../widgets/booking_chips_row.dart' show BookingChipsRow;
+import '../../widgets/booking_chips_row.dart' show BookingChipsRow, NowLaterToggle;
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/airport_areas.dart' show AirportArea, AreaPrecedenceRule;
@@ -1590,14 +1590,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (c.id == bookingChipLuggageId) unawaited(_openLuggageSheet());
   }
 
-  /// The Later chip: the same scheduled-ride flow as the footer Later button —
-  /// the existing date/time wheel, then book for that time. The chip replaces
-  /// the footer button (hidden while the chip is on), so there is one Later.
+  /// The Later side of the Now/Later toggle: open the date/time wheel and
+  /// *keep* the chosen pickup time (the toggle then shows it). The ride is
+  /// booked when the rider taps "Find a driver" (not here), so changing the
+  /// time, the pickup or the vehicle first is free. Re-tapping re-opens the
+  /// wheel on the time already set.
   Future<void> _openLaterFromChip() async {
     final c = ref.read(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
     if (!c.enabled) return;
     final at = await _pickLater(c);
-    if (at != null && mounted) await _bookLater(at);
+    if (at != null && mounted) setState(() => _scheduleAt = at);
+  }
+
+  /// The Now side of the toggle: drop any scheduled pickup time (book for now).
+  void _selectNow() {
+    if (_scheduleAt != null) setState(() => _scheduleAt = null);
+  }
+
+  /// The ride sheet's booking row. When the Later chip is on and scheduling is
+  /// available, the Now/Later pair is drawn as the sliding segmented toggle
+  /// (the mockup) that keeps a chosen pickup time; the remaining chips
+  /// (Passengers, Luggage, custom) stay as pills beside it.
+  Widget _bookingChipsRow(Map<String, dynamic> blob, ScheduledRidesConfig scheduleConfig) {
+    final all = resolveBookingChips(blob);
+    final laterChip = all.where((c) => c.id == bookingChipLaterId).firstOrNull;
+    final useToggle = laterChip != null && scheduleConfig.enabled;
+    final chips = useToggle
+        ? all.where((c) => c.id != bookingChipNowId && c.id != bookingChipLaterId).toList()
+        : all;
+    Widget? toggle;
+    if (laterChip != null && useToggle) {
+      final nowChip = all.where((c) => c.id == bookingChipNowId).firstOrNull;
+      final nowLabel = nowChip != null && nowChip.label.trim().isNotEmpty ? nowChip.label : 'Now';
+      final at = _scheduleAt;
+      toggle = NowLaterToggle(
+        laterSelected: at != null,
+        nowLabel: nowLabel,
+        laterLabel: at != null ? pickupLabel(at) : (laterChip.label.trim().isEmpty ? 'Later' : laterChip.label),
+        onNow: _selectNow,
+        onLater: () => unawaited(_openLaterFromChip()),
+      );
+    }
+    return BookingChipsRow(
+      chips: chips,
+      leading: toggle,
+      padding: EdgeInsets.zero,
+      // Now is the resting mode; the Passengers/Luggage chips open a sheet, so
+      // they show a caret.
+      selectedId: bookingChipNowId,
+      valueFor: _bookingChipValue,
+      onTap: _onBookingChipTap,
+    );
   }
 
   /// The biggest vehicle that can take this trip — the group-size cap.
@@ -2709,18 +2752,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// (nothing booked) when it is closed.
   Future<DateTime?> _pickLater(ScheduledRidesConfig c) {
     final fee = schedulingFee(_fareFor(_service), c);
-    return showPickupTimeSheet(context, c, note: fee > 0 ? '+ ${formatMoney(fee, _currency)} scheduling fee' : null);
+    return showPickupTimeSheet(context, c,
+        initial: _scheduleAt, note: fee > 0 ? '+ ${formatMoney(fee, _currency)} scheduling fee' : null);
   }
 
-  /// The booking for the time confirmed on that sheet.
+  /// The footer Later button's book-immediately path (used when the Later
+  /// booking chip is off). Holds the pickup time for this one booking and
+  /// books through [_find] (which confirms the codes and place fees at that
+  /// time), clearing the hold afterwards. The chip toggle instead keeps the
+  /// time (see [_openLaterFromChip]) and books on "Find a driver".
   Future<void> _bookLater(DateTime at) async {
     if (!mounted) return;
     setState(() => _scheduleAt = at);
     try {
-      // The codes for that pickup time, to keep, change or take off first.
-      if (!await _promosForLater(at)) return;
-      // The place fees at that time, locked when it is booked (0324).
-      if (!await _placeFeesForLater(at)) return;
       await _find();
     } finally {
       if (mounted && _scheduleAt != null) setState(() => _scheduleAt = null);
@@ -2747,6 +2791,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         context.push('/ride/${_ongoing!.id}').then((_) => _checkOngoing());
       }
       return;
+    }
+    // Booked for later: confirm the codes and the place fees at that pickup
+    // time before booking (the toggle kept the time; the footer Later button
+    // set it for this one booking). Either confirmation closing cancels.
+    final at = _scheduleAt;
+    if (at != null) {
+      if (!await _promosForLater(at) || !mounted) return;
+      if (!await _placeFeesForLater(at) || !mounted) return;
     }
     // Already known to be outside GET.ride's regions: say so again, at once.
     final gap = _gap;
@@ -4117,15 +4169,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // on the confirm step when an admin has turned it on (ships off; the
       // behaviour each chip drives lands in a later slice).
       bookingChips: confirming && bookingChipsEnabled(blob) && resolveBookingChips(blob).isNotEmpty
-          ? BookingChipsRow(
-              chips: resolveBookingChips(blob),
-              padding: EdgeInsets.zero,
-              // Now is the resting mode (Later books a scheduled ride); the
-              // Later/Passengers/Luggage chips open a sheet, so they show a caret.
-              selectedId: bookingChipNowId,
-              valueFor: _bookingChipValue,
-              onTap: _onBookingChipTap,
-            )
+          ? _bookingChipsRow(blob, scheduleConfig)
           : null,
       plus: plus,
       disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),

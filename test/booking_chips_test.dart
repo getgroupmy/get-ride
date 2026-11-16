@@ -11,7 +11,7 @@ void main() {
     final chips = resolveBookingChips(const {});
     expect(chips.map((c) => c.id), ids);
     expect(chips.map((c) => c.kind), ids); // a built-in's kind is its id
-    expect(chips.map((c) => c.label), ['Now', 'Later', 'Passengers', 'Luggage']);
+    expect(chips.map((c) => c.label), ['Now', 'Later', '', ''], reason: 'Passengers/Luggage ship wordless (icon + count)');
     expect(chips.every((c) => c.themed && !c.custom), isTrue);
     expect(chips.firstWhere((c) => c.id == bookingChipNowId).iconName, 'Clock');
   });
@@ -39,8 +39,8 @@ void main() {
     expect(chips.map((c) => c.id), isNot(contains(bookingChipNowId)), reason: 'Now hidden');
     expect(chips.first.id, bookingChipLuggageId, reason: 'moved to front');
     expect(chips.firstWhere((c) => c.id == bookingChipPassengersId).label, 'Pax');
-    // Renaming back to the default drops the override.
-    s = renameBookingChip(s, bookingChipPassengersId, 'Passengers');
+    // Renaming back to the default (blank) drops the override.
+    s = renameBookingChip(s, bookingChipPassengersId, '');
     expect((s['bookingChips'] as Map)['renames'], isNot(contains(bookingChipPassengersId)));
   });
 

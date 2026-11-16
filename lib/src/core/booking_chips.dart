@@ -20,11 +20,14 @@ const customBookingChipKind = 'custom';
 /// Each built-in chip in its natural order, with its default label and icon
 /// (a [lucideIcons] name). The admin may rename, re-icon, recolour, hide or
 /// reorder any of them, but never remove a built-in — only hide it.
+///
+/// Passengers and Luggage ship with no word (Grab-style: just the icon, the
+/// count and a chevron — "👤 1 ▾"); an admin can still give them a label.
 const defaultBookingChips = <({String id, String label, String icon})>[
   (id: bookingChipNowId, label: 'Now', icon: 'Clock'),
   (id: bookingChipLaterId, label: 'Later', icon: 'Calendar'),
-  (id: bookingChipPassengersId, label: 'Passengers', icon: 'User'),
-  (id: bookingChipLuggageId, label: 'Luggage', icon: 'Luggage'),
+  (id: bookingChipPassengersId, label: '', icon: 'User'),
+  (id: bookingChipLuggageId, label: '', icon: 'Luggage'),
 ];
 
 /// A chip as the row should draw it: its id and [kind], the admin's label, the
