@@ -20,7 +20,9 @@
 // With the Waze / Google Maps balance on "auto" (fare_ai_provider.liveBalance,
 // _shared/live_balance.ts), it also sets the share of fares asking Google
 // Maps first (fare_live_balance, 0414) from the last 15 minutes of
-// fare_ai_responses and this run's health results.
+// fare_ai_responses and this run's health results. With Apple Maps' share on
+// "auto" (liveBalance.apple) it sets that share too (apple_first_pct, 0416),
+// against Waze, and keeps it low while Apple Maps refuses for its quota.
 //
 // Deployed --no-verify-jwt: it authenticates itself with the webhook secret.
 //
@@ -29,7 +31,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { chainOf } from "../_shared/fare_chain.ts";
-import { balanceApplies, balanceOf, median, nextAutoShare, type StepStats } from "../_shared/live_balance.ts";
+import {
+  appleBalanceApplies,
+  appleBalanceOf,
+  balanceApplies,
+  balanceOf,
+  median,
+  nextAppleShare,
+  nextAutoShare,
+  type StepStats,
+} from "../_shared/live_balance.ts";
 import {
   APPLE_KIND,
   GMAP_KIND,
@@ -75,31 +86,70 @@ async function check({ server, kind }: { server: WazeServer; kind: RouteServerKi
   return { id: server.id, ...verdict };
 }
 
-/** The automatic Waze / Google Maps share: the last 15 minutes of real
- * (non-test) lookups per provider and this run's health, through
- * nextAutoShare, stored with its reason (fare_live_balance_set, 0414). */
-async function updateAutoBalance(config: Record<string, unknown>, health: { provider: string; state: string }[]) {
+interface Row {
+  provider: string;
+  success: boolean;
+  latency_ms: number | null;
+  http_status: number | null;
+  is_test?: boolean | null;
+}
+
+/** The last 15 minutes of real (non-test) Waze, Google Maps and Apple Maps
+ * lookups, read once for both automatic shares. */
+async function recentRows(): Promise<Row[]> {
   const since = new Date(Date.now() - 15 * 60_000).toISOString();
   const { data: rows, error } = await db
     .from("fare_ai_responses")
-    .select("provider, success, latency_ms, is_test")
-    .in("provider", ["waze", "gmap"])
+    .select("provider, success, latency_ms, http_status, is_test")
+    .in("provider", ["waze", "gmap", "apple"])
     .gte("created_at", since)
     .limit(5000);
   if (error) throw error;
-  const stats = (provider: string): StepStats => {
-    const mine = (rows ?? []).filter((r: { provider: string; is_test?: boolean | null }) => r.provider === provider && !r.is_test);
-    const kinds = health.filter((h) => h.provider === provider);
-    return {
-      attempts: mine.length,
-      successes: mine.filter((r: { success: boolean }) => r.success).length,
-      medianMs: median(mine.map((r: { latency_ms: number | null }) => Number(r.latency_ms))),
-      offline: kinds.length > 0 && kinds.every((h) => h.state === "down"),
-    };
+  return ((rows ?? []) as Row[]).filter((r) => !r.is_test);
+}
+
+function statsOf(rows: Row[], health: { provider: string; state: string }[], provider: string): StepStats {
+  const mine = rows.filter((r) => r.provider === provider);
+  const kinds = health.filter((h) => h.provider === provider);
+  return {
+    attempts: mine.length,
+    successes: mine.filter((r) => r.success).length,
+    medianMs: median(mine.map((r) => Number(r.latency_ms))),
+    offline: kinds.length > 0 && kinds.every((h) => h.state === "down"),
   };
+}
+
+/** The automatic Waze / Google Maps share: the last 15 minutes and this
+ * run's health, through nextAutoShare, stored with its reason
+ * (fare_live_balance_set, 0414). */
+async function updateAutoBalance(config: Record<string, unknown>, rows: Row[], health: { provider: string; state: string }[]) {
   const { data: current } = await db.from("fare_live_balance").select("gmap_first_pct").maybeSingle();
-  const decision = nextAutoShare(Number(current?.gmap_first_pct ?? 0), stats("waze"), stats("gmap"), balanceOf(config));
+  const decision = nextAutoShare(
+    Number(current?.gmap_first_pct ?? 0),
+    statsOf(rows, health, "waze"),
+    statsOf(rows, health, "gmap"),
+    balanceOf(config),
+  );
   const { error: setErr } = await db.rpc("fare_live_balance_set", { p_pct: decision.pct, p_reason: decision.reason });
+  if (setErr) throw setErr;
+  return decision;
+}
+
+/** The automatic Apple Maps share, against Waze (nextAppleShare), stored
+ * with its reason (fare_live_balance_set_apple, 0416). */
+async function updateAppleBalance(config: Record<string, unknown>, rows: Row[], health: { provider: string; state: string }[]) {
+  const { data: current } = await db.from("fare_live_balance").select("*").maybeSingle();
+  const apple = {
+    ...statsOf(rows, health, "apple"),
+    quotaRefusals: rows.filter((r) => r.provider === "apple" && (r.http_status === 503 || r.http_status === 429)).length,
+  };
+  const decision = nextAppleShare(
+    Number((current as Record<string, unknown> | null)?.apple_first_pct ?? 0),
+    statsOf(rows, health, "waze"),
+    apple,
+    appleBalanceOf(config),
+  );
+  const { error: setErr } = await db.rpc("fare_live_balance_set_apple", { p_pct: decision.pct, p_reason: decision.reason });
   if (setErr) throw setErr;
   return decision;
 }
@@ -130,14 +180,22 @@ Deno.serve(async (req) => {
     const results = await Promise.all(servers.map(check));
 
     let balance: unknown = null;
-    if (balanceApplies(chain) && balanceOf(config).mode === "auto") {
-      balance = await updateAutoBalance(config, servers.map((s, i) => ({ provider: s.kind.provider, state: results[i].state })))
-        .catch((e) => {
-          console.log("[waze-server-health] balance:", e instanceof Error ? e.message : String(e));
-          return null;
-        });
+    let appleBalance: unknown = null;
+    const gmapAuto = balanceApplies(chain) && balanceOf(config).mode === "auto";
+    const appleAuto = appleBalanceApplies(chain) && appleBalanceOf(config).mode === "auto";
+    if (gmapAuto || appleAuto) {
+      const health = servers.map((s, i) => ({ provider: s.kind.provider, state: results[i].state }));
+      const log = (what: string) => (e: unknown) => {
+        console.log(`[waze-server-health] ${what}:`, e instanceof Error ? e.message : String(e));
+        return null;
+      };
+      const rows = await recentRows().catch(log("recent lookups"));
+      if (rows) {
+        if (gmapAuto) balance = await updateAutoBalance(config, rows, health).catch(log("balance"));
+        if (appleAuto) appleBalance = await updateAppleBalance(config, rows, health).catch(log("apple balance"));
+      }
     }
-    return json({ servers: results, balance });
+    return json({ servers: results, balance, appleBalance });
   } catch (e) {
     console.log("[waze-server-health] error:", e instanceof Error ? e.message : String(e));
     return json({ error: "unavailable" }, 503);

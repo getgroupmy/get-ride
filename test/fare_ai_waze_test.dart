@@ -173,6 +173,33 @@ void main() {
       }
     });
 
+    test('the Apple Maps share: off by default, fixed or automatic, saved apart from Google Maps\' share', () {
+      expect(normalizeFareAi(null).liveBalance.appleLabel, 'Apple Maps keeps its place in the order');
+      expect(normalizeFareAi(null).toJson().containsKey('liveBalance'), isFalse);
+      final fixed = normalizeFareAi(null).copyWith(liveBalance: const FareLiveBalance(gmapFirstPct: 20, appleFirstPct: 10));
+      expect(fixed.toJson()['liveBalance'], {
+        'mode': 'fixed',
+        'gmapFirstPct': 20,
+        'minPct': 5,
+        'maxPct': 40,
+        'apple': {'mode': 'fixed', 'firstPct': 10, 'minPct': 0, 'maxPct': 30},
+      });
+      expect(normalizeFareAi(fixed.toJson()).liveBalance, const FareLiveBalance(gmapFirstPct: 20, appleFirstPct: 10));
+      expect(fixed.liveBalance.appleLabel, 'Apple Maps first for 10% of fares');
+      // Only Google Maps' share: no apple block, as before.
+      expect(normalizeFareAi(null).copyWith(liveBalance: const FareLiveBalance(gmapFirstPct: 20)).toJson()['liveBalance'],
+          {'mode': 'fixed', 'gmapFirstPct': 20, 'minPct': 5, 'maxPct': 40});
+      final auto = normalizeFareAi({'liveBalance': {'apple': {'mode': 'auto', 'minPct': 40, 'maxPct': 10}}}).liveBalance;
+      expect([auto.appleAuto, auto.appleMinPct, auto.appleMaxPct, auto.auto], [true, 10, 40, false]);
+      expect(auto.appleLabel, 'Automatic, 10–40% Apple Maps first');
+      final st = FareLiveBalanceState.fromRow({'gmap_first_pct': 5, 'apple_first_pct': 12, 'apple_reason': 'Apple Maps answers more often'});
+      expect([st.appleFirstPct, st.appleReason], [12, 'Apple Maps answers more often']);
+      expect(FareLiveBalanceState.fromRow({'gmap_first_pct': 5}).appleFirstPct, 0, reason: 'a database before 0416');
+      expect(appleBalanceApplies(['waze', 'apple', 'osrm']), isTrue);
+      expect(appleBalanceApplies(['apple', 'ai', 'osrm']), isFalse);
+      expect(liveBalanceTitle(['waze', 'gmap', 'apple', 'ai', 'osrm']), 'Waze / Google Maps / Apple Maps balance');
+    });
+
     test('the Waze / Google Maps balance: Waze first by default, fixed or automatic, survives a save', () {
       expect(normalizeFareAi(null).liveBalance, FareLiveBalance.off);
       expect(normalizeFareAi(null).toJson().containsKey('liveBalance'), isFalse, reason: 'unset stays unset');
@@ -318,7 +345,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Apple Maps servers'), findsOneWidget);
     expect(find.text('Google Maps servers'), findsNothing);
-    expect(find.text('Waze / Google Maps balance'), findsNothing, reason: 'the balance is Waze and Google Maps only');
+    expect(find.text('Waze / Google Maps balance'), findsNothing);
+    expect(find.text('Waze / Apple Maps balance'), findsOneWidget, reason: 'Apple Maps has a share of its own');
+    expect(find.byKey(const ValueKey('live-balance-fixed')), findsNothing, reason: 'no Google Maps share without it');
 
     await tester.tap(find.byKey(const ValueKey('add-apple-server')));
     await tester.pumpAndSettle();
@@ -384,6 +413,50 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.text('Waze / Google Maps balance'), findsNothing);
+  });
+
+  testWidgets('the Waze / Google Maps / Apple Maps balance: Google\'s share as before, Apple\'s own', (tester) async {
+    tester.view.physicalSize = const Size(900, 6000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repo = _Repo(normalizeFareAi(null).copyWith(
+        chain: ['waze', 'gmap', 'apple', 'ai', 'osrm'], liveBalance: const FareLiveBalance(gmapFirstPct: 20)))
+      ..balanceState = FareLiveBalanceState(
+          gmapFirstPct: 12,
+          appleFirstPct: 9,
+          appleReason: 'Apple Maps answers more often: Waze 90% of 40, Apple Maps 100% of 8 answered',
+          appleUpdatedAt: DateTime.now().toUtc().toIso8601String());
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        securityRepositoryProvider.overrideWithValue(repo),
+        adminAccessProvider.overrideWith((ref) async => const AdminAccess([AdminGrant(page: '*', edit: true)])),
+      ],
+      child: const MaterialApp(home: AdminFareAiScreen()),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Waze / Google Maps / Apple Maps balance'), findsOneWidget);
+    expect(find.byKey(const ValueKey('live-balance-fixed')), findsOneWidget, reason: 'Google Maps\' share is still there');
+    expect(find.text('Apple Maps keeps its place in the order'), findsOneWidget);
+
+    // Fixed Apple share: drag to the right end, capped by Google Maps' 20%.
+    await tester.drag(find.byKey(const ValueKey('apple-balance-fixed')), const Offset(2000, 0));
+    await tester.pumpAndSettle();
+    expect(find.text('Apple Maps first for 80% of fares, Google Maps 20%, Waze 0%'), findsOneWidget);
+
+    // Automatic, with the live share and its reason.
+    await tester.tap(find.descendant(of: find.byKey(const ValueKey('apple-balance-mode')), matching: find.text('Automatic')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('apple-balance-range')), findsOneWidget);
+    expect(find.text('Apple Maps first for between 0% and 30% of fares'), findsOneWidget);
+    expect(find.textContaining('Now: Apple Maps first for 9%'), findsOneWidget);
+    expect(find.textContaining('Apple Maps answers more often'), findsOneWidget);
+
+    await tester.tap(find.text('Save changes'));
+    await tester.pumpAndSettle();
+    final b = repo.saved.single.liveBalance;
+    expect([b.auto, b.gmapFirstPct, b.appleAuto, b.appleMinPct, b.appleMaxPct], [false, 20, true, 0, 30]);
+    expect(repo.saved.single.toJson()['liveBalance']['apple']['mode'], 'auto');
   });
 
   testWidgets('each server card shows its health', (tester) async {

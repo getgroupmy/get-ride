@@ -468,7 +468,7 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
         if (c.uses('waze')) ..._serverSection(c, _ServerKind.waze, canEdit),
         if (c.uses('gmap')) ..._serverSection(c, _ServerKind.gmap, canEdit),
         if (c.uses('apple')) ..._serverSection(c, _ServerKind.apple, canEdit),
-        if (c.uses('waze') && c.uses('gmap')) ..._balanceSection(c, canEdit),
+        if ((c.uses('waze') && c.uses('gmap')) || appleBalanceApplies(c.chain)) ..._balanceSection(c, canEdit),
         const SizedBox(height: 12),
         Text(_aiTitle(c), style: t.textTheme.titleMedium),
         const SizedBox(height: 6),
@@ -599,13 +599,15 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
     );
   }
 
-  /// Which of Waze and Google Maps a fare asks first: a fixed share, or an
-  /// automatic one inside a range (`_shared/live_balance.ts`).
+  /// Which live-traffic step a fare asks first: Google Maps' share and
+  /// Apple Maps' share, each fixed or automatic inside a range; Waze takes
+  /// the rest (`_shared/live_balance.ts`).
   List<Widget> _balanceSection(FareAiConfig c, bool canEdit) {
     final t = Theme.of(context);
     final b = c.liveBalance;
     void set(FareLiveBalance next) => _update(c.copyWith(liveBalance: next));
     final live = _balanceState;
+    final gmapOn = c.uses('waze') && c.uses('gmap');
     return [
       const SizedBox(height: 16),
       Card(
@@ -613,7 +615,20 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text('Waze / Google Maps balance', style: t.textTheme.titleMedium),
+            Text(liveBalanceTitle(c.chain), style: t.textTheme.titleMedium),
+            if (gmapOn) ..._gmapBalance(b, set, live, canEdit),
+            if (appleBalanceApplies(c.chain)) ..._appleBalance(c, b, set, live, canEdit),
+          ]),
+        ),
+      ),
+    ];
+  }
+
+  /// The Google Maps share (as the Waze / Google Maps balance had it).
+  List<Widget> _gmapBalance(
+      FareLiveBalance b, void Function(FareLiveBalance) set, FareLiveBalanceState? live, bool canEdit) {
+    final t = Theme.of(context);
+    return [
             const SizedBox(height: 4),
             Text(
               'Which one a fare asks first. The other is that fare\'s backup, in the same 3 seconds. '
@@ -674,9 +689,86 @@ class _FareAiState extends ConsumerState<AdminFareAiScreen> {
                 ),
               ]),
             ],
-          ]),
-        ),
+    ];
+  }
+
+  /// Apple Maps' share: taken from Waze's part, fixed or automatic.
+  List<Widget> _appleBalance(FareAiConfig c, FareLiveBalance b, void Function(FareLiveBalance) set,
+      FareLiveBalanceState? live, bool canEdit) {
+    final t = Theme.of(context);
+    final gmapFixed = c.uses('waze') && c.uses('gmap') && !b.auto ? b.gmapFirstPct : 0;
+    final appleFixed = b.appleFirstPct.clamp(0, 100 - gmapFixed);
+    return [
+      const SizedBox(height: 16),
+      Text('Apple Maps', style: t.textTheme.titleSmall),
+      const SizedBox(height: 4),
+      Text(
+        'A share of fares asks Apple Maps first, taken from Waze\'s part; Google Maps\' share stays as set above. '
+        'Apple Maps answers through Apple\'s official Maps Server API: 25,000 calls a day for the team, and the '
+        'NAS server allows 20 a minute, so keep the share small when traffic is high.',
+        style: t.textTheme.bodySmall,
       ),
+      const SizedBox(height: 12),
+      SegmentedButton<bool>(
+        key: const ValueKey('apple-balance-mode'),
+        segments: const [
+          ButtonSegment(value: false, label: Text('Fixed'), icon: Icon(Icons.tune)),
+          ButtonSegment(value: true, label: Text('Automatic'), icon: Icon(Icons.autorenew)),
+        ],
+        selected: {b.appleAuto},
+        onSelectionChanged: canEdit ? (v) => set(b.copyWith(appleAuto: v.first)) : null,
+      ),
+      const SizedBox(height: 12),
+      if (!b.appleAuto) ...[
+        Text(
+          b.appleFirstPct == 0
+              ? 'Apple Maps keeps its place in the order'
+              : 'Apple Maps first for $appleFixed% of fares'
+                  '${gmapFixed > 0 ? ', Google Maps $gmapFixed%, Waze ${100 - gmapFixed - appleFixed}%' : ', Waze first for ${100 - appleFixed}%'}',
+          key: const ValueKey('apple-balance-text'),
+        ),
+        Slider(
+          key: const ValueKey('apple-balance-fixed'),
+          value: b.appleFirstPct.toDouble(),
+          max: 100,
+          divisions: 20,
+          label: '${b.appleFirstPct}%',
+          onChanged: canEdit ? (v) => set(b.copyWith(appleFirstPct: v.round())) : null,
+        ),
+      ] else ...[
+        Text('Apple Maps first for between ${b.appleMinPct}% and ${b.appleMaxPct}% of fares',
+            key: const ValueKey('apple-balance-text')),
+        RangeSlider(
+          key: const ValueKey('apple-balance-range'),
+          values: RangeValues(b.appleMinPct.toDouble(), b.appleMaxPct.toDouble()),
+          max: 100,
+          divisions: 20,
+          labels: RangeLabels('${b.appleMinPct}%', '${b.appleMaxPct}%'),
+          onChanged:
+              canEdit ? (v) => set(b.copyWith(appleMinPct: v.start.round(), appleMaxPct: v.end.round())) : null,
+        ),
+        Text(
+          'Every minute the share moves a few points toward whichever of Waze and Apple Maps answered more of the '
+          'last 15 minutes\' fares, down when Apple Maps gets slow, and to the bottom of the range while Apple Maps '
+          'is offline or refusing for its quota.',
+          style: t.textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        Row(children: [
+          const Icon(Icons.speed, size: 18),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              live == null || live.appleUpdatedAt == null
+                  ? 'Now: not set yet (the first check after saving sets it)'
+                  : 'Now: Apple Maps first for ${live.appleFirstPct.clamp(b.appleMinPct, b.appleMaxPct)}% · '
+                      'updated ${formatRelative(live.appleUpdatedAt)}'
+                      '${live.appleReason != null ? '\n${live.appleReason}' : ''}',
+              key: const ValueKey('apple-balance-now'),
+            ),
+          ),
+        ]),
+      ],
     ];
   }
 

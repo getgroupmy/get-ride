@@ -96,7 +96,16 @@ import {
   type WazeServer,
 } from "../_shared/waze_route.ts";
 import { chainOf, OSRM_PROVIDER, osrmEstimate } from "../_shared/fare_chain.ts";
-import { balanceApplies, balanceOf, orderFor, pickGmapFirst } from "../_shared/live_balance.ts";
+import {
+  appleBalanceApplies,
+  appleBalanceOf,
+  balanceApplies,
+  balanceOf,
+  type LiveFirst,
+  liveFirstOf,
+  orderForFirst,
+  pickLiveFirst,
+} from "../_shared/live_balance.ts";
 import { nasRouteRequest, parseNasLink } from "../_shared/geo_nas.ts";
 
 const corsHeaders = {
@@ -358,12 +367,14 @@ Deno.serve(async (req: Request) => {
   if (chain.length === 0) {
     return json({ ok: true, estimate: null, reason: "service_disabled" });
   }
-  // Waze / Google Maps balance: a share of fares asks Google Maps first.
-  let liveFirst: "waze" | "gmap" | undefined;
-  if (balanceApplies(chain)) {
-    const share = await gmapFirstShare(admin, config);
-    chain = orderFor(chain, pickGmapFirst(share, Math.random()));
-    liveFirst = chain.indexOf("gmap") < chain.indexOf("waze") ? "gmap" : "waze";
+  // Waze / Google Maps / Apple Maps balance: a share of fares asks Google
+  // Maps first, another share Apple Maps, the rest Waze (_shared/live_balance.ts).
+  let liveFirst: LiveFirst | undefined;
+  const gmapOn = balanceApplies(chain), appleOn = appleBalanceApplies(chain);
+  if (gmapOn || appleOn) {
+    const shares = await liveShares(admin, config, gmapOn, appleOn);
+    chain = orderForFirst(chain, pickLiveFirst(shares.gmap, shares.apple, Math.random()));
+    liveFirst = liveFirstOf(chain);
   }
   const ctx: StepContext = {
     admin,
@@ -413,20 +424,37 @@ interface StepContext {
    * did, so the AI and OSRM still answer before the rider app stops waiting. */
   liveDeadline?: number;
   /** Which live-traffic step went first for this fare (balance), for the log. */
-  liveFirst?: "waze" | "gmap";
+  liveFirst?: LiveFirst;
 }
 
-/** The share of fares (percent) that ask Google Maps before Waze: the
- * admin's fixed number, or in automatic mode the share waze-server-health
- * last set (fare_live_balance, 0414), kept inside the admin's range. An
- * unreadable automatic share falls back to the bottom of the range. */
-// deno-lint-ignore no-explicit-any
-async function gmapFirstShare(admin: any, config: FareAIConfig): Promise<number> {
-  const b = balanceOf(config as Record<string, unknown>);
-  if (b.mode !== "auto") return b.gmapFirstPct;
-  const { data, error } = await admin.from("fare_live_balance").select("gmap_first_pct").maybeSingle();
-  if (error || data == null) return b.minPct;
-  return Math.min(b.maxPct, Math.max(b.minPct, Number(data.gmap_first_pct) || 0));
+/** The shares of fares (percent) that ask Google Maps, and Apple Maps,
+ * first: the admin's fixed numbers, or in automatic mode the shares
+ * waze-server-health last set (fare_live_balance, 0414 / 0416), kept inside
+ * the admin's ranges. An unreadable automatic share falls back to the bottom
+ * of its range. The row is read once, as `*`, so a database without 0416's
+ * Apple column still gives the Google Maps share. */
+async function liveShares(
+  // deno-lint-ignore no-explicit-any
+  admin: any,
+  config: FareAIConfig,
+  gmapOn: boolean,
+  appleOn: boolean,
+): Promise<{ gmap: number; apple: number }> {
+  const g = balanceOf(config as Record<string, unknown>);
+  const a = appleBalanceOf(config as Record<string, unknown>);
+  const needRow = (gmapOn && g.mode === "auto") || (appleOn && a.mode === "auto");
+  let row: Record<string, unknown> | null = null;
+  if (needRow) {
+    const { data, error } = await admin.from("fare_live_balance").select("*").maybeSingle();
+    if (!error && data) row = data as Record<string, unknown>;
+  }
+  const auto = (v: unknown, lo: number, hi: number) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo;
+  };
+  const gmap = !gmapOn ? 0 : g.mode !== "auto" ? g.gmapFirstPct : auto(row?.gmap_first_pct, g.minPct, g.maxPct);
+  const apple = !appleOn ? 0 : a.mode !== "auto" ? a.firstPct : auto(row?.apple_first_pct, a.minPct, a.maxPct);
+  return { gmap, apple };
 }
 
 type StepResult = { estimate: (RouteEstimate & { stops: number }) | null; reason: string };
@@ -757,7 +785,7 @@ function extrasOf(e: RouteEstimate): Record<string, unknown> | null {
 
 /** The stops a logged attempt covered, beside its other extras. */
 /** Notes which live-traffic step went first (the balance) on a Waze / Google Maps log row. */
-function withLiveFirst(extra: Record<string, unknown> | null, liveFirst?: "waze" | "gmap"): Record<string, unknown> | null {
+function withLiveFirst(extra: Record<string, unknown> | null, liveFirst?: LiveFirst): Record<string, unknown> | null {
   return liveFirst ? { ...(extra ?? {}), live_first: liveFirst } : extra;
 }
 

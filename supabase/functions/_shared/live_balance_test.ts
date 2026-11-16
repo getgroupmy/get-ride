@@ -1,5 +1,11 @@
 import { assert, assertEquals } from "jsr:@std/assert@1.0.19";
 import {
+  appleBalanceApplies,
+  appleBalanceOf,
+  liveFirstOf,
+  nextAppleShare,
+  orderForFirst,
+  pickLiveFirst,
   balanceApplies,
   balanceOf,
   DEFAULT_BALANCE,
@@ -92,4 +98,61 @@ Deno.test("orderFor: the Waze / Google Maps balance leaves Apple Maps where it s
   assertEquals(orderFor(["waze", "apple", "gmap", "osrm"], true), ["gmap", "apple", "waze", "osrm"]);
   assertEquals(orderFor(["waze", "apple", "ai", "osrm"], true), ["waze", "apple", "ai", "osrm"]);
   assert(!balanceApplies(["waze", "apple", "ai", "osrm"]));
+});
+
+Deno.test("appleBalanceOf: off by default (Apple keeps its place); tolerant of bad fields", () => {
+  assertEquals(appleBalanceOf(null), { mode: "fixed", firstPct: 0, minPct: 0, maxPct: 30 });
+  assertEquals(appleBalanceOf({ liveBalance: { mode: "auto" } }).mode, "fixed", "the Google Maps mode is not Apple's");
+  assertEquals(appleBalanceOf({ liveBalance: { apple: { mode: "auto", minPct: 40, maxPct: 10 } } }), {
+    mode: "auto", firstPct: 0, minPct: 10, maxPct: 40,
+  });
+  assertEquals(appleBalanceOf({ liveBalance: { apple: { firstPct: 250 } } }).firstPct, 100);
+  assert(appleBalanceApplies(["waze", "apple", "osrm"]));
+  assert(appleBalanceApplies(["gmap", "apple"]));
+  assert(!appleBalanceApplies(["apple", "ai", "osrm"]));
+});
+
+Deno.test("pickLiveFirst: Google Maps' share as before, Apple's taken from Waze's part", () => {
+  // Google Maps 20 %, Apple Maps 15 %: 0-20 Google, 20-35 Apple, the rest Waze.
+  assertEquals(pickLiveFirst(20, 15, 0.1), "gmap");
+  assertEquals(pickLiveFirst(20, 15, 0.25), "apple");
+  assertEquals(pickLiveFirst(20, 15, 0.5), "waze");
+  // Without an Apple share it is exactly pickGmapFirst.
+  for (const r of [0, 0.19, 0.2, 0.99]) assertEquals(pickLiveFirst(20, 0, r) === "gmap", pickGmapFirst(20, r));
+  // Apple never takes Google Maps' part.
+  assertEquals(pickLiveFirst(80, 50, 0.85), "apple");
+  assertEquals(pickLiveFirst(80, 50, 0.1), "gmap");
+  assertEquals(pickLiveFirst(0, 100, 0.99), "apple");
+});
+
+Deno.test("orderForFirst: Apple first moves in front of the live steps; Waze / Google as orderFor", () => {
+  const chain = ["waze", "gmap", "apple", "ai", "osrm"] as const;
+  assertEquals(orderForFirst(chain, "apple"), ["apple", "waze", "gmap", "ai", "osrm"]);
+  assertEquals(orderForFirst(chain, "gmap"), orderFor(chain, true));
+  assertEquals(orderForFirst(chain, "waze"), orderFor(chain, false));
+  assertEquals(orderForFirst(["ai", "waze", "apple", "osrm"], "apple"), ["ai", "apple", "waze", "osrm"]);
+  assertEquals(orderForFirst(["gmap", "waze", "apple"], "apple"), ["apple", "waze", "gmap"]);
+  assertEquals(liveFirstOf(["ai", "apple", "waze"]), "apple");
+  assertEquals(liveFirstOf(["ai", "osrm"]), undefined);
+});
+
+const appleRange = { mode: "auto" as const, firstPct: 0, minPct: 5, maxPct: 30 };
+const st = (attempts: number, successes: number, medianMs: number | null = 500, offline = false) => ({ attempts, successes, medianMs, offline });
+
+Deno.test("nextAppleShare: offline or quota refusals to the bottom, Waze offline to the top", () => {
+  assertEquals(nextAppleShare(20, st(10, 9), { ...st(0, 0, null, true), quotaRefusals: 0 }, appleRange).pct, 5);
+  const q = nextAppleShare(20, st(10, 9), { ...st(10, 9), quotaRefusals: 3 }, appleRange);
+  assertEquals(q.pct, 5);
+  assert(q.reason.includes("quota"));
+  assertEquals(nextAppleShare(10, st(0, 0, null, true), { ...st(10, 9), quotaRefusals: 0 }, appleRange).pct, 30);
+});
+
+Deno.test("nextAppleShare: moves toward the one that answers more often; slow Apple backs off", () => {
+  assertEquals(nextAppleShare(12, st(2, 2), { ...st(2, 2), quotaRefusals: 0 }, appleRange).pct, 12, "too few lookups");
+  assertEquals(nextAppleShare(50, st(2, 2), { ...st(2, 2), quotaRefusals: 0 }, appleRange).pct, 30, "kept in range");
+  assertEquals(nextAppleShare(10, st(20, 10), { ...st(20, 20), quotaRefusals: 0 }, appleRange).pct, 15);
+  assertEquals(nextAppleShare(10, st(20, 20), { ...st(20, 10), quotaRefusals: 0 }, appleRange).pct, 5);
+  const slow = nextAppleShare(10, st(20, 20), { ...st(20, 20, 1400), quotaRefusals: 0 }, appleRange);
+  assertEquals(slow.pct, 8);
+  assert(slow.reason.startsWith("Apple Maps is slow"));
 });
