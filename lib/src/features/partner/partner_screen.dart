@@ -68,6 +68,9 @@ import 'my_ride_badges.dart';
 import 'online_gate.dart';
 import 'online_selfie_check.dart';
 import 'partner_menu.dart';
+import 'partner_toolbar.dart';
+import '../../data/app_display_repository.dart' show displaySettingsBlobProvider;
+import '../../admin/screens/meterapp/display_logic.dart' show displayNum, partnerMenuVerticalKey, partnerToolbarVerticalKey;
 import 'partner_mode_picker.dart' show pendingPartnerModeProvider;
 import 'request_sheet.dart';
 import 'ride_extras_parts.dart';
@@ -178,6 +181,12 @@ const goOnlineCheckTimeout = Duration(seconds: 8);
 
 class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   bool _online = false;
+
+  /// Whether the driver map's collapsible shortcuts toolbar is open (phone).
+  bool _toolbarOpen = false;
+  void _collapseToolbar() {
+    if (_toolbarOpen && mounted) setState(() => _toolbarOpen = false);
+  }
 
   /// A demo request (Admin → Demo → mock incoming requests) is up: it
   /// floats on the map and holds the sheet down as a real one does.
@@ -1233,6 +1242,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     ref.listen(openRequestsProvider, (_, next) {
       final open = _notHere ? const <RideRequest>[] : next.value;
       if (open != null) {
+        // A request arrived: tuck the shortcuts toolbar away for it.
+        if (open.isNotEmpty) _collapseToolbar();
         _maybeAutoAccept(open);
         _syncAlert(open);
       }
@@ -1456,109 +1467,37 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
             ),
           ),
         ),
-        Positioned(
-          top: 0,
-          right: 0,
-          // Floating shortcuts: reached by keyboard after the rail and the
-          // panel, with the map's own buttons (FocusLast).
-          child: FocusLast(child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 12, 0),
-              child: Row(mainAxisSize: MainAxisSize.min, spacing: 8, children: [
-                if (partner.value != null && hasTeksiPartnerType(partner.value!.raw['partner_types']))
-                  _floatingButton(
-                    tooltip: 'Driver permit',
-                    icon: Icons.badge_outlined,
-                    onPressed: () {
-                      context.push('/drive/permit');
-                    },
-                  ),
-                if (partner.value != null &&
-                    partnerCanDrive(partner.value!) &&
-                    hasTeksiPartnerType(partner.value!.raw['partner_types']) &&
-                    !_hailBlockedHere())
-                  _floatingButton(
-                    tooltip: 'Meter Digital',
-                    icon: Icons.speed,
-                    onPressed: () => _openMeter(partner.value!),
-                  ),
-                // myGiG (0329): where the driver's type allows it and there
-                // is no active trip (the home shows none).
-                if (partner.value != null &&
-                    partnerCanDrive(partner.value!) &&
-                    mygigButtonShows(ref.watch(mygigConfigProvider(mygigAt(_me?.latitude, _me?.longitude))).value))
-                  _floatingButton(
-                    key: const ValueKey('partner-mygig'),
-                    tooltip: 'myGiG',
-                    icon: Icons.hail,
-                    onPressed: () => openMygig(context, ref, lat: _me?.latitude, lng: _me?.longitude),
-                  ),
-                // myGiG hotspots (0331): where myGiG passengers wave most, and when.
-                if (partner.value != null && partnerCanDrive(partner.value!))
-                  if (ref.watch(mygigConfigProvider(mygigAt(_me?.latitude, _me?.longitude))).value case final gig?
-                      when mygigButtonShows(gig) && mygigHotspotsOn(gig.settings.raw))
-                    _floatingButton(
-                      key: const ValueKey('partner-mygig-hotspots'),
-                      tooltip: 'myGiG hotspots',
-                      icon: Icons.local_fire_department,
-                      onPressed: () => context.push(mygigHotspotsPath),
-                    ),
-                // Scheduled myGiG (0330): later rides and hire by time, with a count.
-                if (partner.value != null && partnerCanDrive(partner.value!))
-                  if (ref.watch(mygigConfigProvider(mygigAt(_me?.latitude, _me?.longitude))).value case final gig?
-                      when mygigButtonShows(gig) || gig.scheduledCount > 0)
-                    BusyFab(
-                      key: const ValueKey('partner-mygig-scheduled'),
-                      tooltip: gig.scheduledCount == 0 ? 'Scheduled myGiG' : 'Scheduled myGiG: ${gig.scheduledCount}',
-                      onPressed: () {
-                        context.push(mygigScheduledPath);
-                      },
-                      child: Badge(
-                        isLabelVisible: gig.scheduledCount > 0,
-                        label: Text('${gig.scheduledCount}'),
-                        child: const Icon(Icons.event_available),
-                      ),
-                    ),
-                if (partner.value != null &&
-                    partnerCanDrive(partner.value!) &&
-                    (ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false))
-                  _floatingButton(
-                    tooltip: 'Scheduled rides',
-                    icon: Icons.event_outlined,
-                    onPressed: () {
-                      context.push('/drive/scheduled');
-                    },
-                  ),
-                // After approval: an application in progress adds its vehicle
-                // from the application itself.
-                if (partner.value != null && partnerCanDrive(partner.value!))
-                  _floatingButton(
-                    tooltip: 'My vehicles',
-                    icon: Icons.directions_car_outlined,
-                    onPressed: () {
-                      context.push('/drive/vehicles');
-                    },
-                  ),
-                // No side menu (a wide screen with the rail): the menu joins
-                // these buttons instead of sitting over the panel's corner.
-                if (!sideMenu)
+        // A wide screen (with the rail): the shortcuts stay in a row, top
+        // right, as before, and the menu joins them.
+        if (!sideMenu)
+          Positioned(
+            top: 0,
+            right: 0,
+            // Reached by keyboard after the rail and the panel (FocusLast).
+            child: FocusLast(child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 12, 0),
+                child: Row(mainAxisSize: MainAxisSize.min, spacing: 8, children: [
+                  ..._shortcutButtons(),
                   _floatingButton(
                     key: const ValueKey('partner-menu-button'),
                     tooltip: 'Menu',
                     icon: Icons.menu,
                     onPressed: () => showPartnerMenu(context),
                   ),
-              ]),
-            ),
-          )),
-        ),
-        // The menu: top left, exactly where the home map has it (on a
-        // phone, with its side menu).
-        if (sideMenu)
+                ]),
+              ),
+            )),
+          ),
+        // A phone (with its side menu): the menu sits top left, and the
+        // shortcuts hide behind a toggle under it. Both are moved up/down
+        // independently by the admin (Admin → Display → Partner toolbar), and
+        // the toolbar tucks away while a request is showing.
+        if (sideMenu) ...[
           Positioned(
             left: 16,
-            top: 16,
+            top: 16 + _toolbarOffset(partnerMenuVerticalKey),
             child: SafeArea(
               child: FloatingActionButton.small(
                 key: const ValueKey('partner-menu-button'),
@@ -1573,6 +1512,21 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
               ),
             ),
           ),
+          Positioned(
+            left: 16,
+            right: 16,
+            top: 72 + _toolbarOffset(partnerToolbarVerticalKey),
+            child: FocusLast(child: SafeArea(
+              bottom: false,
+              child: PartnerActionToolbar(
+                open: _toolbarOpen,
+                onToggle: () => setState(() => _toolbarOpen = !_toolbarOpen),
+                forceCollapsed: _online && (ref.watch(openRequestsProvider).value?.isNotEmpty ?? false),
+                actions: _shortcutButtons(onTap: _collapseToolbar),
+              ),
+            )),
+          ),
+        ],
         // A new request on a phone: inDrive's sheet up from the bottom, over
         // everything (the desktop has it over the map instead).
         if (partner.value case final p? when _online && !wideLayoutAt(MediaQuery.sizeOf(context)))
@@ -1645,6 +1599,80 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// instant.
   Widget _floatingButton({Key? key, required String tooltip, required IconData icon, required BusyAction onPressed}) =>
       BusyFab(key: key, tooltip: tooltip, onPressed: onPressed, child: Icon(icon));
+
+  /// The driver map's shortcut buttons, built once for the wide-screen row and
+  /// for the phone's collapsible toolbar. [onTap], when given, runs before each
+  /// shortcut's action — the toolbar passes its collapse so a tap tucks it away.
+  List<Widget> _shortcutButtons({VoidCallback? onTap}) {
+    final partner = ref.watch(partnerProvider);
+    final gig = ref.watch(mygigConfigProvider(mygigAt(_me?.latitude, _me?.longitude))).value;
+    final canDrive = partner.value != null && partnerCanDrive(partner.value!);
+    BusyAction wrap(BusyAction f) => onTap == null
+        ? f
+        : () async {
+            onTap();
+            await f();
+          };
+    return [
+      if (partner.value != null && hasTeksiPartnerType(partner.value!.raw['partner_types']))
+        _floatingButton(
+          tooltip: 'Driver permit',
+          icon: Icons.badge_outlined,
+          onPressed: wrap(() => context.push('/drive/permit')),
+        ),
+      if (canDrive && hasTeksiPartnerType(partner.value!.raw['partner_types']) && !_hailBlockedHere())
+        _floatingButton(
+          tooltip: 'Meter Digital',
+          icon: Icons.speed,
+          onPressed: wrap(() => _openMeter(partner.value!)),
+        ),
+      // myGiG (0329).
+      if (canDrive && mygigButtonShows(gig))
+        _floatingButton(
+          key: const ValueKey('partner-mygig'),
+          tooltip: 'myGiG',
+          icon: Icons.hail,
+          onPressed: wrap(() => openMygig(context, ref, lat: _me?.latitude, lng: _me?.longitude)),
+        ),
+      // myGiG hotspots (0331).
+      if (canDrive && gig != null && mygigButtonShows(gig) && mygigHotspotsOn(gig.settings.raw))
+        _floatingButton(
+          key: const ValueKey('partner-mygig-hotspots'),
+          tooltip: 'myGiG hotspots',
+          icon: Icons.local_fire_department,
+          onPressed: wrap(() => context.push(mygigHotspotsPath)),
+        ),
+      // Scheduled myGiG (0330), with a count.
+      if (canDrive && gig != null && (mygigButtonShows(gig) || gig.scheduledCount > 0))
+        BusyFab(
+          key: const ValueKey('partner-mygig-scheduled'),
+          tooltip: gig.scheduledCount == 0 ? 'Scheduled myGiG' : 'Scheduled myGiG: ${gig.scheduledCount}',
+          onPressed: wrap(() => context.push(mygigScheduledPath)),
+          child: Badge(
+            isLabelVisible: gig.scheduledCount > 0,
+            label: Text('${gig.scheduledCount}'),
+            child: const Icon(Icons.event_available),
+          ),
+        ),
+      if (canDrive && (ref.watch(scheduledRidesConfigProvider).value?.enabled ?? false))
+        _floatingButton(
+          tooltip: 'Scheduled rides',
+          icon: Icons.event_outlined,
+          onPressed: wrap(() => context.push('/drive/scheduled')),
+        ),
+      if (canDrive)
+        _floatingButton(
+          tooltip: 'My vehicles',
+          icon: Icons.directions_car_outlined,
+          onPressed: wrap(() => context.push('/drive/vehicles')),
+        ),
+    ];
+  }
+
+  /// A driver-map toolbar vertical offset the admin set (Admin → Display →
+  /// Partner toolbar); 0 (its default) keeps the current position.
+  double _toolbarOffset(String key) =>
+      displayNum(ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{}, key).toDouble();
 
   /// The requests on this driver's queue (skipped ones included), which are
   /// also the map's pins: those whose pickup is inside their service's max

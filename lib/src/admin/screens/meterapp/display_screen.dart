@@ -409,6 +409,8 @@ class _DisplayBody extends ConsumerWidget {
               sheetMin(trackingSheetMinAdjustKey),
             ]),
           ),
+          const _Section('Partner toolbar'),
+          Card(child: Column(children: [for (final i in partnerToolbarLayoutItems) stepper(i)])),
           const _Section('Trip card (lock screen)'),
           TripCardSettingsCard(
             value: TripCardSettings.fromDisplay(s),
