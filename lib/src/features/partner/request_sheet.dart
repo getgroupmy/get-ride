@@ -15,6 +15,8 @@ import '../../core/hourly_hire.dart' show RideHire, hireTitle;
 import '../../core/ride_bidding.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
+import '../../data/route_eta.dart';
+import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
 import '../../core/rider_rating.dart';
 import '../../data/city_ride_repository.dart';
@@ -115,6 +117,11 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
   List<LatLng> _toPickup = const [];
   List<LatLng> _trip = const [];
 
+  /// Apple Maps' driving distance + traffic ETA to the pickup (iOS only,
+  /// route_eta.dart); null until it answers, and whenever it can't — the chip
+  /// then shows the straight-line + fixed-speed heuristic (awayKm).
+  ({double km, int minutes})? _pickupEta;
+
   LatLng? get _pickup {
     final r = widget.request;
     return r.pickupLat == null || r.pickupLng == null ? null : LatLng(r.pickupLat!, r.pickupLng!);
@@ -132,8 +139,47 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
   void initState() {
     super.initState();
     unawaited(_routes());
+    unawaited(_loadPickupEta());
     _markViewed();
     _seen = Timer.periodic(requestViewHeartbeat, (_) => _markViewed());
+  }
+
+  @override
+  void didUpdateWidget(covariant RideRequestSheet old) {
+    super.didUpdateWidget(old);
+    // A fresh request or a new driver fix: re-ask Apple for the pickup ETA
+    // (the sheet rebuilds every second for the countdown, so only on a change).
+    if (old.request.id != widget.request.id || old.me != widget.me) {
+      _pickupEta = null;
+      unawaited(_loadPickupEta());
+    }
+  }
+
+  /// The real driving distance + traffic-aware time to the pickup, to replace
+  /// the straight-line heuristic on the "To pickup" chip. On iOS it is Apple
+  /// Maps on the device; elsewhere (or when Apple can't answer) it is the same
+  /// fare route chain the ride is priced through (ai-route-proxy: Waze →
+  /// Google Maps → AI → OSRM). Only for the shown request, and only a refine
+  /// — any failure leaves the heuristic (awayKm / pickupMinutes) in place.
+  Future<void> _loadPickupEta() async {
+    final me = widget.me, a = _pickup;
+    if (me == null || a == null) return;
+    final apple = await routeEtaToPickup(me, a);
+    if (!mounted) return;
+    if (apple != null) {
+      setState(() => _pickupEta = apple);
+      return;
+    }
+    // The fare chain needs a Supabase session; reading the repository (or the
+    // estimate) throws without one (offline, a legacy local-PIN session, a test
+    // that didn't configure Supabase). Any failure just keeps the heuristic.
+    try {
+      final est = await ref.read(routeEstimateRepositoryProvider).estimate(me, a);
+      if (!mounted || est == null) return;
+      setState(() => _pickupEta = pickupEtaFromEstimate(est.distanceKm, est.durationMin));
+    } catch (_) {
+      // Keep awayKm / pickupMinutes.
+    }
   }
 
   void _markViewed() {
@@ -185,6 +231,15 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
   /// "13 min" or "1 h 19 min".
   static String _minutes(num m) => m < 60 ? '${m.round()} min' : formatDuration(m);
 
+  /// The "To pickup" chip: Apple Maps' driving distance + traffic ETA where it
+  /// answered (iOS), else the straight-line + fixed-speed heuristic (awayKm).
+  String _toPickupChip() {
+    final eta = _pickupEta;
+    final mins = eta?.minutes ?? pickupMinutes(widget.awayKm!);
+    final km = eta?.km ?? widget.awayKm!;
+    return 'To pickup\n${_minutes(mins)} · ${formatDistance(km)}';
+  }
+
   /// "Trip\n13 min · 6.0 km" (or "To pickup\n…") standing just above a point's mark, which reaches
   /// [over] above the point (so the chip never covers the pin).
   Marker _chip(LatLng at, Color color, String text, String key, {required double over}) {
@@ -223,7 +278,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
   Widget? _map0;
   List<Object?>? _map0Deps;
   Widget _cachedMap(BuildContext context) {
-    final deps = [widget.request, widget.me, widget.awayKm, _pickup, _drop, _trip, _toPickup];
+    final deps = [widget.request, widget.me, widget.awayKm, _pickup, _drop, _trip, _toPickup, _pickupEta];
     if (_map0 == null || !listEquals(deps, _map0Deps)) {
       _map0Deps = deps;
       _map0 = _mapPart(context);
@@ -273,7 +328,7 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
               _chip(
                 a,
                 RideRequestSheet.toPickup,
-                'To pickup\n${_minutes(pickupMinutes(widget.awayKm!))} · ${formatDistance(widget.awayKm)}',
+                _toPickupChip(),
                 'request-chip-pickup',
                 over: confirmPickupTop,
               ),

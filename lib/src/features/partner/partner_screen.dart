@@ -14,6 +14,7 @@ import '../../data/dispatch_repository.dart' show dispatchRepositoryProvider;
 import '../../data/scheduled_ride_repository.dart';
 import '../../data/active_location.dart';
 import '../../core/destination_mode.dart';
+import '../../core/dispatch_ladder.dart';
 import '../../core/driver_request_radius.dart';
 import '../../core/my_ride.dart' show pinStarredFirst;
 import '../../core/driver_permit.dart';
@@ -1698,7 +1699,16 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     final inReach = filterByPickupRadius(
       open,
       awayKm: _distanceTo,
-      maxKm: (r) => dispatchConfigFor(configs, r.service).searchRadiusMaxKm,
+      // Follow the staged ladder the server froze on the request (0417): the
+      // offer appears only out to the reach the server has actually pushed so
+      // far (dispatch_step), so the list widens in lockstep with the push.
+      // Falls back to the service's max search radius for a request not
+      // dispatched by the ladder (older backend, or still a legacy two-ring).
+      maxKm: (r) {
+        final ladder = DispatchLadder.fromStamped(r.dispatchLadder);
+        if (ladder != null && r.dispatchStep >= 1) return ladder.reachedRadiusKmByStep(r.dispatchStep);
+        return dispatchConfigFor(configs, r.service).searchRadiusMaxKm;
+      },
       uncapped: _starred,
     );
     final me = _myId;

@@ -70,6 +70,11 @@ import flutter_callkit_incoming
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NetworkInfoPlugin") {
       NetworkInfoPlugin.register(with: registrar)
     }
+    // The driver's "To pickup" distance + traffic ETA, from Apple Maps
+    // (lib/src/data/route_eta.dart): MapKit's own routing, no key, no quota.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "RouteEtaPlugin") {
+      RouteEtaPlugin.register(with: registrar)
+    }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "BackgroundLocationPlugin") {
       BackgroundLocationPlugin.register(with: registrar)
     }
@@ -1136,6 +1141,57 @@ final class NetworkInfoPlugin: NSObject, FlutterPlugin {
       }
     }
     return out
+  }
+}
+
+/// The driver's "To pickup" leg on the ride-request card
+/// (lib/src/features/partner/request_sheet.dart): a real driving distance and
+/// a **traffic-adjusted** ETA from Apple Maps, instead of the app's
+/// straight-line-plus-fixed-speed heuristic. `eta` takes the driver's and the
+/// pickup's coordinates and answers { distanceMeters, etaSeconds } via
+/// MKDirections.calculateETA (transportType .automobile, departing now so the
+/// time includes current traffic). No API key and no quota — MapKit routes on
+/// Apple's servers, so it needs the network; a failure (offline, throttled, no
+/// route) is a FlutterError, and the Dart side then keeps its heuristic. Kept
+/// in this file so it needs no change to the Xcode project.
+final class RouteEtaPlugin: NSObject, FlutterPlugin {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "get_ride/route_eta", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(RouteEtaPlugin(), channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "eta" else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    let args = call.arguments as? [String: Any] ?? [:]
+    guard let fromLat = args["fromLat"] as? Double, let fromLng = args["fromLng"] as? Double,
+      let toLat = args["toLat"] as? Double, let toLng = args["toLng"] as? Double
+    else {
+      result(FlutterError(code: "bad_args", message: "fromLat/fromLng/toLat/toLng required", details: nil))
+      return
+    }
+    let request = MKDirections.Request()
+    request.transportType = .automobile
+    request.source = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: fromLat, longitude: fromLng)))
+    request.destination = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: toLat, longitude: toLng)))
+    // Departing now, so expectedTravelTime reflects current traffic.
+    request.departureDate = Date()
+    // calculateETA answers exactly once; guard in case the SDK calls back twice.
+    var answered = false
+    let once: (Any?) -> Void = { value in
+      if answered { return }
+      answered = true
+      DispatchQueue.main.async { result(value) }
+    }
+    MKDirections(request: request).calculateETA { response, error in
+      if let response = response, response.distance > 0, response.expectedTravelTime > 0 {
+        once(["distanceMeters": response.distance, "etaSeconds": response.expectedTravelTime])
+      } else {
+        once(FlutterError(code: "eta_failed", message: error?.localizedDescription ?? "No ETA", details: nil))
+      }
+    }
   }
 }
 

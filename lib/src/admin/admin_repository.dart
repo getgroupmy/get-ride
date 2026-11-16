@@ -596,6 +596,27 @@ class AdminRepository {
   Future<void> setSchedulingSurchargeRateActive(String id, bool active) =>
       _updateOne('scheduling_surcharge_rates', id, {'active': active, 'updated_at': _now});
 
+  // ---- Staged dispatch ladder rules (0417) ---------------------------------
+
+  /// Per-service / per-region dispatch-ladder rows, newest first.
+  Future<List<Map<String, dynamic>>> dispatchLadderRules() async => List<Map<String, dynamic>>.from(
+        await _db.from('dispatch_ladder_rules').select().order('updated_at', ascending: false),
+      );
+
+  Future<void> saveDispatchLadderRule(Map<String, dynamic> row) {
+    final data = {...row, 'updated_at': _now};
+    return row['id'] == null
+        ? _db.from('dispatch_ladder_rules').insert(data..remove('id'))
+        : _updateOne('dispatch_ladder_rules', row['id'] as String, data);
+  }
+
+  Future<void> deleteDispatchLadderRule(String id) =>
+      _db.from('dispatch_ladder_rules').delete().eq('id', id);
+
+  /// Turns one ladder on or off without touching the rest of it.
+  Future<void> setDispatchLadderRuleActive(String id, bool active) =>
+      _updateOne('dispatch_ladder_rules', id, {'active': active, 'updated_at': _now});
+
   /// Every change to the rates, newest first (0216): who, when, before and
   /// after.
   Future<List<Map<String, dynamic>>> commissionHistory({int limit = 100}) async => List<Map<String, dynamic>>.from(
