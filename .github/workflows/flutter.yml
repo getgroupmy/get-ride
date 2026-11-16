@@ -21,7 +21,13 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter test -r compact
+      - run: |
+          set -o pipefail
+          flutter test -r compact 2>&1 | tee "$RUNNER_TEMP/test.log" || {
+            echo "===== FAILURE BLOCKS ====="
+            grep -nE '\[E\]|Expected:|Actual:|Which:|^  package:|^  test/' "$RUNNER_TEMP/test.log" || true
+            exit 1
+          }
 
   release-scripts:
     # The Play upload script's decisions (tracks, refusal messages), so a
