@@ -376,3 +376,34 @@ export function decideFareTrend(
   else if (settings.downPct !== null && diff <= -settings.downPct) direction = "down";
   return withColors({ direction, source: "minutes", ...base }, settings);
 }
+
+// ---- distance check -------------------------------------------------------------------------
+
+/** An AI distance this many times the road distance (or under its
+ * reciprocal) is not believed. */
+export const AI_DISTANCE_MAX_RATIO = 3;
+/** ...unless it is within this many km of the road distance (short trips). */
+export const AI_DISTANCE_SLACK_KM = 5;
+/** No GET.ride trip is longer than this (Waze itself refuses 3,000 miles). */
+export const AI_DISTANCE_MAX_KM = 3_000;
+
+/** Why an AI's distance can't be right, or null when it can: more than
+ * AI_DISTANCE_MAX_KM, or (with the road distance known) more than
+ * AI_DISTANCE_MAX_RATIO times it or under a third of it and more than
+ * AI_DISTANCE_SLACK_KM away. Such an answer is not used: the fare goes on
+ * to the next step, and the key is not rested (it isn't broken). */
+export function implausibleDistance(aiKm: number, roadKm: number | null | undefined): string | null {
+  if (!Number.isFinite(aiKm) || aiKm <= 0) return null;
+  const km = (v: number) => `${Math.round(v * 10) / 10} km`;
+  if (aiKm > AI_DISTANCE_MAX_KM) return `Distance not believable: ${km(aiKm)} is over ${AI_DISTANCE_MAX_KM.toLocaleString("en")} km`;
+  if (roadKm == null || !Number.isFinite(roadKm) || roadKm <= 0) return null;
+  if (Math.abs(aiKm - roadKm) <= AI_DISTANCE_SLACK_KM) return null;
+  const ratio = aiKm / roadKm;
+  if (ratio > AI_DISTANCE_MAX_RATIO) {
+    return `Distance not believable: ${km(aiKm)} is over ${AI_DISTANCE_MAX_RATIO} times the road distance (${km(roadKm)})`;
+  }
+  if (ratio < 1 / AI_DISTANCE_MAX_RATIO) {
+    return `Distance not believable: ${km(aiKm)} is under a third of the road distance (${km(roadKm)})`;
+  }
+  return null;
+}

@@ -64,6 +64,7 @@ import {
 import {
   buildPrompt,
   decideFareTrend,
+  implausibleDistance,
   type FareAIRequest,
   type FareTrend,
   parseStops,
@@ -592,13 +593,19 @@ async function estimateFromAi(ctx: StepContext): Promise<StepResult> {
     }
     const latencyMs = Date.now() - started;
 
-    const parsed = result.content ? parseEstimate(result.content) : null;
+    const answered = result.content ? parseEstimate(result.content) : null;
+    const standard = await ctx.standardFuture;
+    // An answer whose distance can't be right (e.g. 15,420 km for a trip in
+    // Malaysia) is not used. The key isn't broken, so it isn't rested, and
+    // the other keys would be asked the same question: the fare goes on to
+    // the next step.
+    const implausible = answered ? implausibleDistance(answered.distance_km, standard?.km) : null;
+    const parsed = implausible ? null : answered;
     const success = !!parsed;
     const errorMsg = success
       ? null
-      : result.error ?? (result.content ? "Unparseable response" : "No response content");
-    const disabledUntil = success ? null : new Date(Date.now() + ctx.cooldownMs).toISOString();
-    const standard = await ctx.standardFuture;
+      : implausible ?? result.error ?? (result.content ? "Unparseable response" : "No response content");
+    const disabledUntil = success || implausible ? null : new Date(Date.now() + ctx.cooldownMs).toISOString();
     if (parsed) {
       const trend = decideFareTrend(parsed.duration_min, standard?.min ?? null, parsed, trendSettings, request.includeFareRange);
       if (trend) parsed.trend = trend;
@@ -616,12 +623,13 @@ async function estimateFromAi(ctx: StepContext): Promise<StepResult> {
       dest_lng: destination.longitude,
       success,
       http_status: result.httpStatus,
-      distance_km: parsed?.distance_km ?? null,
-      duration_min: parsed?.duration_min ?? null,
-      summary: parsed?.summary ?? null,
-      toll_count: parsed?.toll_count ?? null,
-      toll_total: parsed?.toll_total ?? null,
-      tolls: parsed?.tolls ?? null,
+      // A rejected answer's own numbers are kept, so the log shows what it said.
+      distance_km: answered?.distance_km ?? null,
+      duration_min: answered?.duration_min ?? null,
+      summary: answered?.summary ?? null,
+      toll_count: answered?.toll_count ?? null,
+      toll_total: answered?.toll_total ?? null,
+      tolls: answered?.tolls ?? null,
       error: errorMsg,
       latency_ms: latencyMs,
       raw_response: result.content ? result.content.substring(0, 4000) : null,
@@ -642,6 +650,7 @@ async function estimateFromAi(ctx: StepContext): Promise<StepResult> {
     if (success && parsed) {
       return { estimate: { ...parsed, provider, stops: stops.length }, reason: "ok" };
     }
+    if (implausible) return { estimate: null, reason: "ai_distance_not_believable" };
   }
   return { estimate: null, reason: "all_keys_failed" };
 }
