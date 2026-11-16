@@ -1597,7 +1597,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// wheel on the time already set.
   Future<void> _openLaterFromChip() async {
     final c = ref.read(scheduledRidesConfigProvider).value ?? ScheduledRidesConfig.off;
-    if (!c.enabled) return;
+    if (!c.enabled) {
+      // The admin left the Later chip on but turned scheduled rides off: the
+      // toggle still shows (to match the booking row), so say why Later can't
+      // be picked rather than leaving a dead tap.
+      if (mounted) showInfo(context, 'Scheduled rides are not available right now.');
+      return;
+    }
     final at = await _pickLater(c);
     if (at != null && mounted) setState(() => _scheduleAt = at);
   }
@@ -1607,19 +1613,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (_scheduleAt != null) setState(() => _scheduleAt = null);
   }
 
-  /// The ride sheet's booking row. When the Later chip is on and scheduling is
-  /// available, the Now/Later pair is drawn as the sliding segmented toggle
-  /// (the mockup) that keeps a chosen pickup time; the remaining chips
-  /// (Passengers, Luggage, custom) stay as pills beside it.
-  Widget _bookingChipsRow(Map<String, dynamic> blob, ScheduledRidesConfig scheduleConfig) {
+  /// The ride sheet's booking row. When the Later chip is on, the Now/Later
+  /// pair is drawn as the sliding segmented toggle (the mockup) that keeps a
+  /// chosen pickup time; the remaining chips (Passengers, Luggage, custom) stay
+  /// as pills beside it. The toggle shows whenever the admin has the Later chip
+  /// on — tapping Later still no-ops when scheduled rides are turned off
+  /// (handled in [_openLaterFromChip]) — so the booking row always matches the
+  /// mockup rather than falling back to two plain chips.
+  Widget _bookingChipsRow(Map<String, dynamic> blob) {
     final all = resolveBookingChips(blob);
     final laterChip = all.where((c) => c.id == bookingChipLaterId).firstOrNull;
-    final useToggle = laterChip != null && scheduleConfig.enabled;
-    final chips = useToggle
+    final chips = laterChip != null
         ? all.where((c) => c.id != bookingChipNowId && c.id != bookingChipLaterId).toList()
         : all;
     Widget? toggle;
-    if (laterChip != null && useToggle) {
+    if (laterChip != null) {
       final nowChip = all.where((c) => c.id == bookingChipNowId).firstOrNull;
       final nowLabel = nowChip != null && nowChip.label.trim().isNotEmpty ? nowChip.label : 'Now';
       final at = _scheduleAt;
@@ -4169,7 +4177,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // on the confirm step when an admin has turned it on (ships off; the
       // behaviour each chip drives lands in a later slice).
       bookingChips: confirming && bookingChipsEnabled(blob) && resolveBookingChips(blob).isNotEmpty
-          ? _bookingChipsRow(blob, scheduleConfig)
+          ? _bookingChipsRow(blob)
           : null,
       plus: plus,
       disclaimerOffset: Offset(layout.disclaimer.$1, layout.disclaimer.$2),
