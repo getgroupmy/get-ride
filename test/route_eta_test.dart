@@ -22,4 +22,22 @@ void main() {
     expect(routeEtaResult(47600, 2820).km, 47.6);
     expect(routeEtaResult(25, 4).km, 0.025);
   });
+
+  group('fare-chain estimate → chip (non-iOS)', () {
+    test('km passes through; minutes round up with a one-minute floor', () {
+      final r = pickupEtaFromEstimate(3.2, 7.1);
+      expect(r.km, 3.2);
+      expect(r.minutes, 8, reason: '7.1 min → 8');
+    });
+
+    test('a whole-minute duration is not rounded further', () {
+      expect(pickupEtaFromEstimate(1.0, 5.0).minutes, 5);
+    });
+
+    test('an almost-instant hop still reads one minute', () {
+      final r = pickupEtaFromEstimate(0.05, 0.2);
+      expect(r.km, 0.05);
+      expect(r.minutes, 1);
+    });
+  });
 }

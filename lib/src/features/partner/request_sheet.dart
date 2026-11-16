@@ -16,6 +16,7 @@ import '../../core/ride_bidding.dart';
 import '../../data/geo_service.dart';
 import '../../data/models.dart';
 import '../../data/route_eta.dart';
+import '../../data/route_estimate_repository.dart';
 import '../../providers.dart';
 import '../../core/rider_rating.dart';
 import '../../data/city_ride_repository.dart';
@@ -154,14 +155,24 @@ class _RideRequestSheetState extends ConsumerState<RideRequestSheet> {
     }
   }
 
-  /// Asks Apple Maps for the real driving distance + traffic ETA to the pickup
-  /// (iOS only). Leaves the heuristic in place when it can't answer.
+  /// The real driving distance + traffic-aware time to the pickup, to replace
+  /// the straight-line heuristic on the "To pickup" chip. On iOS it is Apple
+  /// Maps on the device; elsewhere (or when Apple can't answer) it is the same
+  /// fare route chain the ride is priced through (ai-route-proxy: Waze →
+  /// Google Maps → AI → OSRM). Only for the shown request, and only a refine
+  /// — any failure leaves the heuristic (awayKm / pickupMinutes) in place.
   Future<void> _loadPickupEta() async {
     final me = widget.me, a = _pickup;
     if (me == null || a == null) return;
-    final eta = await routeEtaToPickup(me, a);
-    if (!mounted || eta == null) return;
-    setState(() => _pickupEta = eta);
+    final apple = await routeEtaToPickup(me, a);
+    if (!mounted) return;
+    if (apple != null) {
+      setState(() => _pickupEta = apple);
+      return;
+    }
+    final est = await ref.read(routeEstimateRepositoryProvider).estimate(me, a);
+    if (!mounted || est == null) return;
+    setState(() => _pickupEta = pickupEtaFromEstimate(est.distanceKm, est.durationMin));
   }
 
   void _markViewed() {

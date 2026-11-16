@@ -41,3 +41,10 @@ Future<({double km, int minutes})?> routeEtaToPickup(LatLng from, LatLng to) asy
 /// pickupMinutes). Pure; see test/route_eta_test.dart.
 ({double km, int minutes}) routeEtaResult(double distanceMetres, double etaSeconds) =>
     (km: distanceMetres / 1000, minutes: math.max(1, (etaSeconds / 60).ceil()));
+
+/// The fare route chain's answer (ai-route-proxy: Waze → Google Maps → AI →
+/// OSRM) as the chip shows it — distance in km unchanged, duration rounded up
+/// to whole minutes with the same one-minute floor as [routeEtaResult]. Used
+/// off iOS, where there is no Apple Maps call. Pure; see test/route_eta_test.dart.
+({double km, int minutes}) pickupEtaFromEstimate(double distanceKm, double durationMin) =>
+    (km: distanceKm, minutes: math.max(1, durationMin.ceil()));
