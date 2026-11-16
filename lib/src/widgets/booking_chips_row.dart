@@ -143,23 +143,22 @@ class BookingChipsRow extends StatelessWidget {
         onTap: onTap == null ? null : () => onTap!(c),
       ));
     }
+    // The whole row scales down to fit the sheet's width on one line rather
+    // than scrolling — so the Luggage chip at the end is never clipped. When it
+    // already fits, FittedBox leaves it at its natural size, centred.
     return Padding(
-      padding: const EdgeInsets.only(top: 2, bottom: 2),
-      child: LayoutBuilder(
-        builder: (context, c) => SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: padding,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: (c.maxWidth - padding.horizontal).clamp(0.0, double.infinity)),
-            // The "NEW" badge perches above a chip's top-right corner, so it
-            // overflows the pill. Reserve that room *inside* the scroll
-            // viewport (which clips its content): 8px of headroom for the top
-            // overhang and 2px on the right for the badge's side overhang — so
-            // the badge is never shaved by the scroll view's edge.
-            child: Padding(
-              padding: const EdgeInsets.only(top: 8, right: 2),
-              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: items),
-            ),
+      padding: const EdgeInsets.only(top: 2, bottom: 2) + padding,
+      child: SizedBox(
+        width: double.infinity,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.center,
+          // The "NEW" badge perches above a chip's top-right corner, so it
+          // overflows the pill; reserve 8px of headroom and 2px on the right
+          // inside the measured box so FittedBox never shaves it.
+          child: Padding(
+            padding: const EdgeInsets.only(top: 8, right: 2),
+            child: Row(mainAxisSize: MainAxisSize.min, children: items),
           ),
         ),
       ),
