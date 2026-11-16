@@ -1498,34 +1498,40 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
         if (sideMenu) ...[
           Positioned(
             left: 16,
-            top: 16 + _toolbarOffset(partnerMenuVerticalKey),
+            top: 16,
             child: SafeArea(
-              child: FloatingActionButton.small(
-                key: const ValueKey('partner-menu-button'),
-                heroTag: 'partner-menu',
-                tooltip: 'Menu',
-                onPressed: () {
-                  // The side menu on phones; a sheet where there is none.
-                  final menu = SideMenuHost.of(context);
-                  menu == null ? showPartnerMenu(context) : menu.open();
-                },
-                child: const Icon(Icons.menu),
+              child: _PartnerToolbarOffset(
+                settingsKey: partnerMenuVerticalKey,
+                child: FloatingActionButton.small(
+                  key: const ValueKey('partner-menu-button'),
+                  heroTag: 'partner-menu',
+                  tooltip: 'Menu',
+                  onPressed: () {
+                    // The side menu on phones; a sheet where there is none.
+                    final menu = SideMenuHost.of(context);
+                    menu == null ? showPartnerMenu(context) : menu.open();
+                  },
+                  child: const Icon(Icons.menu),
+                ),
               ),
             ),
           ),
           Positioned(
             left: 16,
             right: 16,
-            top: 72 + _toolbarOffset(partnerToolbarVerticalKey),
-            child: FocusLast(child: SafeArea(
-              bottom: false,
-              child: PartnerActionToolbar(
-                open: _toolbarOpen,
-                onToggle: () => setState(() => _toolbarOpen = !_toolbarOpen),
-                forceCollapsed: _online && (ref.watch(openRequestsProvider).value?.isNotEmpty ?? false),
-                actions: _shortcutButtons(onTap: _collapseToolbar),
-              ),
-            )),
+            top: 72,
+            child: _PartnerToolbarOffset(
+              settingsKey: partnerToolbarVerticalKey,
+              child: FocusLast(child: SafeArea(
+                bottom: false,
+                child: PartnerActionToolbar(
+                  open: _toolbarOpen,
+                  onToggle: () => setState(() => _toolbarOpen = !_toolbarOpen),
+                  forceCollapsed: _online && (ref.watch(openRequestsProvider).value?.isNotEmpty ?? false),
+                  actions: _shortcutButtons(onTap: _collapseToolbar),
+                ),
+              )),
+            ),
           ),
         ],
         // A new request on a phone: inDrive's sheet up from the bottom, over
@@ -1670,10 +1676,6 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     ];
   }
 
-  /// A driver-map toolbar vertical offset the admin set (Admin → Display →
-  /// Partner toolbar); 0 (its default) keeps the current position.
-  double _toolbarOffset(String key) =>
-      displayNum(ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{}, key).toDouble();
 
   /// The requests on this driver's queue (skipped ones included), which are
   /// also the map's pins: those whose pickup is inside their service's max
@@ -2279,5 +2281,23 @@ class _ScreenRemoteActions implements DriverRemoteActions {
     final why = await driverHandBackVehicle(_screen.ref.read(vehicleAssignmentRepositoryProvider));
     if (_screen.mounted) _screen.ref.invalidate(assignableVehiclesProvider);
     return why;
+  }
+}
+
+/// Applies the admin's vertical offset (Admin → Display → Partner toolbar) to
+/// [child], watching the display settings in its own subtree so a live change
+/// — or the settings resolving — moves only the button, never rebuilding the
+/// whole drive screen (see test/request_alert_test.dart). At the default 0 the
+/// child paints exactly where its [Positioned] places it.
+class _PartnerToolbarOffset extends ConsumerWidget {
+  const _PartnerToolbarOffset({required this.settingsKey, required this.child});
+
+  final String settingsKey;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dy = displayNum(ref.watch(displaySettingsBlobProvider).value ?? const <String, dynamic>{}, settingsKey).toDouble();
+    return Transform.translate(offset: Offset(0, dy), child: child);
   }
 }
