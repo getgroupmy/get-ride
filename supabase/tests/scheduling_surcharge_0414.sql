@@ -118,7 +118,10 @@ update public.scheduling_surcharge_rates set active = true where level = 'countr
 
 -- ---------------------------------------------------------------------------
 -- 6. RLS: an edit admin writes; a view-only admin and an ordinary rider cannot.
+--    Switch to the authenticated role so RLS is actually enforced (as the
+--    table owner it is bypassed, which would let every insert through).
 -- ---------------------------------------------------------------------------
+set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000414c1');
 insert into public.scheduling_surcharge_rates (level, service, fee_fixed) values ('master', 'courier', 7);
 select pg_temp.check(
