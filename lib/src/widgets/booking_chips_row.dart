@@ -195,77 +195,47 @@ class NowLaterToggle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    Widget seg(bool selected, IconData icon, String text, {bool chevron = false}) {
+    // Two pills sized to their own content (so the booked time is never
+    // clipped), the selected one accent-filled. The fill and border animate
+    // when the selection flips, so switching Now ⇄ Later reads as a toggle.
+    Widget pill(Key key, bool selected, IconData icon, String text, VoidCallback onTap, {bool chevron = false}) {
       final fg = selected ? cs.onPrimaryContainer : cs.onSurfaceVariant;
-      return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(icon, size: 15, color: fg),
-        if (text.isNotEmpty) ...[
-          const SizedBox(width: 6),
-          Flexible(
-            child: Text(text,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: fg, fontWeight: FontWeight.w600, fontSize: 13.5)),
-          ),
-        ],
-        if (chevron) ...[
-          const SizedBox(width: 3),
-          Icon(Icons.keyboard_arrow_down, size: 15, color: fg.withValues(alpha: .6)),
-        ],
-      ]);
-    }
-
-    return SizedBox(
-      width: 250,
-      child: Material(
-        color: cs.surfaceContainerHighest,
-        shape: StadiumBorder(side: BorderSide(color: cs.outlineVariant)),
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.all(3),
-          child: Stack(children: [
-            // The sliding thumb: half the width, snapping to the chosen side.
-            Positioned.fill(
-              child: AnimatedAlign(
-                alignment: laterSelected ? Alignment.centerRight : Alignment.centerLeft,
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutBack,
-                child: FractionallySizedBox(
-                  widthFactor: .5,
-                  heightFactor: 1,
-                  child: Container(
-                    decoration: ShapeDecoration(color: cs.primaryContainer, shape: const StadiumBorder()),
-                  ),
-                ),
-              ),
+      return GestureDetector(
+        key: key,
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          decoration: ShapeDecoration(
+            color: selected ? cs.primaryContainer : cs.surfaceContainerHighest,
+            shape: StadiumBorder(
+              side: BorderSide(color: selected ? cs.primary : cs.outlineVariant, width: selected ? 1.5 : 1),
             ),
-            Row(children: [
-              Expanded(
-                child: InkWell(
-                  key: const ValueKey('nl-now'),
-                  onTap: onNow,
-                  customBorder: const StadiumBorder(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
-                    child: seg(!laterSelected, Icons.schedule, nowLabel),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: InkWell(
-                  key: const ValueKey('nl-later'),
-                  onTap: onLater,
-                  customBorder: const StadiumBorder(),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
-                    child: seg(laterSelected, Icons.calendar_today_outlined, laterLabel, chevron: true),
-                  ),
-                ),
-              ),
-            ]),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 15, color: fg),
+            if (text.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Text(text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: fg, fontWeight: FontWeight.w600, fontSize: 13.5)),
+            ],
+            if (chevron) ...[
+              const SizedBox(width: 3),
+              Icon(Icons.keyboard_arrow_down, size: 15, color: fg.withValues(alpha: .7)),
+            ],
           ]),
         ),
-      ),
-    );
+      );
+    }
+
+    return Row(mainAxisSize: MainAxisSize.min, children: [
+      pill(const ValueKey('nl-now'), !laterSelected, Icons.schedule, nowLabel, onNow),
+      const SizedBox(width: 6),
+      pill(const ValueKey('nl-later'), laterSelected, Icons.calendar_today_outlined, laterLabel, onLater, chevron: true),
+    ]);
   }
 }

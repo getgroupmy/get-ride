@@ -78,6 +78,11 @@ String formatDateTime(DateTime? dt) =>
 String formatTime(DateTime? dt) =>
     dt == null ? '' : DateFormat('h:mm a').format(dt.toLocal());
 
+/// A scheduled pickup time for a compact chip: "16 Nov, 9:16 AM" — no weekday
+/// or year, so it fits the Now/Later toggle the way Grab shows it.
+String formatPickupChip(DateTime? dt) =>
+    dt == null ? '' : DateFormat('d MMM, h:mm a').format(dt.toLocal());
+
 String formatDistance(num? km) =>
     km == null ? '—' : (km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(1)} km');
 
