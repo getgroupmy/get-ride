@@ -271,12 +271,17 @@ void main() {
 
       testWidgets('street hail (the Meter) is hidden where it is not allowed', (tester) async {
         await _pumpDrive(tester, b, check: const PartnerTypeCheck(hail: false));
+        // The page shortcuts live behind the collapsible toolbar; reveal them.
+        await tester.tap(find.byKey(const ValueKey('partner-toolbar-toggle')));
+        await tester.pumpAndSettle();
         expect(find.byTooltip('Meter Digital'), findsNothing);
         expect(find.byTooltip('Driver permit'), findsOneWidget);
       });
 
       testWidgets('street hail (the Meter) shows where it is allowed', (tester) async {
         await _pumpDrive(tester, b, check: const PartnerTypeCheck(hail: true));
+        await tester.tap(find.byKey(const ValueKey('partner-toolbar-toggle')));
+        await tester.pumpAndSettle();
         expect(find.byTooltip('Meter Digital'), findsOneWidget);
       });
 

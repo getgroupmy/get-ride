@@ -158,14 +158,18 @@ void main() {
       expect(tester.getTopLeft(handle).dy, lessThan(top - 200));
     });
 
-    testWidgets('no top bar: the page buttons float, the menu top left as on the home map', (tester) async {
+    testWidgets('no top bar: the menu top left as on the home map, the page shortcuts behind the toolbar toggle',
+        (tester) async {
       await pump(tester);
       expect(find.byType(AppBar), findsNothing);
       final menu = tester.getRect(find.byKey(const ValueKey('partner-menu-button')));
-      final vehicles = tester.getRect(find.byTooltip('My vehicles'));
       expect(menu.left, 16, reason: "top left, where the home map's menu is");
-      expect(menu.right, lessThan(vehicles.left), reason: 'the page buttons stay on the right');
       expect(menu.top, lessThan(80), reason: 'at the top of the page');
+      // The page shortcuts are collapsed behind the toolbar toggle until tapped.
+      expect(find.byTooltip('My vehicles'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('partner-toolbar-toggle')));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('My vehicles'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('partner-menu-button')));
       await tester.pumpAndSettle();
     });
