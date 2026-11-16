@@ -93,6 +93,7 @@ import {
   type WazeServer,
 } from "../_shared/waze_route.ts";
 import { chainOf, OSRM_PROVIDER, osrmEstimate } from "../_shared/fare_chain.ts";
+import { balanceApplies, balanceOf, orderFor, pickGmapFirst } from "../_shared/live_balance.ts";
 import { nasRouteRequest, parseNasLink } from "../_shared/geo_nas.ts";
 
 const corsHeaders = {
@@ -123,6 +124,8 @@ interface FareAIConfig {
   wazeFallback?: unknown;
   /** The order estimates are asked in: "waze" | "gmap" | "ai" | "osrm" (_shared/fare_chain.ts). */
   chain?: unknown;
+  /** Waze / Google Maps balance: which of the two goes first (_shared/live_balance.ts). */
+  liveBalance?: unknown;
 }
 
 interface LatLng {
@@ -346,9 +349,16 @@ Deno.serve(async (req: Request) => {
 
   // The admin's order (Waze → Google Maps → AI → OSRM and the like): the first step with an
   // estimate answers. No step at all: the apps use their own fallback.
-  const chain = chainOf(config as Record<string, unknown>);
+  let chain = chainOf(config as Record<string, unknown>);
   if (chain.length === 0) {
     return json({ ok: true, estimate: null, reason: "service_disabled" });
+  }
+  // Waze / Google Maps balance: a share of fares asks Google Maps first.
+  let liveFirst: "waze" | "gmap" | undefined;
+  if (balanceApplies(chain)) {
+    const share = await gmapFirstShare(admin, config);
+    chain = orderFor(chain, pickGmapFirst(share, Math.random()));
+    liveFirst = chain.indexOf("gmap") < chain.indexOf("waze") ? "gmap" : "waze";
   }
   const ctx: StepContext = {
     admin,
@@ -363,6 +373,7 @@ Deno.serve(async (req: Request) => {
     standardFuture: standardRoute(origin, destination, stops),
     // Test traffic (0241): a label for the log only. Any failure answers "real".
     testFuture: testAccountCheck(rpcTestAccountLookup((fn, args) => admin.rpc(fn, args)))(userId),
+    liveFirst,
   };
   let reason = "no_estimate";
   for (const step of chain) {
@@ -394,6 +405,21 @@ interface StepContext {
    * first one to run: together they get WAZE_TRIP_BUDGET_MS, as Waze alone
    * did, so the AI and OSRM still answer before the rider app stops waiting. */
   liveDeadline?: number;
+  /** Which live-traffic step went first for this fare (balance), for the log. */
+  liveFirst?: "waze" | "gmap";
+}
+
+/** The share of fares (percent) that ask Google Maps before Waze: the
+ * admin's fixed number, or in automatic mode the share waze-server-health
+ * last set (fare_live_balance, 0414), kept inside the admin's range. An
+ * unreadable automatic share falls back to the bottom of the range. */
+// deno-lint-ignore no-explicit-any
+async function gmapFirstShare(admin: any, config: FareAIConfig): Promise<number> {
+  const b = balanceOf(config as Record<string, unknown>);
+  if (b.mode !== "auto") return b.gmapFirstPct;
+  const { data, error } = await admin.from("fare_live_balance").select("gmap_first_pct").maybeSingle();
+  if (error || data == null) return b.minPct;
+  return Math.min(b.maxPct, Math.max(b.minPct, Number(data.gmap_first_pct) || 0));
 }
 
 type StepResult = { estimate: (RouteEstimate & { stops: number }) | null; reason: string };
@@ -625,7 +651,7 @@ async function estimateFromRouteServers(ctx: StepContext, kind: RouteServerKind)
       error: result.error,
       latency_ms: latencyMs,
       raw_response: result.raw ? result.raw.substring(0, 4000) : null,
-      extra: withStops(parsed ? extrasOf(parsed) : null, stops),
+      extra: withLiveFirst(withStops(parsed ? extrasOf(parsed) : null, stops), ctx.liveFirst),
       standard_duration_min: standard?.min ?? null,
       standard_distance_km: standard?.km ?? null,
       ...((await ctx.testFuture) ? { is_test: true } : {}),
@@ -717,6 +743,11 @@ function extrasOf(e: RouteEstimate): Record<string, unknown> | null {
 }
 
 /** The stops a logged attempt covered, beside its other extras. */
+/** Notes which live-traffic step went first (the balance) on a Waze / Google Maps log row. */
+function withLiveFirst(extra: Record<string, unknown> | null, liveFirst?: "waze" | "gmap"): Record<string, unknown> | null {
+  return liveFirst ? { ...(extra ?? {}), live_first: liveFirst } : extra;
+}
+
 function withStops(extra: Record<string, unknown> | null, stops: LatLng[]): Record<string, unknown> | null {
   if (stops.length === 0) return extra;
   return { ...(extra ?? {}), stops: stops.map((s) => ({ lat: s.latitude, lng: s.longitude })) };

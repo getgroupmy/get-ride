@@ -16,6 +16,11 @@
 // The Google Maps servers (the Traffic Scraper, the fare order's "gmap" step)
 // answer the same /health, so they are checked here too, in the same table.
 //
+// With the Waze / Google Maps balance on "auto" (fare_ai_provider.liveBalance,
+// _shared/live_balance.ts), it also sets the share of fares asking Google
+// Maps first (fare_live_balance, 0414) from the last 15 minutes of
+// fare_ai_responses and this run's health results.
+//
 // Deployed --no-verify-jwt: it authenticates itself with the webhook secret.
 //
 // Deploy: supabase functions deploy waze-server-health --no-verify-jwt
@@ -23,6 +28,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import { chainOf } from "../_shared/fare_chain.ts";
+import { balanceApplies, balanceOf, median, nextAutoShare, type StepStats } from "../_shared/live_balance.ts";
 import {
   GMAP_KIND,
   healthVerdict,
@@ -67,6 +73,35 @@ async function check({ server, kind }: { server: WazeServer; kind: RouteServerKi
   return { id: server.id, ...verdict };
 }
 
+/** The automatic Waze / Google Maps share: the last 15 minutes of real
+ * (non-test) lookups per provider and this run's health, through
+ * nextAutoShare, stored with its reason (fare_live_balance_set, 0414). */
+async function updateAutoBalance(config: Record<string, unknown>, health: { provider: string; state: string }[]) {
+  const since = new Date(Date.now() - 15 * 60_000).toISOString();
+  const { data: rows, error } = await db
+    .from("fare_ai_responses")
+    .select("provider, success, latency_ms, is_test")
+    .in("provider", ["waze", "gmap"])
+    .gte("created_at", since)
+    .limit(5000);
+  if (error) throw error;
+  const stats = (provider: string): StepStats => {
+    const mine = (rows ?? []).filter((r: { provider: string; is_test?: boolean | null }) => r.provider === provider && !r.is_test);
+    const kinds = health.filter((h) => h.provider === provider);
+    return {
+      attempts: mine.length,
+      successes: mine.filter((r: { success: boolean }) => r.success).length,
+      medianMs: median(mine.map((r: { latency_ms: number | null }) => Number(r.latency_ms))),
+      offline: kinds.length > 0 && kinds.every((h) => h.state === "down"),
+    };
+  };
+  const { data: current } = await db.from("fare_live_balance").select("gmap_first_pct").maybeSingle();
+  const decision = nextAutoShare(Number(current?.gmap_first_pct ?? 0), stats("waze"), stats("gmap"), balanceOf(config));
+  const { error: setErr } = await db.rpc("fare_live_balance_set", { p_pct: decision.pct, p_reason: decision.reason });
+  if (setErr) throw setErr;
+  return decision;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -91,7 +126,16 @@ Deno.serve(async (req) => {
 
     // All at once: a slow server must not hold up the others' check.
     const results = await Promise.all(servers.map(check));
-    return json({ servers: results });
+
+    let balance: unknown = null;
+    if (balanceApplies(chain) && balanceOf(config).mode === "auto") {
+      balance = await updateAutoBalance(config, servers.map((s, i) => ({ provider: s.kind.provider, state: results[i].state })))
+        .catch((e) => {
+          console.log("[waze-server-health] balance:", e instanceof Error ? e.message : String(e));
+          return null;
+        });
+    }
+    return json({ servers: results, balance });
   } catch (e) {
     console.log("[waze-server-health] error:", e instanceof Error ? e.message : String(e));
     return json({ error: "unavailable" }, 503);
