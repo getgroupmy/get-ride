@@ -4765,6 +4765,7 @@ class RouteBasisLine extends StatelessWidget {
                         switch (source) {
                           EstimateSource.waze => Icons.traffic_outlined,
                           EstimateSource.gmap => Icons.map_outlined,
+                          EstimateSource.apple => Icons.explore_outlined,
                           EstimateSource.ai => Icons.auto_awesome,
                           EstimateSource.road => Icons.alt_route,
                         },

@@ -441,7 +441,8 @@ class SecurityRepository {
   /// `ai-route-proxy` (admins only): its answer, the estimate made from it
   /// and how long it took. Nothing is logged or counted.
   /// [kind] is the fare step the server belongs to: 'waze' (GET.route) or
-  /// 'gmap' (Google Maps, the Traffic Scraper).
+  /// 'gmap' (Google Maps, the Traffic Scraper) or 'apple' (Apple Maps,
+  /// GET.route Apple Maps).
   Future<Map<String, dynamic>> testWazeServer(
     WazeServer server, {
     required ({double lat, double lng}) origin,

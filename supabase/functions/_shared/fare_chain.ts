@@ -7,6 +7,9 @@
  *   gmap    Google Maps' live route, from the Traffic Scraper on the office NAS
  *           (getgroupmy/get.route.backup). It speaks GET.route's API, so it is
  *           asked the same way, from its own server list (`gmapServers`)
+ *   apple   Apple Maps' route and time, from GET.route Apple Maps on the office
+ *           NAS (getgroupmy/get.route.apple, Apple's official Maps Server API).
+ *           Also GET.route's API, from `appleServers`
  *   ai      the AI provider and keys on the Fare AI page
  *   osrm    OSRM: the office NAS when it is on, else OSRM_URL. Road distance
  *           and empty-road time, no traffic or tolls. Always last.
@@ -18,9 +21,9 @@
  * Pure: see fare_chain_test.ts.
  */
 
-export type FareStep = "waze" | "gmap" | "ai" | "osrm";
+export type FareStep = "waze" | "gmap" | "apple" | "ai" | "osrm";
 
-export const FARE_STEPS: readonly FareStep[] = ["waze", "gmap", "ai", "osrm"];
+export const FARE_STEPS: readonly FareStep[] = ["waze", "gmap", "apple", "ai", "osrm"];
 
 /** The provider an OSRM estimate and its log row carry. */
 export const OSRM_PROVIDER = "osrm";

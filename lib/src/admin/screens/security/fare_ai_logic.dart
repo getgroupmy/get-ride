@@ -15,24 +15,63 @@ const fareAiRemoteKey = 'fare_ai_provider';
 const fareSteps = {
   'waze': 'Waze',
   'gmap': 'Google Maps',
+  'apple': 'Apple Maps',
   'ai': 'AI',
   'osrm': 'OSRM',
 };
 
-/// The orders offered on the Fare AI page. An empty order is "No data": the
-/// apps use their own routing-engine fallback.
-const fareChains = <List<String>>[
+/// The orders offered first on the Fare AI page, the usual ones.
+const _commonFareChains = <List<String>>[
   ['waze', 'gmap', 'ai', 'osrm'],
+  ['waze', 'gmap', 'apple', 'ai', 'osrm'],
+  ['waze', 'apple', 'gmap', 'ai', 'osrm'],
+  ['waze', 'apple', 'ai', 'osrm'],
   ['waze', 'gmap', 'osrm'],
+  ['waze', 'apple', 'osrm'],
   ['gmap', 'ai', 'osrm'],
+  ['apple', 'ai', 'osrm'],
   ['waze', 'ai', 'osrm'],
   ['waze', 'osrm'],
   ['waze', 'ai'],
   ['ai', 'osrm'],
   ['ai'],
   ['osrm'],
-  [],
 ];
+
+/// Every order the Fare AI page offers (a searchable list): the common ones,
+/// then every other order of Waze, Google Maps, Apple Maps and the AI, each
+/// with and without OSRM at the end (nothing is asked after OSRM: it answers
+/// every trip it can route), longest first, then "No data". An empty order is
+/// "No data": the apps use their own routing-engine fallback.
+final List<List<String>> fareChains = _buildFareChains();
+
+List<List<String>> _buildFareChains() {
+  const steps = ['waze', 'gmap', 'apple', 'ai'];
+  final orders = <List<String>>[];
+  void grow(List<String> prefix) {
+    if (prefix.isNotEmpty) orders.add(prefix);
+    for (final s in steps) {
+      if (!prefix.contains(s)) grow([...prefix, s]);
+    }
+  }
+
+  grow(const []);
+  final all = <List<String>>[
+    for (final o in orders) [...o, 'osrm'],
+    for (final o in orders) o,
+    ['osrm'],
+  ];
+  // Longest first; the same length keeps the order above (with OSRM first).
+  final indexed = all.indexed.toList()
+    ..sort((a, b) => b.$2.length.compareTo(a.$2.length) != 0 ? b.$2.length.compareTo(a.$2.length) : a.$1 - b.$1);
+  final seen = <String>{for (final c in _commonFareChains) c.join(',')};
+  return [
+    ..._commonFareChains,
+    for (final (_, c) in indexed)
+      if (seen.add(c.join(','))) c,
+    const [],
+  ];
+}
 
 /// "Waze, then AI, then OSRM", or "No data" (no arrow glyph: it is an empty
 /// box on some phones' fonts, test/no_arrow_glyph_test.dart).
@@ -56,7 +95,8 @@ List<String> cleanFareChain(Iterable<Object?> raw) {
 ///
 /// The Google Maps servers (the Traffic Scraper, getgroupmy/get.route.backup)
 /// speak the same API, so they are this class too, in
-/// [FareAiConfig.gmapServers].
+/// [FareAiConfig.gmapServers], and so are the Apple Maps servers (GET.route
+/// Apple Maps, getgroupmy/get.route.apple), in [FareAiConfig.appleServers].
 class WazeServer {
   const WazeServer({
     required this.id,
@@ -173,6 +213,7 @@ String fareAiProviderLabel(String id) {
   // The non-AI steps of the fare order log under their own names.
   if (id == 'waze') return 'Waze (GET.route)';
   if (id == 'gmap') return 'Google Maps (Traffic Scraper)';
+  if (id == 'apple') return 'Apple Maps (GET.route Apple Maps)';
   if (id == 'osrm') return 'OSRM (no traffic)';
   return id.isEmpty ? '—' : id;
 }
@@ -212,6 +253,7 @@ class FareAiConfig {
     this.trend = FareTrendSettings.off,
     this.wazeServers = const [],
     this.gmapServers = const [],
+    this.appleServers = const [],
     this.liveBalance = FareLiveBalance.off,
   });
 
@@ -224,6 +266,9 @@ class FareAiConfig {
   /// The Google Maps servers (Traffic Scraper), for the "gmap" step.
   final List<WazeServer> gmapServers;
 
+  /// The Apple Maps servers (GET.route Apple Maps), for the "apple" step.
+  final List<WazeServer> appleServers;
+
   /// Which of Waze and Google Maps a fare asks first, when both are in [chain].
   final FareLiveBalance liveBalance;
 
@@ -235,6 +280,8 @@ class FareAiConfig {
   int get activeWazeServerCount => wazeServers.where((s) => s.isActive).length;
 
   int get activeGmapServerCount => gmapServers.where((s) => s.isActive).length;
+
+  int get activeAppleServerCount => appleServers.where((s) => s.isActive).length;
 
   final String provider;
   final int retryAfterValue;
@@ -255,6 +302,7 @@ class FareAiConfig {
     List<String>? chain,
     List<WazeServer>? wazeServers,
     List<WazeServer>? gmapServers,
+    List<WazeServer>? appleServers,
     FareLiveBalance? liveBalance,
     String? provider,
     int? retryAfterValue,
@@ -268,6 +316,7 @@ class FareAiConfig {
         chain: chain ?? this.chain,
         wazeServers: wazeServers ?? this.wazeServers,
         gmapServers: gmapServers ?? this.gmapServers,
+        appleServers: appleServers ?? this.appleServers,
         liveBalance: liveBalance ?? this.liveBalance,
         provider: provider ?? this.provider,
         retryAfterValue: retryAfterValue ?? this.retryAfterValue,
@@ -288,6 +337,7 @@ class FareAiConfig {
         'wazeFallback': uses('ai') ? 'ai' : 'none',
         'wazeServers': [for (final s in wazeServers) s.toJson()],
         'gmapServers': [for (final s in gmapServers) s.toJson()],
+        'appleServers': [for (final s in appleServers) s.toJson()],
         if (liveBalance != FareLiveBalance.off) 'liveBalance': liveBalance.toJson(),
         'provider': provider,
         'retryAfterValue': retryAfterValue,
@@ -358,6 +408,7 @@ FareAiConfig normalizeFareAi(Object? raw) {
     chain: chain,
     wazeServers: _wazeServerList(o['wazeServers']),
     gmapServers: _wazeServerList(o['gmapServers'], defaultLabel: 'Google Maps server'),
+    appleServers: _wazeServerList(o['appleServers'], defaultLabel: 'Apple Maps server'),
     liveBalance: FareLiveBalance.fromJson(o['liveBalance']),
     provider: provider,
     retryAfterValue: retryValue,
