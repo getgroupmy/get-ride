@@ -129,12 +129,31 @@ class _PassengersSheetState extends State<_PassengersSheet> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(color: t.colorScheme.errorContainer, borderRadius: BorderRadius.circular(12)),
-              child: Row(children: [
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Icon(Icons.info_outline, size: 18, color: t.colorScheme.onErrorContainer),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text("We can't fit more than this in a car. Book 2 cars instead.",
-                      style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onErrorContainer)),
+                  child: Text.rich(
+                    TextSpan(
+                      style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onErrorContainer),
+                      children: [
+                        const TextSpan(text: "We can't fit more than this in a car! Book 2 cars instead. "),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.middle,
+                          child: InkWell(
+                            key: const ValueKey('passengers-cap-learn-more'),
+                            onTap: () => showGroupGuidelinesSheet(context, maxSeats: _max),
+                            child: Text('Learn more',
+                                style: t.textTheme.bodySmall?.copyWith(
+                                  color: t.colorScheme.onErrorContainer,
+                                  fontWeight: FontWeight.w700,
+                                  decoration: TextDecoration.underline,
+                                )),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ]),
             ),

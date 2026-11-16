@@ -102,10 +102,15 @@ class BookingChipsRow extends StatelessWidget {
     this.newIds = defaultNewBookingChips,
     this.onTap,
     this.showCaret = true,
+    this.leading,
     this.padding = const EdgeInsets.symmetric(horizontal: 16),
   });
 
   final List<ResolvedChip> chips;
+
+  /// A widget drawn first in the row (e.g. the Now/Later segmented toggle that
+  /// stands in for the Now and Later chips).
+  final Widget? leading;
 
   /// The gutter either side of the row (so it can sit inside an already-padded
   /// column with [EdgeInsets.zero]).
@@ -123,11 +128,12 @@ class BookingChipsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (chips.isEmpty) return const SizedBox.shrink();
+    if (chips.isEmpty && leading == null) return const SizedBox.shrink();
     final items = <Widget>[];
+    if (leading != null) items.add(leading!);
     for (var i = 0; i < chips.length; i++) {
       final c = chips[i];
-      if (i > 0) items.add(const SizedBox(width: 8));
+      if (items.isNotEmpty) items.add(const SizedBox(width: 8));
       items.add(BookingChip(
         chip: c,
         value: valueFor?.call(c),
@@ -155,6 +161,109 @@ class BookingChipsRow extends StatelessWidget {
               child: Row(mainAxisAlignment: MainAxisAlignment.center, children: items),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The animated **Now / Later** segmented toggle that stands in for the Now and
+/// Later chips when the Later chip is on. A thumb slides to the selected side;
+/// the Later side shows [laterLabel] (the booked time once one is set, else
+/// "Later") with a chevron. Tapping either side calls its callback.
+class NowLaterToggle extends StatelessWidget {
+  const NowLaterToggle({
+    super.key,
+    required this.laterSelected,
+    required this.laterLabel,
+    required this.onNow,
+    required this.onLater,
+    this.nowLabel = 'Now',
+  });
+
+  /// True when a Later time is set (the thumb sits on the right).
+  final bool laterSelected;
+
+  /// The Now side's word (admin-renamable; defaults to "Now").
+  final String nowLabel;
+
+  /// The Later side's text: the booked time, or "Later" when none is set.
+  final String laterLabel;
+  final VoidCallback onNow;
+  final VoidCallback onLater;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget seg(bool selected, IconData icon, String text, {bool chevron = false}) {
+      final fg = selected ? cs.onPrimaryContainer : cs.onSurfaceVariant;
+      return Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(icon, size: 15, color: fg),
+        if (text.isNotEmpty) ...[
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: fg, fontWeight: FontWeight.w600, fontSize: 13.5)),
+          ),
+        ],
+        if (chevron) ...[
+          const SizedBox(width: 3),
+          Icon(Icons.keyboard_arrow_down, size: 15, color: fg.withValues(alpha: .6)),
+        ],
+      ]);
+    }
+
+    return SizedBox(
+      width: 250,
+      child: Material(
+        color: cs.surfaceContainerHighest,
+        shape: StadiumBorder(side: BorderSide(color: cs.outlineVariant)),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: Stack(children: [
+            // The sliding thumb: half the width, snapping to the chosen side.
+            Positioned.fill(
+              child: AnimatedAlign(
+                alignment: laterSelected ? Alignment.centerRight : Alignment.centerLeft,
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutBack,
+                child: FractionallySizedBox(
+                  widthFactor: .5,
+                  heightFactor: 1,
+                  child: Container(
+                    decoration: ShapeDecoration(color: cs.primaryContainer, shape: const StadiumBorder()),
+                  ),
+                ),
+              ),
+            ),
+            Row(children: [
+              Expanded(
+                child: InkWell(
+                  key: const ValueKey('nl-now'),
+                  onTap: onNow,
+                  customBorder: const StadiumBorder(),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
+                    child: seg(!laterSelected, Icons.schedule, nowLabel),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: InkWell(
+                  key: const ValueKey('nl-later'),
+                  onTap: onLater,
+                  customBorder: const StadiumBorder(),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 6),
+                    child: seg(laterSelected, Icons.calendar_today_outlined, laterLabel, chevron: true),
+                  ),
+                ),
+              ),
+            ]),
+          ]),
         ),
       ),
     );
