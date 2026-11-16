@@ -1,5 +1,5 @@
 -- ============================================================================
--- Advance-booking surcharge rates (migration 0414)
+-- Advance-booking surcharge rates (migration 0415)
 --
 -- The scheduling fee on a future-dated ("Later") booking is today one global
 -- flat + percentage pair on scheduled_rides_config() (migration 0189). This
@@ -45,7 +45,7 @@ create table if not exists public.scheduling_surcharge_rates (
 );
 
 comment on table public.scheduling_surcharge_rates is
-  'Advance-booking (scheduled ride) surcharge overrides (0414): per service type and '
+  'Advance-booking (scheduled ride) surcharge overrides (0415): per service type and '
   'Country/State/City/Suburb (+ master), a flat + percentage fee. Resolved narrowest-first '
   'with a service-specific row beating an all-service one; falls back to scheduled_rides_config().';
 
@@ -284,7 +284,7 @@ begin
   v_req := public.scheduled_request_clean(v_req);
 
   -- The advance-booking surcharge: a per-service/per-region override where the
-  -- admin set one, else the global scheduled-rides fee (migration 0414).
+  -- admin set one, else the global scheduled-rides fee (migration 0415).
   v_fee := public.scheduling_surcharge_fee(
     v_req->>'service',
     (v_req->>'pickup_lat')::double precision,

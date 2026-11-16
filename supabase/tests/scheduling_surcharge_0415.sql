@@ -1,10 +1,10 @@
 -- ============================================================================
--- Regression test for migration 0414: the advance-booking (scheduled ride)
+-- Regression test for migration 0415: the advance-booking (scheduled ride)
 -- surcharge overrides. Who may read/write, the global fallback, a master
 -- override, a service-specific row beating an all-service one, and a region
 -- level beating master.
 --
---   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/scheduling_surcharge_0414.sql
+--   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/scheduling_surcharge_0415.sql
 --
 -- Runs in one transaction and is rolled back. A failed assertion raises.
 -- ============================================================================
