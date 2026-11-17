@@ -575,10 +575,23 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     );
   }
 
-  /// The map picker (inDrive's): the place chosen there, handed straight back.
+  /// The map picker (inDrive's): the place chosen there. A pin dropped inside
+  /// an admin's drawn boundary opens that place's gates, the same as picking
+  /// it from the list — [_gatedAt] is geofence-only (the point must sit inside
+  /// the ring), so a pin outside any boundary is handed straight back.
   Future<void> _onMap() async {
     final p = await pickPlaceOnMap(context, start: _current?.point ?? widget.near, me: widget.near);
-    if (p != null && mounted) _done(PlacePick.place(p));
+    if (p == null || !mounted) return;
+    final catalogue = ref.read(placeGatesProvider).value;
+    if (catalogue != null) {
+      final gated = _gatedAt(p, catalogue);
+      if (gated != null && gated.gates.isNotEmpty) {
+        // The gate sheet draws the boundary and lists the entrances/gates.
+        await _chooseGate(p, gated, catalogue);
+        return;
+      }
+    }
+    _done(PlacePick.place(p));
   }
 
   Future<void> _add(SavedPlaceKind kind) => addSavedPlace(context, kind, near: widget.near);
