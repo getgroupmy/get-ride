@@ -298,7 +298,7 @@ void main() {
     expect(picked?.place?.point, const LatLng(3.119, 101.678));
   });
 
-  testWidgets('a pin inside a boundary offers its entrances on the map picker', (tester) async {
+  testWidgets('a pin inside a boundary opens the shared entrance selector on the map picker', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(500, 1000);
     addTearDown(tester.view.reset);
@@ -333,38 +333,29 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    // Choose on map → the picker opens inside the boundary and offers the
-    // place's entrances right there, no separate sheet after Done.
+    // Choose on map → the picker opens inside the boundary and, since the pin
+    // is within it, the app's shared entrance selector (the same sheet search
+    // uses) opens by itself — not a bespoke panel.
     await tester.tap(find.byKey(const ValueKey('place-search-map')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('map-picker-entrances')), findsOneWidget);
-    expect(find.byKey(const ValueKey('map-picker-gate-north')), findsOneWidget);
-    // The place requires a gate, so Done is held until one is chosen.
-    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('map-picker-done'))).onPressed, isNull);
+    expect(find.byKey(const ValueKey('gate-picker-title')), findsOneWidget);
+    expect(find.text('Mid Valley Megamall'), findsWidgets);
+    expect(find.byKey(const ValueKey('gate-dot-north')), findsOneWidget);
 
-    // Tapping an entrance selects it: the panel stays up, the flag's callout
-    // becomes the chosen entrance ("Pickup point"), and Done lights up — it
-    // does not close the picker yet (inDrive's flow, so the rider can switch).
-    await tester.tap(find.byKey(const ValueKey('map-picker-gate-north')));
+    // Picking an entrance there hands that gate back as the chosen place, and
+    // the whole picker closes.
+    await tester.tap(find.byKey(const ValueKey('gate-dot-north')));
     await tester.pumpAndSettle();
-    expect(picked, isNull);
-    expect(find.byKey(const ValueKey('map-picker-entrances')), findsOneWidget);
-    expect(find.byKey(const ValueKey('map-picker-pickup')), findsOneWidget, reason: 'the callout names the entrance');
-    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('map-picker-done'))).onPressed, isNotNull);
-
-    // Done hands that gate back as the chosen place.
-    await tester.tap(find.byKey(const ValueKey('map-picker-done')));
+    await tester.tap(find.byKey(const ValueKey('gate-picker-done')));
     await tester.pumpAndSettle();
     expect(picked?.place?.name, 'Mid Valley Megamall - North Court');
     expect(picked?.place?.point, const LatLng(3.119, 101.678));
   });
 
-  testWidgets('entrances stay up even when the nearest gate sits outside the boundary', (tester) async {
-    // The Pavilion bug: a gated place whose kerbside gate is just outside its
-    // polygon. The picker must keep showing the entrances for the whole pin —
-    // it must not snap the flag onto the outside gate (which carried the pin
-    // out of the boundary and dropped the panel, so only boundary-less places
-    // like an LRT station used to work).
+  testWidgets('the selector opens for a place whose only gate sits outside its boundary', (tester) async {
+    // The Pavilion case: a gated place whose kerbside gate is just outside its
+    // polygon. Dropping the pin inside must open the selector and let that gate
+    // be chosen (the entrances come from the place, not from where the pin is).
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(500, 1000);
     addTearDown(tester.view.reset);
@@ -415,20 +406,12 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('place-search-map')));
     await tester.pumpAndSettle();
 
-    // The pin stayed inside the boundary, so its entrances are still offered.
-    expect(find.byKey(const ValueKey('map-picker-entrances')), findsOneWidget);
-    expect(find.byKey(const ValueKey('map-picker-gate-kerb')), findsOneWidget);
-    expect(picked, isNull);
-
-    // Choosing that entrance moves the flag onto it — outside the boundary —
-    // yet the panel stays up (the lock), the callout shows it, and Done hands
-    // the gate back at its own coordinates.
-    await tester.tap(find.byKey(const ValueKey('map-picker-gate-kerb')));
+    // The selector opened for the place and its (outside) gate can be chosen.
+    expect(find.byKey(const ValueKey('gate-picker-title')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gate-dot-kerb')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('gate-dot-kerb')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('map-picker-entrances')), findsOneWidget,
-        reason: 'the panel must not vanish when the chosen gate is outside the fence');
-    expect(find.byKey(const ValueKey('map-picker-pickup')), findsOneWidget);
-    await tester.tap(find.byKey(const ValueKey('map-picker-done')));
+    await tester.tap(find.byKey(const ValueKey('gate-picker-done')));
     await tester.pumpAndSettle();
     expect(picked?.place?.name, 'Stadium - Taxi stand');
     expect(picked?.place?.point, const LatLng(3.195, 101.605));

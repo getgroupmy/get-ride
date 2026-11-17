@@ -6,13 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/airport_areas.dart';
-import '../../core/airport_queue.dart';
 import '../../core/gate_snap.dart';
 import '../../core/format.dart';
 import '../../core/place_gates.dart';
 import '../../core/place_types.dart';
 import '../../core/smart_address.dart';
-import '../../data/airport_repository.dart' show airportSettingsProvider;
 import '../../data/area_precedence_repository.dart' show areaPrecedenceRuleProvider;
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
@@ -875,55 +873,9 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// wheel of the places, in the admin's order, beside the chosen place's
   /// doors, as in inDrive.
   Future<void> _chooseGate(Place p, GatedPlace gated, GateCatalogue catalogue) async {
-    final rows = {for (final g in catalogue.gates) g.id: g.values};
-    final found = gated.partOf.isEmpty
-        ? const <GatedPlace>[]
-        : linkedGatedPlaces(places: catalogue.places, gates: catalogue.gates, placeId: gated.id, usage: _usage);
-    final linked = found.length > 1 ? found : [gated];
-    final doors = linked.length > 1
-        ? linkedPlaceDoors(linked, rows)
-        : [
-            for (final g in gated.gates)
-              if (rows[g.id] case final v?) AirportDoor.fromGate(g.id, v),
-          ];
-    final rings = <List<LatLng>>[];
-    AirportSettings? settings;
-    try {
-      final areas = await ref.read(airportAreasProvider.future);
-      for (final l in linked) {
-        final area =
-            areas.where((a) => a.id == l.id).firstOrNull ??
-            (l.id == gated.id ? gateAreaAt(areas, p.point, rule: _areaRule) : null);
-        if (area != null) rings.addAll(area.rings);
-        if (area != null && l.id == gated.id) settings = (await ref.read(airportSettingsProvider.future))[area.id];
-      }
-    } catch (_) {}
-    if (!mounted) return;
-    final side = _usage == GateUsage.drop ? AirportSide.drop : AirportSide.pick;
-    // The sheet opens on the tapped place's doors.
-    final own = [for (final d in doors) if (d.airportId == gated.id) d];
-    final pick = await showGatePicker(
-      context,
-      placeName: gated.name.isEmpty ? p.name : gated.name,
-      gates: doors,
-      rings: rings,
-      selectedId: linked.length > 1 ? (own.where((d) => doorPoint(d) != null).firstOrNull ?? own.firstOrNull)?.id : null,
-      required: gated.gateRequired,
-      side: side,
-      guides: side == AirportSide.pick && (settings?.guideOn ?? false),
-      linkedPlaces: linked.length > 1,
-    );
-    if (pick == null || !mounted) return;
-    final door = pick.door;
-    // The chosen door's own place: the tapped one, or one linked to it.
-    final at = door == null ? null : linked.where((l) => l.gates.any((g) => g.id == door.id)).firstOrNull;
-    final option = at?.gates.where((g) => g.id == door?.id).firstOrNull;
-    if (at == null || option == null) {
-      _done(PlacePick.place(p));
-      return;
-    }
-    final base = at.id == gated.id ? p : Place(name: at.name, address: at.address, point: at.point ?? p.point);
-    _done(PlacePick.place(gatePlace(base, at, option)));
+    final chosen = await chooseGateForPlace(context, ref, base: p, gated: gated, catalogue: catalogue, usage: _usage, rule: _areaRule);
+    if (chosen == null || !mounted) return;
+    _done(PlacePick.place(chosen));
   }
 
   /// A result picked: an Autocomplete suggestion looked up first (shown
