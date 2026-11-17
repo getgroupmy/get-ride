@@ -348,4 +348,66 @@ void main() {
     expect(picked?.place?.name, 'Mid Valley Megamall - North Court');
     expect(picked?.place?.point, const LatLng(3.119, 101.678));
   });
+
+  testWidgets('entrances stay up even when the nearest gate sits outside the boundary', (tester) async {
+    // The Pavilion bug: a gated place whose kerbside gate is just outside its
+    // polygon. The picker must keep showing the entrances for the whole pin —
+    // it must not snap the flag onto the outside gate (which carried the pin
+    // out of the boundary and dropped the panel, so only boundary-less places
+    // like an LRT station used to work).
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 1000);
+    addTearDown(tester.view.reset);
+    // A boundary around 3.20–3.21 / 101.60–101.61; the pin drops at its centre.
+    const inside = LatLng(3.205, 101.605);
+    final arenaArea = AirportArea.fromEntry(
+      'arena',
+      placeAreaValues(
+        {'name': 'Stadium'},
+        {'lat': 3.205, 'lon': 101.605, 'placeType': 'stadium'},
+        _shape(3.21, 3.20, 101.61, 101.60),
+      ),
+      kind: AreaKind.place,
+      sizeM2: 1e6,
+    )!;
+    const arena = (id: 'arena', values: <String, dynamic>{'name': 'Stadium', 'lat': '3.205', 'lon': '101.605'});
+    // The only gate is south of the south edge (3.195 < 3.20): outside the box.
+    final gates = <GateRow>[
+      (id: 'kerb', values: <String, dynamic>{'placeId': 'arena', 'name': 'Taxi stand', 'lat': 3.195, 'lon': 101.605}),
+    ];
+    PlacePick? picked;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          recentPlacesProvider.overrideWith((ref) async => const []),
+          geoServiceProvider.overrideWithValue(_Geo(const [], at: 'Stadium')),
+          pickerPositionProvider.overrideWithValue(() async => null),
+          placeGatesProvider.overrideWith((ref) async => (places: [arena], gates: gates)),
+          airportAreasProvider.overrideWith((ref) async => [arenaArea]),
+          areaPrecedenceRuleProvider.overrideWith((ref) async => const AreaPrecedenceRule()),
+          airportSettingsProvider.overrideWith((ref) async => const {}),
+        ],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () async =>
+                    picked = await showPlaceSearch(context, title: 'Pickup', usage: GateUsage.pickup, near: inside),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('place-search-map')));
+    await tester.pumpAndSettle();
+
+    // The pin stayed inside the boundary, so its entrances are still offered.
+    expect(find.byKey(const ValueKey('map-picker-entrances')), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-picker-gate-kerb')), findsOneWidget);
+    expect(picked, isNull);
+  });
 }

@@ -199,34 +199,31 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
   /// re-entering frames again.
   String? _framedId;
 
-  /// When the pin first lands inside [gated]'s boundary, zoom the map out to
-  /// show the whole geofence and move the flag onto its nearest entrance, so
-  /// the boundary and its entrances are in view. Once per entry.
+  /// When the pin first lands inside [gated]'s boundary, pull the zoom out just
+  /// enough to frame the whole geofence so its boundary and entrances come into
+  /// view. The dropped pin is left exactly where it is — never snapped onto an
+  /// entrance — so it stays inside the boundary and the entrance panel keeps
+  /// showing for every gated place. (Snapping it onto the nearest gate used to
+  /// move the pin out of the polygon whenever that gate sat just outside it — a
+  /// mall's kerbside taxi stand, say — which dropped the panel, so only a
+  /// boundary-less place like an LRT station ever kept its entrances.) Once per
+  /// entry, and only ever zooms out, so the pin's own spot is untouched.
   void _frameGeofence(GatedPlace gated) {
     if (_framedId == gated.id) return;
     final areas = ref.read(airportAreasProvider).value ?? const <AirportArea>[];
     final area = areas.where((a) => a.id == gated.id).firstOrNull;
     if (area == null) return;
     _framedId = gated.id;
-    const distance = Distance();
-    final here = _map.camera.center;
-    LatLng? nearest;
-    var best = double.infinity;
-    for (final g in gated.gates) {
-      final pt = g.point;
-      if (pt == null) continue;
-      final m = distance.as(LengthUnit.Meter, here, pt);
-      if (m < best) {
-        best = m;
-        nearest = pt;
-      }
-    }
     final fitted = CameraFit.bounds(
       bounds: LatLngBounds(LatLng(area.south, area.west), LatLng(area.north, area.east)),
       padding: const EdgeInsets.all(72),
     ).fit(_map.camera);
-    recenterMap(_map, nearest ?? fitted.center, zoom: fitted.zoom);
-    _onEvent(MapEventMove(camera: _map.camera, oldCamera: _map.camera, source: MapEventSource.mapController));
+    // Keep the pin on the spot the rider dropped it (its centre); only ease the
+    // zoom out to bring the whole geofence into view.
+    if (fitted.zoom < _map.camera.zoom) {
+      recenterMap(_map, _map.camera.center, zoom: fitted.zoom);
+      _onEvent(MapEventMove(camera: _map.camera, oldCamera: _map.camera, source: MapEventSource.mapController));
+    }
   }
 
   @override
