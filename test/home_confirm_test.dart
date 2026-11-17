@@ -229,6 +229,27 @@ class _Here implements LocationSource {
   Future<LatLng> current(LocationAccuracy accuracy) async => at;
 }
 
+/// A location source that counts the fresh fixes asked of it, so a test can
+/// tell the route sheet re-located on opening.
+class _CountingSource implements LocationSource {
+  _CountingSource(this.at);
+  final LatLng at;
+  int currentCalls = 0;
+  @override
+  Future<bool> serviceEnabled() async => true;
+  @override
+  Future<LocationPermission> checkPermission() async => LocationPermission.whileInUse;
+  @override
+  Future<LocationPermission> requestPermission() async => LocationPermission.whileInUse;
+  @override
+  Future<LatLng?> lastKnown() async => at;
+  @override
+  Future<LatLng> current(LocationAccuracy accuracy) async {
+    currentCalls++;
+    return at;
+  }
+}
+
 class _NoAi implements RouteEstimateRepository {
   @override
   dynamic noSuchMethod(Invocation i) => Future.value(null);
@@ -298,6 +319,7 @@ Future<ProviderContainer> _pump(
   Map<String, dynamic> display = const <String, dynamic>{},
   PromoRepository? promos,
   LatLng? here,
+  LocationSource? locationSource,
   ScheduledRidesConfig? scheduled,
   Brightness brightness = Brightness.light,
   Size size = const Size(400, 860),
@@ -331,7 +353,10 @@ Future<ProviderContainer> _pump(
       fareTariffsProvider.overrideWith((ref) async => const []),
       meterLaunchSessionProvider.overrideWithValue(null),
       promoRepositoryProvider.overrideWithValue(promos ?? PromoRepository(null)),
-      if (here != null) locationSourceProvider.overrideWithValue(_Here(here)),
+      if (locationSource != null)
+        locationSourceProvider.overrideWithValue(locationSource)
+      else if (here != null)
+        locationSourceProvider.overrideWithValue(_Here(here)),
       if (scheduled != null) scheduledRidesConfigProvider.overrideWith((ref) async => scheduled),
       if (uid != null) currentUserIdProvider.overrideWithValue(uid),
     ],
@@ -1544,6 +1569,43 @@ void main() {
       findsOneWidget,
       reason: 'the destination kept',
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('opening Enter your route re-resolves the current location', (tester) async {
+    final loc = _CountingSource(const LatLng(3.0, 101.6));
+    await _pump(tester, _Rides(), locationSource: loc);
+    await _settle(tester);
+    final before = loc.currentCalls;
+    expect(before, greaterThan(0), reason: 'the home screen located on launch');
+    // Open the route sheet, as the confirm step's destination row does.
+    await tester.tap(find.byKey(const ValueKey('confirm-drop')));
+    await _settle(tester);
+    expect(find.text('Enter your route'), findsOneWidget);
+    expect(find.text('Current location'), findsOneWidget, reason: 'the row that should be fresh is shown');
+    expect(
+      loc.currentCalls,
+      greaterThan(before),
+      reason: 'opening the sheet asked the phone where it is again, so the row is up to date',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('tapping Current location reads a fresh fix, then closes', (tester) async {
+    final loc = _CountingSource(const LatLng(3.0, 101.6));
+    await _pump(tester, _Rides(), locationSource: loc);
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('confirm-drop')));
+    await _settle(tester);
+    // Edit the pickup (the From), where Current location naturally goes.
+    await tester.tap(find.byKey(const ValueKey('place-search-from')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('place-search-current')), findsOneWidget);
+    final before = loc.currentCalls;
+    await tester.tap(find.byKey(const ValueKey('place-search-current')));
+    await _settle(tester);
+    expect(loc.currentCalls, greaterThan(before), reason: 'the tap re-read the phone position');
+    expect(find.text('Enter your route'), findsNothing, reason: 'the pick closed the sheet');
     expect(tester.takeException(), isNull);
   });
 
