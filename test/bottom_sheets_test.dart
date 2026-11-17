@@ -91,6 +91,44 @@ void main() {
     expect(tester.getBottomLeft(button).dy, lessThan(after), reason: 'and its buttons follow the sheet up');
   });
 
+  testWidgets('a trimmed sheet (iPhone Duo cover) fills its content to the trimmed edge, not the device inset', (tester) async {
+    // The Duo cover reports a wide side safe-area (the sensor strip). The admin
+    // trims the sheet off a reserved strip of the same side; the sheet content
+    // must then fill to the trimmed edge rather than being pushed in a second
+    // time by the device inset (which left a blank gap on the strip side).
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    const strip = 74.0; // the reserved strip width (sheetRightInset)
+    const sensor = 74.0; // the device's right safe-area inset under the strip
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MediaQuery(
+          data: const MediaQueryData(
+            size: Size(400, 800),
+            padding: EdgeInsets.only(right: sensor),
+            viewPadding: EdgeInsets.only(right: sensor),
+          ),
+          child: Scaffold(
+            body: MapSheetLayout(
+              map: const ColoredBox(color: Colors.green, child: SizedBox.expand()),
+              sheetRightInset: strip,
+              sheet: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: const [SizedBox(key: ValueKey('fill'), height: 40)],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final fill = tester.getRect(find.byKey(const ValueKey('fill')));
+    expect(fill.left, moreOrLessEquals(0, epsilon: 0.5));
+    expect(fill.right, moreOrLessEquals(400 - strip, epsilon: 0.5),
+        reason: 'content reaches the trimmed sheet edge, not inset again by the sensor strip');
+  });
+
   testWidgets('the handle stays at the top of the sheet while its content scrolls', (tester) async {
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1;

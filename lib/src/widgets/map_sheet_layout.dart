@@ -752,6 +752,14 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
+    // A trimmed side (the iPhone Duo cover's reserved strip) already stops the
+    // sheet short of the device's wide side safe-area there, so the scrolling
+    // content must not inset that side again — doing so pushed the content in
+    // by the sensor strip a second time and left a blank gap between it and the
+    // sheet's trimmed edge. Keep the safe-area inset only on an untrimmed side;
+    // the pinned footer has no such inset and already fills the trimmed sheet.
+    final keepLeftInset = widget.sheetLeftInset <= 0;
+    final keepRightInset = widget.sheetRightInset <= 0;
     return LayoutBuilder(
       builder: (context, c) {
         final h = c.maxHeight;
@@ -884,7 +892,7 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                           if (widget.peek != null)
                             SliverToBoxAdapter(
                               child: _wheelMovesSheet(
-                                SafeArea(top: false, bottom: false, child: widget.peek!),
+                                SafeArea(top: false, bottom: false, left: keepLeftInset, right: keepRightInset, child: widget.peek!),
                                 scroll,
                                 h,
                               ),
@@ -901,6 +909,8 @@ class _MapSheetLayoutState extends State<MapSheetLayout> with TickerProviderStat
                               SafeArea(
                               top: false,
                               bottom: false,
+                              left: keepLeftInset,
+                              right: keepRightInset,
                               child: widget.peek == null
                                   ? widget.sheet
                                   : ValueListenableBuilder<double>(
