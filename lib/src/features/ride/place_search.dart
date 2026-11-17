@@ -608,14 +608,30 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       catalogue ??= ref.read(placeGatesProvider).value;
     }
     if (!mounted) return;
-    if (catalogue != null) {
-      final gated = _gatedAt(p, catalogue, areas: areas, rule: rule);
-      if (gated != null && gated.gates.isNotEmpty) {
-        // The gate sheet draws the boundary and lists the entrances/gates.
-        await _chooseGate(p, gated, catalogue);
-        return;
-      }
+    final gated = catalogue == null ? null : _gatedAt(p, catalogue, areas: areas, rule: rule);
+    if (catalogue != null && gated != null && gated.gates.isNotEmpty) {
+      // The gate sheet draws the boundary and lists the entrances/gates.
+      await _chooseGate(p, gated, catalogue);
+      return;
     }
+    // TEMPORARY blocking diagnostic (removed before this reaches production):
+    // the pin opened no gate sheet, so show exactly what the gate check saw.
+    final a = (areas != null && areas.isNotEmpty) ? areas : (ref.read(airportAreasProvider).value ?? const <AirportArea>[]);
+    final r = rule ?? _areaRule;
+    final areaAt = gateAreaAt(a, p.point, rule: r);
+    final inFence = [for (final x in a) if (x.isPlace && x.contains(p.point, bufferM: 0)) x.name];
+    await showAppNotice(
+      id: 'notice.place-search',
+      context: context,
+      message: 'Gate check (debug)\n'
+          'pin ${p.point.latitude.toStringAsFixed(5)}, ${p.point.longitude.toStringAsFixed(5)}\n'
+          'awaited areas: ${areas?.length ?? -1}; live areas: ${ref.read(airportAreasProvider).value?.length ?? -1}\n'
+          'in-fence: ${inFence.isEmpty ? "none" : inFence.join(", ")}\n'
+          'area at pin: ${areaAt == null ? "none" : "${areaAt.name} (${areaAt.isPlace ? "place" : "airport"})"}\n'
+          'catalogue: ${catalogue?.places.length ?? -1} places / ${catalogue?.gates.length ?? -1} gates\n'
+          'gated: ${gated == null ? "null" : "${gated.name}, gates=${gated.gates.length}"}',
+    );
+    if (!mounted) return;
     _done(PlacePick.place(p));
   }
 
@@ -632,10 +648,12 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// outside the geofence never raises the gate sheet. A place with no
   /// boundary is still matched by its name or by sitting on it, as before.
   GatedPlace? _gatedAt(Place p, GateCatalogue catalogue, {List<AirportArea>? areas, AreaPrecedenceRule? rule}) {
-    // Prefer the boundaries the caller just awaited: a plain `.value` read can
-    // come back empty while the provider is mid-reload (its realtime watch
-    // re-subscribes), which would drop a geofenced place to "no boundary".
-    final a = areas ?? ref.read(airportAreasProvider).value ?? const <AirportArea>[];
+    // Use whichever source actually has the boundaries. The awaited list is
+    // preferred, but if it came back empty (a mid-reload future) fall back to
+    // the live `.value` — which the picker's boundary overlay keeps warm, so a
+    // geofenced place is never dropped to "no boundary" when the data is there.
+    var a = areas ?? const <AirportArea>[];
+    if (a.isEmpty) a = ref.read(airportAreasProvider).value ?? const <AirportArea>[];
     return matchGatedPlace(
       places: catalogue.places,
       gates: catalogue.gates,
