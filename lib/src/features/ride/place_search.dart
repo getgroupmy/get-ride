@@ -582,24 +582,34 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   Future<void> _onMap() async {
     final p = await pickPlaceOnMap(context, start: _current?.point ?? widget.near, me: widget.near);
     if (p == null || !mounted) return;
-    // Load the catalogue and the drawn boundaries before the pin is tested.
-    // The boundaries (airportAreasProvider) are only watched by the results
-    // list, so opening the search and going straight to the map leaves them
-    // unread — and a geofenced place is matched only by its boundary, so
-    // without them a pin in the middle of one looked like open ground and was
-    // handed back with no gate sheet. Await the futures (capped, so a slow
-    // read never freezes the flow after Done) so it never races.
+    // Load the catalogue and the drawn boundaries before the pin is tested,
+    // and use the values the load returns directly. The boundaries
+    // (airportAreasProvider) are only watched by the results list, so opening
+    // the search and going straight to the map leaves them unread; and a plain
+    // `.value` read right after the await can still be empty while the provider
+    // re-subscribes its realtime watch. Either way a geofenced place would be
+    // matched against no boundary and handed back with no gate sheet. A place
+    // is matched only by its boundary, so the boundaries must actually be in
+    // hand. Capped, so a slow read never freezes the flow after Done.
+    GateCatalogue? catalogue;
+    List<AirportArea>? areas;
+    AreaPrecedenceRule? rule;
     try {
-      await Future.wait([
+      final loaded = await Future.wait([
         ref.read(placeGatesProvider.future),
         ref.read(airportAreasProvider.future),
         ref.read(areaPrecedenceRuleProvider.future),
-      ]).timeout(const Duration(seconds: 4));
-    } catch (_) {}
+      ]).timeout(const Duration(seconds: 8));
+      catalogue = loaded[0] as GateCatalogue;
+      areas = loaded[1] as List<AirportArea>;
+      rule = loaded[2] as AreaPrecedenceRule;
+    } catch (_) {
+      // Timed out or a read failed: fall back to whatever is cached.
+      catalogue ??= ref.read(placeGatesProvider).value;
+    }
     if (!mounted) return;
-    final catalogue = ref.read(placeGatesProvider).value;
     if (catalogue != null) {
-      final gated = _gatedAt(p, catalogue);
+      final gated = _gatedAt(p, catalogue, areas: areas, rule: rule);
       if (gated != null && gated.gates.isNotEmpty) {
         // The gate sheet draws the boundary and lists the entrances/gates.
         await _chooseGate(p, gated, catalogue);
@@ -621,16 +631,19 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// an airport that both hold it) — never by name or nearness, so a point
   /// outside the geofence never raises the gate sheet. A place with no
   /// boundary is still matched by its name or by sitting on it, as before.
-  GatedPlace? _gatedAt(Place p, GateCatalogue catalogue) {
-    final areas = ref.read(airportAreasProvider).value ?? const <AirportArea>[];
+  GatedPlace? _gatedAt(Place p, GateCatalogue catalogue, {List<AirportArea>? areas, AreaPrecedenceRule? rule}) {
+    // Prefer the boundaries the caller just awaited: a plain `.value` read can
+    // come back empty while the provider is mid-reload (its realtime watch
+    // re-subscribes), which would drop a geofenced place to "no boundary".
+    final a = areas ?? ref.read(airportAreasProvider).value ?? const <AirportArea>[];
     return matchGatedPlace(
       places: catalogue.places,
       gates: catalogue.gates,
       point: p.point,
       name: p.name,
       usage: _usage,
-      airportId: gateAreaAt(areas, p.point, rule: _areaRule)?.id,
-      boundedIds: {for (final a in areas) if (a.isPlace) a.id},
+      airportId: gateAreaAt(a, p.point, rule: rule ?? _areaRule)?.id,
+      boundedIds: {for (final x in a) if (x.isPlace) x.id},
     );
   }
 
