@@ -120,10 +120,17 @@ GatedPlace? matchGatedPlace({
   String? name,
   GateUsage? usage,
   String? airportId,
+  Set<String> boundedIds = const {},
 }) {
   if (places.isEmpty) return null;
   final q = _normalize(name ?? '');
-  GateRow? place = q.isEmpty ? null : places.where((p) => _normalize('${p.values['name'] ?? ''}') == q).firstOrNull;
+  // A place the admin has drawn a boundary for ([boundedIds]) is matched by
+  // that boundary alone — the caller passes it as [airportId] when the point
+  // is inside it — never by name or nearness, so its gate sheet opens only
+  // when the point falls inside the geofence.
+  bool bounded(GateRow p) => boundedIds.contains(p.id);
+  GateRow? place =
+      q.isEmpty ? null : places.where((p) => !bounded(p) && _normalize('${p.values['name'] ?? ''}') == q).firstOrNull;
   if (place == null && airportId != null) place = places.where((p) => p.id == airportId).firstOrNull;
   // By nearness: only a result sitting on the place ([gateMatchRadiusKm]),
   // so a named POI isn't hijacked by an unrelated gated place down the road.
@@ -131,6 +138,7 @@ GatedPlace? matchGatedPlace({
     const distance = Distance();
     var best = double.infinity;
     for (final p in places) {
+      if (bounded(p)) continue;
       final at = _point(p.values);
       if (at == null) continue;
       final km = distance.as(LengthUnit.Meter, point, at) / 1000;
@@ -142,6 +150,7 @@ GatedPlace? matchGatedPlace({
   }
   if (place == null && q.isNotEmpty) {
     for (final p in places) {
+      if (bounded(p)) continue;
       final pn = _normalize('${p.values['name'] ?? ''}');
       if (pn.isNotEmpty && (pn == q || pn.contains(q) || q.contains(pn))) {
         place = p;

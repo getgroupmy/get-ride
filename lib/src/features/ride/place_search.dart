@@ -587,19 +587,24 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// set it.
   AreaPrecedenceRule get _areaRule => ref.read(areaPrecedenceRuleProvider).value ?? const AreaPrecedenceRule();
 
-  /// The admin place [p] is at, with its gates for this end: the place of
-  /// that name, else the airport (or the place grouping its search results)
-  /// whose boundary holds [p] (an address at KLIA opens KLIA's doors, not a
-  /// station's nearer by; one at a mall with its own boundary inside KLIA's,
-  /// the mall's, as [_areaRule] says), else the nearest.
-  GatedPlace? _gatedAt(Place p, GateCatalogue catalogue) => matchGatedPlace(
-    places: catalogue.places,
-    gates: catalogue.gates,
-    point: p.point,
-    name: p.name,
-    usage: _usage,
-    airportId: searchAreaAt(ref.read(airportAreasProvider).value ?? const [], p.point, rule: _areaRule)?.id,
-  );
+  /// The admin place [p] is at, with its gates for this end. A place the
+  /// admin has drawn a boundary for opens its gates only when [p] falls
+  /// inside that boundary ([gateAreaAt], as [_areaRule] resolves a place and
+  /// an airport that both hold it) — never by name or nearness, so a point
+  /// outside the geofence never raises the gate sheet. A place with no
+  /// boundary is still matched by its name or by sitting on it, as before.
+  GatedPlace? _gatedAt(Place p, GateCatalogue catalogue) {
+    final areas = ref.read(airportAreasProvider).value ?? const <AirportArea>[];
+    return matchGatedPlace(
+      places: catalogue.places,
+      gates: catalogue.gates,
+      point: p.point,
+      name: p.name,
+      usage: _usage,
+      airportId: gateAreaAt(areas, p.point, rule: _areaRule)?.id,
+      boundedIds: {for (final a in areas) if (a.isPlace) a.id},
+    );
+  }
 
   /// The result standing for [a] and the results grouped into it: the
   /// airport, or the place by its name, address and position.

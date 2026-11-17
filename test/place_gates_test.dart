@@ -125,6 +125,41 @@ void main() {
       expect(m?.gates, isEmpty);
       expect(m?.blocksPlace, isFalse);
     });
+
+    test('a place with a boundary opens only when the point is inside it', () {
+      const bounded = {'mall'};
+      // Inside the geofence: the caller hands the place as airportId (from
+      // gateAreaAt), and the gates open even away from the place's own point.
+      final inside = matchGatedPlace(
+        places: places,
+        gates: _gates,
+        point: const LatLng(3.14, 101.69),
+        name: 'Mid Valley Megamall',
+        airportId: 'mall',
+        boundedIds: bounded,
+      );
+      expect(inside?.id, 'mall', reason: 'inside the boundary opens its gates');
+
+      // Outside it (no airportId): neither the exact name nor sitting right on
+      // the place raises the sheet for a geofenced place.
+      final outside = matchGatedPlace(
+        places: places,
+        gates: _gates,
+        point: const LatLng(3.1178, 101.6772),
+        name: 'Mid Valley Megamall',
+        boundedIds: bounded,
+      );
+      expect(outside, isNull, reason: 'a geofenced place is never matched by name or nearness');
+
+      // A place with no boundary is unaffected: name and nearness still match.
+      final unbounded = matchGatedPlace(
+        places: places,
+        gates: _gates,
+        point: const LatLng(3.1178, 101.6772),
+        name: 'Mid Valley Megamall',
+      );
+      expect(unbounded?.id, 'mall', reason: 'no boundary: matched as before');
+    });
   });
 
   test('an exact name wins over a nearer place (an airport result at its boundary centre)', () {
