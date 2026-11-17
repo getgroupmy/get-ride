@@ -480,6 +480,13 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
     final panel = Material(
       key: const ValueKey('gate-picker-panel'),
       color: scheme.surface,
+      // Rounded top corners like every other bottom sheet; the map behind shows
+      // through the corners. Clipping the panel (a Flutter surface) is safe —
+      // only a rounded clip on the native map view is not (see the top).
+      elevation: 8,
+      shadowColor: Colors.black45,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
         child: Padding(
