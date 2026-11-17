@@ -16,6 +16,7 @@ import '../../data/airport_repository.dart' show airportSettingsProvider;
 import '../../data/area_precedence_repository.dart' show areaPrecedenceRuleProvider;
 import '../../data/app_display_repository.dart';
 import '../../data/geo_service.dart';
+import '../../data/location_source.dart';
 import '../../data/place_gates_repository.dart';
 import '../../data/place_types_repository.dart';
 import '../../core/saved_places.dart';
@@ -286,6 +287,31 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
 
   /// Closes with [p], marked as the new start when the rider is changing it.
   void _done(PlacePick p) => Navigator.pop(context, (_editFrom ? p._asFrom() : p)._withQuery(_query.text));
+
+  /// The "Current location" row tapped: pick the rider's position as it is
+  /// now — a fresh fix, reverse-geocoded — rather than the place the row
+  /// shows, which may be a fix old (they may have moved since it opened). The
+  /// row shows the busy bar while the fix comes; the shown place stands if
+  /// none does (location off or refused).
+  Future<void> _useFreshCurrent() async {
+    final shown = _current;
+    if (shown == null || _picking) return;
+    setState(() => _picking = true);
+    var picked = shown;
+    try {
+      await for (final p in locateFastThenFine(
+        ref.read(locationSourceProvider),
+        fineTimeout: const Duration(seconds: 6),
+      )) {
+        picked = await ref.read(geoServiceProvider).reverse(p);
+      }
+    } catch (_) {
+      // No fresh fix: keep the current place the row already showed.
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+    if (mounted) _done(PlacePick.place(picked));
+  }
 
   /// Back to searching the trip's end (the To row tapped).
   void _changeTo() {
@@ -1145,7 +1171,9 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
-        onTap: () => _done(PlacePick.place(_current!)),
+        // Pick the rider's position as it is now, not the (possibly older)
+        // address the row shows.
+        onTap: _picking ? null : _useFreshCurrent,
       ),
     // Choosing on the map is the pin button in the search field.
     ...switch (ref.watch(recentPlacesProvider).value ?? const <Place>[]) {

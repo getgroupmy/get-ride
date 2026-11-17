@@ -1591,6 +1591,24 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('tapping Current location reads a fresh fix, then closes', (tester) async {
+    final loc = _CountingSource(const LatLng(3.0, 101.6));
+    await _pump(tester, _Rides(), locationSource: loc);
+    await _settle(tester);
+    await tester.tap(find.byKey(const ValueKey('confirm-drop')));
+    await _settle(tester);
+    // Edit the pickup (the From), where Current location naturally goes.
+    await tester.tap(find.byKey(const ValueKey('place-search-from')));
+    await _settle(tester);
+    expect(find.byKey(const ValueKey('place-search-current')), findsOneWidget);
+    final before = loc.currentCalls;
+    await tester.tap(find.byKey(const ValueKey('place-search-current')));
+    await _settle(tester);
+    expect(loc.currentCalls, greaterThan(before), reason: 'the tap re-read the phone position');
+    expect(find.text('Enter your route'), findsNothing, reason: 'the pick closed the sheet');
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('on the web, browser Back steps back from the confirm step to the search, as its arrow does', (tester) async {
     final history = _History();
     final before = webOverlayBack;
