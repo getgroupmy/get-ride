@@ -11,11 +11,32 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import 'map_brightness.dart';
 
 /// Whether this device can draw Apple's map: iPhone and iPad.
 bool get appleNativeSupported => debugAppleNativeSupported ?? (!kIsWeb && Platform.isIOS);
+
+/// A route line drawn by MapKit itself, on the native Apple map, so it moves in
+/// perfect sync with the base instead of lagging it as a flutter_map overlay
+/// does (the base follows the Flutter camera a frame late). [AppleNativeBaseLayer]
+/// takes it live through a listenable; the caller hides its own flutter_map
+/// line while this is drawn (ride_map.dart).
+@immutable
+class MapRouteLine {
+  const MapRouteLine({required this.points, required this.color, required this.width});
+  final List<LatLng> points;
+  final Color color;
+  final int width;
+
+  @override
+  bool operator ==(Object other) =>
+      other is MapRouteLine && other.color == color && other.width == width && listEquals(other.points, points);
+
+  @override
+  int get hashCode => Object.hash(color, width, Object.hashAll(points));
+}
 
 /// Tests set this to build Apple's map (a native view) as an iPhone would.
 @visibleForTesting
@@ -25,9 +46,13 @@ bool? debugAppleNativeSupported;
 const appleMapAppearanceChannel = MethodChannel('get_ride/map_appearance');
 
 class AppleNativeBaseLayer extends StatefulWidget {
-  const AppleNativeBaseLayer({super.key, required this.fallback, this.satellite = false, this.mapType});
+  const AppleNativeBaseLayer({super.key, required this.fallback, this.satellite = false, this.mapType, this.route});
 
   final bool satellite;
+
+  /// The route line MapKit draws on the map itself (null for none): locked to
+  /// the base, so it never slides off the roads while the map is panned.
+  final ValueListenable<MapRouteLine?>? route;
 
   /// "roadmap", "satellite" or "hybrid"; null for the roadmap, or satellite
   /// when [satellite]. Apple has no terrain map: its standard one instead.
@@ -45,6 +70,46 @@ class AppleNativeBaseLayer extends StatefulWidget {
 class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
   am.AppleMapController? _map;
   MapCamera? _shown;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.route?.addListener(_routeChanged);
+  }
+
+  @override
+  void didUpdateWidget(AppleNativeBaseLayer old) {
+    super.didUpdateWidget(old);
+    if (old.route != widget.route) {
+      old.route?.removeListener(_routeChanged);
+      widget.route?.addListener(_routeChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.route?.removeListener(_routeChanged);
+    super.dispose();
+  }
+
+  // The route moved (the line changed without the camera moving): redraw.
+  void _routeChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// The route as MapKit's own polyline, or null when there is nothing to draw.
+  Set<am.Polyline>? _polylines() {
+    final r = widget.route?.value;
+    if (r == null || r.points.length < 2) return null;
+    return {
+      am.Polyline(
+        polylineId: am.PolylineId('route'),
+        points: [for (final p in r.points) am.LatLng(p.latitude, p.longitude)],
+        color: r.color,
+        width: r.width,
+      ),
+    };
+  }
 
   am.CameraPosition _position(MapCamera c) => am.CameraPosition(
     target: am.LatLng(c.center.latitude, c.center.longitude),
@@ -119,6 +184,9 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
           size: camera.nonRotatedSize,
           child: am.AppleMap(
             initialCameraPosition: _position(camera),
+            // MapKit draws the route itself, so it stays locked to the base
+            // map while it pans (ride_map.dart hides its flutter_map line).
+            polylines: _polylines() ?? const <am.Polyline>{},
             onMapCreated: (c) {
               _map = c;
               _shown = null;

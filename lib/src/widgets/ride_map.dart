@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../core/map_profile.dart' show mapProfileListenable;
 import '../data/geo_service.dart';
+import 'apple_native_layer.dart' show MapRouteLine;
 import 'map_sheet_layout.dart';
 import 'map_credit.dart';
 import 'map_tiles.dart';
@@ -293,6 +295,7 @@ class _RideMapState extends State<RideMap> {
   void didUpdateWidget(covariant RideMap old) {
     super.didUpdateWidget(old);
     _shown.value = widget;
+    if (old.route != widget.route || old.dotPins != widget.dotPins) _syncAppleRoute();
     if (_ready &&
         widget.autoFit &&
         (old.pickup != widget.pickup ||
@@ -346,6 +349,7 @@ class _RideMapState extends State<RideMap> {
   @override
   void dispose() {
     _shown.dispose();
+    _appleRoute.dispose();
     super.dispose();
   }
 
@@ -355,15 +359,40 @@ class _RideMapState extends State<RideMap> {
   /// as they are, and the tiles redraw only when the camera moves.
   late final _shown = ValueNotifier<RideMap>(widget);
 
+  /// The route line for MapKit to draw itself on the Apple base (iOS), kept in
+  /// step with the base instead of lagging it as a flutter_map overlay would.
+  /// Null off a route; the flutter_map line (below) is hidden while Apple draws
+  /// it. Set outside build (theme + widget changes), never from _movingLayers,
+  /// so the base layer listening to it is not marked dirty mid-build.
+  final _appleRoute = ValueNotifier<MapRouteLine?>(null);
+
+  void _syncAppleRoute() {
+    final w = widget;
+    _appleRoute.value = w.route.length < 2
+        ? null
+        : w.dotPins
+            ? MapRouteLine(points: w.route, color: _markerInk(context).fill, width: 4)
+            : MapRouteLine(points: w.route, color: const Color(0xFF2DABE2), width: 5);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncAppleRoute();
+  }
+
   /// The parts of the map kept from one build to the next (see [_shown]).
   MapOptions? _options;
   Widget? _base, _credit;
   bool? _baseSatellite;
   (bool, bool)? _creditFor;
   FlutterMap? _map;
-  late final Widget _layers = ValueListenableBuilder<RideMap>(
-    valueListenable: _shown,
-    builder: (context, w, _) => _movingLayers(context, w),
+  // Also rebuilds when the map set loads/changes: whether the route line is
+  // the flutter_map overlay or MapKit's own (appleRouteBaseActive) turns on
+  // which base is drawn, so a profile arriving late must redraw these layers.
+  late final Widget _layers = ListenableBuilder(
+    listenable: Listenable.merge([_shown, mapProfileListenable]),
+    builder: (context, _) => _movingLayers(context, _shown.value),
   );
 
   void _onTap(TapPosition _, LatLng p) => widget.onTap?.call(p);
@@ -424,7 +453,7 @@ class _RideMapState extends State<RideMap> {
         // themselves; only satellite makes new ones.
         if (_baseSatellite != widget.satellite) {
           _baseSatellite = widget.satellite;
-          _base = baseTileLayer(context, satellite: widget.satellite);
+          _base = baseTileLayer(context, satellite: widget.satellite, route: _appleRoute);
         }
         final creditFor = (widget.hideCredit, widget.satellite);
         if (_creditFor != creditFor) {
@@ -474,7 +503,10 @@ class _RideMapState extends State<RideMap> {
     return Stack(
       fit: StackFit.passthrough,
       children: [
-        if (w.route.length > 1)
+        // On the Apple base (iPhone) MapKit draws the route itself, locked to
+        // the map as it pans (apple_native_layer.dart); the flutter_map line is
+        // drawn only on every other base, where it is the map's own engine.
+        if (w.route.length > 1 && !appleRouteBaseActive(context, satellite: w.satellite))
           PolylineLayer(
             polylines: [
               w.dotPins
