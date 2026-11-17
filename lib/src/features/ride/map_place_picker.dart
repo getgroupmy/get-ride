@@ -11,7 +11,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/airport_areas.dart' show AirportArea;
 import '../../data/geo_service.dart';
+import '../../data/place_gates_repository.dart' show airportAreasProvider;
 import '../../providers.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/map_recenter.dart';
@@ -24,21 +26,28 @@ import '../../widgets/page_style_host.dart';
 final pickerPositionProvider = Provider<Future<LatLng?> Function()>((_) => currentPosition);
 
 /// Opens the picker at [start] (else [me]); the place chosen, or null.
-Future<Place?> pickPlaceOnMap(BuildContext context, {LatLng? start, LatLng? me}) => Navigator.of(context).push<Place>(
-  AppPageRoute(id: 'map-place-picker.pick-place-on-map',
-    fullscreenDialog: true,
-    builder: (_) => MapPlacePicker(start: start, me: me),
-  ),
-);
+/// [showAreas] outlines the admin's drawn gate boundaries on the map, so a
+/// rider can see where dropping a pin opens a gate/entrance sheet.
+Future<Place?> pickPlaceOnMap(BuildContext context, {LatLng? start, LatLng? me, bool showAreas = false}) =>
+    Navigator.of(context).push<Place>(
+      AppPageRoute(id: 'map-place-picker.pick-place-on-map',
+        fullscreenDialog: true,
+        builder: (_) => MapPlacePicker(start: start, me: me, showAreas: showAreas),
+      ),
+    );
 
 class MapPlacePicker extends ConsumerStatefulWidget {
-  const MapPlacePicker({super.key, this.start, this.me});
+  const MapPlacePicker({super.key, this.start, this.me, this.showAreas = false});
 
   final LatLng? start;
 
   /// The rider's position: shown as a blue dot, and where "Use my
   /// location" goes when no fresh fix can be had.
   final LatLng? me;
+
+  /// Outline the admin's drawn gate boundaries (`airportAreasProvider`) on the
+  /// map, so the spot that opens a gate sheet is visible before dropping a pin.
+  final bool showAreas;
 
   /// How long the map must be still before the spot is looked up.
   static const settle = Duration(milliseconds: 350);
@@ -164,6 +173,22 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
               ),
               children: [
                 baseTileLayer(context, satellite: ref.watch(mapSatelliteProvider)),
+                // The admin's drawn gate boundaries, so the rider can see where
+                // dropping a pin opens a gate/entrance sheet.
+                if (widget.showAreas)
+                  PolygonLayer(
+                    polygons: [
+                      for (final area in ref.watch(airportAreasProvider).value ?? const <AirportArea>[])
+                        for (final ring in area.rings)
+                          if (ring.length >= 3)
+                            Polygon(
+                              points: ring,
+                              color: const Color(0x1FEA5B0C),
+                              borderColor: const Color(0xFFEA5B0C),
+                              borderStrokeWidth: 2,
+                            ),
+                    ],
+                  ),
                 if (widget.me != null)
                   MarkerLayer(
                     markers: [

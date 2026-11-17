@@ -580,7 +580,7 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// it from the list — [_gatedAt] is geofence-only (the point must sit inside
   /// the ring), so a pin outside any boundary is handed straight back.
   Future<void> _onMap() async {
-    final p = await pickPlaceOnMap(context, start: _current?.point ?? widget.near, me: widget.near);
+    final p = await pickPlaceOnMap(context, start: _current?.point ?? widget.near, me: widget.near, showAreas: true);
     if (p == null || !mounted) return;
     // Load the catalogue and the drawn boundaries before the pin is tested,
     // and use the values the load returns directly. The boundaries
