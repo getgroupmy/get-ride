@@ -1,14 +1,42 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get_ride/src/core/airport_areas.dart';
 import 'package:get_ride/src/core/place_gates.dart';
 import 'package:get_ride/src/data/airport_repository.dart' show airportSettingsProvider;
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/place_gates_repository.dart';
+import 'package:get_ride/src/features/ride/map_place_picker.dart' show pickerPositionProvider;
 import 'package:get_ride/src/features/ride/place_search.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:latlong2/latlong.dart';
+
+/// A rectangle boundary as the admin's drawn shape is stored.
+String _shape(double n, double s, double e, double w) => jsonEncode({
+  'coords': [
+    {'latitude': n, 'longitude': w},
+    {'latitude': n, 'longitude': e},
+    {'latitude': s, 'longitude': e},
+    {'latitude': s, 'longitude': w},
+  ],
+  'bbox': {'north': n, 'south': s, 'east': e, 'west': w},
+});
+
+/// The mall with a drawn boundary around its point, as `airportAreasProvider`
+/// serves it (a place area, id matching the gate catalogue's 'mall').
+final _mallArea = AirportArea.fromEntry(
+  'mall',
+  placeAreaValues(
+    {'name': 'Mid Valley Megamall'},
+    {'address': 'Lingkaran Syed Putra', 'lat': 3.1178, 'lon': 101.6772, 'placeType': 'mall'},
+    _shape(3.122, 3.113, 101.682, 101.672),
+  ),
+  kind: AreaKind.place,
+  sizeM2: 1e6,
+)!;
 
 const _mall = (
   id: 'mall',
@@ -45,11 +73,19 @@ final _gates = [
 ];
 
 class _Geo extends GeoService {
-  _Geo(this.results);
+  _Geo(this.results, {this.at});
   final List<Place> results;
+
+  /// What "Choose on map" names the dropped pin (the map picker reverse-geocodes
+  /// its centre); its point is the spot actually tapped.
+  final String? at;
 
   @override
   Future<List<Place>> search(String query, {LatLng? near}) async => results;
+
+  @override
+  Future<Place> reverse(LatLng p) async =>
+      Place(name: at ?? '${p.latitude}, ${p.longitude}', address: at == null ? '' : 'Lingkaran Syed Putra', point: p);
 }
 
 void main() {
@@ -259,5 +295,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(picked?.place?.name, 'Mid Valley Megamall - North Court');
     expect(picked?.place?.point, const LatLng(3.119, 101.678));
+  });
+
+  testWidgets('a pin dropped inside a boundary on the map opens the gate sheet', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(500, 1000);
+    addTearDown(tester.view.reset);
+    // The map picker opens centred here (inside _mallArea's boundary) and
+    // reverse-geocodes it to "Mid Valley".
+    const inside = LatLng(3.1178, 101.6772);
+    PlacePick? picked;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          recentPlacesProvider.overrideWith((ref) async => const []),
+          geoServiceProvider.overrideWithValue(_Geo(const [], at: 'Mid Valley')),
+          pickerPositionProvider.overrideWithValue(() async => null),
+          placeGatesProvider.overrideWith((ref) async => (places: [_mall], gates: _gates)),
+          airportAreasProvider.overrideWith((ref) async => [_mallArea]),
+          airportSettingsProvider.overrideWith((ref) async => const {}),
+        ],
+        child: MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () async =>
+                    picked = await showPlaceSearch(context, title: 'Pickup', usage: GateUsage.pickup, near: inside),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // Choose on map → the picker opens on the boundary; Done hands the pin back.
+    await tester.tap(find.byKey(const ValueKey('place-search-map')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('map-picker-done')));
+    await tester.pumpAndSettle();
+
+    // The pin is inside the geofence, so the gate sheet is raised rather than
+    // the raw point being handed straight back.
+    expect(picked, isNull);
+    expect(find.byKey(const ValueKey('gate-picker-title')), findsOneWidget);
+    expect(find.byKey(const ValueKey('gate-dot-north')), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('gate-dot-north')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('gate-picker-done')));
+    await tester.pumpAndSettle();
+    expect(picked?.place?.name, 'Mid Valley Megamall - North Court');
   });
 }
