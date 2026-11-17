@@ -1161,7 +1161,11 @@ final class RouteEtaPlugin: NSObject, FlutterPlugin {
   }
 
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-    guard call.method == "eta" else {
+    // "eta": distance + traffic-aware time only (lightweight calculateETA).
+    // "route": the same, plus the driving polyline MapKit draws on its own
+    //   map, so on iPhone the app's route line sits on Apple's roads under it
+    //   (lib/src/data/route_eta.dart). Heavier (full calculate), same quota.
+    guard call.method == "eta" || call.method == "route" else {
       result(FlutterMethodNotImplemented)
       return
     }
@@ -1178,14 +1182,36 @@ final class RouteEtaPlugin: NSObject, FlutterPlugin {
     request.destination = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: toLat, longitude: toLng)))
     // Departing now, so expectedTravelTime reflects current traffic.
     request.departureDate = Date()
-    // calculateETA answers exactly once; guard in case the SDK calls back twice.
+    // The SDK answers exactly once; guard in case it calls back twice.
     var answered = false
     let once: (Any?) -> Void = { value in
       if answered { return }
       answered = true
       DispatchQueue.main.async { result(value) }
     }
-    MKDirections(request: request).calculateETA { response, error in
+    let directions = MKDirections(request: request)
+    if call.method == "route" {
+      directions.calculate { response, error in
+        if let route = response?.routes.first, route.distance > 0 {
+          let line = route.polyline
+          let count = line.pointCount
+          var coords = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: count)
+          line.getCoordinates(&coords, range: NSRange(location: 0, length: count))
+          // A flat [lat, lng, lat, lng, …] list, cheap to send over the channel.
+          var flat = [Double]()
+          flat.reserveCapacity(count * 2)
+          for c in coords where CLLocationCoordinate2DIsValid(c) {
+            flat.append(c.latitude)
+            flat.append(c.longitude)
+          }
+          once(["distanceMeters": route.distance, "etaSeconds": route.expectedTravelTime, "coords": flat])
+        } else {
+          once(FlutterError(code: "route_failed", message: error?.localizedDescription ?? "No route", details: nil))
+        }
+      }
+      return
+    }
+    directions.calculateETA { response, error in
       if let response = response, response.distance > 0, response.expectedTravelTime > 0 {
         once(["distanceMeters": response.distance, "etaSeconds": response.expectedTravelTime])
       } else {

@@ -3,6 +3,7 @@
 // itself is iOS-native and not exercised here.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/data/route_eta.dart';
+import 'package:latlong2/latlong.dart';
 
 void main() {
   test('metres → km, seconds → whole minutes (rounded up)', () {
@@ -38,6 +39,39 @@ void main() {
       final r = pickupEtaFromEstimate(0.05, 0.2);
       expect(r.km, 0.05);
       expect(r.minutes, 1);
+    });
+  });
+
+  group('latLngsFromFlat (Apple route geometry off the channel)', () {
+    test('a flat [lat, lng, …] list becomes points', () {
+      final pts = latLngsFromFlat([3.15, 101.71, 3.16, 101.72, 3.17, 101.73]);
+      expect(pts, hasLength(3));
+      expect(pts.first, const LatLng(3.15, 101.71));
+      expect(pts.last, const LatLng(3.17, 101.73));
+    });
+
+    test('a trailing odd value is dropped, not misread', () {
+      final pts = latLngsFromFlat([3.15, 101.71, 3.16]);
+      expect(pts, hasLength(1));
+      expect(pts.single, const LatLng(3.15, 101.71));
+    });
+
+    test('a pair out of range is skipped, the rest kept', () {
+      final pts = latLngsFromFlat([200.0, 101.71, 3.16, 101.72, 3.17, 999.0]);
+      expect(pts, [const LatLng(3.16, 101.72)]);
+    });
+
+    test('anything that is not a list, or is empty, is no points', () {
+      expect(latLngsFromFlat(null), isEmpty);
+      expect(latLngsFromFlat('nope'), isEmpty);
+      expect(latLngsFromFlat(const <double>[]), isEmpty);
+    });
+
+    test('integer-valued entries decode too', () {
+      expect(latLngsFromFlat([3, 101, 4, 102]), [
+        const LatLng(3, 101),
+        const LatLng(4, 102),
+      ]);
     });
   });
 }
