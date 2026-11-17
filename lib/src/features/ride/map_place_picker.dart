@@ -195,6 +195,40 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
     _onEvent(MapEventMove(camera: _map.camera, oldCamera: _map.camera, source: MapEventSource.mapController));
   }
 
+  /// The geofence the flag was last framed onto; cleared when it leaves, so
+  /// re-entering frames again.
+  String? _framedId;
+
+  /// When the pin first lands inside [gated]'s boundary, zoom the map out to
+  /// show the whole geofence and move the flag onto its nearest entrance, so
+  /// the boundary and its entrances are in view. Once per entry.
+  void _frameGeofence(GatedPlace gated) {
+    if (_framedId == gated.id) return;
+    final areas = ref.read(airportAreasProvider).value ?? const <AirportArea>[];
+    final area = areas.where((a) => a.id == gated.id).firstOrNull;
+    if (area == null) return;
+    _framedId = gated.id;
+    const distance = Distance();
+    final here = _map.camera.center;
+    LatLng? nearest;
+    var best = double.infinity;
+    for (final g in gated.gates) {
+      final pt = g.point;
+      if (pt == null) continue;
+      final m = distance.as(LengthUnit.Meter, here, pt);
+      if (m < best) {
+        best = m;
+        nearest = pt;
+      }
+    }
+    final fitted = CameraFit.bounds(
+      bounds: LatLngBounds(LatLng(area.south, area.west), LatLng(area.north, area.east)),
+      padding: const EdgeInsets.all(72),
+    ).fit(_map.camera);
+    recenterMap(_map, nearest ?? fitted.center, zoom: fitted.zoom);
+    _onEvent(MapEventMove(camera: _map.camera, oldCamera: _map.camera, source: MapEventSource.mapController));
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -206,6 +240,18 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
     // place requires a gate, Done is held so the rider must pick one.
     final gated = _gatedHere();
     final mustGate = gated != null && gated.blocksPlace;
+    // Landed in a new geofence: frame it (and snap to its nearest entrance)
+    // after this frame, so the whole boundary comes into view. Reset once the
+    // flag has settled outside every boundary, so re-entering frames again.
+    if (gated != null && gated.id != _framedId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _frameGeofence(gated);
+      });
+    } else if (!_moving && !_looking && gated == null && _framedId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _framedId = null;
+      });
+    }
     return Scaffold(
       body: Stack(
         children: [
