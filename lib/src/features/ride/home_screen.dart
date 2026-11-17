@@ -101,6 +101,7 @@ import '../../data/device_access.dart';
 import '../../data/fare_coin_store.dart';
 import '../../data/fare_tariff_repository.dart';
 import '../../data/geo_service.dart';
+import '../../data/route_eta.dart';
 import '../../data/live_tables.dart';
 import '../../data/current_country_reporter.dart';
 import '../../data/location_source.dart';
@@ -1186,6 +1187,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted || seq != _routeSeq) return;
     setState(() => _route = r);
     onRouted?.call();
+    // On iPhone the base map is Apple's own (apple_native_layer.dart), so the
+    // line is drawn again from Apple's driving geometry to sit on its roads
+    // rather than OSRM's, which drifts off them. Only the shape is taken: the
+    // distance and fare stay the one already shown, so the line settling onto
+    // the roads a moment later never moves the price. null everywhere else, or
+    // when Apple can't answer in time — the OSRM line then stays as drawn.
+    if (canAskAppleMapsOnDevice) {
+      final through = [a.point, ...via, b.point];
+      unawaited(appleRoute(through, timing.appWait).then((apple) {
+        if (!mounted || seq != _routeSeq || apple == null || apple.points.length < 2) return;
+        final cur = _route;
+        if (cur == null) return;
+        setState(() => _route = RouteInfo(
+              distanceKm: cur.distanceKm,
+              durationMin: cur.durationMin,
+              points: apple.points,
+            ));
+      }).catchError((_) {}));
+    }
     // Both before the fare shows ("Calculating fare" stays up through the AI
     // estimate, PERF-33: for 5 s at most): the fare shown, and booked, is
     // the one fare for this route and never changes a moment later.
