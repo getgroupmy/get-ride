@@ -188,7 +188,11 @@ TileSource builtInTileSource({required bool dark, bool satellite = false, bool? 
 /// should it fail). Blank while the app waits for this user's map settings
 /// ([mapProfileListenable]), then what they set. The status bar over it goes
 /// by the map's brightness, light over imagery ([MapStatusBarRegion]).
-Widget baseTileLayer(BuildContext context, {bool satellite = false}) => ValueListenableBuilder<MapProfile?>(
+Widget baseTileLayer(
+  BuildContext context, {
+  bool satellite = false,
+  ValueListenable<MapRouteLine?>? route,
+}) => ValueListenableBuilder<MapProfile?>(
   valueListenable: mapProfileListenable,
   builder: (context, profile, _) {
     final type = profile == null ? null : googleMapTypeOf(currentTileSource(context, satellite: satellite).url);
@@ -201,13 +205,20 @@ Widget baseTileLayer(BuildContext context, {bool satellite = false}) => ValueLis
                 color: mapIsDark(context) ? const Color(0xFF242F3E) : const Color(0xFFE5E3DF),
               ),
             )
-          : currentBaseLayer(context, satellite: satellite),
+          : currentBaseLayer(context, satellite: satellite, route: route),
     );
   },
 );
 
+/// Whether the map drawn now is Apple's own (iPhone/iPad), which draws the
+/// route line itself — so a caller gives it the route and hides its own
+/// flutter_map line. False for the brief wait before the map profile loads,
+/// and for every other map set.
+bool appleRouteBaseActive(BuildContext context, {bool satellite = false}) =>
+    appleNativeSupported && mapProfileListenable.value != null && currentTileSource(context, satellite: satellite).appleNative;
+
 /// [baseTileLayer]'s layer for the profile in use now.
-Widget currentBaseLayer(BuildContext context, {bool satellite = false}) {
+Widget currentBaseLayer(BuildContext context, {bool satellite = false, ValueListenable<MapRouteLine?>? route}) {
   final source = currentTileSource(context, satellite: satellite);
   final maplibreKey = source.maplibreKey;
   if (maplibreKey != null) {
@@ -231,6 +242,7 @@ Widget currentBaseLayer(BuildContext context, {bool satellite = false}) {
       key: ValueKey(source.url),
       satellite: satellite,
       mapType: googleMapTypeOf(source.url),
+      route: route,
       fallback: _tileLayer(fallbackTileSource(context, satellite: satellite)),
     );
   }
