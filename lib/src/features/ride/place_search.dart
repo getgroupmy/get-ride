@@ -582,6 +582,21 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   Future<void> _onMap() async {
     final p = await pickPlaceOnMap(context, start: _current?.point ?? widget.near, me: widget.near);
     if (p == null || !mounted) return;
+    // Load the catalogue and the drawn boundaries before the pin is tested.
+    // The boundaries (airportAreasProvider) are only watched by the results
+    // list, so opening the search and going straight to the map leaves them
+    // unread — and a geofenced place is matched only by its boundary, so
+    // without them a pin in the middle of one looked like open ground and was
+    // handed back with no gate sheet. Await the futures (capped, so a slow
+    // read never freezes the flow after Done) so it never races.
+    try {
+      await Future.wait([
+        ref.read(placeGatesProvider.future),
+        ref.read(airportAreasProvider.future),
+        ref.read(areaPrecedenceRuleProvider.future),
+      ]).timeout(const Duration(seconds: 4));
+    } catch (_) {}
+    if (!mounted) return;
     final catalogue = ref.read(placeGatesProvider).value;
     if (catalogue != null) {
       final gated = _gatedAt(p, catalogue);

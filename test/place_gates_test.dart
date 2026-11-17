@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/airport_areas.dart';
 import 'package:get_ride/src/core/place_gates.dart';
 import 'package:get_ride/src/data/airport_repository.dart' show airportSettingsProvider;
+import 'package:get_ride/src/data/area_precedence_repository.dart' show areaPrecedenceRuleProvider;
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/place_gates_repository.dart';
@@ -312,7 +313,14 @@ void main() {
           geoServiceProvider.overrideWithValue(_Geo(const [], at: 'Mid Valley')),
           pickerPositionProvider.overrideWithValue(() async => null),
           placeGatesProvider.overrideWith((ref) async => (places: [_mall], gates: _gates)),
-          airportAreasProvider.overrideWith((ref) async => [_mallArea]),
+          // Boundaries resolve a beat late, as on the phone when the picker is
+          // opened before the results list has loaded them: _onMap must await
+          // them, not read a still-empty .value (the bug this guards).
+          airportAreasProvider.overrideWith((ref) async {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            return [_mallArea];
+          }),
+          areaPrecedenceRuleProvider.overrideWith((ref) async => const AreaPrecedenceRule()),
           airportSettingsProvider.overrideWith((ref) async => const {}),
         ],
         child: MaterialApp(
