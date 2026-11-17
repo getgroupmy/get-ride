@@ -1055,6 +1055,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
+  /// Re-resolve the rider's current place when the route sheet opens, so its
+  /// "Current location" row reads where they are now rather than a fix from
+  /// when the home screen last located (they may have moved since). A fresh
+  /// fast-then-fine fix, reverse-geocoded; [_syncRouteEnds] pushes it onto
+  /// [_routeEnds], which the open sheet follows live. Fire-and-forget and
+  /// never touches the pickup or the route, so it cannot disturb the trip
+  /// being planned; the last known current place stands if it fails.
+  Future<void> _refreshHere() async {
+    try {
+      await for (final p in locateFastThenFine(ref.read(locationSourceProvider))) {
+        if (!mounted) return;
+        final place = await ref.read(geoServiceProvider).reverse(p);
+        if (!mounted) return;
+        setState(() => _here = place);
+        _syncRouteEnds();
+      }
+    } catch (_) {
+      // Keep the last known current place.
+    }
+  }
+
   /// The first point of the trip GET.ride can't serve (outside every
   /// region, or in a blocked one), once the route's check has answered.
   TripGap? _gap;
@@ -1322,6 +1343,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final pickup = target == _PinTarget.pickup;
     // One route sheet for both ends: From over To, opened on the one tapped.
     _syncRouteEnds();
+    // Re-read where the rider is now, so the Current location row is fresh
+    // on launch; it fills in live as the fix arrives.
+    unawaited(_refreshHere());
     final pick = await showPlaceSearch(
       context,
       title: 'Enter your route',
