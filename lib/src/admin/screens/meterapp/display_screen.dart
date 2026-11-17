@@ -1607,10 +1607,13 @@ class CoverHomeEditorScreen extends ConsumerWidget {
                 Card(
                   child: Column(children: [
                     BusySwitchListTile(
-                      title: const Text('Trim the sheet off the strip'),
-                      subtitle: const Text('The sheet stops before the strip so the map stays visible there'),
-                      value: c.trimSheet,
-                      onChanged: canEdit ? (v) => applyDisplay(context, ref, (x) => setCoverHomeTrimSheet(x, v)) : null,
+                      // Shown as "fill" (the opposite of the stored trimSheet): on,
+                      // the sheet runs the full width over the strip; off, it stops
+                      // before the strip so the map stays visible there.
+                      title: const Text('Fill the sheet over the strip'),
+                      subtitle: const Text('On, the sheet fills the full width; off, it stops before the strip so the map stays visible there'),
+                      value: !c.trimSheet,
+                      onChanged: canEdit ? (v) => applyDisplay(context, ref, (x) => setCoverHomeTrimSheet(x, !v)) : null,
                     ),
                     const Divider(height: 1),
                     BusySwitchListTile(
