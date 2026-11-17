@@ -22,10 +22,16 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/airport_areas.dart' show AreaPrecedenceRule;
 import '../../core/airport_queue.dart';
 import '../../core/gate_snap.dart';
+import '../../core/place_gates.dart';
+import '../../data/airport_repository.dart' show airportSettingsProvider;
+import '../../data/geo_service.dart' show Place;
+import '../../data/place_gates_repository.dart' show GateCatalogue, airportAreasProvider;
 import '../../widgets/map_tiles.dart';
 import '../../widgets/page_style_host.dart';
 import '../../widgets/ride_map.dart';
@@ -83,6 +89,69 @@ Future<GatePick?> showGatePicker(
     ),
   ),
 );
+
+/// Opens the shared entrance selector (the same sheet the search flow uses)
+/// for [gated] at [base], and answers the place the rider chose: the gate as
+/// "Place - Gate", the plain [base] when they picked "Any gate", or null when
+/// they closed it. Linked "Part of" places (KLIA's terminals) open together,
+/// just as in search. Lets the map picker offer entrances with the very same
+/// selector instead of a bespoke panel.
+Future<Place?> chooseGateForPlace(
+  BuildContext context,
+  WidgetRef ref, {
+  required Place base,
+  required GatedPlace gated,
+  required GateCatalogue catalogue,
+  GateUsage? usage,
+  AreaPrecedenceRule rule = const AreaPrecedenceRule(),
+}) async {
+  final rows = {for (final g in catalogue.gates) g.id: g.values};
+  final found = gated.partOf.isEmpty
+      ? const <GatedPlace>[]
+      : linkedGatedPlaces(places: catalogue.places, gates: catalogue.gates, placeId: gated.id, usage: usage);
+  final linked = found.length > 1 ? found : [gated];
+  final doors = linked.length > 1
+      ? linkedPlaceDoors(linked, rows)
+      : [
+          for (final g in gated.gates)
+            if (rows[g.id] case final v?) AirportDoor.fromGate(g.id, v),
+        ];
+  final rings = <List<LatLng>>[];
+  AirportSettings? settings;
+  try {
+    final areas = await ref.read(airportAreasProvider.future);
+    for (final l in linked) {
+      final area =
+          areas.where((a) => a.id == l.id).firstOrNull ??
+          (l.id == gated.id ? gateAreaAt(areas, base.point, rule: rule) : null);
+      if (area != null) rings.addAll(area.rings);
+      if (area != null && l.id == gated.id) settings = (await ref.read(airportSettingsProvider.future))[area.id];
+    }
+  } catch (_) {}
+  if (!context.mounted) return null;
+  final side = usage == GateUsage.drop ? AirportSide.drop : AirportSide.pick;
+  // The sheet opens on the tapped place's own doors.
+  final own = [for (final d in doors) if (d.airportId == gated.id) d];
+  final pick = await showGatePicker(
+    context,
+    placeName: gated.name.isEmpty ? base.name : gated.name,
+    gates: doors,
+    rings: rings,
+    selectedId: linked.length > 1 ? (own.where((d) => doorPoint(d) != null).firstOrNull ?? own.firstOrNull)?.id : null,
+    required: gated.gateRequired,
+    side: side,
+    guides: side == AirportSide.pick && (settings?.guideOn ?? false),
+    linkedPlaces: linked.length > 1,
+  );
+  if (pick == null) return null;
+  final door = pick.door;
+  // The chosen door's own place: the tapped one, or one linked to it.
+  final at = door == null ? null : linked.where((l) => l.gates.any((g) => g.id == door.id)).firstOrNull;
+  final option = at?.gates.where((g) => g.id == door?.id).firstOrNull;
+  if (at == null || option == null) return base; // "Any gate"
+  final gateBase = at.id == gated.id ? base : Place(name: at.name, address: at.address, point: at.point ?? base.point);
+  return gatePlace(gateBase, at, option);
+}
 
 class GatePickerSheet extends StatefulWidget {
   const GatePickerSheet({
@@ -411,6 +480,13 @@ class _GatePickerSheetState extends State<GatePickerSheet> with SingleTickerProv
     final panel = Material(
       key: const ValueKey('gate-picker-panel'),
       color: scheme.surface,
+      // Rounded top corners like every other bottom sheet; the map behind shows
+      // through the corners. Clipping the panel (a Flutter surface) is safe —
+      // only a rounded clip on the native map view is not (see the top).
+      elevation: 8,
+      shadowColor: Colors.black45,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
         child: Padding(
