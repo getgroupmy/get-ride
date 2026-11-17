@@ -608,34 +608,13 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
       catalogue ??= ref.read(placeGatesProvider).value;
     }
     if (!mounted) return;
-    final pt = p.point;
-    final a = areas ?? ref.read(airportAreasProvider).value ?? const <AirportArea>[];
-    final r = rule ?? _areaRule;
-    final gated = catalogue == null ? null : _gatedAt(p, catalogue, areas: a, rule: r);
-    if (catalogue != null && gated != null && gated.gates.isNotEmpty) {
-      // The gate sheet draws the boundary and lists the entrances/gates.
-      await _chooseGate(p, gated, catalogue);
-      return;
-    }
-    // TEMPORARY diagnostic (remove once the map-pick gate case is confirmed):
-    // when a sheet was expected here — the pin is inside a place's drawn
-    // boundary, or the boundaries failed to load at all — but none opened,
-    // show exactly what the gate check saw. Silent for an ordinary pick on
-    // open ground, so normal use is unaffected.
-    final inFence = [for (final x in a) if (x.isPlace && x.contains(pt, bufferM: 0)) x.name];
-    final areaAt = gateAreaAt(a, pt, rule: r);
-    if (a.isEmpty || inFence.isNotEmpty) {
-      unawaited(showAppNotice(
-        id: 'notice.place-search',
-        context: context,
-        message: 'Gate check (debug)\n'
-            'pin: ${pt.latitude.toStringAsFixed(5)}, ${pt.longitude.toStringAsFixed(5)}\n'
-            'boundaries loaded: ${a.length}\n'
-            'in-fence: ${inFence.isEmpty ? "none" : inFence.join(", ")}\n'
-            'area at pin: ${areaAt == null ? "none" : "${areaAt.name} (${areaAt.isPlace ? "place" : "airport"})"}\n'
-            'catalogue: ${catalogue?.places.length ?? -1} places / ${catalogue?.gates.length ?? -1} gates\n'
-            'gated: ${gated == null ? "null" : "${gated.name}, gates=${gated.gates.length}"}',
-      ));
+    if (catalogue != null) {
+      final gated = _gatedAt(p, catalogue, areas: areas, rule: rule);
+      if (gated != null && gated.gates.isNotEmpty) {
+        // The gate sheet draws the boundary and lists the entrances/gates.
+        await _chooseGate(p, gated, catalogue);
+        return;
+      }
     }
     _done(PlacePick.place(p));
   }
