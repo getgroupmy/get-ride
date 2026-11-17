@@ -11,7 +11,12 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/airport_areas.dart' show AirportArea, AreaPrecedenceRule;
+import '../../core/gate_snap.dart' show gateAreaAt;
+import '../../core/place_gates.dart' show GateOption, GateUsage, GatedPlace, gatePlace, matchGatedPlace;
+import '../../data/area_precedence_repository.dart' show areaPrecedenceRuleProvider;
 import '../../data/geo_service.dart';
+import '../../data/place_gates_repository.dart' show airportAreasProvider, placeGatesProvider;
 import '../../providers.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/map_recenter.dart';
@@ -24,21 +29,40 @@ import '../../widgets/page_style_host.dart';
 final pickerPositionProvider = Provider<Future<LatLng?> Function()>((_) => currentPosition);
 
 /// Opens the picker at [start] (else [me]); the place chosen, or null.
-Future<Place?> pickPlaceOnMap(BuildContext context, {LatLng? start, LatLng? me}) => Navigator.of(context).push<Place>(
-  AppPageRoute(id: 'map-place-picker.pick-place-on-map',
-    fullscreenDialog: true,
-    builder: (_) => MapPlacePicker(start: start, me: me),
-  ),
-);
+/// [showAreas] outlines the admin's drawn gate boundaries on the map, so a
+/// rider can see where dropping a pin opens a gate/entrance sheet.
+Future<Place?> pickPlaceOnMap(
+  BuildContext context, {
+  LatLng? start,
+  LatLng? me,
+  bool showAreas = false,
+  GateUsage? usage,
+}) =>
+    Navigator.of(context).push<Place>(
+      AppPageRoute(id: 'map-place-picker.pick-place-on-map',
+        fullscreenDialog: true,
+        builder: (_) => MapPlacePicker(start: start, me: me, showAreas: showAreas, usage: usage),
+      ),
+    );
 
 class MapPlacePicker extends ConsumerStatefulWidget {
-  const MapPlacePicker({super.key, this.start, this.me});
+  const MapPlacePicker({super.key, this.start, this.me, this.showAreas = false, this.usage});
 
   final LatLng? start;
 
   /// The rider's position: shown as a blue dot, and where "Use my
   /// location" goes when no fresh fix can be had.
   final LatLng? me;
+
+  /// Outline the admin's drawn gate boundaries (`airportAreasProvider`) on the
+  /// map, and — when the dropped pin lands inside one — offer that place's
+  /// entrances on this screen, so the rider picks a gate here rather than after
+  /// Done.
+  final bool showAreas;
+
+  /// Which end this pick is for, so the entrances offered are the ones open for
+  /// a pickup or a drop-off (null = all).
+  final GateUsage? usage;
 
   /// How long the map must be still before the spot is looked up.
   static const settle = Duration(milliseconds: 350);
@@ -112,6 +136,37 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
     });
   }
 
+  /// The admin gated place the pin sits inside right now, with its entrances
+  /// for this end — null off a geofence, while the map is moving, or when
+  /// [showAreas] is off. Reads the same boundaries the overlay draws, so the
+  /// entrances offered match the outline the rider sees.
+  GatedPlace? _gatedHere() {
+    if (!widget.showAreas || _moving || _looking) return null;
+    final place = _place;
+    if (place == null) return null;
+    final catalogue = ref.watch(placeGatesProvider).value;
+    if (catalogue == null) return null;
+    final areas = ref.watch(airportAreasProvider).value ?? const <AirportArea>[];
+    final rule = ref.watch(areaPrecedenceRuleProvider).value ?? const AreaPrecedenceRule();
+    final gated = matchGatedPlace(
+      places: catalogue.places,
+      gates: catalogue.gates,
+      point: place.point,
+      name: place.name,
+      usage: widget.usage,
+      airportId: gateAreaAt(areas, place.point, rule: rule)?.id,
+      boundedIds: {for (final a in areas) if (a.isPlace) a.id},
+    );
+    return (gated != null && gated.gates.isNotEmpty) ? gated : null;
+  }
+
+  /// Hand back the gate the rider tapped on the picker.
+  void _pickGate(GatedPlace gated, GateOption gate) {
+    final base = _place;
+    if (base == null) return;
+    Navigator.pop(context, gatePlace(base, gated, gate));
+  }
+
   /// "Use my location": the pin onto a fresh fix (else the position the
   /// picker was opened with), and the spot looked up there.
   Future<void> _useMyLocation() async {
@@ -140,6 +195,40 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
     _onEvent(MapEventMove(camera: _map.camera, oldCamera: _map.camera, source: MapEventSource.mapController));
   }
 
+  /// The geofence the flag was last framed onto; cleared when it leaves, so
+  /// re-entering frames again.
+  String? _framedId;
+
+  /// When the pin first lands inside [gated]'s boundary, zoom the map out to
+  /// show the whole geofence and move the flag onto its nearest entrance, so
+  /// the boundary and its entrances are in view. Once per entry.
+  void _frameGeofence(GatedPlace gated) {
+    if (_framedId == gated.id) return;
+    final areas = ref.read(airportAreasProvider).value ?? const <AirportArea>[];
+    final area = areas.where((a) => a.id == gated.id).firstOrNull;
+    if (area == null) return;
+    _framedId = gated.id;
+    const distance = Distance();
+    final here = _map.camera.center;
+    LatLng? nearest;
+    var best = double.infinity;
+    for (final g in gated.gates) {
+      final pt = g.point;
+      if (pt == null) continue;
+      final m = distance.as(LengthUnit.Meter, here, pt);
+      if (m < best) {
+        best = m;
+        nearest = pt;
+      }
+    }
+    final fitted = CameraFit.bounds(
+      bounds: LatLngBounds(LatLng(area.south, area.west), LatLng(area.north, area.east)),
+      padding: const EdgeInsets.all(72),
+    ).fit(_map.camera);
+    recenterMap(_map, nearest ?? fitted.center, zoom: fitted.zoom);
+    _onEvent(MapEventMove(camera: _map.camera, oldCamera: _map.camera, source: MapEventSource.mapController));
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -147,6 +236,22 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
     final fill = dark ? Colors.white : const Color(0xFF111111);
     final ink = dark ? Colors.black : Colors.white;
     final ready = !_moving && !_looking && _place != null;
+    // Inside an admin's drawn boundary: offer its entrances here. When the
+    // place requires a gate, Done is held so the rider must pick one.
+    final gated = _gatedHere();
+    final mustGate = gated != null && gated.blocksPlace;
+    // Landed in a new geofence: frame it (and snap to its nearest entrance)
+    // after this frame, so the whole boundary comes into view. Reset once the
+    // flag has settled outside every boundary, so re-entering frames again.
+    if (gated != null && gated.id != _framedId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _frameGeofence(gated);
+      });
+    } else if (!_moving && !_looking && gated == null && _framedId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _framedId = null;
+      });
+    }
     return Scaffold(
       body: Stack(
         children: [
@@ -164,6 +269,22 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
               ),
               children: [
                 baseTileLayer(context, satellite: ref.watch(mapSatelliteProvider)),
+                // The admin's drawn gate boundaries, so the rider can see where
+                // dropping a pin opens a gate/entrance sheet.
+                if (widget.showAreas)
+                  PolygonLayer(
+                    polygons: [
+                      for (final area in ref.watch(airportAreasProvider).value ?? const <AirportArea>[])
+                        for (final ring in area.rings)
+                          if (ring.length >= 3)
+                            Polygon(
+                              points: ring,
+                              color: const Color(0x1FEA5B0C),
+                              borderColor: const Color(0xFFEA5B0C),
+                              borderStrokeWidth: 2,
+                            ),
+                    ],
+                  ),
                 if (widget.me != null)
                   MarkerLayer(
                     markers: [
@@ -245,10 +366,14 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (gated != null) ...[
+                    _EntrancePanel(gated: gated, onPick: (g) => _pickGate(gated, g)),
+                    const SizedBox(height: 8),
+                  ],
                   FilledButton(
                     key: const ValueKey('map-picker-done'),
-                    onPressed: ready ? () => Navigator.pop(context, _place) : null,
-                    child: const Text('Done', style: TextStyle(fontSize: 18)),
+                    onPressed: ready && !mustGate ? () => Navigator.pop(context, _place) : null,
+                    child: Text(mustGate ? 'Choose an entrance above' : 'Done', style: const TextStyle(fontSize: 18)),
                   ),
                   // Why Done is dimmed; the line is always there so Done
                   // does not jump.
@@ -452,6 +577,67 @@ class _PickerPin extends StatelessWidget {
           ),
           Container(width: 3, height: _stem, color: fill),
         ],
+      ),
+    );
+  }
+}
+
+/// The entrances of the gated place the pin is inside, chosen here on the
+/// picker (map_place_picker) instead of a separate sheet after Done.
+class _EntrancePanel extends StatelessWidget {
+  const _EntrancePanel({required this.gated, required this.onPick});
+
+  final GatedPlace gated;
+  final ValueChanged<GateOption> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Material(
+      key: const ValueKey('map-picker-entrances'),
+      color: t.colorScheme.surface,
+      borderRadius: BorderRadius.circular(16),
+      elevation: 4,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.location_on_outlined, size: 20, color: t.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  gated.name.isEmpty ? 'This place' : gated.name,
+                  style: t.textTheme.titleMedium,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 2),
+            Text('Choose an entrance', style: t.textTheme.bodySmall),
+            const SizedBox(height: 10),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 180),
+              child: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final g in gated.gates)
+                      ActionChip(
+                        key: ValueKey('map-picker-gate-${g.id}'),
+                        label: Text(g.name),
+                        onPressed: () => onPick(g),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

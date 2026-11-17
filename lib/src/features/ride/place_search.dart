@@ -575,48 +575,19 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     );
   }
 
-  /// The map picker (inDrive's): the place chosen there. A pin dropped inside
-  /// an admin's drawn boundary opens that place's gates, the same as picking
-  /// it from the list — [_gatedAt] is geofence-only (the point must sit inside
-  /// the ring), so a pin outside any boundary is handed straight back.
+  /// The map picker (inDrive's): the place chosen there, handed straight back.
+  /// When the dropped pin lands inside an admin's drawn boundary the picker
+  /// itself offers the place's entrances on its own screen (no separate sheet
+  /// after Done), so what it returns — a plain spot or a chosen gate — is final.
   Future<void> _onMap() async {
-    final p = await pickPlaceOnMap(context, start: _current?.point ?? widget.near, me: widget.near);
-    if (p == null || !mounted) return;
-    // Load the catalogue and the drawn boundaries before the pin is tested,
-    // and use the values the load returns directly. The boundaries
-    // (airportAreasProvider) are only watched by the results list, so opening
-    // the search and going straight to the map leaves them unread; and a plain
-    // `.value` read right after the await can still be empty while the provider
-    // re-subscribes its realtime watch. Either way a geofenced place would be
-    // matched against no boundary and handed back with no gate sheet. A place
-    // is matched only by its boundary, so the boundaries must actually be in
-    // hand. Capped, so a slow read never freezes the flow after Done.
-    GateCatalogue? catalogue;
-    List<AirportArea>? areas;
-    AreaPrecedenceRule? rule;
-    try {
-      final loaded = await Future.wait([
-        ref.read(placeGatesProvider.future),
-        ref.read(airportAreasProvider.future),
-        ref.read(areaPrecedenceRuleProvider.future),
-      ]).timeout(const Duration(seconds: 8));
-      catalogue = loaded[0] as GateCatalogue;
-      areas = loaded[1] as List<AirportArea>;
-      rule = loaded[2] as AreaPrecedenceRule;
-    } catch (_) {
-      // Timed out or a read failed: fall back to whatever is cached.
-      catalogue ??= ref.read(placeGatesProvider).value;
-    }
-    if (!mounted) return;
-    if (catalogue != null) {
-      final gated = _gatedAt(p, catalogue, areas: areas, rule: rule);
-      if (gated != null && gated.gates.isNotEmpty) {
-        // The gate sheet draws the boundary and lists the entrances/gates.
-        await _chooseGate(p, gated, catalogue);
-        return;
-      }
-    }
-    _done(PlacePick.place(p));
+    final p = await pickPlaceOnMap(
+      context,
+      start: _current?.point ?? widget.near,
+      me: widget.near,
+      showAreas: true,
+      usage: _usage,
+    );
+    if (p != null && mounted) _done(PlacePick.place(p));
   }
 
   Future<void> _add(SavedPlaceKind kind) => addSavedPlace(context, kind, near: widget.near);
@@ -632,10 +603,12 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
   /// outside the geofence never raises the gate sheet. A place with no
   /// boundary is still matched by its name or by sitting on it, as before.
   GatedPlace? _gatedAt(Place p, GateCatalogue catalogue, {List<AirportArea>? areas, AreaPrecedenceRule? rule}) {
-    // Prefer the boundaries the caller just awaited: a plain `.value` read can
-    // come back empty while the provider is mid-reload (its realtime watch
-    // re-subscribes), which would drop a geofenced place to "no boundary".
-    final a = areas ?? ref.read(airportAreasProvider).value ?? const <AirportArea>[];
+    // Use whichever source actually has the boundaries. The awaited list is
+    // preferred, but if it came back empty (a mid-reload future) fall back to
+    // the live `.value` — which the picker's boundary overlay keeps warm, so a
+    // geofenced place is never dropped to "no boundary" when the data is there.
+    var a = areas ?? const <AirportArea>[];
+    if (a.isEmpty) a = ref.read(airportAreasProvider).value ?? const <AirportArea>[];
     return matchGatedPlace(
       places: catalogue.places,
       gates: catalogue.gates,
