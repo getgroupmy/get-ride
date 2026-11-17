@@ -298,7 +298,7 @@ void main() {
     expect(picked?.place?.point, const LatLng(3.119, 101.678));
   });
 
-  testWidgets('a pin dropped inside a boundary on the map opens the gate sheet', (tester) async {
+  testWidgets('a pin inside a boundary offers its entrances on the map picker', (tester) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(500, 1000);
     addTearDown(tester.view.reset);
@@ -313,13 +313,7 @@ void main() {
           geoServiceProvider.overrideWithValue(_Geo(const [], at: 'Mid Valley')),
           pickerPositionProvider.overrideWithValue(() async => null),
           placeGatesProvider.overrideWith((ref) async => (places: [_mall], gates: _gates)),
-          // Boundaries resolve a beat late, as on the phone when the picker is
-          // opened before the results list has loaded them: _onMap must await
-          // them, not read a still-empty .value (the bug this guards).
-          airportAreasProvider.overrideWith((ref) async {
-            await Future<void>.delayed(const Duration(milliseconds: 50));
-            return [_mallArea];
-          }),
+          airportAreasProvider.overrideWith((ref) async => [_mallArea]),
           areaPrecedenceRuleProvider.overrideWith((ref) async => const AreaPrecedenceRule()),
           airportSettingsProvider.overrideWith((ref) async => const {}),
         ],
@@ -339,22 +333,19 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    // Choose on map → the picker opens on the boundary; Done hands the pin back.
+    // Choose on map → the picker opens inside the boundary and offers the
+    // place's entrances right there, no separate sheet after Done.
     await tester.tap(find.byKey(const ValueKey('place-search-map')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('map-picker-done')));
-    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('map-picker-entrances')), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-picker-gate-north')), findsOneWidget);
+    // The place requires a gate, so Done is held until one is chosen.
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('map-picker-done'))).onPressed, isNull);
 
-    // The pin is inside the geofence, so the gate sheet is raised rather than
-    // the raw point being handed straight back.
-    expect(picked, isNull);
-    expect(find.byKey(const ValueKey('gate-picker-title')), findsOneWidget);
-    expect(find.byKey(const ValueKey('gate-dot-north')), findsOneWidget);
-
-    await tester.tap(find.byKey(const ValueKey('gate-dot-north')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey('gate-picker-done')));
+    // Tapping an entrance hands that gate back as the chosen place.
+    await tester.tap(find.byKey(const ValueKey('map-picker-gate-north')));
     await tester.pumpAndSettle();
     expect(picked?.place?.name, 'Mid Valley Megamall - North Court');
+    expect(picked?.place?.point, const LatLng(3.119, 101.678));
   });
 }

@@ -575,64 +575,19 @@ class _PlaceSearchState extends ConsumerState<_PlaceSearch> {
     );
   }
 
-  /// The map picker (inDrive's): the place chosen there. A pin dropped inside
-  /// an admin's drawn boundary opens that place's gates, the same as picking
-  /// it from the list — [_gatedAt] is geofence-only (the point must sit inside
-  /// the ring), so a pin outside any boundary is handed straight back.
+  /// The map picker (inDrive's): the place chosen there, handed straight back.
+  /// When the dropped pin lands inside an admin's drawn boundary the picker
+  /// itself offers the place's entrances on its own screen (no separate sheet
+  /// after Done), so what it returns — a plain spot or a chosen gate — is final.
   Future<void> _onMap() async {
-    final p = await pickPlaceOnMap(context, start: _current?.point ?? widget.near, me: widget.near, showAreas: true);
-    if (p == null || !mounted) return;
-    // Load the catalogue and the drawn boundaries before the pin is tested,
-    // and use the values the load returns directly. The boundaries
-    // (airportAreasProvider) are only watched by the results list, so opening
-    // the search and going straight to the map leaves them unread; and a plain
-    // `.value` read right after the await can still be empty while the provider
-    // re-subscribes its realtime watch. Either way a geofenced place would be
-    // matched against no boundary and handed back with no gate sheet. A place
-    // is matched only by its boundary, so the boundaries must actually be in
-    // hand. Capped, so a slow read never freezes the flow after Done.
-    GateCatalogue? catalogue;
-    List<AirportArea>? areas;
-    AreaPrecedenceRule? rule;
-    try {
-      final loaded = await Future.wait([
-        ref.read(placeGatesProvider.future),
-        ref.read(airportAreasProvider.future),
-        ref.read(areaPrecedenceRuleProvider.future),
-      ]).timeout(const Duration(seconds: 8));
-      catalogue = loaded[0] as GateCatalogue;
-      areas = loaded[1] as List<AirportArea>;
-      rule = loaded[2] as AreaPrecedenceRule;
-    } catch (_) {
-      // Timed out or a read failed: fall back to whatever is cached.
-      catalogue ??= ref.read(placeGatesProvider).value;
-    }
-    if (!mounted) return;
-    final gated = catalogue == null ? null : _gatedAt(p, catalogue, areas: areas, rule: rule);
-    if (catalogue != null && gated != null && gated.gates.isNotEmpty) {
-      // The gate sheet draws the boundary and lists the entrances/gates.
-      await _chooseGate(p, gated, catalogue);
-      return;
-    }
-    // TEMPORARY blocking diagnostic (removed before this reaches production):
-    // the pin opened no gate sheet, so show exactly what the gate check saw.
-    final a = (areas != null && areas.isNotEmpty) ? areas : (ref.read(airportAreasProvider).value ?? const <AirportArea>[]);
-    final r = rule ?? _areaRule;
-    final areaAt = gateAreaAt(a, p.point, rule: r);
-    final inFence = [for (final x in a) if (x.isPlace && x.contains(p.point, bufferM: 0)) x.name];
-    await showAppNotice(
-      id: 'notice.place-search',
-      context: context,
-      message: 'Gate check (debug)\n'
-          'pin ${p.point.latitude.toStringAsFixed(5)}, ${p.point.longitude.toStringAsFixed(5)}\n'
-          'awaited areas: ${areas?.length ?? -1}; live areas: ${ref.read(airportAreasProvider).value?.length ?? -1}\n'
-          'in-fence: ${inFence.isEmpty ? "none" : inFence.join(", ")}\n'
-          'area at pin: ${areaAt == null ? "none" : "${areaAt.name} (${areaAt.isPlace ? "place" : "airport"})"}\n'
-          'catalogue: ${catalogue?.places.length ?? -1} places / ${catalogue?.gates.length ?? -1} gates\n'
-          'gated: ${gated == null ? "null" : "${gated.name}, gates=${gated.gates.length}"}',
+    final p = await pickPlaceOnMap(
+      context,
+      start: _current?.point ?? widget.near,
+      me: widget.near,
+      showAreas: true,
+      usage: _usage,
     );
-    if (!mounted) return;
-    _done(PlacePick.place(p));
+    if (p != null && mounted) _done(PlacePick.place(p));
   }
 
   Future<void> _add(SavedPlaceKind kind) => addSavedPlace(context, kind, near: widget.near);
