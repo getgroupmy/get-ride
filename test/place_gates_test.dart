@@ -342,8 +342,18 @@ void main() {
     // The place requires a gate, so Done is held until one is chosen.
     expect(tester.widget<FilledButton>(find.byKey(const ValueKey('map-picker-done'))).onPressed, isNull);
 
-    // Tapping an entrance hands that gate back as the chosen place.
+    // Tapping an entrance selects it: the panel stays up, the flag's callout
+    // becomes the chosen entrance ("Pickup point"), and Done lights up — it
+    // does not close the picker yet (inDrive's flow, so the rider can switch).
     await tester.tap(find.byKey(const ValueKey('map-picker-gate-north')));
+    await tester.pumpAndSettle();
+    expect(picked, isNull);
+    expect(find.byKey(const ValueKey('map-picker-entrances')), findsOneWidget);
+    expect(find.byKey(const ValueKey('map-picker-pickup')), findsOneWidget, reason: 'the callout names the entrance');
+    expect(tester.widget<FilledButton>(find.byKey(const ValueKey('map-picker-done'))).onPressed, isNotNull);
+
+    // Done hands that gate back as the chosen place.
+    await tester.tap(find.byKey(const ValueKey('map-picker-done')));
     await tester.pumpAndSettle();
     expect(picked?.place?.name, 'Mid Valley Megamall - North Court');
     expect(picked?.place?.point, const LatLng(3.119, 101.678));
@@ -409,5 +419,18 @@ void main() {
     expect(find.byKey(const ValueKey('map-picker-entrances')), findsOneWidget);
     expect(find.byKey(const ValueKey('map-picker-gate-kerb')), findsOneWidget);
     expect(picked, isNull);
+
+    // Choosing that entrance moves the flag onto it — outside the boundary —
+    // yet the panel stays up (the lock), the callout shows it, and Done hands
+    // the gate back at its own coordinates.
+    await tester.tap(find.byKey(const ValueKey('map-picker-gate-kerb')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('map-picker-entrances')), findsOneWidget,
+        reason: 'the panel must not vanish when the chosen gate is outside the fence');
+    expect(find.byKey(const ValueKey('map-picker-pickup')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('map-picker-done')));
+    await tester.pumpAndSettle();
+    expect(picked?.place?.name, 'Stadium - Taxi stand');
+    expect(picked?.place?.point, const LatLng(3.195, 101.605));
   });
 }

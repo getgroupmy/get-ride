@@ -87,6 +87,22 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
   int _lookup = 0;
   bool _locating = false;
 
+  /// The entrance the rider tapped in the panel (inDrive's "Pickup point"):
+  /// its id is highlighted in the panel, its name rides over the flag, and
+  /// Done hands that gate back. Cleared when the pin leaves the gated place.
+  String? _chosenGateId;
+
+  /// The gated place the panel is bound to while the rider picks an entrance.
+  /// Held even after the flag is moved onto a gate that sits just outside the
+  /// boundary (a kerbside taxi stand), so the panel doesn't vanish there; let
+  /// go only when the rider drags the map somewhere else.
+  GatedPlace? _locked;
+
+  /// Whether the last camera move came from the rider's own gesture (a drag,
+  /// fling or pinch) rather than our own recenter — a gesture to a spot with no
+  /// geofence drops the lock, our move onto a chosen entrance keeps it.
+  bool _lastUserMove = false;
+
   @override
   void initState() {
     super.initState();
@@ -102,6 +118,11 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
   void _onEvent(MapEvent e) {
     if (e is MapEventMove || e is MapEventMoveStart || e is MapEventFlingAnimation || e is MapEventDoubleTapZoom) {
       _centre = e.camera.center;
+      // Our own recenter (framing the geofence, moving onto a chosen entrance,
+      // "Use my location", a map tap) carries the mapController source; a drag,
+      // fling or pinch is the rider's. Only the rider's own move to a spot with
+      // no geofence lets go of a gated place being chosen.
+      _lastUserMove = e.source != MapEventSource.mapController;
       if (!_moving || !_looking) {
         setState(() {
           _moving = true;
@@ -160,11 +181,51 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
     return (gated != null && gated.gates.isNotEmpty) ? gated : null;
   }
 
-  /// Hand back the gate the rider tapped on the picker.
-  void _pickGate(GatedPlace gated, GateOption gate) {
-    final base = _place;
-    if (base == null) return;
-    Navigator.pop(context, gatePlace(base, gated, gate));
+  /// The rider tapped an entrance in the panel: lock onto the place, remember
+  /// the choice (its name rides over the flag, Done hands it back), and glide
+  /// the flag onto the gate — even when the gate sits just outside the
+  /// boundary, the lock keeps the panel up there. Done, not this, closes the
+  /// picker, so the rider can change entrance first (inDrive's flow).
+  void _selectGate(GatedPlace gated, GateOption gate) {
+    setState(() {
+      _locked = gated;
+      _chosenGateId = gate.id;
+    });
+    final pt = gate.point;
+    if (pt != null) {
+      recenterMap(_map, pt, zoom: _map.camera.zoom);
+      _onEvent(MapEventMove(camera: _map.camera, oldCamera: _map.camera, source: MapEventSource.mapController));
+    }
+  }
+
+  /// Keep the locked gated place in step with where the flag has settled.
+  /// [detected] is the live match under the pin (null off a geofence). Inside a
+  /// boundary we bind to it (dropping a stale entrance from another place);
+  /// off every boundary we let go — unless the rider is sitting on an entrance
+  /// they chose that happens to fall just outside the fence (our own move, not
+  /// a drag), where the panel must stay. Runs only once the flag is still.
+  void _reconcileLock(GatedPlace? detected) {
+    if (_moving || _looking) return;
+    if (detected != null) {
+      if (_locked?.id != detected.id) {
+        setState(() {
+          _locked = detected;
+          _chosenGateId = null;
+        });
+      } else if (_chosenGateId != null && detected.gates.every((g) => g.id != _chosenGateId)) {
+        setState(() => _chosenGateId = null);
+      }
+      return;
+    }
+    if (_locked == null) return;
+    final sittingOnChosenGate = _chosenGateId != null && !_lastUserMove;
+    if (!sittingOnChosenGate) {
+      setState(() {
+        _locked = null;
+        _chosenGateId = null;
+        _framedId = null;
+      });
+    }
   }
 
   /// "Use my location": the pin onto a fresh fix (else the position the
@@ -233,22 +294,24 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
     final fill = dark ? Colors.white : const Color(0xFF111111);
     final ink = dark ? Colors.black : Colors.white;
     final ready = !_moving && !_looking && _place != null;
-    // Inside an admin's drawn boundary: offer its entrances here. When the
-    // place requires a gate, Done is held so the rider must pick one.
-    final gated = _gatedHere();
-    final mustGate = gated != null && gated.blocksPlace;
-    // Landed in a new geofence: frame it (and snap to its nearest entrance)
-    // after this frame, so the whole boundary comes into view. Reset once the
-    // flag has settled outside every boundary, so re-entering frames again.
-    if (gated != null && gated.id != _framedId) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _frameGeofence(gated);
-      });
-    } else if (!_moving && !_looking && gated == null && _framedId != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _framedId = null;
-      });
-    }
+    // The geofence under the pin right now — null while the map moves, off
+    // every boundary, or before the pin has come to rest. Its outline and the
+    // entrance sheet show only once the pin is dropped inside one.
+    final detected = _gatedHere();
+    // The place the panel is bound to: the one being chosen (locked — kept even
+    // once the flag is moved onto an entrance that sits just outside the fence)
+    // or, if none is, the one under the pin now.
+    final gated = _locked ?? detected;
+    final chosenGate = _chosenGateId == null ? null : gated?.gates.where((g) => g.id == _chosenGateId).firstOrNull;
+    // A place that must be entered by a gate holds Done until one is chosen.
+    final mustGate = gated != null && gated.blocksPlace && chosenGate == null;
+    // After this frame: keep the lock in step with where the flag settled, and
+    // frame a newly entered geofence (once) so its whole boundary comes in view.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _reconcileLock(detected);
+      if (detected != null && detected.id != _framedId) _frameGeofence(detected);
+    });
     return Scaffold(
       body: Stack(
         children: [
@@ -266,20 +329,23 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
               ),
               children: [
                 baseTileLayer(context, satellite: ref.watch(mapSatelliteProvider)),
-                // The admin's drawn gate boundaries, so the rider can see where
-                // dropping a pin opens a gate/entrance sheet.
-                if (widget.showAreas)
+                // Only the boundary the pin is inside (or the one whose entrance
+                // is being chosen) is outlined — it appears when the pin is
+                // dropped in and goes once the pin leaves, rather than every
+                // fence showing up front.
+                if (widget.showAreas && gated != null)
                   PolygonLayer(
                     polygons: [
                       for (final area in ref.watch(airportAreasProvider).value ?? const <AirportArea>[])
-                        for (final ring in area.rings)
-                          if (ring.length >= 3)
-                            Polygon(
-                              points: ring,
-                              color: const Color(0x1FEA5B0C),
-                              borderColor: const Color(0xFFEA5B0C),
-                              borderStrokeWidth: 2,
-                            ),
+                        if (area.id == gated.id)
+                          for (final ring in area.rings)
+                            if (ring.length >= 3)
+                              Polygon(
+                                points: ring,
+                                color: const Color(0x1FEA5B0C),
+                                borderColor: const Color(0xFFEA5B0C),
+                                borderStrokeWidth: 2,
+                              ),
                     ],
                   ),
                 if (widget.me != null)
@@ -320,7 +386,7 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
             child: Center(
               child: Transform.translate(
                 offset: Offset(0, -_PickerPin.height / 2 + (_moving ? -10 : 0)),
-                child: _PickerPin(fill: fill, ink: ink, place: _place, looking: _looking || _moving),
+                child: _PickerPin(fill: fill, ink: ink, place: _place, looking: _looking || _moving, pick: chosenGate?.name),
               ),
             ),
           ),
@@ -364,12 +430,17 @@ class _MapPlacePickerState extends ConsumerState<MapPlacePicker> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   if (gated != null) ...[
-                    _EntrancePanel(gated: gated, onPick: (g) => _pickGate(gated, g)),
+                    _EntrancePanel(gated: gated, chosenId: _chosenGateId, onPick: (g) => _selectGate(gated, g)),
                     const SizedBox(height: 8),
                   ],
                   FilledButton(
                     key: const ValueKey('map-picker-done'),
-                    onPressed: ready && !mustGate ? () => Navigator.pop(context, _place) : null,
+                    onPressed: ready && !mustGate
+                        ? () => Navigator.pop(
+                              context,
+                              gated != null && chosenGate != null ? gatePlace(_place!, gated, chosenGate) : _place,
+                            )
+                        : null,
                     child: Text(mustGate ? 'Choose an entrance above' : 'Done', style: const TextStyle(fontSize: 18)),
                   ),
                   // Why Done is dimmed; the line is always there so Done
@@ -505,18 +576,25 @@ class _GroundDot extends StatelessWidget {
 /// while the spot is looked up) over a flag in a rounded square, on a stem
 /// whose foot is the point.
 class _PickerPin extends StatelessWidget {
-  const _PickerPin({required this.fill, required this.ink, required this.place, required this.looking});
+  const _PickerPin({required this.fill, required this.ink, required this.place, required this.looking, this.pick});
 
   final Color fill, ink;
   final Place? place;
   final bool looking;
+
+  /// The chosen entrance's name (inDrive's "Pickup point"): when set, it rides
+  /// over the flag in place of the spot's name, under a small caption.
+  final String? pick;
 
   static const _label = 46.0, _gap = 10.0, _badge = 48.0, _stem = 16.0;
   static const height = _label + _gap + _badge + _stem;
 
   @override
   Widget build(BuildContext context) {
-    final name = place?.name;
+    // A chosen entrance names the flag (and never shows the lookup spinner,
+    // since it is the rider's pick, not a reverse-geocode).
+    final showPick = pick != null && pick!.isNotEmpty && !looking;
+    final name = pick?.isNotEmpty == true ? pick : place?.name;
     return SizedBox(
       height: height,
       child: Column(
@@ -533,32 +611,55 @@ class _PickerPin extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black26)],
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (looking) ...[
-                    SizedBox.square(
-                      key: const ValueKey('map-picker-looking'),
-                      dimension: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: ink.withValues(alpha: 0.7)),
+              child: showPick
+                  ? Column(
+                      key: const ValueKey('map-picker-pickup'),
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'PICKUP POINT',
+                          style: TextStyle(
+                            color: ink.withValues(alpha: 0.55),
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.6,
+                          ),
+                        ),
+                        Text(
+                          pick!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: ink, fontSize: 15, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (looking) ...[
+                          SizedBox.square(
+                            key: const ValueKey('map-picker-looking'),
+                            dimension: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: ink.withValues(alpha: 0.7)),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Flexible(
+                          child: AnimatedOpacity(
+                            opacity: looking ? 0.55 : 1,
+                            duration: const Duration(milliseconds: 150),
+                            child: Text(
+                              name ?? MapPlacePicker.findingCaption,
+                              key: ValueKey(looking ? 'map-picker-name-stale' : 'map-picker-name'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: ink, fontSize: 17, fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                  ],
-                  Flexible(
-                    child: AnimatedOpacity(
-                      opacity: looking ? 0.55 : 1,
-                      duration: const Duration(milliseconds: 150),
-                      child: Text(
-                        name ?? MapPlacePicker.findingCaption,
-                        key: ValueKey(looking ? 'map-picker-name-stale' : 'map-picker-name'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: ink, fontSize: 17, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
             ),
           ),
           const SizedBox(height: _gap),
@@ -582,10 +683,13 @@ class _PickerPin extends StatelessWidget {
 /// The entrances of the gated place the pin is inside, chosen here on the
 /// picker (map_place_picker) instead of a separate sheet after Done.
 class _EntrancePanel extends StatelessWidget {
-  const _EntrancePanel({required this.gated, required this.onPick});
+  const _EntrancePanel({required this.gated, required this.onPick, this.chosenId});
 
   final GatedPlace gated;
   final ValueChanged<GateOption> onPick;
+
+  /// The entrance the rider has tapped, shown selected; null until one is.
+  final String? chosenId;
 
   @override
   Widget build(BuildContext context) {
@@ -599,35 +703,38 @@ class _EntrancePanel extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Row(children: [
+            Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(Icons.location_on_outlined, size: 20, color: t.colorScheme.primary),
               const SizedBox(width: 8),
-              Expanded(
+              Flexible(
                 child: Text(
                   gated.name.isEmpty ? 'This place' : gated.name,
                   style: t.textTheme.titleMedium,
+                  textAlign: TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
             ]),
             const SizedBox(height: 2),
-            Text('Choose an entrance', style: t.textTheme.bodySmall),
+            Text('Choose an entrance', style: t.textTheme.bodySmall, textAlign: TextAlign.center),
             const SizedBox(height: 10),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 180),
               child: SingleChildScrollView(
                 child: Wrap(
+                  alignment: WrapAlignment.center,
                   spacing: 8,
                   runSpacing: 8,
                   children: [
                     for (final g in gated.gates)
-                      ActionChip(
+                      ChoiceChip(
                         key: ValueKey('map-picker-gate-${g.id}'),
                         label: Text(g.name),
-                        onPressed: () => onPick(g),
+                        selected: g.id == chosenId,
+                        onSelected: (_) => onPick(g),
                       ),
                   ],
                 ),
