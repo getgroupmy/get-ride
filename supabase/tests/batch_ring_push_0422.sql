@@ -3,8 +3,8 @@
 -- all its drivers in one call to send-push (`profileIds`), not one call per
 -- driver -- the same drivers as before, each recorded once, the rider never,
 -- a driver already told not told again (p_once), and a ring of over 1,000
--- drivers split into calls of 1,000; and the "everyone" step judges only
--- the approved partners its push can reach.
+-- drivers split into calls of 1,000, a driver the rider blocked never told;
+-- and the "everyone" step judges only the approved partners its push can reach.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/batch_ring_push_0422.sql
 --
@@ -104,7 +104,26 @@ select pg_temp.check((select body->'excludeProfileIds' ? '00000000-0000-0000-000
 select pg_temp.check((select not (body->'excludeProfileIds' ? '00000000-0000-0000-0000-0000000422d2') from calls where n = 3),
   'an applicant is not judged: the push cannot reach them anyway');
 
--- 6. Over 1,000 drivers: calls of at most 1,000, each driver once.
+-- 6. A driver the rider blocked (0311) is never told, by a ring or by the
+--    "everyone" step.
+alter table public.rider_blocks disable trigger user;
+insert into public.rider_blocks (rider_id, driver_id, source)
+values ('00000000-0000-0000-0000-0000000422c1', '00000000-0000-0000-0000-0000000422d2', 'settings');
+alter table public.rider_blocks enable trigger user;
+alter table public.ride_requests disable trigger user;
+insert into public.ride_requests (id, rider_id, status, service, pickup_lat, pickup_lng)
+values ('00000000-0000-0000-0000-0000000422e3', '00000000-0000-0000-0000-0000000422c1', 'open', 'Ride', 33.0, 123.0);
+alter table public.ride_requests enable trigger user;
+select pg_temp.check(public.ride_request_push_nearby('00000000-0000-0000-0000-0000000422e3',
+  '00000000-0000-0000-0000-0000000422c1', 33.0, 123.0, 5, '{"title":"t","body":"b"}', 'ladder', true) = 1,
+  'only the driver not blocked is told');
+select pg_temp.check((select body->'profileIds' = '["00000000-0000-0000-0000-0000000422d1"]'::jsonb from calls where n = 4),
+  'the blocked driver is not in the call');
+select public.ride_request_push_everyone('00000000-0000-0000-0000-0000000422e3', '{"title":"t","body":"b"}', 'everyone');
+select pg_temp.check((select body->'excludeProfileIds' ? '00000000-0000-0000-0000-0000000422d2' from calls where n = 5),
+  'the "everyone" step leaves the blocked driver out');
+
+-- 7. Over 1,000 drivers: calls of at most 1,000, each driver once.
 insert into auth.users (id)
 select ('00000000-0000-0000-0422-' || lpad(n::text, 12, '0'))::uuid from generate_series(1, 1205) n
 on conflict do nothing;
@@ -116,9 +135,9 @@ select id, true, 35.0, 125.0, now() from auth.users where id::text like '0000000
 alter table public.driver_presence enable trigger user;
 select pg_temp.check(public.ride_request_push_nearby('00000000-0000-0000-0000-0000000422e1',
   null, 35.0, 125.0, 5, '{"title":"t","body":"b"}', 'ladder', true) = 1205, '1,205 drivers told');
-select pg_temp.check((select array_agg(jsonb_array_length(body->'profileIds') order by n) from calls where n > 3)
+select pg_temp.check((select array_agg(jsonb_array_length(body->'profileIds') order by n) from calls where n > 5)
                        = array[1000, 205], 'in a call of 1,000 and one of 205');
-select pg_temp.check((select count(distinct x) = 1205 from calls, jsonb_array_elements_text(body->'profileIds') x where n > 3),
+select pg_temp.check((select count(distinct x) = 1205 from calls, jsonb_array_elements_text(body->'profileIds') x where n > 5),
                      'each driver once');
 
 rollback;

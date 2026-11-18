@@ -8,7 +8,8 @@
 -- which then started, read that one driver's phones and sent. A ring of 40
 -- drivers was 40 calls.
 --
--- Now the drivers are picked by exactly the same rules, their rows are
+-- Now the drivers are picked by exactly the same rules (the live function's:
+-- 0253 plus the checks 0254, 0263, 0267 and 0311 patched into its loop), their rows are
 -- written in one statement (the same once-per-request rule: with p_once a
 -- driver already told is not told again), and ONE call to send-push carries
 -- them all in `profileIds` (up to 1,000 a call; more go in further calls).
@@ -56,14 +57,21 @@ begin
     into v_service, v_keys
     from public.ride_requests r where r.id = p_request;
 
-  -- The drivers to tell: as 0253 picked them, each recorded once per request.
+  -- The drivers to tell, by the live function's rules -- 0253's, with the
+  -- checks 0254 (permits), 0263 (the driver's service switches), 0267
+  -- (freight and courier) and 0311 (drivers the rider blocked) added into
+  -- its loop -- each recorded once per request.
   with picked as (
     select d.d
       from public.nearby_online_drivers(p_lat, p_lng, p_radius_km) as d(d)
      where d.d is distinct from p_rider
+       and not coalesce(public.rider_blocks_driver(p_rider, d.d), false)
        and (not v_enforced
             or public.service_order_allows(public.driver_vehicle_service(d.d), v_service))
        and public.driver_takes_extras(d.d, v_keys)
+       and public.driver_permit_problem(d.d) is null
+       and public.driver_takes_service(d.d, v_service)
+       and public.driver_takes_freight(d.d, v_service)
   ),
   recorded as (
     insert into public.ride_request_pushes (request_id, profile_id, kind)
@@ -93,7 +101,8 @@ $$;
 revoke execute on function public.ride_request_push_nearby(uuid, uuid, double precision, double precision, double precision, jsonb, text, boolean)
   from public, anon, authenticated;
 
--- 0268's ride_request_push_everyone, judging approved partners only.
+-- The live ride_request_push_everyone (0268's, with 0311's blocked drivers
+-- left out), judging approved partners only.
 create or replace function public.ride_request_push_everyone(p_request uuid, p_message jsonb, p_kind text)
 returns void
 language plpgsql
@@ -151,6 +160,7 @@ begin
     'audience', 'partners',
     'approvedOnly', true,
     'excludeProfileIds', case when v_rider is null then '[]'::jsonb else jsonb_build_array(v_rider) end || v_skip
+                         || public.rider_blocked_driver_ids(v_rider)
   ));
 end;
 $$;
