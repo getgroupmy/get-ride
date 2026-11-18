@@ -1,5 +1,7 @@
+import 'dart:async' show scheduleMicrotask;
 import 'dart:math' as math;
 
+import 'package:apple_maps_flutter/apple_maps_flutter.dart' as am;
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -8,6 +10,7 @@ import 'package:latlong2/latlong.dart';
 import '../core/map_profile.dart' show mapProfileListenable;
 import '../data/geo_service.dart';
 import 'apple_native_layer.dart' show MapRouteLine;
+import 'map_badge_bitmap.dart';
 import 'map_sheet_layout.dart';
 import 'map_credit.dart';
 import 'map_tiles.dart';
@@ -367,6 +370,8 @@ class _RideMapState extends State<RideMap> {
     _shown.dispose();
     _appleRoute.dispose();
     _appleMe.dispose();
+    _appleAnnotations.dispose();
+    _marksKey.dispose();
     super.dispose();
   }
 
@@ -389,19 +394,123 @@ class _RideMapState extends State<RideMap> {
   /// flutter_map dot (below) is hidden while Apple draws it.
   final _appleMe = ValueNotifier<bool>(false);
 
+  /// The confirm map's marks for MapKit to draw itself on the Apple base, so
+  /// the marks, the route and Apple's roads all share one projection and line
+  /// up (a flutter_map marker over a native route drifts off it). Empty off the
+  /// Apple base, off the confirm map, or until the images are rendered. The
+  /// flutter_map badges (below) are hidden while these are drawn.
+  final _appleAnnotations = ValueNotifier<Set<am.Annotation>>(const {});
+
+  /// The marks key the current [_appleAnnotations] were built for (null: none),
+  /// and the latest key asked for. [_movingLayers] shows native marks only when
+  /// the built key matches what it wants, so it never hides the flutter badges
+  /// before the native ones are up.
+  final _marksKey = ValueNotifier<String?>(null);
+  String? _marksWant;
+  int _annSeq = 0;
+
   void _syncApple() {
-    final w = widget;
-    // The live trip line is drawn by MapKit so it stays locked to the roads
-    // while the map pans. The confirm map (dotPins) does NOT: there its route
-    // is a flutter_map overlay (below), so it shares one projection with the
-    // pickup/drop marks and they sit exactly on it. MapKit and flutter_map
-    // project a little differently away from the centre, so a native line under
-    // flutter marks drifts off them — worst mid-route, which is where a confirm
-    // route runs.
-    _appleRoute.value = (w.route.length < 2 || w.dotPins)
-        ? null
-        : MapRouteLine(points: w.route, color: const Color(0xFF2DABE2), width: 5);
-    _appleMe.value = w.me != null && w.nativeMe;
+    _appleRoute.value = _appleRouteLine(widget);
+    _appleMe.value = widget.me != null && widget.nativeMe;
+  }
+
+  /// The route line for MapKit. The live trip line is always MapKit's, locked to
+  /// the roads as the map pans. The confirm map (dotPins) switches to MapKit's
+  /// line only once its native marks are up ([_marksKey]), so the route and the
+  /// marks move onto the Apple base together; until then its flutter_map line is
+  /// drawn (below) alongside the flutter_map marks.
+  MapRouteLine? _appleRouteLine(RideMap w) {
+    if (w.route.length < 2) return null;
+    if (!w.dotPins) return MapRouteLine(points: w.route, color: const Color(0xFF2DABE2), width: 5);
+    if (_marksKey.value == null) return null;
+    return MapRouteLine(points: w.route, color: _markerInk(context).fill, width: 4);
+  }
+
+  /// A value key for the confirm marks MapKit should draw: the theme and each
+  /// mark's point, or null when native marks don't apply (off the Apple base,
+  /// off the confirm map, or no marks). Pure given the map profile + theme.
+  String? _wantMarksKey(BuildContext context, RideMap w) {
+    if (!w.dotPins) return null;
+    if (!appleRouteBaseActive(context, satellite: w.satellite)) return null;
+    final b = StringBuffer(mapIsDark(context) ? 'd' : 'l');
+    var any = false;
+    if (w.pickup != null && w.showPickup) {
+      any = true;
+      b.write('|p:${w.pickup!.latitude},${w.pickup!.longitude}');
+    }
+    for (var i = 0; i < w.stops.length; i++) {
+      any = true;
+      b.write('|s$i:${w.stops[i].latitude},${w.stops[i].longitude}');
+    }
+    if (w.drop != null) {
+      any = true;
+      b.write('|d:${w.drop!.latitude},${w.drop!.longitude}');
+    }
+    return any ? b.toString() : null;
+  }
+
+  /// Renders the confirm marks to native annotations and brings up the native
+  /// route with them, or clears them — whenever what [_movingLayers] wants
+  /// ([want]) changes. Async (the images need the engine); guarded by a sequence
+  /// so a stale render never lands. On any failure the flutter marks/line stay.
+  void _ensureApple(BuildContext context, RideMap w, String? want) {
+    if (want == _marksWant) return;
+    _marksWant = want;
+    final seq = ++_annSeq;
+    if (want == null) {
+      scheduleMicrotask(() {
+        if (seq != _annSeq || !mounted) return;
+        _appleAnnotations.value = const {};
+        _marksKey.value = null;
+        _syncApple();
+      });
+      return;
+    }
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final ink = _markerInk(context);
+    () async {
+      try {
+        final set = await _renderMarks(w, ink, dpr);
+        if (seq != _annSeq || !mounted) return;
+        _appleAnnotations.value = set;
+        _marksKey.value = want;
+        _syncApple();
+      } catch (_) {
+        if (seq == _annSeq) _marksWant = null; // let a later build try again
+      }
+    }();
+  }
+
+  /// The confirm marks as MapKit annotations (pickup a waving rider, stops their
+  /// numbers, drop-off a flag), each anchored so its dot sits on the point.
+  Future<Set<am.Annotation>> _renderMarks(RideMap w, ({Color fill, Color ink}) c, double dpr) async {
+    final out = <am.Annotation>{};
+    Future<void> add(String id, LatLng p, {IconData? glyph, String? number, double glyphSize = 22, double square = confirmBadgeSize, bool withDot = true}) async {
+      final png = await renderConfirmBadgePng(
+        glyph: glyph,
+        number: number,
+        fill: c.fill,
+        ink: c.ink,
+        square: square,
+        glyphSize: glyphSize,
+        withDot: withDot,
+        scale: dpr,
+      );
+      final m = badgeImageMetrics(square: square, withDot: withDot);
+      out.add(am.Annotation(
+        annotationId: am.AnnotationId(id),
+        position: am.LatLng(p.latitude, p.longitude),
+        anchor: m.anchor,
+        icon: am.BitmapDescriptor.fromBytes(png),
+      ));
+    }
+
+    if (w.pickup != null && w.showPickup) await add('pickup', w.pickup!, glyph: Icons.emoji_people, glyphSize: 24);
+    for (var i = 0; i < w.stops.length; i++) {
+      await add('stop-$i', w.stops[i], number: '${i + 1}', glyphSize: 14, square: 26, withDot: false);
+    }
+    if (w.drop != null) await add('drop', w.drop!, glyph: Icons.flag, glyphSize: 22);
+    return out;
   }
 
   @override
@@ -420,7 +529,7 @@ class _RideMapState extends State<RideMap> {
   // the flutter_map overlay or MapKit's own (appleRouteBaseActive) turns on
   // which base is drawn, so a profile arriving late must redraw these layers.
   late final Widget _layers = ListenableBuilder(
-    listenable: Listenable.merge([_shown, mapProfileListenable]),
+    listenable: Listenable.merge([_shown, mapProfileListenable, _marksKey]),
     builder: (context, _) => _movingLayers(context, _shown.value),
   );
 
@@ -482,7 +591,13 @@ class _RideMapState extends State<RideMap> {
         // themselves; only satellite makes new ones.
         if (_baseSatellite != widget.satellite) {
           _baseSatellite = widget.satellite;
-          _base = baseTileLayer(context, satellite: widget.satellite, route: _appleRoute, showMe: _appleMe);
+          _base = baseTileLayer(
+            context,
+            satellite: widget.satellite,
+            route: _appleRoute,
+            showMe: _appleMe,
+            annotations: _appleAnnotations,
+          );
         }
         final creditFor = (widget.hideCredit, widget.satellite);
         if (_creditFor != creditFor) {
@@ -529,15 +644,24 @@ class _RideMapState extends State<RideMap> {
   /// position redraws. Stacked as flutter_map stacks its own layers.
   Widget _movingLayers(BuildContext context, RideMap w) {
     final ink = _markerInk(context);
+    // The confirm map (dotPins) draws its route and its pickup/drop marks as
+    // MapKit's own on the Apple base, so they and Apple's roads share one
+    // projection and line up. [_ensureApple] renders the marks (async); once
+    // they are up (nativeMarks) the flutter_map line and badges below are
+    // hidden and MapKit's take over. Until then — and everywhere but the Apple
+    // base — the flutter_map line and badges are drawn, each in one projection
+    // with the other.
+    final appleActive = appleRouteBaseActive(context, satellite: w.satellite);
+    final want = _wantMarksKey(context, w);
+    _ensureApple(context, w, want);
+    final nativeMarks = want != null && _marksKey.value == want;
+    // The flutter_map line: on every base except where MapKit draws it — the
+    // live trip on the Apple base, and the confirm map once its native marks are up.
+    final appleDrawsLine = appleActive && (!w.dotPins || nativeMarks);
     return Stack(
       fit: StackFit.passthrough,
       children: [
-        // On the Apple base (iPhone) MapKit draws the live trip route itself,
-        // locked to the map as it pans (apple_native_layer.dart); the flutter_map
-        // line is drawn on every other base. The confirm map (dotPins) always
-        // draws its own flutter_map line, even on the Apple base, so the route
-        // shares one projection with the pickup/drop marks and they sit on it.
-        if (w.route.length > 1 && (w.dotPins || !appleRouteBaseActive(context, satellite: w.satellite)))
+        if (w.route.length > 1 && !appleDrawsLine)
           PolylineLayer(
             polylines: [
               w.dotPins
@@ -570,7 +694,9 @@ class _RideMapState extends State<RideMap> {
                   ),
                 ),
               ),
-            if (w.dotPins) ...[
+            // Hidden while MapKit draws these marks itself (nativeMarks) so the
+            // two never show at once.
+            if (w.dotPins && !nativeMarks) ...[
               if (w.pickup != null && w.showPickup)
                 _pointBadge(w.pickup!, 'pickup', ink, Icon(Icons.emoji_people, color: ink.ink, size: 24)),
               for (var i = 0; i < w.stops.length; i++)
