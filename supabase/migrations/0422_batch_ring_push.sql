@@ -14,6 +14,16 @@
 -- them all in `profileIds` (up to 1,000 a call; more go in further calls).
 -- Same drivers, same message, same return value (how many were told).
 --
+-- The final "everyone" step (ride_request_push_everyone) is already one call,
+-- but first lists who to leave out, judging candidates one by one through
+-- the partner-type and registration rules (~7 ms a partner). For a freight
+-- or courier ride, or under a lock that is not one driver's, every partner
+-- was judged: ~220 ms live with 33 partners, and growing with them. The push
+-- goes to approved partners only (`approvedOnly`, as send-push reads it:
+-- partners.status = 'approved'), so judging anyone else changed nothing:
+-- now only approved partners are judged. Same skip list for everyone the
+-- push can reach.
+--
 -- send-push learned `profileIds` in the same change and must be deployed
 -- first. Should an older send-push get a batch, it reads only `profileId`,
 -- which carries the batch's first driver: one driver told, never everyone.
@@ -82,3 +92,67 @@ $$;
 
 revoke execute on function public.ride_request_push_nearby(uuid, uuid, double precision, double precision, double precision, jsonb, text, boolean)
   from public, anon, authenticated;
+
+-- 0268's ride_request_push_everyone, judging approved partners only.
+create or replace function public.ride_request_push_everyone(p_request uuid, p_message jsonb, p_kind text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_rider uuid;
+  v_service text;
+  v_key text;
+  v_keys text[];
+  v_skip jsonb;
+  v_broad boolean;
+  v_freight boolean;
+begin
+  select r.rider_id, r.service, public.ride_extra_keys(r.pets, r.assistance, r.option_names, r.passengers)
+    into v_rider, v_service, v_keys
+    from public.ride_requests r where r.id = p_request;
+  v_key := public.driver_service_key(v_service);
+  -- Freight or courier: only some partners take it.
+  v_freight := public.vehicle_service_is_freight(v_service) or public.vehicle_service_is_courier(v_service);
+  -- A lock other than one driver's may cover anybody, and only some
+  -- partners take freight: then every partner is asked; else only those
+  -- with a switch or a lock of their own.
+  v_broad := v_freight
+             or exists (select 1 from public.driver_service_locks l
+                         where l.scope <> 'driver' and (l.until is null or l.until > now())
+                           and (l.service_key = v_key
+                                or (cardinality(v_keys) > 0 and l.service_key = any (
+                                      array(select 'extra:' || x from unnest(v_keys) x)))));
+  -- The candidates, cut to those the push can reach (send-push's
+  -- approvedOnly) BEFORE the per-partner rules run: materialized, so the
+  -- planner cannot push those checks down into the union.
+  with cand as materialized (
+    select distinct c.d from (
+      select x.driver_id as d from public.driver_ride_extras x where cardinality(v_keys) > 0 and x.off && v_keys
+      union
+      select p.driver_id from public.driver_service_prefs p where v_key <> '' and p.service_key = v_key and not p.enabled
+      union
+      select l.driver_id from public.driver_service_locks l
+       where l.scope = 'driver' and (l.until is null or l.until > now())
+         and (l.service_key = v_key or l.service_key like 'extra:%')
+      union
+      select pa.auth_user_id from public.partners pa where v_broad and pa.auth_user_id is not null
+    ) c
+    where c.d is not null
+      and exists (select 1 from public.partners ap where ap.auth_user_id = c.d and ap.status::text = 'approved')
+  )
+  select coalesce(jsonb_agg(cand.d), '[]'::jsonb) into v_skip
+    from cand
+   where not (public.driver_takes_extras(cand.d, v_keys) and public.driver_takes_service(cand.d, v_service)
+              and (not v_freight or public.driver_takes_freight(cand.d, v_service)));
+  insert into public.ride_request_pushes (request_id, profile_id, kind) values (p_request, null, p_kind);
+  perform public.send_push_webhook(p_message || jsonb_build_object(
+    'audience', 'partners',
+    'approvedOnly', true,
+    'excludeProfileIds', case when v_rider is null then '[]'::jsonb else jsonb_build_array(v_rider) end || v_skip
+  ));
+end;
+$$;
+revoke execute on function public.ride_request_push_everyone(uuid, jsonb, text) from public, anon, authenticated;
+grant execute on function public.ride_request_push_everyone(uuid, jsonb, text) to service_role;
