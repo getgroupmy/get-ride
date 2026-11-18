@@ -46,13 +46,27 @@ bool? debugAppleNativeSupported;
 const appleMapAppearanceChannel = MethodChannel('get_ride/map_appearance');
 
 class AppleNativeBaseLayer extends StatefulWidget {
-  const AppleNativeBaseLayer({super.key, required this.fallback, this.satellite = false, this.mapType, this.route});
+  const AppleNativeBaseLayer({
+    super.key,
+    required this.fallback,
+    this.satellite = false,
+    this.mapType,
+    this.route,
+    this.showMe,
+  });
 
   final bool satellite;
 
   /// The route line MapKit draws on the map itself (null for none): locked to
   /// the base, so it never slides off the roads while the map is panned.
   final ValueListenable<MapRouteLine?>? route;
+
+  /// Whether MapKit draws the device's own location dot (the standard blue
+  /// dot): locked to the base like the route, so it stays on the real spot
+  /// while the map is panned instead of sliding as a flutter_map marker does
+  /// (the base follows the Flutter camera a frame late). The caller hides its
+  /// own flutter_map "me" dot while this is on (ride_map.dart).
+  final ValueListenable<bool>? showMe;
 
   /// "roadmap", "satellite" or "hybrid"; null for the roadmap, or satellite
   /// when [satellite]. Apple has no terrain map: its standard one instead.
@@ -74,26 +88,33 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
   @override
   void initState() {
     super.initState();
-    widget.route?.addListener(_routeChanged);
+    widget.route?.addListener(_redraw);
+    widget.showMe?.addListener(_redraw);
   }
 
   @override
   void didUpdateWidget(AppleNativeBaseLayer old) {
     super.didUpdateWidget(old);
     if (old.route != widget.route) {
-      old.route?.removeListener(_routeChanged);
-      widget.route?.addListener(_routeChanged);
+      old.route?.removeListener(_redraw);
+      widget.route?.addListener(_redraw);
+    }
+    if (old.showMe != widget.showMe) {
+      old.showMe?.removeListener(_redraw);
+      widget.showMe?.addListener(_redraw);
     }
   }
 
   @override
   void dispose() {
-    widget.route?.removeListener(_routeChanged);
+    widget.route?.removeListener(_redraw);
+    widget.showMe?.removeListener(_redraw);
     super.dispose();
   }
 
-  // The route moved (the line changed without the camera moving): redraw.
-  void _routeChanged() {
+  // The route moved, or the location dot turned on/off, without the camera
+  // moving: redraw so MapKit picks it up.
+  void _redraw() {
     if (mounted) setState(() {});
   }
 
@@ -215,7 +236,9 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
             scrollGesturesEnabled: false,
             zoomGesturesEnabled: false,
             pitchGesturesEnabled: false,
-            myLocationEnabled: false,
+            // MapKit draws the device's location dot itself, so it stays on the
+            // real spot while the map pans (ride_map.dart hides its own dot).
+            myLocationEnabled: widget.showMe?.value ?? false,
             myLocationButtonEnabled: false,
           ),
         ),

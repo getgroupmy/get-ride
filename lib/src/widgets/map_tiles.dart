@@ -192,6 +192,7 @@ Widget baseTileLayer(
   BuildContext context, {
   bool satellite = false,
   ValueListenable<MapRouteLine?>? route,
+  ValueListenable<bool>? showMe,
 }) => ValueListenableBuilder<MapProfile?>(
   valueListenable: mapProfileListenable,
   builder: (context, profile, _) {
@@ -205,7 +206,7 @@ Widget baseTileLayer(
                 color: mapIsDark(context) ? const Color(0xFF242F3E) : const Color(0xFFE5E3DF),
               ),
             )
-          : currentBaseLayer(context, satellite: satellite, route: route),
+          : currentBaseLayer(context, satellite: satellite, route: route, showMe: showMe),
     );
   },
 );
@@ -218,7 +219,12 @@ bool appleRouteBaseActive(BuildContext context, {bool satellite = false}) =>
     appleNativeSupported && mapProfileListenable.value != null && currentTileSource(context, satellite: satellite).appleNative;
 
 /// [baseTileLayer]'s layer for the profile in use now.
-Widget currentBaseLayer(BuildContext context, {bool satellite = false, ValueListenable<MapRouteLine?>? route}) {
+Widget currentBaseLayer(
+  BuildContext context, {
+  bool satellite = false,
+  ValueListenable<MapRouteLine?>? route,
+  ValueListenable<bool>? showMe,
+}) {
   final source = currentTileSource(context, satellite: satellite);
   final maplibreKey = source.maplibreKey;
   if (maplibreKey != null) {
@@ -243,6 +249,7 @@ Widget currentBaseLayer(BuildContext context, {bool satellite = false, ValueList
       satellite: satellite,
       mapType: googleMapTypeOf(source.url),
       route: route,
+      showMe: showMe,
       fallback: _tileLayer(fallbackTileSource(context, satellite: satellite)),
     );
   }
