@@ -220,6 +220,13 @@ Widget baseTileLayer(
 bool appleRouteBaseActive(BuildContext context, {bool satellite = false}) =>
     appleNativeSupported && mapProfileListenable.value != null && currentTileSource(context, satellite: satellite).appleNative;
 
+/// Whether the map drawn now is Google's own native map, which draws the
+/// device location dot itself — so a caller gives it the dot and hides its own
+/// flutter_map one. False before the map profile loads, and for every other
+/// map set.
+bool googleNativeBaseActive(BuildContext context, {bool satellite = false}) =>
+    googleNativeSupported && mapProfileListenable.value != null && currentTileSource(context, satellite: satellite).googleNative;
+
 /// [baseTileLayer]'s layer for the profile in use now.
 Widget currentBaseLayer(
   BuildContext context, {
@@ -243,6 +250,7 @@ Widget currentBaseLayer(
       key: ValueKey(source.url),
       satellite: satellite,
       mapType: googleMapTypeOf(source.url),
+      showMe: showMe,
       fallback: _fallbackLayer(context, satellite: satellite),
     );
   }
