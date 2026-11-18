@@ -10,7 +10,6 @@ import '../../data/compass.dart';
 import '../../data/models.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
-import '../../widgets/map_tiles.dart' show appleRouteBaseActive, googleNativeBaseActive;
 import '../../widgets/map_traffic.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
@@ -46,14 +45,10 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   bool _ready = false;
   bool _follow = true;
 
-  /// The device's compass heading, null where the phone has no compass. When
-  /// known and following, the map turns so the heading is up (Expo's idle map);
-  /// without it the map stays north-up as before.
+  /// The device heading (the GPS course while moving, the compass while stopped;
+  /// data/compass.dart), null until a sensor answers. The arrow on the location
+  /// dot (below) turns to it. The map itself stays north-up.
   double? _heading;
-
-  /// Following the driver with a known heading: the driver sits dead-centre and
-  /// the map turns under them so the way the phone points is up.
-  bool get _headingUp => _follow && _heading != null;
 
   /// The camera's glide from where it is to the driver.
   late final _glide = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))
@@ -78,18 +73,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     if (widget.me != old.me) WidgetsBinding.instance.addPostFrameCallback((_) => _center());
   }
 
-  /// Where the driver sits: dead-centre in heading-up mode (so the map turns
-  /// cleanly around them), else a little above the sheet.
-  Offset get _offset => _headingUp ? Offset.zero : Offset(0, -MapBottomInset.of(context) / 2);
-
-  /// Turn the map so the compass [h] points up (north-up when null). Rotating
-  /// around the camera's centre — where the driver sits in heading-up mode —
-  /// keeps the driver fixed while the map turns.
-  void _face(double? h) {
-    try {
-      _map.rotate(h == null ? 0 : -h);
-    } catch (_) {}
-  }
+  /// Where the driver's dot sits on screen: a little above the sheet. The
+  /// heading-arrow overlay (below) is placed over the same spot.
+  Offset get _offset => Offset(0, -MapBottomInset.of(context) / 2);
 
   /// Glides the camera onto the driver, at the zoom the map is at.
   void _center({bool jump = false}) {
@@ -106,7 +92,12 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       _map.move(me, _zoom, offset: _offset);
       return;
     }
-    _from = _to ?? camera.center;
+    // Start the glide from where the camera actually is now, not from the last
+    // glide's destination (_to): a fresh fix often lands before the 600 ms
+    // glide has finished, and starting at the old target snapped the camera
+    // forward to it before interpolating (the jitter while following). With
+    // the live centre each restart continues smoothly from the visible spot.
+    _from = camera.center;
     _to = me;
     _glide.forward(from: 0);
   }
@@ -139,40 +130,28 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     final me = widget.me;
     if (me == null) return;
     try {
-      // Centre on the driver and resume heading-up (north-up when there is no
-      // compass). _offset reads _headingUp, so recentre after _follow is set.
-      _map.move(me, driverHomeZoom, offset: _offset);
-      _face(_heading);
+      // Resume following at the zoom the driver left the map at, not back at
+      // street level — jumping the zoom on recentre is a surprise when they
+      // had zoomed out to look around. The map is already north-up.
+      _map.move(me, _map.camera.zoom, offset: _offset);
     } catch (_) {}
   }
 
-  /// A fresh compass heading: remember it and, while following, turn the map to
-  /// it. Entering heading-up mode re-centres the driver (the offset changed);
-  /// after that only the rotation moves.
+  /// A fresh heading: remember it so the arrow on the dot turns to it. The map
+  /// stays north-up — only the arrow moves.
   void _onHeading(double h) {
-    final entering = _heading == null;
-    _heading = h;
-    if (!_follow || !_ready) {
-      if (entering && mounted) setState(() {}); // nativeMe depends on _heading
-      return;
-    }
-    final me = widget.me;
-    try {
-      if (entering && me != null) {
-        _map.move(me, _map.camera.zoom, offset: Offset.zero);
-      }
-      _face(h);
-    } catch (_) {}
-    if (entering && mounted) setState(() {});
+    if (_heading == h || !mounted) return;
+    setState(() => _heading = h);
   }
 
   @override
   Widget build(BuildContext context) {
     final me = widget.me, requests = widget.requests, onSelect = widget.onSelect;
+    final heading = _heading;
     final t = Theme.of(context);
-    // The device compass turns the map heading-up while following (Expo's idle
-    // map). Only this map listens, so the sensor runs while the driver waits
-    // and stops when they leave.
+    // The device heading turns the arrow over the driver's dot (the map stays
+    // north-up). Only this map listens, so the sensor runs while the driver
+    // waits and stops when they leave.
     ref.listen(deviceHeadingProvider, (_, next) {
       final h = next.value;
       if (h != null && mounted) _onHeading(h);
@@ -188,23 +167,13 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       _overlays = [?layer];
     }
     final satellite = ref.watch(mapSatelliteProvider);
-    // A native base (Apple or Google) draws its own location dot, locked to its
-    // tiles. Our flutter_map puck can't sit on those tiles — it is a flutter_map
-    // overlay, which the native base's projection drifts away from as the map
-    // zooms out — so on a native base we don't draw the puck and let the native
-    // dot show instead (RideMap gets "me", and the map still turns heading-up to
-    // show the facing). The puck, with its heading beam, is for the flutter tile
-    // bases, where it shares the tiles' projection and sits exactly on the point.
-    final nativeBase =
-        appleRouteBaseActive(context, satellite: satellite) || googleNativeBaseActive(context, satellite: satellite);
-    final showPuck = _headingUp && me != null && !nativeBase;
     final map = RideMap(
       controller: _map,
-      // In heading-up on a flutter tile base we draw the whole location puck
-      // (halo + beam + dot) ourselves as a map marker on the driver's point
-      // (below), so hand RideMap no "me" — it would draw a second dot. Otherwise
-      // RideMap draws the dot (native on a native base, flutter on a tile base).
-      me: showPuck ? null : me,
+      // The location dot is the map's own: the native base draws it (locked to
+      // its tiles, continuously tracking), and a flutter_map dot elsewhere. The
+      // heading arrow over it is a screen-fixed overlay (below), so it needs no
+      // dot of its own here.
+      me: me,
       nativeMe: true,
       pointZoom: driverHomeZoom,
       // The camera follows the driver instead of framing the pins.
@@ -221,19 +190,6 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       // Live traffic, when a traffic tile source is configured and switched on.
       tileOverlays: _overlays,
       extraMarkers: [
-        // The driver's location puck, anchored to their coordinate (not the
-        // screen), so it holds its real-world spot through pan, zoom and turn.
-        // The marker layer counter-rotates it (rotate: true), so the beam keeps
-        // pointing up — the way the phone faces — on the heading-up map. Drawn
-        // first, under the request pins, and never eats their taps. Only on a
-        // flutter tile base; a native base draws its own dot instead (above).
-        if (showPuck)
-          Marker(
-            point: me,
-            width: 140,
-            height: 140,
-            child: const IgnorePointer(child: _HeadingPuck(key: ValueKey('driver-location-puck'))),
-          ),
         for (final r in requests)
           if (r.pickupLat != null && r.pickupLng != null)
             Marker(
@@ -272,6 +228,27 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     return Stack(
       children: [
         map,
+        // The heading arrow over the location dot: a chevron on the driver's
+        // dot that turns to the way they face/drive. Drawn screen-fixed over the
+        // dot's spot — while following, the dot sits at the map centre plus
+        // [_offset] — so it never drifts off the native dot and its rotation is
+        // a plain Transform (no map-rotation sign to get wrong). Clockwise from
+        // north matches the heading, since the map is north-up. Hidden when
+        // panned (the dot is no longer under this spot) or before a heading.
+        if (_follow && heading != null && me != null)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Center(
+                child: Transform.translate(
+                  offset: _offset,
+                  child: Transform.rotate(
+                    angle: heading * math.pi / 180,
+                    child: const _HeadingArrow(key: ValueKey('driver-heading-arrow')),
+                  ),
+                ),
+              ),
+            ),
+          ),
         // The road the driver is on: its limit, or its class as an estimate.
         // Below the page's menu button.
         Positioned(left: 12, top: 84, child: SafeArea(child: SpeedLimitBadge(at: me))),
@@ -299,35 +276,30 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   }
 }
 
-/// The driver's location puck on the heading-up idle map, drawn like Apple
-/// Maps': a faint accuracy halo, a soft beam fanning up to show the facing, and
-/// the blue dot in a white ring on top. Rendered as a map marker on the
-/// driver's coordinate, so it holds its real-world spot as the map pans, zooms
-/// and turns; the marker layer counter-rotates it, so the beam keeps pointing
-/// up — where the phone faces — however the heading-up map is turned. The dot
-/// sits at the centre of its box, so the marker lands it on the point.
-class _HeadingPuck extends StatelessWidget {
-  const _HeadingPuck({super.key});
+/// The heading arrow over the driver's location dot: a soft beam fanning up
+/// from the dot with a crisp chevron, pointing the way the driver faces/drives.
+/// It is drawn pointing straight up and turned to the heading by a Transform in
+/// the caller, so it pivots around the dot at its centre. The native map draws
+/// the blue dot itself underneath; this only shows the direction.
+class _HeadingArrow extends StatelessWidget {
+  const _HeadingArrow({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(size: const Size(140, 140), painter: _HeadingPuckPainter());
+    return CustomPaint(size: const Size(96, 96), painter: _HeadingArrowPainter());
   }
 }
 
-class _HeadingPuckPainter extends CustomPainter {
+class _HeadingArrowPainter extends CustomPainter {
   // iOS location blue.
   static const _blue = Color(0xFF1A73E8);
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = Offset(size.width / 2, size.height / 2);
-    const reach = 54.0; // how far the beam fans out from the dot
-    const half = 0.92; // half-angle of the beam, radians (~53°, Apple's width)
+    const reach = 42.0; // how far the beam fans up from the dot
+    const half = 0.55; // half-angle of the beam, radians (~32°)
     const up = -math.pi / 2; // straight up
-
-    // The accuracy halo: a soft blue wash under everything.
-    canvas.drawCircle(c, 30, Paint()..color = _blue.withValues(alpha: 0.12));
 
     // The beam: a wedge opening upward from the dot, brightest at the dot and
     // fading to nothing at its reach, with feathered edges.
@@ -339,17 +311,29 @@ class _HeadingPuckPainter extends CustomPainter {
       wedge,
       Paint()
         ..shader = RadialGradient(
-          colors: [_blue.withValues(alpha: 0.55), _blue.withValues(alpha: 0.0)],
+          colors: [_blue.withValues(alpha: 0.5), _blue.withValues(alpha: 0.0)],
         ).createShader(Rect.fromCircle(center: c, radius: reach))
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
     );
 
-    // The dot: a white ring with a soft shadow, then the blue centre.
-    canvas.drawCircle(c, 11, Paint()..color = const Color(0x33000000)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
-    canvas.drawCircle(c, 11, Paint()..color = Colors.white);
-    canvas.drawCircle(c, 8, Paint()..color = _blue);
+    // A crisp chevron at the dot pointing up, white-outlined for contrast.
+    final head = ui.Path()
+      ..moveTo(c.dx, c.dy - 15) // tip
+      ..lineTo(c.dx - 9, c.dy + 6) // left
+      ..lineTo(c.dx, c.dy + 1) // notch
+      ..lineTo(c.dx + 9, c.dy + 6) // right
+      ..close();
+    canvas.drawPath(
+      head,
+      Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 5
+        ..strokeJoin = StrokeJoin.round,
+    );
+    canvas.drawPath(head, Paint()..color = _blue);
   }
 
   @override
-  bool shouldRepaint(_HeadingPuckPainter oldDelegate) => false;
+  bool shouldRepaint(_HeadingArrowPainter oldDelegate) => false;
 }
