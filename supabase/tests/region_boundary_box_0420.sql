@@ -69,11 +69,11 @@ select pg_temp.check(
     where r.area is distinct from want.held
        or r.inside is distinct from (want.held is not null)),
   'regions_at unchanged on the grid');
-select pg_temp.check((select not inside from public.regions_at(68, 68) where state = 'L 420'),
+select pg_temp.check((select not inside from public.regions_at(68, 68) where region_table = 'states' and state = 'L 420'),
                      'inside the L box, outside the L');
-select pg_temp.check((select not inside from public.regions_at(65.5, 65.5) where state = 'Split 420'),
+select pg_temp.check((select not inside from public.regions_at(65.5, 65.5) where region_table = 'states' and state = 'Split 420'),
                      'in the gap between the two squares');
-select pg_temp.check((select inside from public.regions_at(67.5, 67.5) where state = 'Split 420'),
+select pg_temp.check((select inside from public.regions_at(67.5, 67.5) where region_table = 'states' and state = 'Split 420'),
                      'in the second square');
 
 -- 3. The coverage guard.
