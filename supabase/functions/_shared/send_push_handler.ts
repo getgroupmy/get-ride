@@ -21,6 +21,8 @@ export interface SendBody {
   audience?: string;
   /** Target a single profile's devices instead of a broadcast audience. */
   profileId?: string;
+  /** Target these profiles' devices (a batch, up to MAX_TARGETS; 0422). */
+  profileIds?: string[];
   /** With the partner audience: approved partners only. */
   approvedOnly?: boolean;
   /** Profiles a broadcast skips (a ride request's own rider). */

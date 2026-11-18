@@ -13,7 +13,8 @@
 //     failed and Expo devices are still sent to.
 //
 // Request body: { title: string, body: string, audience?: "all" | "partners" | "active_partners" | "users",
-//                approvedOnly?: boolean, profileId?: string, excludeProfileIds?: string[], data?: object,
+//                approvedOnly?: boolean, profileId?: string, profileIds?: string[],
+//                excludeProfileIds?: string[], data?: object,
 //                area?: object, dryRun?: boolean, image?: string, messageId?: string,
 //                partnerTypes?: string[], scheduleId?: string }
 //
@@ -56,7 +57,10 @@
 //
 // When `profileId` is set the notification goes only to that profile's
 // devices (used for targeted events like wallet transfer requests) and the
-// audience field is ignored.
+// audience field is ignored. `profileIds` does the same for a batch of up to
+// 1,000 profiles in one call (a ring of the dispatch ladder, migration 0422);
+// a batch also carries its first id in `profileId`, so an older send-push
+// that does not know `profileIds` still tells that one.
 //
 // Reads tokens with the service-role key (bypasses RLS) and logs the dispatch
 // to `public.push_notifications`.
@@ -108,7 +112,9 @@ import {
   planDeliveries,
   voipFallbacks,
   fallbackAlerts,
+  idChunks,
   profileIdList,
+  targetIds,
   readAllPages,
   resolveAudience,
 } from "../_shared/push.ts";
@@ -186,7 +192,9 @@ async function dispatch(payload: SendBody, caller: SendCaller = "admin"): Promis
 
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  const profileId = (payload.profileId ?? "").trim();
+  // One person (`profileId`) or a batch (`profileIds`, 0422): empty for a broadcast.
+  const targets = targetIds(payload.profileId, payload.profileIds);
+  const targeted = targets.length > 0;
   // Never these profiles: a ride request's own rider, who may be a partner too.
   const exclude = new Set(profileIdList(payload.excludeProfileIds));
   // Only the phones in this place (Admin -> Push Notification, 0168); an
@@ -219,9 +227,9 @@ async function dispatch(payload: SendBody, caller: SendCaller = "admin"): Promis
   // narrows to profiles that hold a `partners` row, "active_partners" to the
   // approved ones. Read in pages: one read stops at the API's row cap.
   let only: Set<string> | null = null;
-  const byType = partnerTypes.length > 0 && !profileId && (audience === "partners" || audience === "active_partners");
-  if (profileId) {
-    only = new Set([profileId]);
+  const byType = partnerTypes.length > 0 && !targeted && (audience === "partners" || audience === "active_partners");
+  if (targeted) {
+    only = new Set(targets);
   } else if (audience === "partners" || audience === "active_partners") {
     // With partner types, each partner's types are read too (partnerAccounts).
     const columns = byType ? "auth_user_id, partner_types, partner_type" : "auth_user_id";
@@ -259,20 +267,31 @@ async function dispatch(payload: SendBody, caller: SendCaller = "admin"): Promis
     if (!image) image = imageUrl(message.image_url);
   }
 
-  // The device rows, a page at a time. A single profile is read by id; a
+  // The device rows, a page at a time. Targeted profiles are read by id, a
+  // hundred to a request (an `in (...)` of each fits a request URL); a
   // partner audience is read whole and filtered here, since thousands of ids
-  // in an `in (...)` filter would not fit in a request URL.
+  // would not fit.
   // `capabilities` arrived with migration 0134; a database without it is
   // read without it, and every device gets an ordinary notification.
-  const loadTokens = (columns: string) =>
+  const loadPage = (columns: string, ids: string[] | null) =>
     readAllPages<DeviceRow>((from, to) => {
       let query = supabase.from("push_tokens").select(columns);
-      if (profileId) query = query.eq("profile_id", profileId);
+      if (ids !== null) query = ids.length === 1 ? query.eq("profile_id", ids[0]) : query.in("profile_id", ids);
       return query.order("token").range(from, to) as unknown as PromiseLike<{
         data: DeviceRow[] | null;
         error: { message?: string } | null;
       }>;
     });
+  const loadTokens = async (columns: string) => {
+    if (!targeted) return await loadPage(columns, null);
+    const rows: DeviceRow[] = [];
+    for (const ids of idChunks(targets)) {
+      const { data, error } = await loadPage(columns, ids);
+      if (error) return { data: rows, error };
+      rows.push(...data);
+    }
+    return { data: rows, error: null };
+  };
   // `mode` arrived with 0166: without it every phone is told, as before.
   // The place columns (0168) are read only for an area send, which needs them.
   const base = "token, platform, profile_id, capabilities, mode";
@@ -291,12 +310,12 @@ async function dispatch(payload: SendBody, caller: SendCaller = "admin"): Promis
   }
   // Only the phones in the mode this notification belongs to (a driver
   // browsing as a passenger is not sent ride offers, and the other way round).
-  const mode = notificationMode(audience, payload.data, profileId !== "");
+  const mode = notificationMode(audience, payload.data, targeted);
   // News and offers (0333): a broadcast from the panel or a schedule reaches
   // only the accounts that opted in. Trip, money, safety and account pushes
   // (a type in data, or one person) are never held back.
   let newsOff = 0;
-  if (isNewsBroadcast(payload, caller)) {
+  if (isNewsBroadcast({ ...payload, profileId: targets[0] ?? "" }, caller)) {
     const { data: onRows, error: onErr } = await supabase.rpc("news_offers_on_ids");
     if (onErr) {
       return json({ error: `Failed to read News and offers: ${onErr.message}` }, 500);
@@ -320,7 +339,7 @@ async function dispatch(payload: SendBody, caller: SendCaller = "admin"): Promis
       // Phones in the audience whose place is not known: an area send skips them.
       unlocated: area ? audienceRows.filter((r) => !(r as LocatedRow).located_at).length : 0,
       // Partners in the audience, each once (with or without a phone).
-      ...(only !== null && !profileId ? { partners: only.size } : {}),
+      ...(only !== null && !targeted ? { partners: only.size } : {}),
       // Accounts left out for not opting in to News and offers (0333).
       newsOff,
     });
@@ -331,7 +350,7 @@ async function dispatch(payload: SendBody, caller: SendCaller = "admin"): Promis
   await keepForInbox(
     supabase,
     inboxRows(
-      profileId ? [profileId] : recipientRows.flatMap((r) => (r.profile_id ? [r.profile_id] : [])),
+      targeted ? targets : recipientRows.flatMap((r) => (r.profile_id ? [r.profile_id] : [])),
       title,
       body,
       withMessage(payload.data, messageId, image),
@@ -350,7 +369,7 @@ async function dispatch(payload: SendBody, caller: SendCaller = "admin"): Promis
   const voipTokens = deliveries.flatMap((d) => (d.via === "voip" ? [d.token] : []));
   const recipients = deliveries.length;
 
-  const loggedAudience = profileId ? "direct" : audience;
+  const loggedAudience = targeted ? "direct" : audience;
   // The history records an area send's target (0168), and the composer's
   // schedule, message, picture and partner types (0279) when there are any.
   const logged = (row: Record<string, unknown>) => ({

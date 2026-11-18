@@ -24,8 +24,11 @@ import {
   parseArea,
   pickRecipients,
   planDeliveries,
+  idChunks,
+  MAX_TARGETS,
   profileIdList,
   readAllPages,
+  targetIds,
   resolveAudience,
   splitTokens,
   voipFallbacks,
@@ -348,4 +351,20 @@ Deno.test("area: who is inside", () => {
 Deno.test("distance: a known pair", () => {
   const km = distanceKm(3.1579, 101.7116, 3.1186, 101.6774);
   assertEquals(km > 5.5 && km < 5.9, true);
+});
+
+Deno.test("a targeted send: profileIds with profileId, each once, capped", () => {
+  assertEquals(targetIds("", undefined), [], "a broadcast");
+  assertEquals(targetIds(" a ", undefined), ["a"], "one person");
+  assertEquals(targetIds("a", ["a", "b", " b ", "", 7, "c"]), ["a", "b", "c"], "a batch carrying its first id twice");
+  assertEquals(targetIds("z", ["a", "b"]), ["z", "a", "b"], "one person and a batch");
+  assertEquals(targetIds(undefined, "a"), [], "not a list");
+  const many = Array.from({ length: MAX_TARGETS + 5 }, (_, i) => `p${i}`);
+  assertEquals(targetIds("", many).length, MAX_TARGETS);
+});
+
+Deno.test("ids are read in groups that fit a URL", () => {
+  assertEquals(idChunks([]), []);
+  assertEquals(idChunks(["a", "b", "c"], 2), [["a", "b"], ["c"]]);
+  assertEquals(idChunks(Array.from({ length: 250 }, (_, i) => `${i}`)).map((c) => c.length), [100, 100, 50]);
 });
