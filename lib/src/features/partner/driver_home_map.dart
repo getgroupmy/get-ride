@@ -10,10 +10,13 @@ import '../../data/compass.dart';
 import '../../data/models.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
+import '../../widgets/map_tiles.dart' show appleRouteBaseActive, googleNativeBaseActive;
 import '../../widgets/map_traffic.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
 import '../../widgets/road_info_layers.dart';
+import 'driver_map_diagnostics.dart';
+import 'driver_map_diagnostics_overlay.dart';
 
 /// The driver's home map (Expo `partner-ehailing`): where they are and,
 /// while online, where each open request is waiting, with its fare. Tapping
@@ -61,7 +64,16 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   (String?, bool, String?)? _trafficFor;
 
   @override
+  void initState() {
+    super.initState();
+    // Debug-only: redraw when the tester locks/clears the diagnostic reference
+    // marker (its button lives in the overlay, not this widget).
+    if (driverMapDiagnosticsEnabled) driverMapReference.addListener(_diagRefChanged);
+  }
+
+  @override
   void dispose() {
+    if (driverMapDiagnosticsEnabled) driverMapReference.removeListener(_diagRefChanged);
     _glide.dispose();
     _map.dispose();
     super.dispose();
@@ -70,7 +82,14 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   @override
   void didUpdateWidget(covariant DriverHomeMap old) {
     super.didUpdateWidget(old);
-    if (widget.me != old.me) WidgetsBinding.instance.addPostFrameCallback((_) => _center());
+    if (widget.me != old.me) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _center());
+      final me = widget.me;
+      if (driverMapDiagnosticsEnabled && me != null) {
+        driverMapNoteRawFix(me.latitude, me.longitude);
+        _diagRecord(DriverMapEventKind.gpsFix, gpsLat: me.latitude, gpsLng: me.longitude);
+      }
+    }
   }
 
   /// Where the driver's dot sits on screen: a little above the sheet. The
@@ -113,6 +132,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
         offset: _offset,
       );
     } catch (_) {}
+    if (driverMapDiagnosticsEnabled) _diagSampleCamera(animating: _glide.isAnimating);
   }
 
   /// A hand on the map: stop following until the recenter button.
@@ -121,12 +141,29 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     _glide.stop();
     _from = _to = null;
     setState(() => _follow = false);
+    if (driverMapDiagnosticsEnabled) {
+      driverMapLive
+        ..gesture = true
+        ..follow = false
+        ..animationActive = false
+        ..touch();
+      _diagRecord(DriverMapEventKind.gestureStart, gesture: true);
+      _diagRecord(DriverMapEventKind.followChanged);
+    }
   }
 
   void _recenter() {
     setState(() => _follow = true);
     _glide.stop();
     _from = _to = null;
+    if (driverMapDiagnosticsEnabled) {
+      driverMapLive
+        ..gesture = false
+        ..follow = true
+        ..touch();
+      _diagRecord(DriverMapEventKind.recenterTap, zoom: _safeZoom());
+      _diagRecord(DriverMapEventKind.followChanged);
+    }
     final me = widget.me;
     if (me == null) return;
     try {
@@ -142,6 +179,145 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   void _onHeading(double h) {
     if (_heading == h || !mounted) return;
     setState(() => _heading = h);
+    if (driverMapDiagnosticsEnabled) {
+      driverMapLive
+        ..headingDeg = h
+        ..touch();
+      _diagRecord(DriverMapEventKind.heading, headingDeg: h);
+    }
+  }
+
+  // ---- Debug-only diagnostics (gated by driverMapDiagnosticsEnabled) --------
+
+  void _diagRefChanged() {
+    if (mounted) setState(() {});
+  }
+
+  double? _safeZoom() {
+    try {
+      return _map.camera.zoom;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Append one event, stamping the monotonic clock, UTC wall clock and the
+  /// current follow state so callers pass only what is special to the event.
+  void _diagRecord(
+    DriverMapEventKind kind, {
+    bool? gesture,
+    double? zoom,
+    double? headingDeg,
+    double? gpsLat,
+    double? gpsLng,
+  }) {
+    driverMapLog.record(DriverMapEvent(
+      kind: kind,
+      elapsedMs: driverMapLog.elapsedMs,
+      timestampUtc: DateTime.now().toUtc(),
+      follow: _follow,
+      gesture: gesture,
+      zoom: zoom,
+      headingDeg: headingDeg,
+      gpsLat: gpsLat,
+      gpsLng: gpsLng,
+    ));
+  }
+
+  int? _lastCamSampleMs;
+
+  /// Sample the live camera at ~10 Hz (never per frame) while it moves.
+  void _diagSampleCamera({required bool animating}) {
+    final now = driverMapLog.elapsedMs;
+    if (!shouldSampleCamera(_lastCamSampleMs, now)) return;
+    _lastCamSampleMs = now;
+    final MapCamera cam;
+    try {
+      cam = _map.camera;
+    } catch (_) {
+      return;
+    }
+    driverMapLive
+      ..cameraZoom = cam.zoom
+      ..cameraRotationDeg = cam.rotation
+      ..animationActive = animating
+      ..touch();
+    driverMapLog.record(DriverMapEvent(
+      kind: DriverMapEventKind.cameraSample,
+      elapsedMs: now,
+      timestampUtc: DateTime.now().toUtc(),
+      follow: _follow,
+      animationActive: animating,
+      zoom: cam.zoom,
+      rotationDeg: cam.rotation,
+      cameraLat: cam.center.latitude,
+      cameraLng: cam.center.longitude,
+    ));
+  }
+
+  DriverMapProvider? _diagProvider;
+  bool _diagTouchScheduled = false;
+
+  /// Refresh the overlay's live fields from this frame and log a
+  /// `provider_changed` when the base map (or satellite) flips. Updates fields
+  /// in build but defers the notifier bump to after the frame, so the overlay
+  /// is never marked dirty mid-build.
+  void _diagUpdate(BuildContext context, {required bool satellite, required LatLng? me}) {
+    final provider = appleRouteBaseActive(context, satellite: satellite)
+        ? DriverMapProvider.appleNative
+        : googleNativeBaseActive(context, satellite: satellite)
+            ? DriverMapProvider.googleNative
+            : DriverMapProvider.flutterTiles;
+    final nativeBase = provider != DriverMapProvider.flutterTiles;
+    final hasFix = me != null;
+    final dot = expectedDotRenderer(provider: provider, nativeMe: true, hasFix: hasFix);
+    final flutterDotVisible = hasFix && !nativeBase;
+    final nativeDotVisible = hasFix && nativeBase;
+    // On a flutter tile base the dot is a flutter_map marker drawn with the same
+    // projection as this computation, so the pixel error is ~0. On a native
+    // base the SDK's dot position is not exposed, so pixel error is N/A (null).
+    Offset? expectedPx;
+    double? errPx;
+    if (me != null && !nativeBase && _ready) {
+      try {
+        expectedPx = _map.camera.latLngToScreenOffset(me);
+        errPx = 0;
+      } catch (_) {}
+    }
+    driverMapLive
+      ..provider = provider
+      ..satellite = satellite
+      ..mapReady = _ready
+      ..follow = _follow
+      ..dotRenderer = dot
+      ..duplicateDotWarning = duplicateDot(nativeDotVisible: nativeDotVisible, flutterDotVisible: flutterDotVisible)
+      ..errorPx = errPx;
+    // Both the live-field notifier bump and the provider_changed record are
+    // deferred to after this frame, so nothing is marked dirty mid-build.
+    final providerChanged = _diagProvider != provider;
+    _diagProvider = provider;
+    if (!_diagTouchScheduled || providerChanged) {
+      _diagTouchScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _diagTouchScheduled = false;
+        if (!mounted) return;
+        if (providerChanged) {
+          driverMapLog.record(DriverMapEvent(
+            kind: DriverMapEventKind.providerChanged,
+            elapsedMs: driverMapLog.elapsedMs,
+            timestampUtc: DateTime.now().toUtc(),
+            follow: _follow,
+            provider: provider,
+            dotRenderer: dot,
+            expectedDotPx: expectedPx,
+            measuredDotPx: expectedPx,
+            errorPx: errPx,
+            notes: satellite ? 'satellite' : null,
+          ));
+        }
+        driverMapLive.touch();
+      });
+    }
   }
 
   @override
@@ -167,6 +343,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       _overlays = [?layer];
     }
     final satellite = ref.watch(mapSatelliteProvider);
+    if (driverMapDiagnosticsEnabled) _diagUpdate(context, satellite: satellite, me: me);
     final map = RideMap(
       controller: _map,
       // The location dot is the map's own: the native base draws it (locked to
@@ -185,6 +362,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       onReady: () {
         _ready = true;
         _center(jump: true);
+        if (driverMapDiagnosticsEnabled) _diagRecord(DriverMapEventKind.mapReady);
       },
       satellite: satellite,
       // Live traffic, when a traffic tile source is configured and switched on.
@@ -223,6 +401,16 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
                 ),
               ),
             ),
+        // Debug-only fixed reference marker: a magenta crosshair locked to a
+        // chosen coordinate, so a tester can tell GPS wander (the blue dot
+        // moving) from projection drift (this marker sliding off its feature).
+        if (driverMapDiagnosticsEnabled && driverMapReference.value != null)
+          Marker(
+            point: LatLng(driverMapReference.value!.lat, driverMapReference.value!.lng),
+            width: 44,
+            height: 44,
+            child: const IgnorePointer(child: _DiagReferenceMark(key: ValueKey('driver-map-diag-ref-mark'))),
+          ),
       ],
     );
     return Stack(
@@ -271,6 +459,8 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
             ]),
           ),
         ),
+        // Debug-only diagnostic overlay (opt-in; never in a release build).
+        if (driverMapDiagnosticsEnabled) const DriverMapDiagnosticsOverlay(),
       ],
     );
   }
@@ -336,4 +526,24 @@ class _HeadingArrowPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_HeadingArrowPainter oldDelegate) => false;
+}
+
+/// Debug-only fixed reference marker (see [DriverMapReference]). A magenta
+/// crosshair ring, visibly distinct from the blue location dot, locked to one
+/// geographic coordinate so a tester can separate GPS wander from projection
+/// drift. Never shown in a release build.
+class _DiagReferenceMark extends StatelessWidget {
+  const _DiagReferenceMark({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0x33FF00FF),
+        border: Border.all(color: const Color(0xFFFF00FF), width: 3),
+      ),
+      child: const Center(child: Icon(Icons.add, color: Color(0xFFFF00FF), size: 18)),
+    );
+  }
 }
