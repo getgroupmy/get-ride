@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -187,12 +188,13 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     }
     final map = RideMap(
       controller: _map,
-      me: me,
       // Heading-up (following with a compass): the driver sits dead-centre, so
-      // the flutter_map dot under the heading beam never drifts — keep it. Off
-      // heading-up (panned, or no compass), let the native map draw the dot so
-      // it stays put while the driver pans the map around.
-      nativeMe: !_headingUp,
+      // we draw the whole location puck (halo + beam + dot) ourselves, screen-
+      // fixed over the centre — hand RideMap no "me" so it draws no dot of its
+      // own to fight it. Off heading-up (panned, or no compass), let the native
+      // map draw the dot so it stays put while the driver pans the map around.
+      me: _headingUp ? null : me,
+      nativeMe: true,
       pointZoom: driverHomeZoom,
       // The camera follows the driver instead of framing the pins.
       autoFit: false,
@@ -247,13 +249,14 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       children: [
         map,
         // Heading-up: the driver sits dead-centre and the map turns under them,
-        // so their facing is always the top of the screen. A beam fanning up
-        // from the dot shows it, like a car sat-nav. Drawn screen-fixed (not a
-        // map marker) so it never rotates with the map — it is always "up".
+        // so their facing is always the top of the screen. The location puck —
+        // Apple Maps' blue dot with a soft beam fanning up from it — is drawn
+        // screen-fixed (not a map marker) so it never rotates: it is always
+        // "up", which is where the phone points once the map is heading-up.
         if (_headingUp)
           const Positioned.fill(
             child: IgnorePointer(
-              child: Center(child: _HeadingBeam()),
+              child: Center(child: _HeadingPuck()),
             ),
           ),
         // The road the driver is on: its limit, or its class as an estimate.
@@ -283,43 +286,55 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   }
 }
 
-/// The heading beam over the driver's dot on the heading-up idle map: a
-/// translucent cone fanning up from the dot, like a car sat-nav's position
-/// marker. Screen-fixed and always pointing up — the map turns under it so the
-/// top of the screen is always where the phone points.
-class _HeadingBeam extends StatelessWidget {
-  const _HeadingBeam();
+/// The driver's location puck on the heading-up idle map, drawn like Apple
+/// Maps': a faint accuracy halo, a soft beam fanning up to show the facing, and
+/// the blue dot in a white ring on top. Screen-fixed and always pointing up —
+/// the map turns under it, so the top of the screen is always where the phone
+/// points.
+class _HeadingPuck extends StatelessWidget {
+  const _HeadingPuck();
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(size: const Size(72, 72), painter: _HeadingBeamPainter());
+    return CustomPaint(size: const Size(140, 140), painter: _HeadingPuckPainter());
   }
 }
 
-class _HeadingBeamPainter extends CustomPainter {
+class _HeadingPuckPainter extends CustomPainter {
+  // iOS location blue.
+  static const _blue = Color(0xFF1A73E8);
+
   @override
   void paint(Canvas canvas, Size size) {
     final c = Offset(size.width / 2, size.height / 2);
-    // A cone opening upward from the dot, narrowing to the apex.
-    final reach = size.height / 2;
-    final apex = Offset(c.dx, c.dy - reach);
-    final left = Offset(c.dx - reach * 0.55, c.dy - reach * 0.45);
-    final right = Offset(c.dx + reach * 0.55, c.dy - reach * 0.45);
-    final cone = ui.Path()
+    const reach = 54.0; // how far the beam fans out from the dot
+    const half = 0.92; // half-angle of the beam, radians (~53°, Apple's width)
+    const up = -math.pi / 2; // straight up
+
+    // The accuracy halo: a soft blue wash under everything.
+    canvas.drawCircle(c, 30, Paint()..color = _blue.withValues(alpha: 0.12));
+
+    // The beam: a wedge opening upward from the dot, brightest at the dot and
+    // fading to nothing at its reach, with feathered edges.
+    final wedge = ui.Path()
       ..moveTo(c.dx, c.dy)
-      ..lineTo(left.dx, left.dy)
-      ..lineTo(apex.dx, apex.dy)
-      ..lineTo(right.dx, right.dy)
+      ..arcTo(Rect.fromCircle(center: c, radius: reach), up - half, half * 2, false)
       ..close();
-    final beam = Paint()
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0x00448AFF), Color(0x66448AFF)],
-      ).createShader(Rect.fromPoints(apex, c));
-    canvas.drawPath(cone, beam);
+    canvas.drawPath(
+      wedge,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [_blue.withValues(alpha: 0.55), _blue.withValues(alpha: 0.0)],
+        ).createShader(Rect.fromCircle(center: c, radius: reach))
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+
+    // The dot: a white ring with a soft shadow, then the blue centre.
+    canvas.drawCircle(c, 11, Paint()..color = const Color(0x33000000)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+    canvas.drawCircle(c, 11, Paint()..color = Colors.white);
+    canvas.drawCircle(c, 8, Paint()..color = _blue);
   }
 
   @override
-  bool shouldRepaint(_HeadingBeamPainter oldDelegate) => false;
+  bool shouldRepaint(_HeadingPuckPainter oldDelegate) => false;
 }
