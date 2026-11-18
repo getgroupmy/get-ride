@@ -188,11 +188,13 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     }
     final map = RideMap(
       controller: _map,
-      // Heading-up (following with a compass): the driver sits dead-centre, so
-      // we draw the whole location puck (halo + beam + dot) ourselves, screen-
-      // fixed over the centre — hand RideMap no "me" so it draws no dot of its
-      // own to fight it. Off heading-up (panned, or no compass), let the native
-      // map draw the dot so it stays put while the driver pans the map around.
+      // Heading-up (following with a compass): we draw the whole location puck
+      // (halo + beam + dot) ourselves as a map marker on the driver's point
+      // (below), so hand RideMap no "me" — it would draw a second dot. The puck
+      // is anchored to the driver's coordinate, so it stays on the real spot as
+      // the map pans, zooms or turns, with its beam kept pointing up. Off
+      // heading-up (panned, or no compass), let the native map draw the dot so
+      // it stays put while the driver pans the map around.
       me: _headingUp ? null : me,
       nativeMe: true,
       pointZoom: driverHomeZoom,
@@ -210,6 +212,18 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       // Live traffic, when a traffic tile source is configured and switched on.
       tileOverlays: _overlays,
       extraMarkers: [
+        // The driver's location puck, anchored to their coordinate (not the
+        // screen), so it holds its real-world spot through pan, zoom and turn.
+        // The marker layer counter-rotates it (rotate: true), so the beam keeps
+        // pointing up — the way the phone faces — on the heading-up map. Drawn
+        // first, under the request pins, and never eats their taps.
+        if (_headingUp && me != null)
+          Marker(
+            point: me,
+            width: 140,
+            height: 140,
+            child: const IgnorePointer(child: _HeadingPuck(key: ValueKey('driver-location-puck'))),
+          ),
         for (final r in requests)
           if (r.pickupLat != null && r.pickupLng != null)
             Marker(
@@ -248,17 +262,6 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     return Stack(
       children: [
         map,
-        // Heading-up: the driver sits dead-centre and the map turns under them,
-        // so their facing is always the top of the screen. The location puck —
-        // Apple Maps' blue dot with a soft beam fanning up from it — is drawn
-        // screen-fixed (not a map marker) so it never rotates: it is always
-        // "up", which is where the phone points once the map is heading-up.
-        if (_headingUp)
-          const Positioned.fill(
-            child: IgnorePointer(
-              child: Center(child: _HeadingPuck()),
-            ),
-          ),
         // The road the driver is on: its limit, or its class as an estimate.
         // Below the page's menu button.
         Positioned(left: 12, top: 84, child: SafeArea(child: SpeedLimitBadge(at: me))),
@@ -288,11 +291,13 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
 
 /// The driver's location puck on the heading-up idle map, drawn like Apple
 /// Maps': a faint accuracy halo, a soft beam fanning up to show the facing, and
-/// the blue dot in a white ring on top. Screen-fixed and always pointing up —
-/// the map turns under it, so the top of the screen is always where the phone
-/// points.
+/// the blue dot in a white ring on top. Rendered as a map marker on the
+/// driver's coordinate, so it holds its real-world spot as the map pans, zooms
+/// and turns; the marker layer counter-rotates it, so the beam keeps pointing
+/// up — where the phone faces — however the heading-up map is turned. The dot
+/// sits at the centre of its box, so the marker lands it on the point.
 class _HeadingPuck extends StatelessWidget {
-  const _HeadingPuck();
+  const _HeadingPuck({super.key});
 
   @override
   Widget build(BuildContext context) {

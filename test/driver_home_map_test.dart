@@ -1,9 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/partner_queue.dart';
+import 'package:get_ride/src/data/compass.dart';
 import 'package:get_ride/src/core/vehicle_assignment.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
@@ -57,7 +59,7 @@ void main() {
     setUp(() => open = StreamController<List<RideRequest>>.broadcast());
     tearDown(() => open.close());
 
-    Future<void> pump(WidgetTester tester, {Size size = const Size(700, 1600)}) async {
+    Future<void> pump(WidgetTester tester, {Size size = const Size(700, 1600), Stream<double>? heading}) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = size;
@@ -80,6 +82,9 @@ void main() {
                 (id: 'e', values: <String, dynamic>{'name': 'eHailing', 'vehicleRequired': false}),
               ],
             ),
+            // The device compass: off by default (no compass in a test, as on a
+            // desktop), or a stream of headings when a test turns heading-up on.
+            if (heading != null) deviceHeadingProvider.overrideWith((ref) => heading),
           ],
           child: MaterialApp.router(routerConfig: router),
         ),
@@ -200,6 +205,34 @@ void main() {
       final map = tester.getRect(find.byKey(const ValueKey('driver-home-map')));
       expect(map.left, greaterThan(500));
       expect(map.height, greaterThan(800));
+    });
+
+    const puck = ValueKey('driver-location-puck');
+
+    testWidgets('no compass: no heading puck', (tester) async {
+      await pump(tester);
+      // Without a heading the map stays north-up and draws no heading puck; the
+      // location dot is RideMap's own (native/flutter), anchored to the point.
+      expect(find.byKey(puck), findsNothing);
+    });
+
+    testWidgets('with a heading, the location puck is a map marker on the driver, not a screen overlay', (
+      tester,
+    ) async {
+      // A live compass turns the idle map heading-up.
+      await pump(tester, heading: Stream<double>.value(90));
+      await tester.pumpAndSettle();
+      // The puck is drawn, and it lives inside the FlutterMap as a marker — so
+      // it is anchored to the driver's coordinate and pans/zooms/turns with the
+      // map, rather than being pinned to the screen centre.
+      expect(find.byKey(puck), findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(FlutterMap), matching: find.byKey(puck)),
+        findsOneWidget,
+        reason: 'the puck is a map marker (anchored), not a screen-fixed overlay',
+      );
+      // Its marker layer counter-rotates children, so the beam keeps pointing up.
+      expect(find.ancestor(of: find.byKey(puck), matching: find.byType(MarkerLayer)), findsWidgets);
     });
   });
 }
