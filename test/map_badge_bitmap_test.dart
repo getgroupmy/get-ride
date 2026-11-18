@@ -1,7 +1,6 @@
 // The confirm-map native marks' geometry: the image size and the anchor MapKit
 // places them by, so the ringed dot lands on the point (pickup/drop) and a
 // stop's plain square centres on it.
-import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:get_ride/src/widgets/map_badge_bitmap.dart';
