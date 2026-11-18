@@ -334,6 +334,30 @@ export function profileIdList(raw: unknown): string[] {
   return Array.from(new Set(raw.filter((v): v is string => typeof v === "string" && v.trim() !== "").map((v) => v.trim())));
 }
 
+/** The most profiles one targeted send may name (`profileIds`). */
+export const MAX_TARGETS = 1000;
+
+/**
+ * The profiles a targeted send goes to: `profileIds` (a batch, as a ring of
+ * the dispatch ladder sends, 0422) together with `profileId` (one person; a
+ * batch also carries its first id there, so an older send-push still told
+ * that driver). Cleaned, each once, at most [MAX_TARGETS]; empty for a
+ * broadcast.
+ */
+export function targetIds(profileId: unknown, profileIds: unknown): string[] {
+  const one = typeof profileId === "string" ? profileId.trim() : "";
+  const ids = profileIdList(profileIds);
+  if (one !== "" && !ids.includes(one)) ids.unshift(one);
+  return ids.slice(0, MAX_TARGETS);
+}
+
+/** [ids] in groups of [size]: an `in (...)` filter of each fits a request URL. */
+export function idChunks(ids: string[], size = 100): string[][] {
+  const out: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) out.push(ids.slice(i, i + size));
+  return out;
+}
+
 /**
  * The device rows a send goes to: those of [only] when it is set (a
  * targeted send or a partner audience), never those of [exclude] (the rider
