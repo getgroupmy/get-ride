@@ -53,6 +53,7 @@ class AppleNativeBaseLayer extends StatefulWidget {
     this.mapType,
     this.route,
     this.showMe,
+    this.annotations,
   });
 
   final bool satellite;
@@ -60,6 +61,12 @@ class AppleNativeBaseLayer extends StatefulWidget {
   /// The route line MapKit draws on the map itself (null for none): locked to
   /// the base, so it never slides off the roads while the map is panned.
   final ValueListenable<MapRouteLine?>? route;
+
+  /// Marks MapKit draws on the map itself (the confirm map's pickup/drop/stops),
+  /// locked to the base like the route so they sit on it instead of drifting as
+  /// flutter_map markers do. Empty for none. The caller hides its own flutter_map
+  /// marks while these are drawn (ride_map.dart).
+  final ValueListenable<Set<am.Annotation>>? annotations;
 
   /// Whether MapKit draws the device's own location dot (the standard blue
   /// dot): locked to the base like the route, so it stays on the real spot
@@ -90,6 +97,7 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
     super.initState();
     widget.route?.addListener(_redraw);
     widget.showMe?.addListener(_redraw);
+    widget.annotations?.addListener(_redraw);
   }
 
   @override
@@ -103,12 +111,17 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
       old.showMe?.removeListener(_redraw);
       widget.showMe?.addListener(_redraw);
     }
+    if (old.annotations != widget.annotations) {
+      old.annotations?.removeListener(_redraw);
+      widget.annotations?.addListener(_redraw);
+    }
   }
 
   @override
   void dispose() {
     widget.route?.removeListener(_redraw);
     widget.showMe?.removeListener(_redraw);
+    widget.annotations?.removeListener(_redraw);
     super.dispose();
   }
 
@@ -208,6 +221,9 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
             // MapKit draws the route itself, so it stays locked to the base
             // map while it pans (ride_map.dart hides its flutter_map line).
             polylines: _polylines() ?? const <am.Polyline>{},
+            // The confirm map's marks, drawn by MapKit so they sit on its route
+            // and roads (ride_map.dart hides its flutter_map marks).
+            annotations: widget.annotations?.value ?? const <am.Annotation>{},
             onMapCreated: (c) {
               _map = c;
               _shown = null;

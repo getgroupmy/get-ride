@@ -17,6 +17,7 @@
 //   MAP_TILE_URL_SATELLITE  imagery for the satellite view (Expo's
 //                      map-type toggle); defaults to Esri World Imagery,
 //                      the same keyless source the Expo web map uses
+import 'package:apple_maps_flutter/apple_maps_flutter.dart' as am;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -193,6 +194,7 @@ Widget baseTileLayer(
   bool satellite = false,
   ValueListenable<MapRouteLine?>? route,
   ValueListenable<bool>? showMe,
+  ValueListenable<Set<am.Annotation>>? annotations,
 }) => ValueListenableBuilder<MapProfile?>(
   valueListenable: mapProfileListenable,
   builder: (context, profile, _) {
@@ -206,7 +208,7 @@ Widget baseTileLayer(
                 color: mapIsDark(context) ? const Color(0xFF242F3E) : const Color(0xFFE5E3DF),
               ),
             )
-          : currentBaseLayer(context, satellite: satellite, route: route, showMe: showMe),
+          : currentBaseLayer(context, satellite: satellite, route: route, showMe: showMe, annotations: annotations),
     );
   },
 );
@@ -224,6 +226,7 @@ Widget currentBaseLayer(
   bool satellite = false,
   ValueListenable<MapRouteLine?>? route,
   ValueListenable<bool>? showMe,
+  ValueListenable<Set<am.Annotation>>? annotations,
 }) {
   final source = currentTileSource(context, satellite: satellite);
   final maplibreKey = source.maplibreKey;
@@ -250,6 +253,7 @@ Widget currentBaseLayer(
       mapType: googleMapTypeOf(source.url),
       route: route,
       showMe: showMe,
+      annotations: annotations,
       fallback: _tileLayer(fallbackTileSource(context, satellite: satellite)),
     );
   }
