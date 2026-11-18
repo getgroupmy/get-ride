@@ -42,11 +42,19 @@ void main() {
       expect(boxColour(stop), fill);
       final drop = find.byKey(const ValueKey('map-dot-drop'));
       expect(find.descendant(of: drop, matching: find.byIcon(Icons.flag)), findsOneWidget);
-      expect(boxColour(drop), fill);
-      // The pickup dot stands under its square.
+      // The drop-off now stands its square over a ringed dot on its point too,
+      // like the pickup, so the two line up over the route at any zoom.
+      expect(find.byKey(const ValueKey('map-dot-drop-point')), findsOneWidget);
+      final dropBox = tester.widget<Container>(find.descendant(of: drop, matching: find.byType(Container)).first);
+      expect((dropBox.decoration! as BoxDecoration).color, fill);
+      // Each dot stands under its square.
       expect(
         tester.getCenter(find.byKey(const ValueKey('map-dot-pickup-point'))).dy,
         greaterThan(tester.getCenter(find.descendant(of: pickup, matching: find.byIcon(Icons.emoji_people))).dy),
+      );
+      expect(
+        tester.getCenter(find.byKey(const ValueKey('map-dot-drop-point'))).dy,
+        greaterThan(tester.getCenter(find.descendant(of: drop, matching: find.byIcon(Icons.flag))).dy),
       );
       expect(tester.widget<PolylineLayer>(find.byType(PolylineLayer)).polylines.single.color, fill);
     });
