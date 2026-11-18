@@ -1,8 +1,12 @@
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../data/compass.dart';
 import '../../data/models.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
@@ -41,6 +45,15 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   bool _ready = false;
   bool _follow = true;
 
+  /// The device's compass heading, null where the phone has no compass. When
+  /// known and following, the map turns so the heading is up (Expo's idle map);
+  /// without it the map stays north-up as before.
+  double? _heading;
+
+  /// Following the driver with a known heading: the driver sits dead-centre and
+  /// the map turns under them so the way the phone points is up.
+  bool get _headingUp => _follow && _heading != null;
+
   /// The camera's glide from where it is to the driver.
   late final _glide = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))
     ..addListener(_glideTick);
@@ -64,8 +77,18 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     if (widget.me != old.me) WidgetsBinding.instance.addPostFrameCallback((_) => _center());
   }
 
-  /// Where the driver sits: the middle of the map above the sheet.
-  Offset get _offset => Offset(0, -MapBottomInset.of(context) / 2);
+  /// Where the driver sits: dead-centre in heading-up mode (so the map turns
+  /// cleanly around them), else a little above the sheet.
+  Offset get _offset => _headingUp ? Offset.zero : Offset(0, -MapBottomInset.of(context) / 2);
+
+  /// Turn the map so the compass [h] points up (north-up when null). Rotating
+  /// around the camera's centre — where the driver sits in heading-up mode —
+  /// keeps the driver fixed while the map turns.
+  void _face(double? h) {
+    try {
+      _map.rotate(h == null ? 0 : -h);
+    } catch (_) {}
+  }
 
   /// Glides the camera onto the driver, at the zoom the map is at.
   void _center({bool jump = false}) {
@@ -115,15 +138,44 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     final me = widget.me;
     if (me == null) return;
     try {
+      // Centre on the driver and resume heading-up (north-up when there is no
+      // compass). _offset reads _headingUp, so recentre after _follow is set.
       _map.move(me, driverHomeZoom, offset: _offset);
-      _map.rotate(0); // straighten back to north-up on recenter
+      _face(_heading);
     } catch (_) {}
+  }
+
+  /// A fresh compass heading: remember it and, while following, turn the map to
+  /// it. Entering heading-up mode re-centres the driver (the offset changed);
+  /// after that only the rotation moves.
+  void _onHeading(double h) {
+    final entering = _heading == null;
+    _heading = h;
+    if (!_follow || !_ready) {
+      if (entering && mounted) setState(() {}); // nativeMe depends on _heading
+      return;
+    }
+    final me = widget.me;
+    try {
+      if (entering && me != null) {
+        _map.move(me, _map.camera.zoom, offset: Offset.zero);
+      }
+      _face(h);
+    } catch (_) {}
+    if (entering && mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final me = widget.me, requests = widget.requests, onSelect = widget.onSelect;
     final t = Theme.of(context);
+    // The device compass turns the map heading-up while following (Expo's idle
+    // map). Only this map listens, so the sensor runs while the driver waits
+    // and stops when they leave.
+    ref.listen(deviceHeadingProvider, (_, next) {
+      final h = next.value;
+      if (h != null && mounted) _onHeading(h);
+    });
     final trafficUrl = ref.watch(trafficTileUrlProvider);
     final trafficOn = trafficUrl != null && ref.watch(mapTrafficProvider);
     final trafficFallback = ref.watch(trafficFallbackTileUrlProvider);
@@ -136,10 +188,12 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     }
     final map = RideMap(
       controller: _map,
-      me: me,
-      // The driver pans this idle map around, so let the native map draw the
-      // location dot itself — it stays on the real spot instead of sliding a
-      // frame behind the base while the map moves.
+      // Heading-up (following with a compass): the driver sits dead-centre, so
+      // we draw the whole location puck (halo + beam + dot) ourselves, screen-
+      // fixed over the centre — hand RideMap no "me" so it draws no dot of its
+      // own to fight it. Off heading-up (panned, or no compass), let the native
+      // map draw the dot so it stays put while the driver pans the map around.
+      me: _headingUp ? null : me,
       nativeMe: true,
       pointZoom: driverHomeZoom,
       // The camera follows the driver instead of framing the pins.
@@ -194,6 +248,17 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     return Stack(
       children: [
         map,
+        // Heading-up: the driver sits dead-centre and the map turns under them,
+        // so their facing is always the top of the screen. The location puck —
+        // Apple Maps' blue dot with a soft beam fanning up from it — is drawn
+        // screen-fixed (not a map marker) so it never rotates: it is always
+        // "up", which is where the phone points once the map is heading-up.
+        if (_headingUp)
+          const Positioned.fill(
+            child: IgnorePointer(
+              child: Center(child: _HeadingPuck()),
+            ),
+          ),
         // The road the driver is on: its limit, or its class as an estimate.
         // Below the page's menu button.
         Positioned(left: 12, top: 84, child: SafeArea(child: SpeedLimitBadge(at: me))),
@@ -219,4 +284,57 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       ],
     );
   }
+}
+
+/// The driver's location puck on the heading-up idle map, drawn like Apple
+/// Maps': a faint accuracy halo, a soft beam fanning up to show the facing, and
+/// the blue dot in a white ring on top. Screen-fixed and always pointing up —
+/// the map turns under it, so the top of the screen is always where the phone
+/// points.
+class _HeadingPuck extends StatelessWidget {
+  const _HeadingPuck();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(size: const Size(140, 140), painter: _HeadingPuckPainter());
+  }
+}
+
+class _HeadingPuckPainter extends CustomPainter {
+  // iOS location blue.
+  static const _blue = Color(0xFF1A73E8);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    const reach = 54.0; // how far the beam fans out from the dot
+    const half = 0.92; // half-angle of the beam, radians (~53°, Apple's width)
+    const up = -math.pi / 2; // straight up
+
+    // The accuracy halo: a soft blue wash under everything.
+    canvas.drawCircle(c, 30, Paint()..color = _blue.withValues(alpha: 0.12));
+
+    // The beam: a wedge opening upward from the dot, brightest at the dot and
+    // fading to nothing at its reach, with feathered edges.
+    final wedge = ui.Path()
+      ..moveTo(c.dx, c.dy)
+      ..arcTo(Rect.fromCircle(center: c, radius: reach), up - half, half * 2, false)
+      ..close();
+    canvas.drawPath(
+      wedge,
+      Paint()
+        ..shader = RadialGradient(
+          colors: [_blue.withValues(alpha: 0.55), _blue.withValues(alpha: 0.0)],
+        ).createShader(Rect.fromCircle(center: c, radius: reach))
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+
+    // The dot: a white ring with a soft shadow, then the blue centre.
+    canvas.drawCircle(c, 11, Paint()..color = const Color(0x33000000)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3));
+    canvas.drawCircle(c, 11, Paint()..color = Colors.white);
+    canvas.drawCircle(c, 8, Paint()..color = _blue);
+  }
+
+  @override
+  bool shouldRepaint(_HeadingPuckPainter oldDelegate) => false;
 }
