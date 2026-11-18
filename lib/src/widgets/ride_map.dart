@@ -391,11 +391,16 @@ class _RideMapState extends State<RideMap> {
 
   void _syncApple() {
     final w = widget;
-    _appleRoute.value = w.route.length < 2
+    // The live trip line is drawn by MapKit so it stays locked to the roads
+    // while the map pans. The confirm map (dotPins) does NOT: there its route
+    // is a flutter_map overlay (below), so it shares one projection with the
+    // pickup/drop marks and they sit exactly on it. MapKit and flutter_map
+    // project a little differently away from the centre, so a native line under
+    // flutter marks drifts off them — worst mid-route, which is where a confirm
+    // route runs.
+    _appleRoute.value = (w.route.length < 2 || w.dotPins)
         ? null
-        : w.dotPins
-            ? MapRouteLine(points: w.route, color: _markerInk(context).fill, width: 4)
-            : MapRouteLine(points: w.route, color: const Color(0xFF2DABE2), width: 5);
+        : MapRouteLine(points: w.route, color: const Color(0xFF2DABE2), width: 5);
     _appleMe.value = w.me != null && w.nativeMe;
   }
 
@@ -527,10 +532,12 @@ class _RideMapState extends State<RideMap> {
     return Stack(
       fit: StackFit.passthrough,
       children: [
-        // On the Apple base (iPhone) MapKit draws the route itself, locked to
-        // the map as it pans (apple_native_layer.dart); the flutter_map line is
-        // drawn only on every other base, where it is the map's own engine.
-        if (w.route.length > 1 && !appleRouteBaseActive(context, satellite: w.satellite))
+        // On the Apple base (iPhone) MapKit draws the live trip route itself,
+        // locked to the map as it pans (apple_native_layer.dart); the flutter_map
+        // line is drawn on every other base. The confirm map (dotPins) always
+        // draws its own flutter_map line, even on the Apple base, so the route
+        // shares one projection with the pickup/drop marks and they sit on it.
+        if (w.route.length > 1 && (w.dotPins || !appleRouteBaseActive(context, satellite: w.satellite)))
           PolylineLayer(
             polylines: [
               w.dotPins
