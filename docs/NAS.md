@@ -10,13 +10,24 @@ the ones built say where. Admin › Settings › Office NAS shows them, a tab ea
 | Memory | 18 GB (about 12 GB available) | about 2 GB for face match, 4–6 GB for maps |
 | CPU | Intel Celeron J4125, 4 cores | any x86-64; a face comparison takes about 1–2 s |
 | Docker (Container Manager) | 24.0.2 | 20 or newer |
-| Disk (volume1) | 7.0 TB, 4.6 TB free | about 3 GB face match, about 20 GB maps |
+| Disk (volume1) | 7.0 TB, 4.6 TB free on 24 Oct; **10 TB of disks since 18 Nov 2026** (owner; free space not re-measured) | about 3 GB face match, about 20 GB maps |
 
 Checked with: `free -m; nproc; cat /proc/cpuinfo | grep "model name" | head -1; sudo docker version --format '{{.Server.Version}}'; df -h /volume1 | tail -1`
 
+## The rest of the office (18 Nov 2026)
+
+The NAS shares the office with these. The one rule below covers all of them:
+each is a fallback, a side job or a tool, never what riders and drivers depend on.
+
+| Device | What it's for | Notes |
+|---|---|---|
+| **Mac mini** (Apple silicon, 512 GB) | Supabase CLI work (`supabase functions deploy`, run from a clone of this repository); a candidate self-hosted GitHub Actions runner for the iOS and macOS builds, the slowest CI jobs; a faster future host for the NAS services | The NAS services' Docker images are built for x86-64; running them here needs arm64 builds first. A self-hosted runner needs its own security setup before it is used: not yet done. |
+| **Skyworth SK-G7220 router** (BE7200 Wi-Fi 7) on **1 Gbps fibre** | The office's internet | Services are reached through Cloudflare Tunnel, so nothing is opened on the router. |
+| **EcoFlow River 3 Plus** (286 Wh) | UPS for the NAS, the Mac mini and the router (and the fibre ONT, if it is a separate box) | Switches to battery in under about 10 ms. At roughly 40–45 W for the three (estimated, not measured) it lasts about 4–5 hours. Not yet checked: whether the NAS sees it over USB (Control Panel › Hardware & Power › UPS) to shut down cleanly before the battery runs out. |
+
 ## The one rule
 
-get.ride must keep working when the NAS is off. Everything on it is a
+get.ride must keep working when the NAS, or anything else in the office, is off. Everything on it is a
 **fallback** (face match, maps) or a **side job** (backups, monitoring). Never
 the main database, payments, or the app itself: home internet and a single box
 are not reliable enough for what riders and drivers use every minute.
