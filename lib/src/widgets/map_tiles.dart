@@ -169,13 +169,34 @@ http.Client retryingTileClient() => RetryClient(
   delay: tileRetryDelay,
 );
 
-/// The tiles a map in [context] draws: Admin → Settings → Maps' for this
-/// user and device, else the app's own, light or dark as Admin → Maps → Map
-/// appearance says ([mapBrightnessOf]), or satellite.
+/// The tiles a map should draw, given the resolved [profile] and whether this
+/// is an Apple device. On Apple devices (iPhone/iPad) every map uses Apple's
+/// own built-in map, whatever Admin → Settings → Maps is set to — iOS gets
+/// Apple Maps, Android and web keep the configured profile (falling back to the
+/// built-in tiles). Pure; [currentTileSource] feeds it the live values.
+TileSource resolveCurrentTileSource({
+  required bool dark,
+  required bool satellite,
+  required MapProfile profile,
+  required bool appleNative,
+  bool web = kIsWeb,
+}) {
+  if (appleNative) return builtInTileSource(dark: dark, satellite: satellite, apple: true);
+  return profileTileSource(profile, dark: dark, satellite: satellite, web: web) ??
+      builtInTileSource(dark: dark, satellite: satellite, apple: false);
+}
+
+/// The tiles a map in [context] draws: Apple's own map on iPhone/iPad (whatever
+/// the admin set), else Admin → Settings → Maps' tiles for this user and device,
+/// else the app's own, light or dark as Admin → Maps → Map appearance says
+/// ([mapBrightnessOf]), or satellite.
 TileSource currentTileSource(BuildContext context, {bool satellite = false}) {
-  final dark = mapIsDark(context);
-  return profileTileSource(activeMapProfile, dark: dark, satellite: satellite) ??
-      builtInTileSource(dark: dark, satellite: satellite);
+  return resolveCurrentTileSource(
+    dark: mapIsDark(context),
+    satellite: satellite,
+    profile: activeMapProfile,
+    appleNative: appleNativeSupported,
+  );
 }
 
 /// The app's own map ("Built in"): Apple's on iPhones (migration 0214), with
