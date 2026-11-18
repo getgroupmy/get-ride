@@ -92,7 +92,12 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       _map.move(me, _zoom, offset: _offset);
       return;
     }
-    _from = _to ?? camera.center;
+    // Start the glide from where the camera actually is now, not from the last
+    // glide's destination (_to): a fresh fix often lands before the 600 ms
+    // glide has finished, and starting at the old target snapped the camera
+    // forward to it before interpolating (the jitter while following). With
+    // the live centre each restart continues smoothly from the visible spot.
+    _from = camera.center;
     _to = me;
     _glide.forward(from: 0);
   }
@@ -125,7 +130,10 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     final me = widget.me;
     if (me == null) return;
     try {
-      _map.move(me, driverHomeZoom, offset: _offset);
+      // Resume following at the zoom the driver left the map at, not back at
+      // street level — jumping the zoom on recentre is a surprise when they
+      // had zoomed out to look around. The map is already north-up.
+      _map.move(me, _map.camera.zoom, offset: _offset);
     } catch (_) {}
   }
 
