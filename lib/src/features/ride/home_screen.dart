@@ -3553,13 +3553,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       config: coverHome,
     );
     final coverStripRight = coverHome.stripSide == CoverStripSide.right;
-    final coverSheetTrim = coverActive && coverHome.trimSheet;
-    final coverCtrlInStrip = coverActive && coverHome.controlsInStrip;
+    // The cover-home layout (the side strip, trimmed sheet and moved map
+    // buttons) is for the home/idle map only. The confirm step keeps the normal
+    // full-width sheet with the map above it: its route needs to be framed over
+    // the sheet, not squeezed into a side strip, and its promo bar spans the
+    // whole sheet — both of which the strip layout broke on the folded cover.
+    final coverHomeStep = coverActive && !confirming;
+    final coverSheetTrim = coverHomeStep && coverHome.trimSheet;
+    final coverCtrlInStrip = coverHomeStep && coverHome.controlsInStrip;
     final coverMapBtnEdge = math.max(0.0, (coverHome.stripWidth - 56) / 2);
-    // Each floating button's admin nudge, applied only on the Duo cover and
-    // left as a no-op (the child untouched) on every other device.
+    // Each floating button's admin nudge, applied only on the Duo cover home and
+    // left as a no-op (the child untouched) on every other device or step.
     Widget coverNudge(CoverButton b, Widget child) {
-      if (!coverActive) return child;
+      if (!coverHomeStep) return child;
       final o = coverHome.offsetFor(b);
       return Transform.translate(offset: Offset(o.dx, o.dy), child: child);
     }
