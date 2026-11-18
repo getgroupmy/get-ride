@@ -79,10 +79,13 @@ const confirmBadgeSize = 36.0;
 /// dot on the point, which is this wide.
 const confirmPickupGap = 4.0, confirmPickupDot = 14.0;
 
-/// How far above its point each confirm-map mark reaches: the pickup's
-/// square stands over its dot; the drop-off's square is centred on it.
+/// How far above its point each confirm-map mark reaches. The pickup and the
+/// drop-off both stand their square over a ringed dot on the point, so they
+/// reach the same height and line up the same way over the route however far
+/// the map is zoomed out (before, the drop's square was centred on its point
+/// and so sat lower than the pickup — they read as out of line when zoomed out).
 const confirmPickupTop = confirmBadgeSize + confirmPickupGap + confirmPickupDot / 2;
-const confirmDropTop = confirmBadgeSize / 2;
+const confirmDropTop = confirmPickupTop;
 
 /// The pickup pin, [pickupPinHeight] tall, standing on its point.
 class PickupPin extends StatelessWidget {
@@ -561,7 +564,8 @@ class _RideMapState extends State<RideMap> {
                 ),
               ),
             if (w.dotPins) ...[
-              if (w.pickup != null && w.showPickup) _pickupBadge(w.pickup!, ink),
+              if (w.pickup != null && w.showPickup)
+                _pointBadge(w.pickup!, 'pickup', ink, Icon(Icons.emoji_people, color: ink.ink, size: 24)),
               for (var i = 0; i < w.stops.length; i++)
                 _badge(
                   w.stops[i],
@@ -574,7 +578,7 @@ class _RideMapState extends State<RideMap> {
                   ),
                 ),
               if (w.drop != null)
-                _badge(w.drop!, 'drop', ink, glyph: (ink) => Icon(Icons.flag, color: ink, size: 22)),
+                _pointBadge(w.drop!, 'drop', ink, Icon(Icons.flag, color: ink.ink, size: 22)),
             ],
             if (!w.dotPins && w.pickup != null && w.showPickup)
               Marker(
@@ -664,9 +668,11 @@ class _RideMapState extends State<RideMap> {
     );
   }
 
-  /// The pickup: the waving rider in a rounded square, stood just above a
-  /// ringed dot on the point itself.
-  static Marker _pickupBadge(LatLng p, ({Color fill, Color ink}) c) {
+  /// A confirm-map mark ([glyph] in a rounded square) stood just above a ringed
+  /// dot that sits on the point itself (inDrive's). The pickup (a waving rider)
+  /// and the drop-off (a flag) both use it, so they line up the same way over
+  /// the route however far the map is zoomed out.
+  static Marker _pointBadge(LatLng p, String name, ({Color fill, Color ink}) c, Widget glyph) {
     const gap = confirmPickupGap, dot = confirmPickupDot;
     const h = confirmBadgeSize + gap + dot;
     return Marker(
@@ -676,7 +682,7 @@ class _RideMapState extends State<RideMap> {
       // The dot's centre, not the box's, sits on the point.
       alignment: const Alignment(0, -(h - dot) / h),
       child: Column(
-        key: const ValueKey('map-dot-pickup'),
+        key: ValueKey('map-dot-$name'),
         children: [
           Container(
             width: confirmBadgeSize,
@@ -686,11 +692,11 @@ class _RideMapState extends State<RideMap> {
               borderRadius: BorderRadius.circular(confirmBadgeSize * 0.28),
               boxShadow: const [BoxShadow(blurRadius: 4, color: Colors.black26)],
             ),
-            child: Icon(Icons.emoji_people, color: c.ink, size: 24),
+            child: glyph,
           ),
           const SizedBox(height: gap),
           Container(
-            key: const ValueKey('map-dot-pickup-point'),
+            key: ValueKey('map-dot-$name-point'),
             width: dot,
             height: dot,
             decoration: BoxDecoration(
