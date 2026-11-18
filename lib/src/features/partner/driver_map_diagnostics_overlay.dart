@@ -10,7 +10,6 @@
 // writes to a temp file itself on mobile and offers as a download on web.
 // Nothing is ever sent to a server or Supabase.
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';

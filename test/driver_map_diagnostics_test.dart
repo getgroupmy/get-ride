@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:ui' show Offset;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/features/partner/driver_map_diagnostics.dart';
