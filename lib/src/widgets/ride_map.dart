@@ -183,7 +183,15 @@ class RideMap extends StatefulWidget {
     this.hideCredit = false,
     this.trafficSignals = true,
     this.tileOverlays = const [],
+    this.nativeMe = false,
   });
+
+  /// Draw the device's own location dot with the native map (MapKit) itself
+  /// rather than as a flutter_map marker, so it stays on the real spot while
+  /// the map is panned instead of sliding a frame behind the native base.
+  /// On for the partner's own map, where the driver pans the idle map around;
+  /// the rider and confirm maps keep the flutter_map dot.
+  final bool nativeMe;
 
   final LatLng? pickup;
   final LatLng? drop;
@@ -295,7 +303,12 @@ class _RideMapState extends State<RideMap> {
   void didUpdateWidget(covariant RideMap old) {
     super.didUpdateWidget(old);
     _shown.value = widget;
-    if (old.route != widget.route || old.dotPins != widget.dotPins || old.me != widget.me) _syncApple();
+    if (old.route != widget.route ||
+        old.dotPins != widget.dotPins ||
+        old.me != widget.me ||
+        old.nativeMe != widget.nativeMe) {
+      _syncApple();
+    }
     if (_ready &&
         widget.autoFit &&
         (old.pickup != widget.pickup ||
@@ -380,7 +393,7 @@ class _RideMapState extends State<RideMap> {
         : w.dotPins
             ? MapRouteLine(points: w.route, color: _markerInk(context).fill, width: 4)
             : MapRouteLine(points: w.route, color: const Color(0xFF2DABE2), width: 5);
-    _appleMe.value = w.me != null;
+    _appleMe.value = w.me != null && w.nativeMe;
   }
 
   @override
@@ -529,11 +542,11 @@ class _RideMapState extends State<RideMap> {
           // Pins stand upright on a map turned to the car's heading…
           rotate: true,
           markers: [
-            // On the Apple base MapKit draws the location dot itself (locked to
-            // the base, so it stays on the real spot while the map pans); the
-            // flutter_map dot would slide a frame behind the base. Elsewhere it
-            // is this dot.
-            if (w.me != null && !appleRouteBaseActive(context, satellite: w.satellite))
+            // Where the native map draws the location dot itself (the partner
+            // map on the Apple base), it is locked to the base and stays on the
+            // real spot while the map pans; the flutter_map dot would slide a
+            // frame behind it. Everywhere else it is this dot.
+            if (w.me != null && !(w.nativeMe && appleRouteBaseActive(context, satellite: w.satellite)))
               Marker(
                 point: w.me!,
                 width: 22,

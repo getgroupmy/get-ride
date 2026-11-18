@@ -137,6 +137,10 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     final map = RideMap(
       controller: _map,
       me: me,
+      // The driver pans this idle map around, so let the native map draw the
+      // location dot itself — it stays on the real spot instead of sliding a
+      // frame behind the base while the map moves.
+      nativeMe: true,
       pointZoom: driverHomeZoom,
       // The camera follows the driver instead of framing the pins.
       autoFit: false,
