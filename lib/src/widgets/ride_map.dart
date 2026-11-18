@@ -183,7 +183,15 @@ class RideMap extends StatefulWidget {
     this.hideCredit = false,
     this.trafficSignals = true,
     this.tileOverlays = const [],
+    this.nativeMe = false,
   });
+
+  /// Draw the device's own location dot with the native map (MapKit) itself
+  /// rather than as a flutter_map marker, so it stays on the real spot while
+  /// the map is panned instead of sliding a frame behind the native base.
+  /// On for the partner's own map, where the driver pans the idle map around;
+  /// the rider and confirm maps keep the flutter_map dot.
+  final bool nativeMe;
 
   final LatLng? pickup;
   final LatLng? drop;
@@ -295,7 +303,12 @@ class _RideMapState extends State<RideMap> {
   void didUpdateWidget(covariant RideMap old) {
     super.didUpdateWidget(old);
     _shown.value = widget;
-    if (old.route != widget.route || old.dotPins != widget.dotPins) _syncAppleRoute();
+    if (old.route != widget.route ||
+        old.dotPins != widget.dotPins ||
+        old.me != widget.me ||
+        old.nativeMe != widget.nativeMe) {
+      _syncApple();
+    }
     if (_ready &&
         widget.autoFit &&
         (old.pickup != widget.pickup ||
@@ -350,6 +363,7 @@ class _RideMapState extends State<RideMap> {
   void dispose() {
     _shown.dispose();
     _appleRoute.dispose();
+    _appleMe.dispose();
     super.dispose();
   }
 
@@ -366,19 +380,26 @@ class _RideMapState extends State<RideMap> {
   /// so the base layer listening to it is not marked dirty mid-build.
   final _appleRoute = ValueNotifier<MapRouteLine?>(null);
 
-  void _syncAppleRoute() {
+  /// Whether MapKit should draw the device's own location dot on the Apple base
+  /// (iOS), so it stays on the real spot while the map pans instead of sliding
+  /// as a flutter_map marker does. On whenever this map has a "me" to show; the
+  /// flutter_map dot (below) is hidden while Apple draws it.
+  final _appleMe = ValueNotifier<bool>(false);
+
+  void _syncApple() {
     final w = widget;
     _appleRoute.value = w.route.length < 2
         ? null
         : w.dotPins
             ? MapRouteLine(points: w.route, color: _markerInk(context).fill, width: 4)
             : MapRouteLine(points: w.route, color: const Color(0xFF2DABE2), width: 5);
+    _appleMe.value = w.me != null && w.nativeMe;
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _syncAppleRoute();
+    _syncApple();
   }
 
   /// The parts of the map kept from one build to the next (see [_shown]).
@@ -453,7 +474,7 @@ class _RideMapState extends State<RideMap> {
         // themselves; only satellite makes new ones.
         if (_baseSatellite != widget.satellite) {
           _baseSatellite = widget.satellite;
-          _base = baseTileLayer(context, satellite: widget.satellite, route: _appleRoute);
+          _base = baseTileLayer(context, satellite: widget.satellite, route: _appleRoute, showMe: _appleMe);
         }
         final creditFor = (widget.hideCredit, widget.satellite);
         if (_creditFor != creditFor) {
@@ -521,7 +542,11 @@ class _RideMapState extends State<RideMap> {
           // Pins stand upright on a map turned to the car's heading…
           rotate: true,
           markers: [
-            if (w.me != null)
+            // Where the native map draws the location dot itself (the partner
+            // map on the Apple base), it is locked to the base and stays on the
+            // real spot while the map pans; the flutter_map dot would slide a
+            // frame behind it. Everywhere else it is this dot.
+            if (w.me != null && !(w.nativeMe && appleRouteBaseActive(context, satellite: w.satellite)))
               Marker(
                 point: w.me!,
                 width: 22,
