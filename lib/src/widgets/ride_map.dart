@@ -676,11 +676,16 @@ class _RideMapState extends State<RideMap> {
           // Pins stand upright on a map turned to the car's heading…
           rotate: true,
           markers: [
-            // Where the native map draws the location dot itself (the partner
-            // map on the Apple base), it is locked to the base and stays on the
-            // real spot while the map pans; the flutter_map dot would slide a
-            // frame behind it. Everywhere else it is this dot.
-            if (w.me != null && !(w.nativeMe && appleRouteBaseActive(context, satellite: w.satellite)))
+            // Where a native map draws the location dot itself (the partner map
+            // on the Apple or Google base), it is locked to the base and stays
+            // on the real spot while the map pans and zooms; the flutter_map dot
+            // would slide off it (the base follows a frame late, and the two
+            // projections diverge away from the centre — worse zoomed out).
+            // Everywhere else it is this dot.
+            if (w.me != null &&
+                !(w.nativeMe &&
+                    (appleRouteBaseActive(context, satellite: w.satellite) ||
+                        googleNativeBaseActive(context, satellite: w.satellite))))
               Marker(
                 point: w.me!,
                 width: 22,

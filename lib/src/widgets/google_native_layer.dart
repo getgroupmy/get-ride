@@ -22,13 +22,27 @@ bool get googleNativeSupported =>
     !kIsWeb && (Platform.isAndroid || Platform.isIOS) && const String.fromEnvironment('GOOGLE_MAPS_NATIVE') == 'true';
 
 class GoogleNativeBaseLayer extends ConsumerStatefulWidget {
-  const GoogleNativeBaseLayer({super.key, required this.fallback, this.satellite = false, this.mapType});
+  const GoogleNativeBaseLayer({
+    super.key,
+    required this.fallback,
+    this.satellite = false,
+    this.mapType,
+    this.showMe,
+  });
 
   final bool satellite;
 
   /// "roadmap", "satellite", "hybrid" or "terrain" (Admin → Maps, migration
   /// 0211); null for the roadmap, or satellite when [satellite].
   final String? mapType;
+
+  /// Whether the Maps SDK draws the device's own location dot (the standard
+  /// blue dot): locked to the base, so it stays on the real spot while the map
+  /// is panned or zoomed instead of sliding as a flutter_map marker does (the
+  /// base follows the Flutter camera a frame late, and the two projections
+  /// diverge away from the centre). The caller hides its own flutter_map "me"
+  /// dot while this is on (ride_map.dart).
+  final ValueListenable<bool>? showMe;
 
   String get type => mapType ?? (satellite ? 'satellite' : 'roadmap');
 
@@ -42,6 +56,27 @@ class GoogleNativeBaseLayer extends ConsumerStatefulWidget {
 class _GoogleNativeBaseLayerState extends ConsumerState<GoogleNativeBaseLayer> {
   gm.GoogleMapController? _map;
   MapCamera? _shown;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.showMe?.addListener(_redraw);
+  }
+
+  @override
+  void didUpdateWidget(GoogleNativeBaseLayer old) {
+    super.didUpdateWidget(old);
+    if (old.showMe != widget.showMe) {
+      old.showMe?.removeListener(_redraw);
+      widget.showMe?.addListener(_redraw);
+    }
+  }
+
+  // The location dot turned on/off without the camera moving: redraw so the
+  // Maps SDK picks it up.
+  void _redraw() {
+    if (mounted) setState(() {});
+  }
 
   gm.CameraPosition _position(MapCamera c) => gm.CameraPosition(
     target: gm.LatLng(c.center.latitude, c.center.longitude),
@@ -62,6 +97,7 @@ class _GoogleNativeBaseLayerState extends ConsumerState<GoogleNativeBaseLayer> {
 
   @override
   void dispose() {
+    widget.showMe?.removeListener(_redraw);
     _map?.dispose();
     super.dispose();
   }
@@ -99,6 +135,10 @@ class _GoogleNativeBaseLayerState extends ConsumerState<GoogleNativeBaseLayer> {
           scrollGesturesEnabled: false,
           rotateGesturesEnabled: false,
           tiltGesturesEnabled: false,
+          // The Maps SDK draws the device's location dot itself, locked to the
+          // base, so it stays on the real spot while the map pans and zooms
+          // (ride_map.dart hides its own flutter_map dot while this is on).
+          myLocationEnabled: widget.showMe?.value ?? false,
           myLocationButtonEnabled: false,
           compassEnabled: false,
           mapToolbarEnabled: false,

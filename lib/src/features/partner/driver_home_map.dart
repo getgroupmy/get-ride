@@ -10,6 +10,7 @@ import '../../data/compass.dart';
 import '../../data/models.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
+import '../../widgets/map_tiles.dart' show appleRouteBaseActive, googleNativeBaseActive;
 import '../../widgets/map_traffic.dart';
 import '../../widgets/map_type_button.dart';
 import '../../widgets/ride_map.dart';
@@ -186,16 +187,24 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       final layer = trafficTileLayer(trafficUrl, on: trafficOn, fallback: trafficFallback);
       _overlays = [?layer];
     }
+    final satellite = ref.watch(mapSatelliteProvider);
+    // A native base (Apple or Google) draws its own location dot, locked to its
+    // tiles. Our flutter_map puck can't sit on those tiles — it is a flutter_map
+    // overlay, which the native base's projection drifts away from as the map
+    // zooms out — so on a native base we don't draw the puck and let the native
+    // dot show instead (RideMap gets "me", and the map still turns heading-up to
+    // show the facing). The puck, with its heading beam, is for the flutter tile
+    // bases, where it shares the tiles' projection and sits exactly on the point.
+    final nativeBase =
+        appleRouteBaseActive(context, satellite: satellite) || googleNativeBaseActive(context, satellite: satellite);
+    final showPuck = _headingUp && me != null && !nativeBase;
     final map = RideMap(
       controller: _map,
-      // Heading-up (following with a compass): we draw the whole location puck
+      // In heading-up on a flutter tile base we draw the whole location puck
       // (halo + beam + dot) ourselves as a map marker on the driver's point
-      // (below), so hand RideMap no "me" — it would draw a second dot. The puck
-      // is anchored to the driver's coordinate, so it stays on the real spot as
-      // the map pans, zooms or turns, with its beam kept pointing up. Off
-      // heading-up (panned, or no compass), let the native map draw the dot so
-      // it stays put while the driver pans the map around.
-      me: _headingUp ? null : me,
+      // (below), so hand RideMap no "me" — it would draw a second dot. Otherwise
+      // RideMap draws the dot (native on a native base, flutter on a tile base).
+      me: showPuck ? null : me,
       nativeMe: true,
       pointZoom: driverHomeZoom,
       // The camera follows the driver instead of framing the pins.
@@ -208,7 +217,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
         _ready = true;
         _center(jump: true);
       },
-      satellite: ref.watch(mapSatelliteProvider),
+      satellite: satellite,
       // Live traffic, when a traffic tile source is configured and switched on.
       tileOverlays: _overlays,
       extraMarkers: [
@@ -216,8 +225,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
         // screen), so it holds its real-world spot through pan, zoom and turn.
         // The marker layer counter-rotates it (rotate: true), so the beam keeps
         // pointing up — the way the phone faces — on the heading-up map. Drawn
-        // first, under the request pins, and never eats their taps.
-        if (_headingUp && me != null)
+        // first, under the request pins, and never eats their taps. Only on a
+        // flutter tile base; a native base draws its own dot instead (above).
+        if (showPuck)
           Marker(
             point: me,
             width: 140,

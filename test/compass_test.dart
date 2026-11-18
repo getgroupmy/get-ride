@@ -33,4 +33,30 @@ void main() {
       expect(nextHeading(5, 359), 5);
     });
   });
+
+  group('courseWhenMoving', () {
+    test('uses the GPS course only when moving fast enough', () {
+      expect(courseWhenMoving(90, 10), 90, reason: 'driving: the course is the travel direction');
+      expect(courseWhenMoving(90, 0), isNull, reason: 'parked: the course is random, use the compass');
+      expect(courseWhenMoving(90, movingSpeed - 0.1), isNull, reason: 'crawling: below the threshold');
+      expect(courseWhenMoving(90, movingSpeed), 90, reason: 'at the threshold');
+    });
+    test('drops an unknown or invalid course', () {
+      expect(courseWhenMoving(null, 10), isNull);
+      expect(courseWhenMoving(-1, 10), isNull, reason: 'iOS sends -1 when the course is unknown');
+      expect(courseWhenMoving(double.nan, 10), isNull);
+      expect(courseWhenMoving(90, null), isNull);
+    });
+    test('normalises into 0–360', () {
+      expect(courseWhenMoving(370, 10), 10);
+    });
+  });
+
+  group('preferredHeading', () {
+    test('travel direction while moving, the compass while stopped', () {
+      expect(preferredHeading(90, 200), 90, reason: 'course wins when it is known (moving)');
+      expect(preferredHeading(null, 200), 200, reason: 'fall back to the compass when stopped');
+      expect(preferredHeading(null, null), isNull);
+    });
+  });
 }
