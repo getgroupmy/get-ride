@@ -207,32 +207,24 @@ void main() {
       expect(map.height, greaterThan(800));
     });
 
-    const puck = ValueKey('driver-location-puck');
+    const arrow = ValueKey('driver-heading-arrow');
 
-    testWidgets('no compass: no heading puck', (tester) async {
+    testWidgets('no compass: no heading arrow', (tester) async {
       await pump(tester);
-      // Without a heading the map stays north-up and draws no heading puck; the
-      // location dot is RideMap's own (native/flutter), anchored to the point.
-      expect(find.byKey(puck), findsNothing);
+      // Without a heading there is no direction to show; the location dot is the
+      // map's own (native/flutter), with no arrow over it.
+      expect(find.byKey(arrow), findsNothing);
     });
 
-    testWidgets('with a heading, the location puck is a map marker on the driver, not a screen overlay', (
-      tester,
-    ) async {
-      // A live compass turns the idle map heading-up.
+    testWidgets('with a heading, a rotating arrow is drawn over the dot (north-up map)', (tester) async {
       await pump(tester, heading: Stream<double>.value(90));
       await tester.pumpAndSettle();
-      // The puck is drawn, and it lives inside the FlutterMap as a marker — so
-      // it is anchored to the driver's coordinate and pans/zooms/turns with the
-      // map, rather than being pinned to the screen centre.
-      expect(find.byKey(puck), findsOneWidget);
-      expect(
-        find.descendant(of: find.byType(FlutterMap), matching: find.byKey(puck)),
-        findsOneWidget,
-        reason: 'the puck is a map marker (anchored), not a screen-fixed overlay',
-      );
-      // Its marker layer counter-rotates children, so the beam keeps pointing up.
-      expect(find.ancestor(of: find.byKey(puck), matching: find.byType(MarkerLayer)), findsWidgets);
+      // The heading arrow is drawn, and it is a screen overlay (wrapped in a
+      // Transform that turns it to the heading) — not a flutter_map marker, so
+      // there is no projection seam and the rotation is a plain Transform.
+      expect(find.byKey(arrow), findsOneWidget);
+      expect(find.ancestor(of: find.byKey(arrow), matching: find.byType(Transform)), findsWidgets);
+      expect(find.descendant(of: find.byType(FlutterMap), matching: find.byKey(arrow)), findsNothing);
     });
   });
 }
