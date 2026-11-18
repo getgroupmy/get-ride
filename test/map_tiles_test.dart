@@ -190,4 +190,40 @@ void main() {
     }
     expect(resolveTileSource(dark: true, satellite: true, satelliteUrl: ' https://sat/{z}/{x}/{y} ').url, 'https://sat/{z}/{x}/{y}');
   });
+
+  test('on Apple devices every map uses Apple Maps, ignoring the admin profile', () {
+    final google = MapProfile.fromJson({
+      'profile': {
+        'tiles': {
+          'light': {'engine': 'google_native', 'mapType': 'roadmap'},
+        },
+      },
+    });
+    final custom = MapProfile.fromJson({
+      'profile': {
+        'tiles': {
+          'light': {'url': 'https://tiles.example.com/{z}/{x}/{y}.png'},
+        },
+      },
+    });
+    // iPhone / iPad: Apple's own map whatever the admin set (Google here, or a
+    // custom tile URL), in both street and satellite.
+    expect(
+      resolveCurrentTileSource(dark: false, satellite: false, profile: google, appleNative: true).appleNative,
+      isTrue,
+    );
+    expect(
+      resolveCurrentTileSource(dark: false, satellite: false, profile: custom, appleNative: true).appleNative,
+      isTrue,
+    );
+    expect(
+      resolveCurrentTileSource(dark: false, satellite: true, profile: custom, appleNative: true).url,
+      'apple-native:satellite',
+    );
+    // Android / web: the configured profile still wins (here the custom tiles).
+    expect(
+      resolveCurrentTileSource(dark: false, satellite: false, profile: custom, appleNative: false, web: false).url,
+      'https://tiles.example.com/{z}/{x}/{y}.png',
+    );
+  });
 }
