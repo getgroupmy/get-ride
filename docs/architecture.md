@@ -120,14 +120,19 @@ Release details and the required secrets are in
 
 ## Optional self-hosted components (the non-serverless parts)
 
-Neither is required; both fall back to a cloud path when absent.
+None of them is required; each falls back to a cloud path when absent.
 
-- **Office NAS** (a Synology box) — can host, as alternate providers ahead of
+- **Office NAS** (a Synology DS224+, 18 GB, 10 TB) — can host, as alternate providers ahead of
   the cloud: own maps (routes / search / web map before Google), ID reading
   and face match (a free first pass before a paid cloud check), nightly DB
   backups with a restore test, and a test copy of the database + visitor
   stats. Surfaced under Admin › Settings › Office NAS. See
   [`docs/NAS.md`](./NAS.md).
+- **The rest of the office** — a Mac mini (Supabase CLI deploys; a candidate
+  self-hosted runner for the iOS/macOS builds), a router on 1 Gbps fibre
+  (reached only through Cloudflare Tunnel) and an EcoFlow River 3 Plus as
+  the UPS. Tools and fallbacks only, like the NAS: see
+  [`docs/NAS.md`](./NAS.md) → The rest of the office.
 - **Messaging gateway** (`gateway.yml`, the "Gateway app") — a self-hosted
   device that can send SMS / OTP as a fallback to the cloud SMS path.
 
