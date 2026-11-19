@@ -52,6 +52,7 @@ import '../../core/fare_tariff.dart' show FareTariff;
 import 'map_place_picker.dart' show pickPlaceOnMap;
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
+import '../../data/shared_location.dart';
 import '../../data/trip_card_controller.dart' show tripCardControllerProvider;
 import '../../core/trip_card.dart' show TripCardAction;
 import '../../data/push_service.dart';
@@ -134,8 +135,8 @@ final riderPositionStreamProvider = Provider<Stream<LatLng> Function()>((ref) =>
     var perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
-    yield* Geolocator.getPositionStream(
-      locationSettings: activeLocationSettings(
+    yield* sharedPositionStream(
+      activeLocationSettings(
         ActiveLocationUse.riderTrip,
         accuracy: LocationAccuracy.medium,
         distanceFilter: 10,

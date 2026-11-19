@@ -7,9 +7,12 @@
 // the heading point where the phone was held, not the way the driver drove.
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+
+import 'shared_location.dart';
 
 /// The map re-rotates only once the heading has turned at least this far, so a
 /// jittery sensor never shakes it.
@@ -101,13 +104,21 @@ final deviceHeadingProvider = StreamProvider.autoDispose<double>((ref) {
 
   // The GPS course over ground: the direction of travel. A valid reading is
   // held (not cleared on a slow/noisy sample) so the hold bridges the gap.
+  // Every fix of the app's one shared stream (shared_location.dart), which the
+  // map beside this already keeps at navigation accuracy: it costs no second
+  // GPS session, so there is no reason to skip fixes closer than a few metres.
   StreamSubscription<Position>? gpsSub;
   try {
-    gpsSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 4),
-    ).listen(
+    gpsSub = sharedPositionStream(const LocationSettings(accuracy: LocationAccuracy.high)).listen(
       (p) {
-        final c = courseWhenMoving(p.heading, p.speed);
+        // Only a course and a speed the platform really measured: one it left
+        // out arrives as a 0.0 placeholder, which would read as due north. (A
+        // browser does not say which it measured, so there both are taken as
+        // they come: a missing speed is 0, which is below [movingSpeed] anyway.)
+        final c = courseWhenMoving(
+          p.hasHeading || kIsWeb ? p.heading : null,
+          p.hasSpeed || kIsWeb ? p.speed : null,
+        );
         if (c != null) {
           course = c;
           courseAtMs = DateTime.now().millisecondsSinceEpoch;

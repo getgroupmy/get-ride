@@ -86,6 +86,7 @@ import '../../core/vehicle_assignment.dart';
 import '../../core/saved_drafts.dart';
 import '../../core/vehicle_onboarding.dart' show VehicleStep, firstVehicleStep;
 import '../../data/ride_draft_store.dart';
+import '../../data/shared_location.dart';
 import '../../data/vehicle_onboarding_repository.dart' show vehicleOnboardingRepositoryProvider;
 import '../ride/welcome_back_sheet.dart' show showWelcomeBackSaved;
 import '../../data/vehicle_assignment_repository.dart';
@@ -155,36 +156,53 @@ class PartnerScreen extends ConsumerStatefulWidget {
 /// (overridden in tests).
 final driverPositionProvider = Provider<Future<LatLng?> Function()>((ref) => currentPosition);
 
-/// A fix from the driver's location stream: where they are, and the GPS
-/// velocity vector the chip reports with it — speed (m/s) and course (the
-/// bearing of travel, degrees). Both are null when the GPS can't give one
-/// (iOS sends a negative value then). The map uses them for dead reckoning and
-/// to tell moving from stopped, far cleaner than reconstructing them from how
-/// the point moved.
-typedef DriverFix = ({LatLng at, double? speed, double? course});
+/// A fix from the driver's location stream: where they are, when the GPS took
+/// it, and the velocity vector the chip reports with it — speed (m/s) and
+/// course (the bearing of travel, degrees). Either is null when the GPS has
+/// none to give. The map carries the fix forward by them to where the driver is
+/// now, and tells moving from stopped, far cleaner than reconstructing them
+/// from how the point moved; the time between two fixes turns the change in
+/// speed into the braking or acceleration to carry it forward with.
+typedef DriverFix = ({LatLng at, double? speed, double? course, DateTime? time, double? accuracy});
+
+/// A course the GPS itself puts this far out (degrees, its own estimate) is not
+/// one to carry the driver along: at a crawl the bearing swings about.
+const driverCourseTrustDegrees = 45.0;
+
+/// The fix the map follows, from a platform position, keeping only a velocity
+/// the platform really measured. The two platforms say "none" differently: iOS
+/// reports an unknown course as −1 and simply leaves an unknown speed out;
+/// Android leaves either out — and a value left out arrives as a 0.0
+/// placeholder (which would read as "stopped" or "heading due north") with its
+/// `has…` flag false. Pure; see test/driver_follow_test.dart.
+DriverFix driverFixOf(Position p) => (
+  at: LatLng(p.latitude, p.longitude),
+  speed: p.hasSpeed && p.speed.isFinite && p.speed >= 0 ? p.speed : null,
+  course: p.hasHeading &&
+          p.heading.isFinite &&
+          p.heading >= 0 &&
+          !(p.hasHeadingAccuracy && (p.headingAccuracy < 0 || p.headingAccuracy > driverCourseTrustDegrees))
+      ? p.heading % 360
+      : null,
+  time: p.timestamp,
+  accuracy: p.accuracy.isFinite && p.accuracy > 0 ? p.accuracy : null,
+);
 
 /// The driver's position as it changes, so the home map follows them.
 /// Empty when location is unavailable or refused.
+///
+/// Navigation-grade fixes, every one of them ([mapFollowLocationSettings]): the
+/// map is followed the way a navigation app follows it, which needs the phone's
+/// best position about once a second. It runs while this screen is up and the
+/// app is in front; what keeps location going in the background is the online
+/// tracking (telematics_tracker.dart), a trip or the meter, each with its own
+/// request on the one shared stream (shared_location.dart).
 final driverPositionStreamProvider = Provider<Stream<DriverFix> Function()>((ref) => () async* {
   try {
     var perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
-    yield* Geolocator.getPositionStream(
-      locationSettings: activeLocationSettings(
-        ActiveLocationUse.driverOnline,
-        accuracy: LocationAccuracy.high,
-        // Continuous updates (not every 5 m) so the idle map follows the driver
-        // smoothly as they move, like Apple Maps' own dot, and the heading
-        // overlay keeps up. The camera glide (driver_home_map) damps GPS noise.
-        // The trade is more battery while waiting; raise this to save it.
-        distanceFilter: 0,
-      ),
-    ).map((p) => (
-      at: LatLng(p.latitude, p.longitude),
-      speed: p.speed < 0 || p.speed.isNaN ? null : p.speed,
-      course: p.heading < 0 || p.heading.isNaN ? null : p.heading,
-    ));
+    yield* sharedPositionStream(mapFollowLocationSettings()).map(driverFixOf);
   } catch (_) {}
 });
 
@@ -228,6 +246,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   // passed to the home map for dead reckoning and moving/stopped.
   double? _meSpeed;
   double? _meCourse;
+  DateTime? _meTime;
+  double? _meAccuracy;
   String? _accepting;
 
   /// A vehicle question is on screen ([_askForVehicle]).
@@ -278,6 +298,13 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// queue moves the map alone ([_onFix]).
   final _meFix = ValueNotifier<LatLng?>(null);
 
+  /// What else came with the latest fix, for the map too: a fix at the very
+  /// same spot still brings news (a car that has just stopped reports where it
+  /// was at 0 m/s, a moment later), and the map must hear of every one.
+  final _meMotion = ValueNotifier<({double? speed, double? course, DateTime? time, double? accuracy})>(
+    (speed: null, course: null, time: null, accuracy: null),
+  );
+
   /// Back online from before this screen was built (a trip just ended):
   /// what is already waiting goes in the list, only new requests pop up.
   bool _restoredOnline = false;
@@ -292,6 +319,7 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     unawaited(_alertSound.stop());
     _alertClock.dispose();
     _meFix.dispose();
+    _meMotion.dispose();
     // Online stays as the driver left it (driverOnlineProvider): a trip
     // that ends comes back to the Drive screen still online.
     final slot = _remoteSlot, mine = _remote;
@@ -470,8 +498,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
     _me = f.at;
     _meSpeed = f.speed;
     _meCourse = f.course;
+    _meTime = f.time;
+    _meAccuracy = f.accuracy;
     if (_queueView() != before) setState(() {});
     _meFix.value = f.at;
+    _meMotion.value = (speed: f.speed, course: f.course, time: f.time, accuracy: f.accuracy);
   }
 
   /// The queue as the driver's position decides it.
@@ -1323,13 +1354,15 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   message: here?.reason ?? 'Your Partner Service type is not offered in this area.',
                 );
                 final pins = showRequests ? _pinned(ref.watch(openRequestsProvider).value ?? const []) : const <RideRequest>[];
-                final map = ValueListenableBuilder(
-                  valueListenable: _meFix,
-                  builder: (_, _, _) => DriverHomeMap(
+                final map = ListenableBuilder(
+                  listenable: Listenable.merge([_meFix, _meMotion]),
+                  builder: (_, _) => DriverHomeMap(
                     key: const ValueKey('driver-home-map'),
                     me: _me,
                     speedMps: _meSpeed,
                     courseDeg: _meCourse,
+                    fixTime: _meTime,
+                    accuracyMetres: _meAccuracy,
                     requests: pins,
                     onSelect: (r) => setState(() => _focusId = r.id),
                   ),

@@ -19,6 +19,31 @@ void main() {
     expect(a.foregroundNotificationConfig?.setOngoing, isTrue);
   });
 
+  test('Android: a fix a second for whoever is driving, the plugin default for a passenger', () {
+    AndroidSettings on(ActiveLocationUse use) =>
+        activeLocationSettings(use, accuracy: LocationAccuracy.high, platform: TargetPlatform.android, web: false)
+            as AndroidSettings;
+    for (final use in [ActiveLocationUse.driverOnline, ActiveLocationUse.driverTrip, ActiveLocationUse.meter]) {
+      expect(on(use).intervalDuration, driverFixInterval, reason: '$use (the plugin would ask for one every 5 s)');
+    }
+    expect(driverFixInterval, const Duration(seconds: 1));
+    expect(on(ActiveLocationUse.riderTrip).intervalDuration, isNull);
+    final map = mapFollowLocationSettings(platform: TargetPlatform.android, web: false) as AndroidSettings;
+    expect(map.intervalDuration, driverFixInterval);
+    expect(map.accuracy, LocationAccuracy.bestForNavigation);
+    expect(map.foregroundNotificationConfig, isNull, reason: 'a map on screen keeps nothing running in the background');
+  });
+
+  test('iOS: the map asks for navigation accuracy, and for nothing in the background', () {
+    final map = mapFollowLocationSettings(platform: TargetPlatform.iOS, web: false) as AppleSettings;
+    expect(map.accuracy, LocationAccuracy.bestForNavigation);
+    expect(map.distanceFilter, 0, reason: 'every fix, not one every few metres');
+    expect(map.activityType, ActivityType.automotiveNavigation);
+    expect(map.pauseLocationUpdatesAutomatically, isFalse);
+    expect(map.allowBackgroundLocationUpdates, isFalse);
+    expect(map.showBackgroundLocationIndicator, isFalse);
+  });
+
   test('iOS keeps it on in the background, with the status-bar indicator', () {
     final s = activeLocationSettings(
       ActiveLocationUse.meter,

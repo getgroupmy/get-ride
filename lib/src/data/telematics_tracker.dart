@@ -3,9 +3,10 @@
 // passenger, from the phone's own location stream (or the odometer of a
 // linked OBD-II reader), reported to the server which caps it.
 //
-// Battery: the stream is the one the Drive screen already keeps while the
-// driver is online (the same settings, so the OS shares one GPS session),
-// open only while online or a trip is under way; each fix costs a sum.
+// Battery: its fixes come off the app's one location stream
+// (shared_location.dart), which the Drive screen's map already keeps running
+// while it is up; this asks of it only while online or a trip is under way —
+// and is what keeps it going in the background then. Each fix costs a sum.
 // Online km go up every [TelematicsTracker.flushEvery] and when going
 // offline; a trip's at its checkpoints.
 import 'dart:async';
@@ -23,6 +24,7 @@ import '../providers.dart';
 import 'active_location.dart';
 import 'models.dart';
 import 'obd/obd_session.dart';
+import 'shared_location.dart';
 
 /// Where a trip is, for its kilometres.
 enum _Leg { toPickup, atPickup, withPassenger }
@@ -287,8 +289,8 @@ Stream<TelematicsFix> _phoneFixes() async* {
   try {
     final perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
-    yield* Geolocator.getPositionStream(
-      locationSettings: activeLocationSettings(
+    yield* sharedPositionStream(
+      activeLocationSettings(
         ActiveLocationUse.driverOnline,
         accuracy: LocationAccuracy.high,
         distanceFilter: 5,
