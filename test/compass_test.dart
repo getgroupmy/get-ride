@@ -52,6 +52,23 @@ void main() {
     });
   });
 
+  group('holdCourse', () {
+    test('holds the last travel course until it goes stale', () {
+      // No course seen yet: nothing to hold, so the compass is used.
+      expect(holdCourse(null, 1000), isFalse);
+      // A course seen just now is held.
+      expect(holdCourse(1000, 1000), isTrue, reason: 'same instant');
+      expect(holdCourse(1000, 1000 + courseHoldMs - 1), isTrue, reason: 'within the window');
+      // Once the window lapses the course is stale and the compass takes over.
+      expect(holdCourse(1000, 1000 + courseHoldMs), isFalse, reason: 'at the edge');
+      expect(holdCourse(1000, 1000 + courseHoldMs + 1), isFalse, reason: 'past the window');
+    });
+    test('respects an overridden hold window', () {
+      expect(holdCourse(0, 500, holdMs: 1000), isTrue);
+      expect(holdCourse(0, 1500, holdMs: 1000), isFalse);
+    });
+  });
+
   group('preferredHeading', () {
     test('travel direction while moving, the compass while stopped', () {
       expect(preferredHeading(90, 200), 90, reason: 'course wins when it is known (moving)');
