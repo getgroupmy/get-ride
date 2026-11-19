@@ -167,7 +167,25 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     final speed = metres / dt;
     // Exponential smoothing, so one noisy fix cannot flip the state.
     _speedEma = _speedEma == null ? speed : _speedEma! * 0.6 + speed * 0.4;
+    final wasMoving = _moving;
     _moving = nextMoving(moving: _moving, speed: _speedEma!);
+    // Starting to drive turns the map so the way they are going points up
+    // (heading-up), like Apple/Google/Waze navigation. It is not un-done when
+    // they stop (the map freezes at that orientation, no snap back to north);
+    // tapping the compass straightens it, and a manual north-up resumes
+    // heading-up only on the next stop → start.
+    if (_moving && !wasMoving && !_headingMode) {
+      setState(() => _headingMode = true);
+      // Turn to the travel heading now rather than waiting for the next update.
+      final h = _heading;
+      if (h != null) WidgetsBinding.instance.addPostFrameCallback((_) => _faceWhileDriving(h));
+    }
+  }
+
+  /// Turn the map to heading [h] only while actually driving in heading-up — a
+  /// parked phone must not spin the map to wherever it happens to face.
+  void _faceWhileDriving(double h) {
+    if (mounted && _headingUp && _ready && _moving) _face(h);
   }
 
   /// Heading-up and actually following with a heading to turn to.
@@ -292,7 +310,10 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   void _onHeading(double h) {
     if (_heading == h || !mounted) return;
     setState(() => _heading = h);
-    if (_headingUp && _ready) _face(h);
+    // Turn the map to the heading only while moving: in heading-up the map
+    // follows the direction of travel, but a stationary phone must not spin it
+    // to wherever it is held. When stopped the map stays at its last heading.
+    if (_headingUp && _ready && _moving) _face(h);
     if (driverMapDiagnosticsEnabled) {
       driverMapLive
         ..headingDeg = h
