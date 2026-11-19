@@ -15,10 +15,24 @@ import 'package:geolocator/geolocator.dart';
 /// jittery sensor never shakes it.
 const headingStep = 3.0;
 
-/// Above this ground speed (m/s, ~9 km/h) the GPS course over ground is a
+/// Above this ground speed (m/s, ~5.4 km/h) the GPS course over ground is a
 /// meaningful direction of travel and is trusted over the compass; below it the
-/// course is random (a parked or crawling phone), so the compass is used.
-const movingSpeed = 2.5;
+/// course is random (a parked phone), so the compass is used. Low enough to
+/// keep the travel direction through junctions and slow traffic.
+const movingSpeed = 1.5;
+
+/// Once the driver has been moving, keep showing the travel course for this
+/// long after the last good reading before falling back to the compass. This
+/// bridges the gaps where the GPS course drops out — a slow crawl, a junction,
+/// a noisy speed sample — so the heading does not flicker between the way they
+/// are driving and the way the phone happens to face.
+const courseHoldMs = 8000;
+
+/// Whether to keep showing the travel course rather than the compass: true
+/// while a valid course was seen within [holdMs] of [nowMs]. Pure; see
+/// test/compass_test.dart.
+bool holdCourse(int? courseAtMs, int nowMs, {int holdMs = courseHoldMs}) =>
+    courseAtMs != null && nowMs - courseAtMs < holdMs;
 
 /// The smallest turn between two headings in degrees (0–180), across the
 /// 360° → 0° wrap: `angleGap(350, 10) == 20`. Pure.
@@ -59,17 +73,25 @@ double? preferredHeading(double? course, double? compass) => course ?? compass;
 final deviceHeadingProvider = StreamProvider.autoDispose<double>((ref) {
   final out = StreamController<double>();
   double? last; // last emitted heading, for the smoothing
-  double? course; // latest usable GPS course (travel direction), null when stopped
+  double? course; // last usable GPS course (travel direction), held across dropouts
+  int? courseAtMs; // when [course] was last valid, for the hold
   double? compass; // latest compass reading (where the phone faces)
 
   void emit() {
-    final h = nextHeading(preferredHeading(course, compass), last);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // While moving (a recent valid course) point the way they drive and ignore
+    // the compass; only once stopped for a while does the compass take over.
+    // Otherwise a continuous compass stream would yank the heading to where the
+    // phone faces between GPS fixes, flickering the direction.
+    final chosen = holdCourse(courseAtMs, now) ? course : compass;
+    final h = nextHeading(chosen, last);
     if (h == null) return;
     last = h;
     out.add(h);
   }
 
-  // The phone's magnetometer: where it points. Right while the driver is parked.
+  // The phone's magnetometer: where it points. Used only while the driver is
+  // parked; a recent travel course overrides it (see emit).
   final events = FlutterCompass.events;
   final compassSub = events?.listen((e) {
     final c = e.heading;
@@ -77,15 +99,19 @@ final deviceHeadingProvider = StreamProvider.autoDispose<double>((ref) {
     emit();
   });
 
-  // The GPS course over ground: the direction of travel, trusted over the
-  // compass while moving (so the map points the way the driver is going).
+  // The GPS course over ground: the direction of travel. A valid reading is
+  // held (not cleared on a slow/noisy sample) so the hold bridges the gap.
   StreamSubscription<Position>? gpsSub;
   try {
     gpsSub = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(accuracy: LocationAccuracy.high, distanceFilter: 4),
     ).listen(
       (p) {
-        course = courseWhenMoving(p.heading, p.speed);
+        final c = courseWhenMoving(p.heading, p.speed);
+        if (c != null) {
+          course = c;
+          courseAtMs = DateTime.now().millisecondsSinceEpoch;
+        }
         emit();
       },
       onError: (_) {},
