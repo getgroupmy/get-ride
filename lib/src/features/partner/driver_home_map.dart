@@ -407,12 +407,14 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     if (driverMapDiagnosticsEnabled) _diagUpdate(context, satellite: satellite, me: me);
     final map = RideMap(
       controller: _map,
-      // The location dot is the map's own: the native base draws it (locked to
-      // its tiles, continuously tracking), and a flutter_map dot elsewhere. The
-      // heading arrow over it is a screen-fixed overlay (below), so it needs no
-      // dot of its own here.
+      // The location dot is drawn by the heading overlay below, not by the map:
+      // the overlay welds the dot and the heading cone into one unit so the two
+      // can never drift apart. A separately-drawn native dot (continuous
+      // CoreLocation) runs ahead of our fix during motion, so the cone trailed
+      // it. showMeDot turns the map's own dot (native and flutter_map) off.
       me: me,
       nativeMe: true,
+      showMeDot: false,
       pointZoom: driverHomeZoom,
       // The camera follows the driver instead of framing the pins.
       autoFit: false,
@@ -479,13 +481,14 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     return Stack(
       children: [
         map,
-        // The heading arrow over the location dot, anchored to the driver's real
-        // position so it stays on the dot while the map is panned, not only
-        // while following. It projects the coordinate to the screen on each map
-        // movement and turns to the heading relative to the map's rotation, so
-        // heading-up keeps it pointing up. The native base draws the dot itself;
-        // a small drift from it is possible when panned far / zoomed out.
-        if (me != null && heading != null)
+        // The location dot and its heading cone, drawn together as one overlay
+        // anchored to the driver's real position: they project the same
+        // coordinate to the screen on each map movement, so the cone is always
+        // welded to the dot (a separately-drawn native dot ran ahead of it in
+        // motion, detaching the cone). The dot shows whenever there is a fix;
+        // the cone is added once there is a heading, turned to it relative to
+        // the map's rotation so heading-up keeps it pointing up.
+        if (me != null)
           _DriverLocationArrow(
             key: const ValueKey('driver-heading-arrow'),
             controller: _map,
@@ -541,8 +544,9 @@ class _DriverLocationArrow extends StatefulWidget {
   final MapController controller;
   final LatLng me;
 
-  /// The device heading in degrees (0 = north).
-  final double heading;
+  /// The device heading in degrees (0 = north), or null when there is no
+  /// sensor yet — then only the dot is drawn, with no direction cone.
+  final double? heading;
 
   @override
   State<_DriverLocationArrow> createState() => _DriverLocationArrowState();
@@ -578,65 +582,96 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> {
     } catch (_) {
       return const SizedBox.shrink();
     }
-    // The glow is drawn in a 96×96 box centred on it, so place the box so its
-    // centre sits on the dot.
+    // The dot and cone are drawn in a 96×96 box centred on the projected
+    // position. The whole box turns to the heading relative to the map's
+    // rotation (the dot is round, so only the cone turns visibly); with no
+    // heading the box is upright and only the dot is drawn.
+    final heading = widget.heading;
+    final child = _HeadingArrow(cone: heading != null);
     return Positioned(
       left: at.dx - 48,
       top: at.dy - 48,
       child: IgnorePointer(
-        child: Transform.rotate(
-          angle: (widget.heading + bearing) * math.pi / 180,
-          child: const _HeadingArrow(),
-        ),
+        child: heading == null
+            ? child
+            : Transform.rotate(angle: (heading + bearing) * math.pi / 180, child: child),
       ),
     );
   }
 }
 
-/// The heading cone itself (Apple Maps' direction glow): a soft translucent
-/// fan drawn pointing straight up (the caller turns it to the heading). The
-/// native map draws the blue location dot underneath; this only glows the
-/// direction over it.
+/// The driver's location dot with Apple Maps' direction glow, drawn as one
+/// unit: a blue dot (the same mark the map would draw) with a soft translucent
+/// heading cone fanning from under it in the travel direction. Drawing both
+/// here — rather than letting the native base draw the dot — welds the cone to
+/// the dot so the two can never drift apart. The caller turns the whole thing
+/// to the heading; [cone] is false before there is a heading (dot only).
 class _HeadingArrow extends StatelessWidget {
-  const _HeadingArrow();
+  const _HeadingArrow({required this.cone});
+
+  final bool cone;
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(size: const Size(96, 96), painter: _HeadingArrowPainter());
+    return CustomPaint(size: const Size(96, 96), painter: _HeadingArrowPainter(cone: cone));
   }
 }
 
 class _HeadingArrowPainter extends CustomPainter {
+  const _HeadingArrowPainter({required this.cone});
+
+  /// Whether to draw the heading cone (false before there is a heading).
+  final bool cone;
+
   // The iOS heading-cone blue (Apple draws this fan from the location dot).
   static const _blue = Color(0xFF0A84FF);
+  // The location dot: a blue core inside a white ring, matching the dot the
+  // rider/confirm maps draw (a 22 px marker: core radius 8, white ring 3).
+  static const _coreRadius = 8.0;
+  static const _ringRadius = 11.0;
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = Offset(size.width / 2, size.height / 2);
-    const reach = 40.0; // how far the cone fans from the dot
-    const half = 0.62; // half-angle of the cone, radians (~36°, ~72° total)
-    const up = -math.pi / 2; // straight up (the caller turns it to the heading)
 
-    // Apple Maps' heading cone: a soft translucent wedge opening in the heading
-    // direction, brightest at the dot and fading to nothing at its reach, with
-    // feathered edges. No crisp arrow — the native dot shows the position, this
-    // only glows the direction, so a small projection drift is forgiving.
-    final cone = ui.Path()
-      ..moveTo(c.dx, c.dy)
-      ..arcTo(Rect.fromCircle(center: c, radius: reach), up - half, half * 2, false)
-      ..close();
-    canvas.drawPath(
-      cone,
+    if (cone) {
+      const reach = 42.0; // how far the cone fans out past the dot
+      const half = 0.6; // half-angle of the cone, radians (~34°, ~69° total)
+      const up = -math.pi / 2; // straight up (the caller turns it to the heading)
+      // Apple Maps' heading cone: a soft translucent wedge opening in the
+      // heading direction, brightest around the dot and fading to nothing at
+      // its reach, with feathered edges. Drawn first, so the dot sits on top of
+      // its root and the cone reads as coming from around the dot's edge.
+      final wedge = ui.Path()
+        ..moveTo(c.dx, c.dy)
+        ..arcTo(Rect.fromCircle(center: c, radius: reach), up - half, half * 2, false)
+        ..close();
+      canvas.drawPath(
+        wedge,
+        Paint()
+          ..shader = RadialGradient(
+            colors: [_blue.withValues(alpha: 0.6), _blue.withValues(alpha: 0.0)],
+          ).createShader(Rect.fromCircle(center: c, radius: reach))
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
+      );
+    }
+
+    // The location dot, on top of the cone's root: soft shadow, white ring,
+    // blue core — the same dot the map draws elsewhere, so nothing moved, but
+    // now the cone is welded to it.
+    canvas.drawCircle(
+      c,
+      _ringRadius,
       Paint()
-        ..shader = RadialGradient(
-          colors: [_blue.withValues(alpha: 0.55), _blue.withValues(alpha: 0.0)],
-        ).createShader(Rect.fromCircle(center: c, radius: reach))
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+        ..color = Colors.black.withValues(alpha: 0.2)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
     );
+    canvas.drawCircle(c, _ringRadius, Paint()..color = Colors.white);
+    canvas.drawCircle(c, _coreRadius, Paint()..color = _blue);
   }
 
   @override
-  bool shouldRepaint(_HeadingArrowPainter oldDelegate) => false;
+  bool shouldRepaint(_HeadingArrowPainter oldDelegate) => oldDelegate.cone != cone;
 }
 
 /// Debug-only fixed reference marker (see [DriverMapReference]). A magenta

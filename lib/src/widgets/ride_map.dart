@@ -190,6 +190,7 @@ class RideMap extends StatefulWidget {
     this.trafficSignals = true,
     this.tileOverlays = const [],
     this.nativeMe = false,
+    this.showMeDot = true,
   });
 
   /// Draw the device's own location dot with the native map (MapKit) itself
@@ -198,6 +199,12 @@ class RideMap extends StatefulWidget {
   /// On for the partner's own map, where the driver pans the idle map around;
   /// the rider and confirm maps keep the flutter_map dot.
   final bool nativeMe;
+
+  /// Whether this map draws the location dot at all (native or flutter_map).
+  /// Off where the caller draws its own dot over the map — the driver idle map
+  /// welds the heading cone to its own dot so the two can never drift apart,
+  /// which a separately-drawn native dot does during motion.
+  final bool showMeDot;
 
   final LatLng? pickup;
   final LatLng? drop;
@@ -411,7 +418,7 @@ class _RideMapState extends State<RideMap> {
 
   void _syncApple() {
     _appleRoute.value = _appleRouteLine(widget);
-    _appleMe.value = widget.me != null && widget.nativeMe;
+    _appleMe.value = widget.me != null && widget.nativeMe && widget.showMeDot;
   }
 
   /// The route line for MapKit. The live trip line is always MapKit's, locked to
@@ -683,6 +690,7 @@ class _RideMapState extends State<RideMap> {
             // projections diverge away from the centre — worse zoomed out).
             // Everywhere else it is this dot.
             if (w.me != null &&
+                w.showMeDot &&
                 !(w.nativeMe &&
                     (appleRouteBaseActive(context, satellite: w.satellite) ||
                         googleNativeBaseActive(context, satellite: w.satellite))))
