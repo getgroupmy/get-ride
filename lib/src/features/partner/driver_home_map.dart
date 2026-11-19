@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../data/compass.dart';
 import '../../data/models.dart';
+import '../../widgets/map_brightness.dart' show mapIsDark;
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_tiles.dart' show appleRouteBaseActive, googleNativeBaseActive;
@@ -723,7 +724,9 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleT
     // rotation (the dot is round, so only the cone turns visibly); with no
     // heading the box is upright and only the dot is drawn.
     final heading = widget.heading;
-    final child = _HeadingArrow(cone: heading != null);
+    // On a dark map the blue cone all but disappears, so draw it white there —
+    // like Apple Maps' light heading beam in dark mode. The dot stays blue.
+    final child = _HeadingArrow(cone: heading != null, dark: mapIsDark(context));
     final dot = heading == null
         ? child
         : Transform.rotate(angle: (heading + bearing) * math.pi / 180, child: child);
@@ -755,21 +758,27 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleT
 /// the dot so the two can never drift apart. The caller turns the whole thing
 /// to the heading; [cone] is false before there is a heading (dot only).
 class _HeadingArrow extends StatelessWidget {
-  const _HeadingArrow({required this.cone});
+  const _HeadingArrow({required this.cone, required this.dark});
 
   final bool cone;
 
+  /// Whether the map is dark, so the cone is drawn white instead of blue.
+  final bool dark;
+
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(size: const Size(96, 96), painter: _HeadingArrowPainter(cone: cone));
+    return CustomPaint(size: const Size(96, 96), painter: _HeadingArrowPainter(cone: cone, dark: dark));
   }
 }
 
 class _HeadingArrowPainter extends CustomPainter {
-  const _HeadingArrowPainter({required this.cone});
+  const _HeadingArrowPainter({required this.cone, required this.dark});
 
   /// Whether to draw the heading cone (false before there is a heading).
   final bool cone;
+
+  /// A dark map: draw the cone white (the blue vanishes against dark tiles).
+  final bool dark;
 
   // The iOS heading-cone blue (Apple draws this fan from the location dot).
   static const _blue = Color(0xFF0A84FF);
@@ -790,6 +799,7 @@ class _HeadingArrowPainter extends CustomPainter {
       // heading direction, brightest around the dot and fading to nothing at
       // its reach, with feathered edges. Drawn first, so the dot sits on top of
       // its root and the cone reads as coming from around the dot's edge.
+      final coneColor = dark ? Colors.white : _blue;
       final wedge = ui.Path()
         ..moveTo(c.dx, c.dy)
         ..arcTo(Rect.fromCircle(center: c, radius: reach), up - half, half * 2, false)
@@ -798,7 +808,7 @@ class _HeadingArrowPainter extends CustomPainter {
         wedge,
         Paint()
           ..shader = RadialGradient(
-            colors: [_blue.withValues(alpha: 0.6), _blue.withValues(alpha: 0.0)],
+            colors: [coneColor.withValues(alpha: dark ? 0.7 : 0.6), coneColor.withValues(alpha: 0.0)],
           ).createShader(Rect.fromCircle(center: c, radius: reach))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
       );
@@ -819,7 +829,7 @@ class _HeadingArrowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_HeadingArrowPainter oldDelegate) => oldDelegate.cone != cone;
+  bool shouldRepaint(_HeadingArrowPainter oldDelegate) => oldDelegate.cone != cone || oldDelegate.dark != dark;
 }
 
 /// Debug-only fixed reference marker (see [DriverMapReference]). A magenta
