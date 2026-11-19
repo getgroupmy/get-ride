@@ -122,10 +122,10 @@ void main() {
     late _FakeRides rides;
     late DateTime now;
     late GoRouter router;
-    late StreamController<LatLng> gps;
+    late StreamController<DriverFix> gps;
 
     setUp(() {
-      gps = StreamController<LatLng>.broadcast();
+      gps = StreamController<DriverFix>.broadcast();
       open = StreamController<List<RideRequest>>.broadcast();
       rides = _FakeRides();
       now = DateTime(2026, 10, 6, 11);
@@ -187,7 +187,7 @@ void main() {
 
     testWidgets('the countdown and GPS fixes rebuild their own parts, not the drive screen', (tester) async {
       await pump(tester, size: const Size(400, 860));
-      gps.add(const LatLng(3.15, 101.71));
+      gps.add((at: const LatLng(3.15, 101.71), speed: null, course: null));
       await tester.pump();
       open.add([
         RideRequest({..._req('r1').raw, 'pickup_lat': 3.158, 'pickup_lng': 101.712}),
@@ -210,7 +210,7 @@ void main() {
       String away() => tester.widget<Text>(find.textContaining('m away')).data!;
       final before = away();
       // ~100 m nearer: the card's distance follows, the screen does not rebuild.
-      gps.add(const LatLng(3.151, 101.71));
+      gps.add((at: const LatLng(3.151, 101.71), speed: null, course: null));
       await tester.pump();
       await tester.pump();
       expect(screens, 0);

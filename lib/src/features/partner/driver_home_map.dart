@@ -31,9 +31,23 @@ import 'driver_map_diagnostics_overlay.dart';
 /// stops the following, and the compass button (shown once the map is turned)
 /// snaps it back to north-up.
 class DriverHomeMap extends ConsumerStatefulWidget {
-  const DriverHomeMap({super.key, required this.me, required this.requests, this.onSelect});
+  const DriverHomeMap({
+    super.key,
+    required this.me,
+    required this.requests,
+    this.onSelect,
+    this.speedMps,
+    this.courseDeg,
+  });
 
   final LatLng? me;
+
+  /// The GPS velocity vector reported with the latest fix: ground speed (m/s)
+  /// and course (bearing of travel, degrees), or null when the chip gives none.
+  /// Used for dead reckoning and moving/stopped — cleaner than reconstructing
+  /// them from how the fix moved.
+  final double? speedMps;
+  final double? courseDeg;
 
   /// The requests to pin (those on the driver's queue).
   final List<RideRequest> requests;
@@ -172,8 +186,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     // Ignore a zero/near-zero gap (two fixes in the same tick) and a long gap
     // (app resumed) — neither is a trustworthy speed.
     if (dt < 0.1 || dt > 10) return;
-    final metres = const Distance().as(LengthUnit.Meter, last, me);
-    final speed = metres / dt;
+    // Prefer the GPS velocity the chip measured (Doppler, clean even at a
+    // crawl) over reconstructing speed from how far the fix moved.
+    final speed = widget.speedMps ?? const Distance().as(LengthUnit.Meter, last, me) / dt;
     // Exponential smoothing, so one noisy fix cannot flip the state.
     _speedEma = _speedEma == null ? speed : _speedEma! * 0.6 + speed * 0.4;
     // Track the gap between fixes so the follow can glide for about that long
@@ -208,11 +223,14 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   /// lead is capped in both time and distance so it never shoots far ahead on a
   /// bend or a sudden stop.
   LatLng _leadTarget(LatLng me) {
-    final sp = _speedEma, h = _heading;
-    if (!_moving || sp == null || h == null || sp < 1.0) return me;
+    // Lead along the GPS course when the chip gives one (measured bearing of
+    // travel), else the blended heading; by speed, preferring the GPS speed.
+    final sp = widget.speedMps ?? _speedEma;
+    final course = widget.courseDeg ?? _heading;
+    if (!_moving || sp == null || course == null || sp < 1.0) return me;
     final leadSec = (_followMs / 1000.0 * 0.8 + 0.3).clamp(0.3, 1.2).toDouble();
     final dist = (sp * leadSec).clamp(0.0, 40.0).toDouble();
-    return const Distance().offset(me, dist, h);
+    return const Distance().offset(me, dist, course);
   }
 
   /// Heading-up and actually following with a heading to turn to.
