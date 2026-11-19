@@ -45,6 +45,20 @@ class DriverHomeMap extends ConsumerStatefulWidget {
 /// Street level: the roads and buildings around the driver.
 const driverHomeZoom = 18.0;
 
+/// The zoom the map pulls in to while the driver is moving — a navigation
+/// level, like Apple/Google Maps when driving. The follow never sits more
+/// zoomed-out than this while moving (it still allows zooming further in);
+/// while stopped the zoom is left as the driver set it, so they can look
+/// around.
+const driverDrivingZoom = 18.0;
+
+/// Whether the driver counts as moving, with hysteresis so a noisy GPS fix
+/// near the threshold does not flip it: once moving it stays moving until the
+/// speed drops below [exit] m/s, and only becomes moving again above [enter]
+/// m/s. Pure; see test/driver_home_map_test.dart.
+bool nextMoving({required bool moving, required double speed, double enter = 2.5, double exit = 1.0}) =>
+    moving ? speed >= exit : speed >= enter;
+
 /// The next follow / heading-up state when the locate button is tapped, cycling
 /// like Apple/Google Maps: (paused) → follow north-up → follow heading-up →
 /// follow north-up → … Pure.
@@ -80,6 +94,15 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     ..addListener(_glideTick);
   LatLng? _from, _to;
   double _zoom = driverHomeZoom;
+  double _zoomFrom = driverHomeZoom; // zoom at the start of the current glide
+
+  /// Whether the driver is moving, so the map pulls in to [driverDrivingZoom].
+  /// Derived from how far the fix moved between updates (no extra GPS stream),
+  /// smoothed and held by [nextMoving].
+  bool _moving = false;
+  double? _speedEma; // smoothed speed, m/s
+  LatLng? _lastFix;
+  int? _lastFixMs;
 
   /// The live traffic tiles over the map, and the source they were made for.
   List<Widget> _overlays = const [];
@@ -117,6 +140,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   void didUpdateWidget(covariant DriverHomeMap old) {
     super.didUpdateWidget(old);
     if (widget.me != old.me) {
+      _updateMoving(widget.me);
       WidgetsBinding.instance.addPostFrameCallback((_) => _center());
       final me = widget.me;
       if (driverMapDiagnosticsEnabled && me != null) {
@@ -124,6 +148,26 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
         _diagRecord(DriverMapEventKind.gpsFix, gpsLat: me.latitude, gpsLng: me.longitude);
       }
     }
+  }
+
+  /// Update whether the driver is moving from how far this fix is from the last
+  /// and how long since, smoothing the speed so GPS noise at a standstill does
+  /// not read as movement. The map pulls in to the driving zoom while moving.
+  void _updateMoving(LatLng? me) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final last = _lastFix, lastMs = _lastFixMs;
+    _lastFix = me;
+    _lastFixMs = now;
+    if (me == null || last == null || lastMs == null) return;
+    final dt = (now - lastMs) / 1000.0;
+    // Ignore a zero/near-zero gap (two fixes in the same tick) and a long gap
+    // (app resumed) — neither is a trustworthy speed.
+    if (dt < 0.1 || dt > 10) return;
+    final metres = const Distance().as(LengthUnit.Meter, last, me);
+    final speed = metres / dt;
+    // Exponential smoothing, so one noisy fix cannot flip the state.
+    _speedEma = _speedEma == null ? speed : _speedEma! * 0.6 + speed * 0.4;
+    _moving = nextMoving(moving: _moving, speed: _speedEma!);
   }
 
   /// Heading-up and actually following with a heading to turn to.
@@ -152,7 +196,11 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     } catch (_) {
       return;
     }
-    _zoom = camera.zoom;
+    // While moving, pull in to the driving zoom (never sit more zoomed-out than
+    // it); allow a driver who has zoomed further in to stay there. While
+    // stopped, leave the zoom as they set it so they can look around.
+    _zoomFrom = camera.zoom;
+    _zoom = _moving ? math.max(camera.zoom, driverDrivingZoom) : camera.zoom;
     if (jump) {
       _map.move(me, _zoom, offset: _offset);
       return;
@@ -174,7 +222,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     try {
       _map.move(
         LatLng(a.latitude + (b.latitude - a.latitude) * t, a.longitude + (b.longitude - a.longitude) * t),
-        _zoom,
+        // Ease the zoom too, so a pull-in to the driving zoom glides rather
+        // than snapping (usually a no-op: from and to are the same).
+        _zoomFrom + (_zoom - _zoomFrom) * t,
         offset: _offset,
       );
     } catch (_) {}
