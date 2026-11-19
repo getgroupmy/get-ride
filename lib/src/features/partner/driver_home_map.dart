@@ -597,7 +597,7 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> {
 /// chevron, drawn pointing straight up (the caller turns it). The native map
 /// draws the blue dot underneath; this only shows the direction.
 class _HeadingArrow extends StatelessWidget {
-  const _HeadingArrow({super.key});
+  const _HeadingArrow();
 
   @override
   Widget build(BuildContext context) {
