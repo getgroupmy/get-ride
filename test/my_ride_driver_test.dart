@@ -264,7 +264,7 @@ void main() {
             favouriteRiderIdsProvider.overrideWith((ref) async => favourites),
             serviceDispatchConfigsProvider.overrideWith((ref) async => const {}),
             driverPositionProvider.overrideWithValue(() async => position),
-            driverPositionStreamProvider.overrideWithValue(() => const Stream<LatLng>.empty()),
+            driverPositionStreamProvider.overrideWithValue(() => const Stream.empty()),
           ],
           child: MaterialApp.router(
             theme: ThemeData(brightness: dark ? Brightness.dark : Brightness.light),

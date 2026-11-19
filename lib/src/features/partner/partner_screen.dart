@@ -155,9 +155,17 @@ class PartnerScreen extends ConsumerStatefulWidget {
 /// (overridden in tests).
 final driverPositionProvider = Provider<Future<LatLng?> Function()>((ref) => currentPosition);
 
+/// A fix from the driver's location stream: where they are, and the GPS
+/// velocity vector the chip reports with it — speed (m/s) and course (the
+/// bearing of travel, degrees). Both are null when the GPS can't give one
+/// (iOS sends a negative value then). The map uses them for dead reckoning and
+/// to tell moving from stopped, far cleaner than reconstructing them from how
+/// the point moved.
+typedef DriverFix = ({LatLng at, double? speed, double? course});
+
 /// The driver's position as it changes, so the home map follows them.
 /// Empty when location is unavailable or refused.
-final driverPositionStreamProvider = Provider<Stream<LatLng> Function()>((ref) => () async* {
+final driverPositionStreamProvider = Provider<Stream<DriverFix> Function()>((ref) => () async* {
   try {
     var perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
@@ -172,7 +180,11 @@ final driverPositionStreamProvider = Provider<Stream<LatLng> Function()>((ref) =
         // The trade is more battery while waiting; raise this to save it.
         distanceFilter: 0,
       ),
-    ).map((p) => LatLng(p.latitude, p.longitude));
+    ).map((p) => (
+      at: LatLng(p.latitude, p.longitude),
+      speed: p.speed < 0 || p.speed.isNaN ? null : p.speed,
+      course: p.heading < 0 || p.heading.isNaN ? null : p.heading,
+    ));
   } catch (_) {}
 });
 
@@ -211,7 +223,11 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// None of the driver's types is offered where they are (0245): online,
   /// but no requests show. Set on each build.
   bool _notHere = false;
-  StreamSubscription<LatLng>? _fixes;
+  StreamSubscription<DriverFix>? _fixes;
+  // The GPS velocity vector from the latest fix (null when the chip gives none),
+  // passed to the home map for dead reckoning and moving/stopped.
+  double? _meSpeed;
+  double? _meCourse;
   String? _accepting;
 
   /// A vehicle question is on screen ([_askForVehicle]).
@@ -448,12 +464,14 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
   /// A GPS fix: the map, the request sheet and the cards' distances follow
   /// it on their own; the screen rebuilds only when the queue itself moves
   /// with it (which requests, in what order, with a distance or not).
-  void _onFix(LatLng p) {
+  void _onFix(DriverFix f) {
     if (!mounted) return;
     final before = _queueView();
-    _me = p;
+    _me = f.at;
+    _meSpeed = f.speed;
+    _meCourse = f.course;
     if (_queueView() != before) setState(() {});
-    _meFix.value = p;
+    _meFix.value = f.at;
   }
 
   /// The queue as the driver's position decides it.
@@ -1310,6 +1328,8 @@ class _PartnerScreenState extends ConsumerState<PartnerScreen> {
                   builder: (_, _, _) => DriverHomeMap(
                     key: const ValueKey('driver-home-map'),
                     me: _me,
+                    speedMps: _meSpeed,
+                    courseDeg: _meCourse,
                     requests: pins,
                     onSelect: (r) => setState(() => _focusId = r.id),
                   ),

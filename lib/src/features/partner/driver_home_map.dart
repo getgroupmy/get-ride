@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../data/compass.dart';
 import '../../data/models.dart';
+import '../../widgets/map_brightness.dart' show mapIsDark;
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_tiles.dart' show appleRouteBaseActive, googleNativeBaseActive;
@@ -30,9 +31,23 @@ import 'driver_map_diagnostics_overlay.dart';
 /// stops the following, and the compass button (shown once the map is turned)
 /// snaps it back to north-up.
 class DriverHomeMap extends ConsumerStatefulWidget {
-  const DriverHomeMap({super.key, required this.me, required this.requests, this.onSelect});
+  const DriverHomeMap({
+    super.key,
+    required this.me,
+    required this.requests,
+    this.onSelect,
+    this.speedMps,
+    this.courseDeg,
+  });
 
   final LatLng? me;
+
+  /// The GPS velocity vector reported with the latest fix: ground speed (m/s)
+  /// and course (bearing of travel, degrees), or null when the chip gives none.
+  /// Used for dead reckoning and moving/stopped — cleaner than reconstructing
+  /// them from how the fix moved.
+  final double? speedMps;
+  final double? courseDeg;
 
   /// The requests to pin (those on the driver's queue).
   final List<RideRequest> requests;
@@ -103,6 +118,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   double? _speedEma; // smoothed speed, m/s
   LatLng? _lastFix;
   int? _lastFixMs;
+  int _fixIntervalMs = 500; // smoothed gap between fixes
+  int _followMs = 500; // how long the follow glide runs (a touch over the gap)
+  LatLng? _displayTarget; // the fix projected forward (dead reckoning), or the fix
 
   /// The live traffic tiles over the map, and the source they were made for.
   List<Widget> _overlays = const [];
@@ -141,8 +159,13 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     super.didUpdateWidget(old);
     if (widget.me != old.me) {
       _updateMoving(widget.me);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _center());
       final me = widget.me;
+      // Project the fix forward along the speed and heading, so the dot sits
+      // near where the driver actually is now instead of trailing the last
+      // (already ~1 s old) fix. Recomputed only on a fix, so a heading-only
+      // rebuild does not nudge the target.
+      _displayTarget = me == null ? null : _leadTarget(me);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _center());
       if (driverMapDiagnosticsEnabled && me != null) {
         driverMapNoteRawFix(me.latitude, me.longitude);
         _diagRecord(DriverMapEventKind.gpsFix, gpsLat: me.latitude, gpsLng: me.longitude);
@@ -163,11 +186,51 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     // Ignore a zero/near-zero gap (two fixes in the same tick) and a long gap
     // (app resumed) — neither is a trustworthy speed.
     if (dt < 0.1 || dt > 10) return;
-    final metres = const Distance().as(LengthUnit.Meter, last, me);
-    final speed = metres / dt;
+    // Prefer the GPS velocity the chip measured (Doppler, clean even at a
+    // crawl) over reconstructing speed from how far the fix moved.
+    final speed = widget.speedMps ?? const Distance().as(LengthUnit.Meter, last, me) / dt;
     // Exponential smoothing, so one noisy fix cannot flip the state.
     _speedEma = _speedEma == null ? speed : _speedEma! * 0.6 + speed * 0.4;
+    // Track the gap between fixes so the follow can glide for about that long
+    // (a touch over it): the dot then moves at a steady speed between fixes and
+    // arrives as the next lands, like a nav app, instead of easing to each fix
+    // and pausing (which read as lag at ~1 fix/second).
+    _fixIntervalMs = (_fixIntervalMs * 0.6 + (now - lastMs) * 0.4).round();
+    final wasMoving = _moving;
     _moving = nextMoving(moving: _moving, speed: _speedEma!);
+    // Starting to drive turns the map so the way they are going points up
+    // (heading-up), like Apple/Google/Waze navigation. It is not un-done when
+    // they stop (the map freezes at that orientation, no snap back to north);
+    // tapping the compass straightens it, and a manual north-up resumes
+    // heading-up only on the next stop → start.
+    if (_moving && !wasMoving && !_headingMode) {
+      setState(() => _headingMode = true);
+      // Turn to the travel heading now rather than waiting for the next update.
+      final h = _heading;
+      if (h != null) WidgetsBinding.instance.addPostFrameCallback((_) => _faceWhileDriving(h));
+    }
+  }
+
+  /// Turn the map to heading [h] only while actually driving in heading-up — a
+  /// parked phone must not spin the map to wherever it happens to face.
+  void _faceWhileDriving(double h) {
+    if (mounted && _headingUp && _ready && _moving) _face(h);
+  }
+
+  /// The fix [me] projected forward along the current speed and heading, so the
+  /// followed point is near where the driver is *now* rather than trailing the
+  /// last fix — the dead reckoning every nav app does. Only while moving; the
+  /// lead is capped in both time and distance so it never shoots far ahead on a
+  /// bend or a sudden stop.
+  LatLng _leadTarget(LatLng me) {
+    // Lead along the GPS course when the chip gives one (measured bearing of
+    // travel), else the blended heading; by speed, preferring the GPS speed.
+    final sp = widget.speedMps ?? _speedEma;
+    final course = widget.courseDeg ?? _heading;
+    if (!_moving || sp == null || course == null || sp < 1.0) return me;
+    final leadSec = (_followMs / 1000.0 * 0.8 + 0.3).clamp(0.3, 1.2).toDouble();
+    final dist = (sp * leadSec).clamp(0.0, 40.0).toDouble();
+    return const Distance().offset(me, dist, course);
   }
 
   /// Heading-up and actually following with a heading to turn to.
@@ -211,14 +274,22 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     // forward to it before interpolating (the jitter while following). With
     // the live centre each restart continues smoothly from the visible spot.
     _from = camera.center;
-    _to = me;
+    // Glide to the projected point (dead reckoning), not the stale fix, so the
+    // follow keeps up with the driver instead of trailing a beat behind.
+    _to = _displayTarget ?? me;
+    // Glide roughly over the gap between fixes, so a fresh fix lands about when
+    // the glide ends and the motion stays continuous without trailing far.
+    _followMs = (_fixIntervalMs * 1.1).round().clamp(250, 1400);
+    _glide.duration = Duration(milliseconds: _followMs);
     _glide.forward(from: 0);
   }
 
   void _glideTick() {
     final a = _from, b = _to;
     if (a == null || b == null || !mounted) return;
-    final t = Curves.easeInOut.transform(_glide.value);
+    // Linear: a steady-speed glide between fixes (an ease curve crawled at the
+    // start of each fix, which read as the lag/stutter).
+    final t = _glide.value;
     try {
       _map.move(
         LatLng(a.latitude + (b.latitude - a.latitude) * t, a.longitude + (b.longitude - a.longitude) * t),
@@ -292,7 +363,10 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   void _onHeading(double h) {
     if (_heading == h || !mounted) return;
     setState(() => _heading = h);
-    if (_headingUp && _ready) _face(h);
+    // Turn the map to the heading only while moving: in heading-up the map
+    // follows the direction of travel, but a stationary phone must not spin it
+    // to wherever it is held. When stopped the map stays at its last heading.
+    if (_headingUp && _ready && _moving) _face(h);
     if (driverMapDiagnosticsEnabled) {
       driverMapLive
         ..headingDeg = h
@@ -545,8 +619,11 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
           _DriverLocationArrow(
             key: const ValueKey('driver-heading-arrow'),
             controller: _map,
-            me: me,
+            // The projected point the camera follows, so the dot sits where the
+            // driver is now rather than on the stale fix.
+            me: _displayTarget ?? me,
             heading: heading,
+            followMs: _followMs,
           ),
         // The road the driver is on: its limit, or its class as an estimate.
         // Below the page's menu button.
@@ -592,7 +669,13 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
 /// is possible when panned far / zoomed out (that is the accepted trade for
 /// keeping the arrow anchored, like Apple Maps).
 class _DriverLocationArrow extends StatefulWidget {
-  const _DriverLocationArrow({super.key, required this.controller, required this.me, required this.heading});
+  const _DriverLocationArrow({
+    super.key,
+    required this.controller,
+    required this.me,
+    required this.heading,
+    required this.followMs,
+  });
 
   final MapController controller;
   final LatLng me;
@@ -600,6 +683,10 @@ class _DriverLocationArrow extends StatefulWidget {
   /// The device heading in degrees (0 = north), or null when there is no
   /// sensor yet — then only the dot is drawn, with no direction cone.
   final double? heading;
+
+  /// How long to glide to each new fix, in lockstep with the camera (the gap
+  /// between fixes plus a little, so the dot moves at a steady speed).
+  final int followMs;
 
   @override
   State<_DriverLocationArrow> createState() => _DriverLocationArrowState();
@@ -610,12 +697,12 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleT
 
   // The GPS stream delivers discrete fixes, so projecting the raw position made
   // the dot leap to each new fix (and then the camera glided to catch up — the
-  // jumpy motion). Instead the drawn position eases from where the dot is to
-  // each new fix over the same curve and time as the camera glide, so the two
-  // move in lockstep: while following, the dot stays put and the world slides
-  // under it (as the native dot did); while panned it glides rather than jumps.
+  // jumpy motion). Instead the drawn position glides from where the dot is to
+  // each new fix at a steady speed over the gap between fixes, in lockstep with
+  // the camera, so the two move together and the motion stays continuous like a
+  // nav app rather than easing to each fix and pausing.
   late final AnimationController _glide =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 400))..addListener(_onGlide);
+      AnimationController(vsync: this, duration: Duration(milliseconds: widget.followMs))..addListener(_onGlide);
   LatLng _shown = const LatLng(0, 0); // the position actually drawn
   LatLng _from = const LatLng(0, 0); // where the current ease started
 
@@ -639,12 +726,14 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleT
     // snapping — the same anti-snap the camera glide uses.
     if (widget.me != old.me) {
       _from = _shown;
+      _glide.duration = Duration(milliseconds: widget.followMs);
       _glide.forward(from: 0);
     }
   }
 
   void _onGlide() {
-    final t = Curves.easeInOut.transform(_glide.value);
+    // Linear: a steady-speed glide between fixes, matching the camera.
+    final t = _glide.value;
     _shown = LatLng(
       _from.latitude + (widget.me.latitude - _from.latitude) * t,
       _from.longitude + (widget.me.longitude - _from.longitude) * t,
@@ -675,7 +764,9 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleT
     // rotation (the dot is round, so only the cone turns visibly); with no
     // heading the box is upright and only the dot is drawn.
     final heading = widget.heading;
-    final child = _HeadingArrow(cone: heading != null);
+    // On a dark map the blue cone all but disappears, so draw it white there —
+    // like Apple Maps' light heading beam in dark mode. The dot stays blue.
+    final child = _HeadingArrow(cone: heading != null, dark: mapIsDark(context));
     final dot = heading == null
         ? child
         : Transform.rotate(angle: (heading + bearing) * math.pi / 180, child: child);
@@ -707,21 +798,27 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleT
 /// the dot so the two can never drift apart. The caller turns the whole thing
 /// to the heading; [cone] is false before there is a heading (dot only).
 class _HeadingArrow extends StatelessWidget {
-  const _HeadingArrow({required this.cone});
+  const _HeadingArrow({required this.cone, required this.dark});
 
   final bool cone;
 
+  /// Whether the map is dark, so the cone is drawn white instead of blue.
+  final bool dark;
+
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(size: const Size(96, 96), painter: _HeadingArrowPainter(cone: cone));
+    return CustomPaint(size: const Size(96, 96), painter: _HeadingArrowPainter(cone: cone, dark: dark));
   }
 }
 
 class _HeadingArrowPainter extends CustomPainter {
-  const _HeadingArrowPainter({required this.cone});
+  const _HeadingArrowPainter({required this.cone, required this.dark});
 
   /// Whether to draw the heading cone (false before there is a heading).
   final bool cone;
+
+  /// A dark map: draw the cone white (the blue vanishes against dark tiles).
+  final bool dark;
 
   // The iOS heading-cone blue (Apple draws this fan from the location dot).
   static const _blue = Color(0xFF0A84FF);
@@ -742,6 +839,7 @@ class _HeadingArrowPainter extends CustomPainter {
       // heading direction, brightest around the dot and fading to nothing at
       // its reach, with feathered edges. Drawn first, so the dot sits on top of
       // its root and the cone reads as coming from around the dot's edge.
+      final coneColor = dark ? Colors.white : _blue;
       final wedge = ui.Path()
         ..moveTo(c.dx, c.dy)
         ..arcTo(Rect.fromCircle(center: c, radius: reach), up - half, half * 2, false)
@@ -750,7 +848,7 @@ class _HeadingArrowPainter extends CustomPainter {
         wedge,
         Paint()
           ..shader = RadialGradient(
-            colors: [_blue.withValues(alpha: 0.6), _blue.withValues(alpha: 0.0)],
+            colors: [coneColor.withValues(alpha: dark ? 0.7 : 0.6), coneColor.withValues(alpha: 0.0)],
           ).createShader(Rect.fromCircle(center: c, radius: reach))
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 5),
       );
@@ -771,7 +869,7 @@ class _HeadingArrowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_HeadingArrowPainter oldDelegate) => oldDelegate.cone != cone;
+  bool shouldRepaint(_HeadingArrowPainter oldDelegate) => oldDelegate.cone != cone || oldDelegate.dark != dark;
 }
 
 /// Debug-only fixed reference marker (see [DriverMapReference]). A magenta

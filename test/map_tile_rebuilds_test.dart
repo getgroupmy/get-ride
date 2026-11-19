@@ -224,14 +224,14 @@ void main() {
   });
 
   group('Drive screen', () {
-    late StreamController<LatLng> fixes;
+    late StreamController<DriverFix> fixes;
 
     Future<void> pump(WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(700, 1600);
       addTearDown(tester.view.reset);
-      fixes = StreamController<LatLng>.broadcast();
+      fixes = StreamController<DriverFix>.broadcast();
       addTearDown(fixes.close);
       final router = GoRouter(routes: [GoRoute(path: '/', builder: (_, _) => const PartnerScreen())]);
       await tester.pumpWidget(
@@ -262,7 +262,7 @@ void main() {
       final p = Probe();
       await p.run(() async {
         for (var i = 1; i <= 5; i++) {
-          fixes.add(LatLng(pickup.latitude - i * 0.0001, pickup.longitude));
+          fixes.add((at: LatLng(pickup.latitude - i * 0.0001, pickup.longitude), speed: null, course: null));
           await second(tester);
         }
       });
