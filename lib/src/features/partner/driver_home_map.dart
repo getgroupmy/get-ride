@@ -106,6 +106,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   int? _lastFixMs;
   int _fixIntervalMs = 500; // smoothed gap between fixes
   int _followMs = 500; // how long the follow glide runs (a touch over the gap)
+  LatLng? _displayTarget; // the fix projected forward (dead reckoning), or the fix
 
   /// The live traffic tiles over the map, and the source they were made for.
   List<Widget> _overlays = const [];
@@ -144,8 +145,13 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     super.didUpdateWidget(old);
     if (widget.me != old.me) {
       _updateMoving(widget.me);
-      WidgetsBinding.instance.addPostFrameCallback((_) => _center());
       final me = widget.me;
+      // Project the fix forward along the speed and heading, so the dot sits
+      // near where the driver actually is now instead of trailing the last
+      // (already ~1 s old) fix. Recomputed only on a fix, so a heading-only
+      // rebuild does not nudge the target.
+      _displayTarget = me == null ? null : _leadTarget(me);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _center());
       if (driverMapDiagnosticsEnabled && me != null) {
         driverMapNoteRawFix(me.latitude, me.longitude);
         _diagRecord(DriverMapEventKind.gpsFix, gpsLat: me.latitude, gpsLng: me.longitude);
@@ -196,6 +202,19 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     if (mounted && _headingUp && _ready && _moving) _face(h);
   }
 
+  /// The fix [me] projected forward along the current speed and heading, so the
+  /// followed point is near where the driver is *now* rather than trailing the
+  /// last fix — the dead reckoning every nav app does. Only while moving; the
+  /// lead is capped in both time and distance so it never shoots far ahead on a
+  /// bend or a sudden stop.
+  LatLng _leadTarget(LatLng me) {
+    final sp = _speedEma, h = _heading;
+    if (!_moving || sp == null || h == null || sp < 1.0) return me;
+    final leadSec = (_followMs / 1000.0 * 0.8 + 0.3).clamp(0.3, 1.2).toDouble();
+    final dist = (sp * leadSec).clamp(0.0, 40.0).toDouble();
+    return const Distance().offset(me, dist, h);
+  }
+
   /// Heading-up and actually following with a heading to turn to.
   bool get _headingUp => _follow && _headingMode && _heading != null;
 
@@ -237,11 +256,12 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     // forward to it before interpolating (the jitter while following). With
     // the live centre each restart continues smoothly from the visible spot.
     _from = camera.center;
-    _to = me;
-    // Glide for a little longer than the gap between fixes, so a fresh fix
-    // usually lands before the glide ends and the motion stays continuous
-    // rather than finishing early and stalling.
-    _followMs = (_fixIntervalMs * 1.25).round().clamp(250, 1600);
+    // Glide to the projected point (dead reckoning), not the stale fix, so the
+    // follow keeps up with the driver instead of trailing a beat behind.
+    _to = _displayTarget ?? me;
+    // Glide roughly over the gap between fixes, so a fresh fix lands about when
+    // the glide ends and the motion stays continuous without trailing far.
+    _followMs = (_fixIntervalMs * 1.1).round().clamp(250, 1400);
     _glide.duration = Duration(milliseconds: _followMs);
     _glide.forward(from: 0);
   }
@@ -581,7 +601,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
           _DriverLocationArrow(
             key: const ValueKey('driver-heading-arrow'),
             controller: _map,
-            me: me,
+            // The projected point the camera follows, so the dot sits where the
+            // driver is now rather than on the stale fix.
+            me: _displayTarget ?? me,
             heading: heading,
             followMs: _followMs,
           ),
