@@ -72,8 +72,11 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   /// the arrow over the driver's dot, and in heading-up mode it turns the map.
   double? _heading;
 
-  /// The camera's glide from where it is to the driver.
-  late final _glide = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))
+  /// The camera's glide from where it is to the driver. Short, so following
+  /// stays close to real time (a longer glide trailed the driver); still long
+  /// enough to smooth the step between fixes. The dot overlay eases over the
+  /// same time so the two move together.
+  late final _glide = AnimationController(vsync: this, duration: const Duration(milliseconds: 400))
     ..addListener(_glideTick);
   LatLng? _from, _to;
   double _zoom = driverHomeZoom;
@@ -155,8 +158,8 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       return;
     }
     // Start the glide from where the camera actually is now, not from the last
-    // glide's destination (_to): a fresh fix often lands before the 600 ms
-    // glide has finished, and starting at the old target snapped the camera
+    // glide's destination (_to): a fresh fix often lands before the glide
+    // has finished, and starting at the old target snapped the camera
     // forward to it before interpolating (the jitter while following). With
     // the live centre each restart continues smoothly from the visible spot.
     _from = camera.center;
@@ -562,7 +565,7 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleT
   // move in lockstep: while following, the dot stays put and the world slides
   // under it (as the native dot did); while panned it glides rather than jumps.
   late final AnimationController _glide =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..addListener(_onGlide);
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 400))..addListener(_onGlide);
   LatLng _shown = const LatLng(0, 0); // the position actually drawn
   LatLng _from = const LatLng(0, 0); // where the current ease started
 
@@ -623,13 +626,25 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleT
     // heading the box is upright and only the dot is drawn.
     final heading = widget.heading;
     final child = _HeadingArrow(cone: heading != null);
-    return Positioned(
-      left: at.dx - 48,
-      top: at.dy - 48,
+    final dot = heading == null
+        ? child
+        : Transform.rotate(angle: (heading + bearing) * math.pi / 180, child: child);
+    // The overlay covers the whole map and the moving dot sits inside a
+    // RepaintBoundary, so its per-fix repaints (and the dot's blurred shadow)
+    // are isolated to their own layer: they no longer force the native map
+    // (a platform view) underneath to re-composite, which flashed it on every
+    // GPS update. The boundary also rasterises the dot once and just moves that
+    // layer, rather than re-blurring it each frame.
+    return Positioned.fill(
       child: IgnorePointer(
-        child: heading == null
-            ? child
-            : Transform.rotate(angle: (heading + bearing) * math.pi / 180, child: child),
+        child: RepaintBoundary(
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(left: at.dx - 48, top: at.dy - 48, child: dot),
+            ],
+          ),
+        ),
       ),
     );
   }
