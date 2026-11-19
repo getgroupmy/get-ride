@@ -552,22 +552,57 @@ class _DriverLocationArrow extends StatefulWidget {
   State<_DriverLocationArrow> createState() => _DriverLocationArrowState();
 }
 
-class _DriverLocationArrowState extends State<_DriverLocationArrow> {
+class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleTickerProviderStateMixin {
   StreamSubscription<MapEvent>? _sub;
+
+  // The GPS stream delivers discrete fixes, so projecting the raw position made
+  // the dot leap to each new fix (and then the camera glided to catch up — the
+  // jumpy motion). Instead the drawn position eases from where the dot is to
+  // each new fix over the same curve and time as the camera glide, so the two
+  // move in lockstep: while following, the dot stays put and the world slides
+  // under it (as the native dot did); while panned it glides rather than jumps.
+  late final AnimationController _glide =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..addListener(_onGlide);
+  LatLng _shown = const LatLng(0, 0); // the position actually drawn
+  LatLng _from = const LatLng(0, 0); // where the current ease started
 
   @override
   void initState() {
     super.initState();
-    // Reposition on every map movement (pan, zoom, rotate), so the glow tracks
-    // the dot even when the map is not following the driver.
+    _shown = widget.me;
+    _from = widget.me;
+    // Reposition on every map movement (pan, zoom, rotate), so the dot tracks
+    // its spot even when the map is not following the driver.
     _sub = widget.controller.mapEventStream.listen((_) {
       if (mounted) setState(() {});
     });
   }
 
   @override
+  void didUpdateWidget(covariant _DriverLocationArrow old) {
+    super.didUpdateWidget(old);
+    // A fresh fix: ease to it from where the dot visibly is now (not from the
+    // last fix), so a fix landing mid-glide continues smoothly instead of
+    // snapping — the same anti-snap the camera glide uses.
+    if (widget.me != old.me) {
+      _from = _shown;
+      _glide.forward(from: 0);
+    }
+  }
+
+  void _onGlide() {
+    final t = Curves.easeInOut.transform(_glide.value);
+    _shown = LatLng(
+      _from.latitude + (widget.me.latitude - _from.latitude) * t,
+      _from.longitude + (widget.me.longitude - _from.longitude) * t,
+    );
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
     _sub?.cancel();
+    _glide.dispose();
     super.dispose();
   }
 
@@ -577,7 +612,7 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> {
     final double bearing;
     try {
       final camera = widget.controller.camera;
-      at = camera.latLngToScreenOffset(widget.me);
+      at = camera.latLngToScreenOffset(_shown);
       bearing = camera.rotation;
     } catch (_) {
       return const SizedBox.shrink();
