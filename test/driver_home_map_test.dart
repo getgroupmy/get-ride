@@ -230,14 +230,13 @@ void main() {
       expect(find.byKey(arrow), findsNothing);
     });
 
-    testWidgets('with a heading, a rotating arrow is drawn over the dot (north-up map)', (tester) async {
+    testWidgets('with a heading, the heading arrow is drawn over the dot (anchored, not a map marker)', (tester) async {
       await pump(tester, heading: Stream<double>.value(90));
       await tester.pumpAndSettle();
-      // The heading arrow is drawn, and it is a screen overlay (wrapped in a
-      // Transform that turns it to the heading) — not a flutter_map marker, so
-      // there is no projection seam and the rotation is a plain Transform.
+      // The heading arrow is drawn as a screen overlay anchored to the driver's
+      // projected position — not a flutter_map marker — so it tracks the dot
+      // while panned without the native-base projection seam of a marker.
       expect(find.byKey(arrow), findsOneWidget);
-      expect(find.ancestor(of: find.byKey(arrow), matching: find.byType(Transform)), findsWidgets);
       expect(find.descendant(of: find.byType(FlutterMap), matching: find.byKey(arrow)), findsNothing);
     });
   });

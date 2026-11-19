@@ -479,26 +479,18 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     return Stack(
       children: [
         map,
-        // The heading arrow over the location dot, drawn screen-fixed over the
-        // dot's spot (map centre plus [_offset] while following), so it never
-        // drifts off the native dot. In heading-up mode the map turns and the
-        // arrow points straight up; north-up, the arrow turns to the heading
-        // (clockwise from north). Hidden when panned, or before a heading.
-        if (_follow && heading != null && me != null)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Center(
-                child: Transform.translate(
-                  offset: _offset,
-                  child: _headingMode
-                      ? const _HeadingArrow(key: ValueKey('driver-heading-arrow'))
-                      : Transform.rotate(
-                          angle: heading * math.pi / 180,
-                          child: const _HeadingArrow(key: ValueKey('driver-heading-arrow')),
-                        ),
-                ),
-              ),
-            ),
+        // The heading arrow over the location dot, anchored to the driver's real
+        // position so it stays on the dot while the map is panned, not only
+        // while following. It projects the coordinate to the screen on each map
+        // movement and turns to the heading relative to the map's rotation, so
+        // heading-up keeps it pointing up. The native base draws the dot itself;
+        // a small drift from it is possible when panned far / zoomed out.
+        if (me != null && heading != null)
+          _DriverLocationArrow(
+            key: const ValueKey('driver-heading-arrow'),
+            controller: _map,
+            me: me,
+            heading: heading,
           ),
         // The road the driver is on: its limit, or its class as an estimate.
         // Below the page's menu button.
@@ -535,11 +527,75 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   }
 }
 
-/// The heading arrow over the driver's location dot: a soft beam fanning up
-/// from the dot with a crisp chevron. It is drawn pointing straight up; the
-/// caller leaves it as-is in heading-up mode (the map turns instead) or wraps
-/// it in a Transform to turn it to the heading on a north-up map. The native
-/// map draws the blue dot itself underneath; this only shows the direction.
+/// The driver's heading arrow, anchored to their real position so it stays on
+/// the location dot while the map is panned, not only while following. It
+/// projects the coordinate to the screen on every map movement and turns the
+/// arrow to the heading relative to the map's current rotation — so heading-up
+/// (the map turned to the heading) keeps it pointing up, and north-up turns it
+/// to the heading. The native base draws the dot itself; a small drift from it
+/// is possible when panned far / zoomed out (that is the accepted trade for
+/// keeping the arrow anchored, like Apple Maps).
+class _DriverLocationArrow extends StatefulWidget {
+  const _DriverLocationArrow({super.key, required this.controller, required this.me, required this.heading});
+
+  final MapController controller;
+  final LatLng me;
+
+  /// The device heading in degrees (0 = north).
+  final double heading;
+
+  @override
+  State<_DriverLocationArrow> createState() => _DriverLocationArrowState();
+}
+
+class _DriverLocationArrowState extends State<_DriverLocationArrow> {
+  StreamSubscription<MapEvent>? _sub;
+
+  @override
+  void initState() {
+    super.initState();
+    // Reposition on every map movement (pan, zoom, rotate), so the arrow tracks
+    // the dot even when the map is not following the driver.
+    _sub = widget.controller.mapEventStream.listen((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final Offset at;
+    final double bearing;
+    try {
+      final camera = widget.controller.camera;
+      at = camera.latLngToScreenOffset(widget.me);
+      bearing = camera.rotation;
+    } catch (_) {
+      return const SizedBox.shrink();
+    }
+    // The chevron is drawn in a 96×96 box centred on it, so place the box so its
+    // centre sits on the dot.
+    return Positioned(
+      left: at.dx - 48,
+      top: at.dy - 48,
+      child: IgnorePointer(
+        child: Transform.rotate(
+          angle: (widget.heading + bearing) * math.pi / 180,
+          child: const _HeadingArrow(),
+        ),
+      ),
+    );
+  }
+}
+
+/// The heading arrow itself: a soft beam fanning up from the dot with a crisp
+/// chevron, drawn pointing straight up (the caller turns it). The native map
+/// draws the blue dot underneath; this only shows the direction.
 class _HeadingArrow extends StatelessWidget {
   const _HeadingArrow({super.key});
 
