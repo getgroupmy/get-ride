@@ -407,12 +407,13 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     if (driverMapDiagnosticsEnabled) _diagUpdate(context, satellite: satellite, me: me);
     final map = RideMap(
       controller: _map,
-      // The location dot is the map's own: the native base draws it (locked to
-      // its tiles, continuously tracking), and a flutter_map dot elsewhere. The
-      // heading arrow over it is a screen-fixed overlay (below), so it needs no
-      // dot of its own here.
+      // This map draws no location dot: the heading arrow (below) is the single
+      // location indicator, so a native/flutter dot underneath would be a
+      // double. `me` is still given for the opening camera; `showMeDot: false`
+      // suppresses every dot.
       me: me,
       nativeMe: true,
+      showMeDot: false,
       pointZoom: driverHomeZoom,
       // The camera follows the driver instead of framing the pins.
       autoFit: false,

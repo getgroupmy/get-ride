@@ -190,6 +190,7 @@ class RideMap extends StatefulWidget {
     this.trafficSignals = true,
     this.tileOverlays = const [],
     this.nativeMe = false,
+    this.showMeDot = true,
   });
 
   /// Draw the device's own location dot with the native map (MapKit) itself
@@ -198,6 +199,11 @@ class RideMap extends StatefulWidget {
   /// On for the partner's own map, where the driver pans the idle map around;
   /// the rider and confirm maps keep the flutter_map dot.
   final bool nativeMe;
+
+  /// Whether this map draws any location dot at all for [me]. Off where the
+  /// caller draws its own indicator over the dot's spot (the driver idle map's
+  /// heading arrow) and a second dot underneath would be a double.
+  final bool showMeDot;
 
   final LatLng? pickup;
   final LatLng? drop;
@@ -411,7 +417,7 @@ class _RideMapState extends State<RideMap> {
 
   void _syncApple() {
     _appleRoute.value = _appleRouteLine(widget);
-    _appleMe.value = widget.me != null && widget.nativeMe;
+    _appleMe.value = widget.me != null && widget.nativeMe && widget.showMeDot;
   }
 
   /// The route line for MapKit. The live trip line is always MapKit's, locked to
@@ -681,8 +687,10 @@ class _RideMapState extends State<RideMap> {
             // on the real spot while the map pans and zooms; the flutter_map dot
             // would slide off it (the base follows a frame late, and the two
             // projections diverge away from the centre — worse zoomed out).
-            // Everywhere else it is this dot.
+            // Everywhere else it is this dot — unless the caller draws its own
+            // indicator and asked for no dot ([showMeDot] off).
             if (w.me != null &&
+                w.showMeDot &&
                 !(w.nativeMe &&
                     (appleRouteBaseActive(context, satellite: w.satellite) ||
                         googleNativeBaseActive(context, satellite: w.satellite))))
