@@ -59,6 +59,20 @@ void main() {
     });
   });
 
+  group('nextMoving (driving-zoom hysteresis)', () {
+    test('starts moving only above the enter threshold', () {
+      expect(nextMoving(moving: false, speed: 0), isFalse);
+      expect(nextMoving(moving: false, speed: 2.0), isFalse, reason: 'between exit and enter: stays stopped');
+      expect(nextMoving(moving: false, speed: 2.5), isTrue, reason: 'at the enter threshold');
+      expect(nextMoving(moving: false, speed: 9), isTrue);
+    });
+    test('stays moving until below the exit threshold', () {
+      expect(nextMoving(moving: true, speed: 2.0), isTrue, reason: 'between exit and enter: stays moving');
+      expect(nextMoving(moving: true, speed: 1.0), isTrue, reason: 'at the exit threshold');
+      expect(nextMoving(moving: true, speed: 0.5), isFalse, reason: 'crawled to a stop');
+    });
+  });
+
   test('the request picked on the map goes first, the rest keep their order', () {
     final q = [_req('a', 3.1), _req('b', 3.2), _req('c', 3.3)];
     expect(focusFirst(q, 'c').map((r) => r.id), ['c', 'a', 'b']);
