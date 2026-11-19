@@ -554,7 +554,7 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> {
   @override
   void initState() {
     super.initState();
-    // Reposition on every map movement (pan, zoom, rotate), so the arrow tracks
+    // Reposition on every map movement (pan, zoom, rotate), so the glow tracks
     // the dot even when the map is not following the driver.
     _sub = widget.controller.mapEventStream.listen((_) {
       if (mounted) setState(() {});
@@ -578,7 +578,7 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> {
     } catch (_) {
       return const SizedBox.shrink();
     }
-    // The chevron is drawn in a 96×96 box centred on it, so place the box so its
+    // The glow is drawn in a 96×96 box centred on it, so place the box so its
     // centre sits on the dot.
     return Positioned(
       left: at.dx - 48,
@@ -593,9 +593,10 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> {
   }
 }
 
-/// The heading arrow itself: a soft beam fanning up from the dot with a crisp
-/// chevron, drawn pointing straight up (the caller turns it). The native map
-/// draws the blue dot underneath; this only shows the direction.
+/// The heading cone itself (Apple Maps' direction glow): a soft translucent
+/// fan drawn pointing straight up (the caller turns it to the heading). The
+/// native map draws the blue location dot underneath; this only glows the
+/// direction over it.
 class _HeadingArrow extends StatelessWidget {
   const _HeadingArrow();
 
@@ -606,47 +607,32 @@ class _HeadingArrow extends StatelessWidget {
 }
 
 class _HeadingArrowPainter extends CustomPainter {
-  // iOS location blue.
-  static const _blue = Color(0xFF1A73E8);
+  // The iOS heading-cone blue (Apple draws this fan from the location dot).
+  static const _blue = Color(0xFF0A84FF);
 
   @override
   void paint(Canvas canvas, Size size) {
     final c = Offset(size.width / 2, size.height / 2);
-    const reach = 42.0; // how far the beam fans up from the dot
-    const half = 0.55; // half-angle of the beam, radians (~32°)
-    const up = -math.pi / 2; // straight up
+    const reach = 40.0; // how far the cone fans from the dot
+    const half = 0.62; // half-angle of the cone, radians (~36°, ~72° total)
+    const up = -math.pi / 2; // straight up (the caller turns it to the heading)
 
-    // The beam: a wedge opening upward from the dot, brightest at the dot and
-    // fading to nothing at its reach, with feathered edges.
-    final wedge = ui.Path()
+    // Apple Maps' heading cone: a soft translucent wedge opening in the heading
+    // direction, brightest at the dot and fading to nothing at its reach, with
+    // feathered edges. No crisp arrow — the native dot shows the position, this
+    // only glows the direction, so a small projection drift is forgiving.
+    final cone = ui.Path()
       ..moveTo(c.dx, c.dy)
       ..arcTo(Rect.fromCircle(center: c, radius: reach), up - half, half * 2, false)
       ..close();
     canvas.drawPath(
-      wedge,
+      cone,
       Paint()
         ..shader = RadialGradient(
-          colors: [_blue.withValues(alpha: 0.5), _blue.withValues(alpha: 0.0)],
+          colors: [_blue.withValues(alpha: 0.55), _blue.withValues(alpha: 0.0)],
         ).createShader(Rect.fromCircle(center: c, radius: reach))
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
-
-    // A crisp chevron at the dot pointing up, white-outlined for contrast.
-    final head = ui.Path()
-      ..moveTo(c.dx, c.dy - 15) // tip
-      ..lineTo(c.dx - 9, c.dy + 6) // left
-      ..lineTo(c.dx, c.dy + 1) // notch
-      ..lineTo(c.dx + 9, c.dy + 6) // right
-      ..close();
-    canvas.drawPath(
-      head,
-      Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 5
-        ..strokeJoin = StrokeJoin.round,
-    );
-    canvas.drawPath(head, Paint()..color = _blue);
   }
 
   @override

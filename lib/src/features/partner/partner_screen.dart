@@ -166,7 +166,11 @@ final driverPositionStreamProvider = Provider<Stream<LatLng> Function()>((ref) =
       locationSettings: activeLocationSettings(
         ActiveLocationUse.driverOnline,
         accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
+        // Continuous updates (not every 5 m) so the idle map follows the driver
+        // smoothly as they move, like Apple Maps' own dot, and the heading
+        // overlay keeps up. The camera glide (driver_home_map) damps GPS noise.
+        // The trade is more battery while waiting; raise this to save it.
+        distanceFilter: 0,
       ),
     ).map((p) => LatLng(p.latitude, p.longitude));
   } catch (_) {}
