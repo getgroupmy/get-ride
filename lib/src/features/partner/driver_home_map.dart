@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -22,11 +23,12 @@ import 'driver_map_diagnostics_overlay.dart';
 /// while online, where each open request is waiting, with its fare. Tapping
 /// a pin opens that request in [onSelect].
 ///
-/// It opens at street level ([driverHomeZoom]) on the driver and follows
-/// them as they move, keeping them in the middle of the map above the
-/// sheet. Moving the map by hand — panning, zooming or turning it (two
-/// fingers; the idle home map rotates freely) — stops the following; the
-/// recenter button recentres on the driver and straightens it north-up.
+/// It opens at street level ([driverHomeZoom]) on the driver and follows them
+/// as they move. The locate button cycles like Apple/Google Maps: recentre
+/// north-up, then heading-up (the map turns so the driver's direction of travel
+/// is up), then back. The map turns freely by hand (two fingers); a gesture
+/// stops the following, and the compass button (shown once the map is turned)
+/// snaps it back to north-up.
 class DriverHomeMap extends ConsumerStatefulWidget {
   const DriverHomeMap({super.key, required this.me, required this.requests, this.onSelect});
 
@@ -43,14 +45,31 @@ class DriverHomeMap extends ConsumerStatefulWidget {
 /// Street level: the roads and buildings around the driver.
 const driverHomeZoom = 18.0;
 
+/// The next follow / heading-up state when the locate button is tapped, cycling
+/// like Apple/Google Maps: (paused) → follow north-up → follow heading-up →
+/// follow north-up → … Pure.
+({bool follow, bool headingMode}) nextLocateMode({required bool follow, required bool headingMode}) {
+  if (!follow) return (follow: true, headingMode: false);
+  return (follow: true, headingMode: !headingMode);
+}
+
 class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTickerProviderStateMixin {
   final _map = MapController();
   bool _ready = false;
   bool _follow = true;
 
+  /// Whether, while following, the map turns so the driver's heading is up
+  /// (heading-up navigation). Off is north-up. Toggled by the locate button.
+  bool _headingMode = false;
+
+  /// The map's current rotation in degrees (0 = north-up), tracked from the map
+  /// events so the compass button turns with it.
+  double _bearing = 0;
+  StreamSubscription<MapEvent>? _mapEvents;
+
   /// The device heading (the GPS course while moving, the compass while stopped;
-  /// data/compass.dart), null until a sensor answers. The arrow on the location
-  /// dot (below) turns to it. The map itself stays north-up.
+  /// data/compass.dart), null until a sensor answers. While following it turns
+  /// the arrow over the driver's dot, and in heading-up mode it turns the map.
   double? _heading;
 
   /// The camera's glide from where it is to the driver.
@@ -66,6 +85,17 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   @override
   void initState() {
     super.initState();
+    // Keep the compass button turned to the map: watch the camera's rotation.
+    _mapEvents = _map.mapEventStream.listen((_) {
+      if (!mounted) return;
+      final double r;
+      try {
+        r = _map.camera.rotation;
+      } catch (_) {
+        return;
+      }
+      if ((r - _bearing).abs() > 0.1) setState(() => _bearing = r);
+    });
     // Debug-only: redraw when the tester locks/clears the diagnostic reference
     // marker (its button lives in the overlay, not this widget).
     if (driverMapDiagnosticsEnabled) driverMapReference.addListener(_diagRefChanged);
@@ -73,6 +103,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
 
   @override
   void dispose() {
+    _mapEvents?.cancel();
     if (driverMapDiagnosticsEnabled) driverMapReference.removeListener(_diagRefChanged);
     _glide.dispose();
     _map.dispose();
@@ -92,9 +123,21 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     }
   }
 
-  /// Where the driver's dot sits on screen: a little above the sheet. The
-  /// heading-arrow overlay (below) is placed over the same spot.
-  Offset get _offset => Offset(0, -MapBottomInset.of(context) / 2);
+  /// Heading-up and actually following with a heading to turn to.
+  bool get _headingUp => _follow && _headingMode && _heading != null;
+
+  /// Where the driver's dot sits on screen: dead-centre in heading-up mode (so
+  /// the map turns cleanly around them), else a little above the sheet.
+  Offset get _offset => _headingUp ? Offset.zero : Offset(0, -MapBottomInset.of(context) / 2);
+
+  /// Turn the map so heading [h] points up (north-up when null). The native
+  /// Apple/Google base rotates with the flutter_map camera, so tiles and
+  /// overlays turn together.
+  void _face(double? h) {
+    try {
+      _map.rotate(h == null ? 0 : -h);
+    } catch (_) {}
+  }
 
   /// Glides the camera onto the driver, at the zoom the map is at.
   void _center({bool jump = false}) {
@@ -152,14 +195,20 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     }
   }
 
-  void _recenter() {
-    setState(() => _follow = true);
+  /// The locate button: cycle (paused) → follow north-up → follow heading-up →
+  /// follow north-up, recentring and re-orienting the map to match.
+  void _onLocate() {
+    final next = nextLocateMode(follow: _follow, headingMode: _headingMode);
+    setState(() {
+      _follow = next.follow;
+      _headingMode = next.headingMode;
+    });
     _glide.stop();
     _from = _to = null;
     if (driverMapDiagnosticsEnabled) {
       driverMapLive
         ..gesture = false
-        ..follow = true
+        ..follow = _follow
         ..touch();
       _diagRecord(DriverMapEventKind.recenterTap, zoom: _safeZoom());
       _diagRecord(DriverMapEventKind.followChanged);
@@ -167,18 +216,30 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     final me = widget.me;
     if (me == null) return;
     try {
-      // Resume following at the zoom the driver left the map at, not back at
-      // street level — jumping the zoom on recentre is a surprise when they
-      // had zoomed out to look around. The map is already north-up.
+      // Resume at the zoom the driver left the map at, not back at street level,
+      // and orient it: heading-up turns to the heading, north-up straightens.
       _map.move(me, _map.camera.zoom, offset: _offset);
+      _face(_headingUp ? _heading : null);
     } catch (_) {}
   }
 
-  /// A fresh heading: remember it so the arrow on the dot turns to it. The map
-  /// stays north-up — only the arrow moves.
+  /// The compass button: snap back to north-up and leave heading-up mode, but
+  /// keep following. Shown only once the map is turned away from north.
+  void _onCompass() {
+    setState(() => _headingMode = false);
+    try {
+      _face(null);
+      final me = widget.me;
+      if (_follow && me != null) _map.move(me, _map.camera.zoom, offset: _offset);
+    } catch (_) {}
+  }
+
+  /// A fresh heading: remember it, turn the arrow over the dot to it, and in
+  /// heading-up mode turn the map so the heading is up.
   void _onHeading(double h) {
     if (_heading == h || !mounted) return;
     setState(() => _heading = h);
+    if (_headingUp && _ready) _face(h);
     if (driverMapDiagnosticsEnabled) {
       driverMapLive
         ..headingDeg = h
@@ -325,9 +386,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     final me = widget.me, requests = widget.requests, onSelect = widget.onSelect;
     final heading = _heading;
     final t = Theme.of(context);
-    // The device heading turns the arrow over the driver's dot (the map stays
-    // north-up). Only this map listens, so the sensor runs while the driver
-    // waits and stops when they leave.
+    // The device heading turns the arrow over the driver's dot, and in
+    // heading-up mode turns the map. Only this map listens, so the sensor runs
+    // while the driver waits and stops when they leave.
     ref.listen(deviceHeadingProvider, (_, next) {
       final h = next.value;
       if (h != null && mounted) _onHeading(h);
@@ -355,13 +416,15 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
       pointZoom: driverHomeZoom,
       // The camera follows the driver instead of framing the pins.
       autoFit: false,
-      // The idle home map turns freely: two fingers rotate it (a gesture
-      // stops the following, as pan and zoom do; recenter straightens it).
+      // The idle home map turns freely: two fingers rotate it (a gesture stops
+      // the following; the compass button straightens it, the locate button
+      // cycles north-up / heading-up).
       rotate: true,
       onGesture: _onGesture,
       onReady: () {
         _ready = true;
         _center(jump: true);
+        _face(_headingUp ? _heading : null);
         if (driverMapDiagnosticsEnabled) _diagRecord(DriverMapEventKind.mapReady);
       },
       satellite: satellite,
@@ -416,23 +479,23 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     return Stack(
       children: [
         map,
-        // The heading arrow over the location dot: a chevron on the driver's
-        // dot that turns to the way they face/drive. Drawn screen-fixed over the
-        // dot's spot — while following, the dot sits at the map centre plus
-        // [_offset] — so it never drifts off the native dot and its rotation is
-        // a plain Transform (no map-rotation sign to get wrong). Clockwise from
-        // north matches the heading, since the map is north-up. Hidden when
-        // panned (the dot is no longer under this spot) or before a heading.
+        // The heading arrow over the location dot, drawn screen-fixed over the
+        // dot's spot (map centre plus [_offset] while following), so it never
+        // drifts off the native dot. In heading-up mode the map turns and the
+        // arrow points straight up; north-up, the arrow turns to the heading
+        // (clockwise from north). Hidden when panned, or before a heading.
         if (_follow && heading != null && me != null)
           Positioned.fill(
             child: IgnorePointer(
               child: Center(
                 child: Transform.translate(
                   offset: _offset,
-                  child: Transform.rotate(
-                    angle: heading * math.pi / 180,
-                    child: const _HeadingArrow(key: ValueKey('driver-heading-arrow')),
-                  ),
+                  child: _headingMode
+                      ? const _HeadingArrow(key: ValueKey('driver-heading-arrow'))
+                      : Transform.rotate(
+                          angle: heading * math.pi / 180,
+                          child: const _HeadingArrow(key: ValueKey('driver-heading-arrow')),
+                        ),
                 ),
               ),
             ),
@@ -450,12 +513,18 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
             // tuck against it on a device whose sheet rests tight to them.
             bottom: mapAttributionClearance + MapBottomInset.cornerOf(context) + inset,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              // Traffic (when configured), then map view above recenter.
+              // The compass: only once the map is turned away from north. Tap to
+              // straighten it (and leave heading-up).
+              if (_bearing.abs() > 0.5) ...[
+                CompassButton(bearing: _bearing, onPressed: _onCompass),
+                const SizedBox(height: 8),
+              ],
+              // Traffic (when configured), then map view above the locate button.
               const TrafficButton(),
               const MapTypeButton(),
               const SizedBox(height: 8),
-              // Expo's driver map recenters on the driver.
-              RecenterButton(onPressed: me == null ? null : _recenter),
+              // The locate button cycles recenter north-up → heading-up.
+              RecenterButton(onPressed: me == null ? null : _onLocate, headingUp: _headingUp),
             ]),
           ),
         ),
@@ -467,10 +536,10 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
 }
 
 /// The heading arrow over the driver's location dot: a soft beam fanning up
-/// from the dot with a crisp chevron, pointing the way the driver faces/drives.
-/// It is drawn pointing straight up and turned to the heading by a Transform in
-/// the caller, so it pivots around the dot at its centre. The native map draws
-/// the blue dot itself underneath; this only shows the direction.
+/// from the dot with a crisp chevron. It is drawn pointing straight up; the
+/// caller leaves it as-is in heading-up mode (the map turns instead) or wraps
+/// it in a Transform to turn it to the heading on a north-up map. The native
+/// map draws the blue dot itself underneath; this only shows the direction.
 class _HeadingArrow extends StatelessWidget {
   const _HeadingArrow({super.key});
 

@@ -10,6 +10,7 @@ import 'package:get_ride/src/core/vehicle_assignment.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/data/vehicle_assignment_repository.dart';
+import 'package:get_ride/src/features/partner/driver_home_map.dart';
 import 'package:get_ride/src/features/partner/partner_screen.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:go_router/go_router.dart';
@@ -45,6 +46,19 @@ RideRequest _req(String id, double lat, {double fare = 12}) => RideRequest({
 });
 
 void main() {
+  group('nextLocateMode (locate button cycle)', () {
+    test('paused → follow north-up → follow heading-up → north-up …', () {
+      // Paused (a gesture stopped following): first tap resumes north-up.
+      expect(nextLocateMode(follow: false, headingMode: false), (follow: true, headingMode: false));
+      expect(nextLocateMode(follow: false, headingMode: true), (follow: true, headingMode: false),
+          reason: 'a paused heading-up resumes north-up first');
+      // Following north-up: tap engages heading-up.
+      expect(nextLocateMode(follow: true, headingMode: false), (follow: true, headingMode: true));
+      // Following heading-up: tap goes back to north-up.
+      expect(nextLocateMode(follow: true, headingMode: true), (follow: true, headingMode: false));
+    });
+  });
+
   test('the request picked on the map goes first, the rest keep their order', () {
     final q = [_req('a', 3.1), _req('b', 3.2), _req('c', 3.3)];
     expect(focusFirst(q, 'c').map((r) => r.id), ['c', 'a', 'b']);
