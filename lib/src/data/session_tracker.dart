@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../core/session_telemetry.dart';
 import '../core/installed_app.dart';
 import 'function_region.dart';
+import 'shared_location.dart';
 
 /// Where session telemetry goes. [SupabaseSessionSink] in the app, a fake in
 /// tests.
@@ -106,8 +107,8 @@ class GeolocatorTelemetryLocation implements TelemetryLocation {
   }
 
   @override
-  Stream<TelemetryFix> watch() => Geolocator.getPositionStream(
-    locationSettings: LocationSettings(
+  Stream<TelemetryFix> watch() => sharedPositionStream(
+    LocationSettings(
       accuracy: LocationAccuracy.medium,
       distanceFilter: locationMoveMeters.round(),
     ),

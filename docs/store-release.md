@@ -151,7 +151,7 @@ nothing in the workflow changes. The types, and what to say:
 
 | Type | From | Use |
 | --- | --- | --- |
-| `FOREGROUND_SERVICE_LOCATION` | the app (geolocator) | the driver's live position to the rider on the way to pickup and during the trip, screen off included |
+| `FOREGROUND_SERVICE_LOCATION` | the app (geolocator) | a driver's live position while they are online for requests, to the rider on the way to pickup and during the trip, and while Meter Digital measures a fare — screen off included |
 | `FOREGROUND_SERVICE_PHONE_CALL` | flutter_callkit_incoming | an incoming in-app voice call (rider, driver, support) rings with the app in the background |
 | `FOREGROUND_SERVICE_MICROPHONE` | flutter_callkit_incoming | the audio of an ongoing in-app voice call keeps running in the background |
 

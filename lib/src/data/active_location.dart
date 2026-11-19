@@ -25,6 +25,10 @@ enum ActiveLocationUse {
   final String text;
 }
 
+/// How often Android is asked for a fix while someone is driving: as often as
+/// a phone's GPS gives them, and as often as iOS does without being asked.
+const driverFixInterval = Duration(seconds: 1);
+
 /// The location settings for [use] on this platform, keeping the stream
 /// alive in the background.
 LocationSettings activeLocationSettings(
@@ -40,6 +44,12 @@ LocationSettings activeLocationSettings(
       return AndroidSettings(
         accuracy: accuracy,
         distanceFilter: distanceFilter,
+        // A fix a second for whoever is driving. The plugin's own default is
+        // one every five seconds, which draws a moving car in jumps and
+        // measures a bend as the straight line across it (the meter's fare, the
+        // trip's distance). The passenger's phone, which is only being found,
+        // keeps the default.
+        intervalDuration: use == ActiveLocationUse.riderTrip ? null : driverFixInterval,
         foregroundNotificationConfig: ForegroundNotificationConfig(
           notificationTitle: use.title,
           notificationText: use.text,
@@ -62,5 +72,36 @@ LocationSettings activeLocationSettings(
       );
     default:
       return LocationSettings(accuracy: accuracy, distanceFilter: distanceFilter);
+  }
+}
+
+/// The location settings for a map that follows the driver while it is on
+/// screen, the way a navigation app does: the best fix the phone can give
+/// (iOS's navigation accuracy, with its sensor fusion and the automotive
+/// activity type), every fix rather than every few metres, and one a second on
+/// Android, whose plugin otherwise asks for one every five.
+///
+/// Nothing here keeps running in the background: that is
+/// [activeLocationSettings]'s job, for what is live while the phone is in a
+/// pocket (online, a trip, the meter). The shared stream
+/// (shared_location.dart) runs at the strongest of whatever is being asked
+/// for, so a map on screen never lowers those, and they never coarsen it.
+LocationSettings mapFollowLocationSettings({TargetPlatform? platform, bool? web}) {
+  const accuracy = LocationAccuracy.bestForNavigation;
+  if (web ?? kIsWeb) return const LocationSettings(accuracy: accuracy);
+  switch (platform ?? defaultTargetPlatform) {
+    case TargetPlatform.android:
+      return AndroidSettings(accuracy: accuracy, intervalDuration: driverFixInterval);
+    case TargetPlatform.iOS:
+    case TargetPlatform.macOS:
+      return AppleSettings(
+        accuracy: accuracy,
+        activityType: ActivityType.automotiveNavigation,
+        pauseLocationUpdatesAutomatically: false,
+        allowBackgroundLocationUpdates: false,
+        showBackgroundLocationIndicator: false,
+      );
+    default:
+      return const LocationSettings(accuracy: accuracy);
   }
 }

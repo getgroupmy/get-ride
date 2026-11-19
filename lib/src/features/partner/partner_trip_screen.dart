@@ -26,6 +26,7 @@ import '../../core/format.dart';
 import '../../core/navigation_app.dart';
 import '../../core/trip_charges.dart';
 import '../../core/trip_checkpoint.dart';
+import '../../data/shared_location.dart';
 import '../../data/telematics_tracker.dart' show telematicsTrackerProvider;
 import '../../core/trip_progress.dart';
 import '../../core/trip_start.dart';
@@ -109,10 +110,13 @@ final tripPositionStreamProvider = Provider<Stream<TripFix> Function()>((ref) =>
     var perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
     if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
-    yield* Geolocator.getPositionStream(
-      locationSettings: activeLocationSettings(
+    yield* sharedPositionStream(
+      // The trip is what is being driven and paid for: the best fix the phone
+      // gives, whatever else is listening (shared_location.dart). The 15 m is
+      // this screen's own pace, not the GPS's.
+      activeLocationSettings(
         ActiveLocationUse.driverTrip,
-        accuracy: LocationAccuracy.high,
+        accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 15,
       ),
     ).map((p) => (at: LatLng(p.latitude, p.longitude), heading: p.heading < 0 ? null : p.heading, accuracy: p.accuracy));

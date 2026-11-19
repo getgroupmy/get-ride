@@ -262,7 +262,7 @@ void main() {
       final p = Probe();
       await p.run(() async {
         for (var i = 1; i <= 5; i++) {
-          fixes.add((at: LatLng(pickup.latitude - i * 0.0001, pickup.longitude), speed: null, course: null));
+          fixes.add((at: LatLng(pickup.latitude - i * 0.0001, pickup.longitude), speed: null, course: null, time: null, accuracy: null));
           await second(tester);
         }
       });

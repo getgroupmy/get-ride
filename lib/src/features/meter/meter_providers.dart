@@ -8,6 +8,7 @@ import '../../core/meter_console.dart';
 import '../../core/orientation.dart';
 import '../../core/vehicle_assignment.dart';
 import '../../data/active_location.dart';
+import '../../data/shared_location.dart';
 import '../../data/vehicle_assignment_repository.dart';
 import '../partner/driver_permit_screen.dart' show driverPermitProvider;
 import '../../admin/screens/meterapp/meter_logic.dart';
@@ -71,8 +72,8 @@ class GeolocatorMeterLocation implements MeterLocation {
 
   @override
   Stream<MeterFix> fixes() =>
-      Geolocator.getPositionStream(
-        locationSettings: activeLocationSettings(ActiveLocationUse.meter, accuracy: LocationAccuracy.bestForNavigation),
+      sharedPositionStream(
+        activeLocationSettings(ActiveLocationUse.meter, accuracy: LocationAccuracy.bestForNavigation),
       ).map(
         (p) => MeterFix(
           latitude: p.latitude,
