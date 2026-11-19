@@ -103,6 +103,8 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   double? _speedEma; // smoothed speed, m/s
   LatLng? _lastFix;
   int? _lastFixMs;
+  int _fixIntervalMs = 500; // smoothed gap between fixes
+  int _followMs = 500; // how long the follow glide runs (a touch over the gap)
 
   /// The live traffic tiles over the map, and the source they were made for.
   List<Widget> _overlays = const [];
@@ -167,6 +169,11 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     final speed = metres / dt;
     // Exponential smoothing, so one noisy fix cannot flip the state.
     _speedEma = _speedEma == null ? speed : _speedEma! * 0.6 + speed * 0.4;
+    // Track the gap between fixes so the follow can glide for about that long
+    // (a touch over it): the dot then moves at a steady speed between fixes and
+    // arrives as the next lands, like a nav app, instead of easing to each fix
+    // and pausing (which read as lag at ~1 fix/second).
+    _fixIntervalMs = (_fixIntervalMs * 0.6 + (now - lastMs) * 0.4).round();
     final wasMoving = _moving;
     _moving = nextMoving(moving: _moving, speed: _speedEma!);
     // Starting to drive turns the map so the way they are going points up
@@ -230,13 +237,20 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     // the live centre each restart continues smoothly from the visible spot.
     _from = camera.center;
     _to = me;
+    // Glide for a little longer than the gap between fixes, so a fresh fix
+    // usually lands before the glide ends and the motion stays continuous
+    // rather than finishing early and stalling.
+    _followMs = (_fixIntervalMs * 1.25).round().clamp(250, 1600);
+    _glide.duration = Duration(milliseconds: _followMs);
     _glide.forward(from: 0);
   }
 
   void _glideTick() {
     final a = _from, b = _to;
     if (a == null || b == null || !mounted) return;
-    final t = Curves.easeInOut.transform(_glide.value);
+    // Linear: a steady-speed glide between fixes (an ease curve crawled at the
+    // start of each fix, which read as the lag/stutter).
+    final t = _glide.value;
     try {
       _map.move(
         LatLng(a.latitude + (b.latitude - a.latitude) * t, a.longitude + (b.longitude - a.longitude) * t),
@@ -568,6 +582,7 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
             controller: _map,
             me: me,
             heading: heading,
+            followMs: _followMs,
           ),
         // The road the driver is on: its limit, or its class as an estimate.
         // Below the page's menu button.
@@ -613,7 +628,13 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
 /// is possible when panned far / zoomed out (that is the accepted trade for
 /// keeping the arrow anchored, like Apple Maps).
 class _DriverLocationArrow extends StatefulWidget {
-  const _DriverLocationArrow({super.key, required this.controller, required this.me, required this.heading});
+  const _DriverLocationArrow({
+    super.key,
+    required this.controller,
+    required this.me,
+    required this.heading,
+    required this.followMs,
+  });
 
   final MapController controller;
   final LatLng me;
@@ -621,6 +642,10 @@ class _DriverLocationArrow extends StatefulWidget {
   /// The device heading in degrees (0 = north), or null when there is no
   /// sensor yet — then only the dot is drawn, with no direction cone.
   final double? heading;
+
+  /// How long to glide to each new fix, in lockstep with the camera (the gap
+  /// between fixes plus a little, so the dot moves at a steady speed).
+  final int followMs;
 
   @override
   State<_DriverLocationArrow> createState() => _DriverLocationArrowState();
@@ -631,12 +656,12 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleT
 
   // The GPS stream delivers discrete fixes, so projecting the raw position made
   // the dot leap to each new fix (and then the camera glided to catch up — the
-  // jumpy motion). Instead the drawn position eases from where the dot is to
-  // each new fix over the same curve and time as the camera glide, so the two
-  // move in lockstep: while following, the dot stays put and the world slides
-  // under it (as the native dot did); while panned it glides rather than jumps.
+  // jumpy motion). Instead the drawn position glides from where the dot is to
+  // each new fix at a steady speed over the gap between fixes, in lockstep with
+  // the camera, so the two move together and the motion stays continuous like a
+  // nav app rather than easing to each fix and pausing.
   late final AnimationController _glide =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 400))..addListener(_onGlide);
+      AnimationController(vsync: this, duration: Duration(milliseconds: widget.followMs))..addListener(_onGlide);
   LatLng _shown = const LatLng(0, 0); // the position actually drawn
   LatLng _from = const LatLng(0, 0); // where the current ease started
 
@@ -660,12 +685,14 @@ class _DriverLocationArrowState extends State<_DriverLocationArrow> with SingleT
     // snapping — the same anti-snap the camera glide uses.
     if (widget.me != old.me) {
       _from = _shown;
+      _glide.duration = Duration(milliseconds: widget.followMs);
       _glide.forward(from: 0);
     }
   }
 
   void _onGlide() {
-    final t = Curves.easeInOut.transform(_glide.value);
+    // Linear: a steady-speed glide between fixes, matching the camera.
+    final t = _glide.value;
     _shown = LatLng(
       _from.latitude + (widget.me.latitude - _from.latitude) * t,
       _from.longitude + (widget.me.longitude - _from.longitude) * t,
