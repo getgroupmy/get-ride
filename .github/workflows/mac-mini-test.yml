@@ -7,14 +7,27 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  mac-mini-smoke-test:
     runs-on: [self-hosted, macOS, ARM64]
-
+    timeout-minutes: 10
     steps:
-      - name: Check Mac Mini
+      - name: Identify runner and toolchain
+        shell: bash
         run: |
-          echo "Running on Mac Mini"
-          hostname
+          set -euo pipefail
+          echo "RUNNER_NAME=$RUNNER_NAME"
+          echo "RUNNER_OS=$RUNNER_OS"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          echo "HOSTNAME=$(hostname)"
           sw_vers
           uname -m
           xcodebuild -version
+      - name: Assert Mac mini identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$RUNNER_NAME" = "mac-mini-getride"
+          test "$RUNNER_OS" = "macOS"
+          test "$RUNNER_ARCH" = "ARM64"
+          test "$(uname -m)" = "arm64"
+          echo "Mac mini self-hosted runner verified"
