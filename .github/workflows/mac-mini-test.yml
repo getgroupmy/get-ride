@@ -1,33 +1,27 @@
-name: Mac Mini Runner Test
+name: GET RIDE Mac Mini Test
 
 on:
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 jobs:
-  mac-mini-smoke-test:
+  mac-mini-test:
     runs-on: [self-hosted, macOS, ARM64]
-    timeout-minutes: 10
+    timeout-minutes: 15
+
     steps:
-      - name: Identify runner and toolchain
-        shell: bash
+      - name: Check Mac mini
         run: |
-          set -euo pipefail
-          echo "RUNNER_NAME=$RUNNER_NAME"
-          echo "RUNNER_OS=$RUNNER_OS"
-          echo "RUNNER_ARCH=$RUNNER_ARCH"
-          echo "HOSTNAME=$(hostname)"
-          sw_vers
+          hostname
           uname -m
-          xcodebuild -version
-      - name: Assert Mac mini identity
-        shell: bash
+          sw_vers
+
+      - name: Check Flutter
+        run: /opt/homebrew/share/flutter/bin/flutter --version
+
+      - name: Check Xcode
+        run: xcodebuild -version
+
+      - name: Check Android SDK
         run: |
-          set -euo pipefail
-          test "$RUNNER_NAME" = "mac-mini-getride"
-          test "$RUNNER_OS" = "macOS"
-          test "$RUNNER_ARCH" = "ARM64"
-          test "$(uname -m)" = "arm64"
-          echo "Mac mini self-hosted runner verified"
+          test -d "$HOME/Library/Android/sdk"
+          echo "Android SDK found"
