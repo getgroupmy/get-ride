@@ -2,7 +2,7 @@ import 'dart:async' show scheduleMicrotask;
 import 'dart:math' as math;
 
 import 'package:apple_maps_flutter/apple_maps_flutter.dart' as am;
-import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/foundation.dart' show ValueListenable, listEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -191,6 +191,7 @@ class RideMap extends StatefulWidget {
     this.tileOverlays = const [],
     this.nativeMe = false,
     this.showMeDot = true,
+    this.meLive,
   });
 
   /// Draw the device's own location dot with the native map (MapKit) itself
@@ -205,6 +206,14 @@ class RideMap extends StatefulWidget {
   /// welds the heading cone to its own dot so the two can never drift apart,
   /// which a separately-drawn native dot does during motion.
   final bool showMeDot;
+
+  /// Where the device is a frame at a time, where the caller keeps up with it
+  /// (the rider's home map, live_position.dart). The location dot is then drawn
+  /// there — in a layer of its own, which a new position redraws alone — and at
+  /// [me] until the first live position comes. Only the dot moves with it:
+  /// [me] is still what the camera counts, so a rider walking along does not
+  /// drag the map, the pickup pin or its address with them.
+  final ValueListenable<LatLng?>? meLive;
 
   final LatLng? pickup;
   final LatLng? drop;
@@ -665,6 +674,13 @@ class _RideMapState extends State<RideMap> {
     // The flutter_map line: on every base except where MapKit draws it — the
     // live trip on the Apple base, and the confirm map once its native marks are up.
     final appleDrawsLine = appleActive && (!w.dotPins || nativeMarks);
+    // Where a native map draws the location dot itself (the partner map on the
+    // Apple or Google base), it is locked to the base and stays on the real
+    // spot while the map pans and zooms; the flutter_map dot would slide off it
+    // (the base follows a frame late, and the two projections diverge away from
+    // the centre — worse zoomed out). Everywhere else it is the flutter_map dot.
+    final flutterDot = w.showMeDot &&
+        !(w.nativeMe && (appleActive || googleNativeBaseActive(context, satellite: w.satellite)));
     return Stack(
       fit: StackFit.passthrough,
       children: [
@@ -679,34 +695,26 @@ class _RideMapState extends State<RideMap> {
         if (w.trafficSignals) const TrafficSignalsLayer(),
         ...w.extraLayers,
         if (w.extraMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: w.extraMarkers),
+        // The location dot kept up with a frame at a time ([RideMap.meLive]):
+        // under the pins, as the dot below is, and in a layer of its own so a
+        // new position redraws the dot and nothing else — not the pins and
+        // labels beside it, nor the native map under them.
+        if (flutterDot && w.meLive != null)
+          RepaintBoundary(
+            child: ValueListenableBuilder<LatLng?>(
+              valueListenable: w.meLive!,
+              builder: (context, live, _) {
+                final at = live ?? w.me;
+                if (at == null) return const SizedBox.shrink();
+                return MarkerLayer(rotate: true, markers: [_liveMeDot(at)]);
+              },
+            ),
+          ),
         MarkerLayer(
           // Pins stand upright on a map turned to the car's heading…
           rotate: true,
           markers: [
-            // Where a native map draws the location dot itself (the partner map
-            // on the Apple or Google base), it is locked to the base and stays
-            // on the real spot while the map pans and zooms; the flutter_map dot
-            // would slide off it (the base follows a frame late, and the two
-            // projections diverge away from the centre — worse zoomed out).
-            // Everywhere else it is this dot.
-            if (w.me != null &&
-                w.showMeDot &&
-                !(w.nativeMe &&
-                    (appleRouteBaseActive(context, satellite: w.satellite) ||
-                        googleNativeBaseActive(context, satellite: w.satellite))))
-              Marker(
-                point: w.me!,
-                width: 22,
-                height: 22,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.blue,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 3),
-                    boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black26)],
-                  ),
-                ),
-              ),
+            if (flutterDot && w.meLive == null && w.me != null) _meDot(w.me!),
             // Hidden while MapKit draws these marks itself (nativeMarks) so the
             // two never show at once.
             if (w.dotPins && !nativeMarks) ...[
@@ -780,6 +788,33 @@ class _RideMapState extends State<RideMap> {
       ],
     );
   }
+
+  /// The device's own location: a blue dot ringed in white, on its point.
+  static const _meDotSize = 22.0;
+
+  static Widget _meDotMark() => Container(
+    key: const ValueKey('map-me-dot'),
+    decoration: BoxDecoration(
+      color: Colors.blue,
+      shape: BoxShape.circle,
+      border: Border.all(color: Colors.white, width: 3),
+      boxShadow: const [BoxShadow(blurRadius: 6, color: Colors.black26)],
+    ),
+  );
+
+  static Marker _meDot(LatLng at) => Marker(point: at, width: _meDotSize, height: _meDotSize, child: _meDotMark());
+
+  /// The same dot for a position that changes every frame ([RideMap.meLive]):
+  /// in a layer of its own, with room in it for the dot's shadow, so it is
+  /// drawn once and moved rather than painted, shadow and all, every frame.
+  static Marker _liveMeDot(LatLng at) => Marker(
+    point: at,
+    width: _meDotSize + 24,
+    height: _meDotSize + 24,
+    child: RepaintBoundary(
+      child: Center(child: SizedBox.square(dimension: _meDotSize, child: _meDotMark())),
+    ),
+  );
 
   /// inDrive's confirm map: black marks with white glyphs on a light map,
   /// and the reverse on a dark one (as [PickupPin]); the route in the same.
