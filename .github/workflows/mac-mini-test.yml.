@@ -1,0 +1,20 @@
+name: Mac Mini Runner Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: [self-hosted, macOS, ARM64]
+
+    steps:
+      - name: Check Mac Mini
+        run: |
+          echo "Running on Mac Mini"
+          hostname
+          sw_vers
+          uname -m
+          xcodebuild -version
