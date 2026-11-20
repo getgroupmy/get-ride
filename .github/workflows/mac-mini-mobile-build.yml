@@ -36,6 +36,7 @@ jobs:
           command -v pod
           pod --version
           command -v flutter
+          flutter --version
           xcodebuild -version
       - name: Install dependencies
         run: flutter pub get
