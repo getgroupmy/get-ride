@@ -38,10 +38,9 @@ jobs:
         run: flutter build ios --release --no-codesign --no-pub
 
       - name: Package iOS
-             |
-             |
-ackage iOS
- ios --release -       build/ios/iphoneos/Runner.app \
+        run: |
+          ditto -c -k --keepParent \
+            build/ios/iphoneos/Runner.app \
             get-ride-ios-unsigned.zip
 
       - name: Upload iOS
