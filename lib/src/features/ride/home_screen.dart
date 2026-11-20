@@ -104,6 +104,7 @@ import '../../data/geo_service.dart';
 import '../../data/route_eta.dart';
 import '../../data/live_tables.dart';
 import '../../data/current_country_reporter.dart';
+import '../../data/live_fix.dart';
 import '../../data/location_source.dart';
 import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired, promptLivenessOnLaunch;
 import '../../data/permission_probe.dart';
@@ -127,6 +128,7 @@ import '../../providers.dart';
 import 'welcome_back_sheet.dart';
 import '../../widgets/common.dart';
 import '../../widgets/map_drag_pin.dart';
+import '../../widgets/live_position.dart';
 import '../../widgets/map_recenter.dart';
 import '../../widgets/map_sheet_layout.dart';
 import '../../widgets/map_type_button.dart';
@@ -215,8 +217,50 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProviderStateMixin {
   LatLng? _me;
+
+  // ---- Where the rider is, live (live_position.dart) ----
+  /// The rider's own dot on the map, kept up with as they move. Only the dot:
+  /// [_me] — the fix this screen located them at, which the pickup and the
+  /// camera were set from — the pickup pin and its address stay where they are
+  /// until the rider drags the map or taps recenter.
+  late final LivePosition _live;
+  StreamSubscription<LiveFix>? _liveFixes;
+
+  /// Whether this map is the one showing: not under another tab or page.
+  bool _showing = false;
+
+  /// Keeps up with the rider while the map is showing. Nothing comes while
+  /// location is off or not allowed (it never asks: [_locate] does), and a fix
+  /// from [_locate] starts it again once it is.
+  void _startLive() {
+    if (_liveFixes != null || !mounted || !_showing) return;
+    _liveFixes = ref.read(liveFixesProvider)().listen(
+      _live.take,
+      onError: (_) {},
+      onDone: () {
+        // The fixes have stopped: the last one is no longer where they are.
+        _liveFixes = null;
+        _live.clear();
+      },
+    );
+  }
+
+  void _stopLive() {
+    _liveFixes?.cancel();
+    _liveFixes = null;
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The GPS is only kept on for the dot while there is a dot to look at.
+    final showing = TickerMode.valuesOf(context).enabled;
+    if (showing == _showing) return;
+    _showing = showing;
+    showing ? _startLive() : _stopLive();
+  }
   Place? _here;
   Place? _pickup;
   Place? _drop;
@@ -712,6 +756,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _live = LivePosition(vsync: this);
     _locate();
     _ongoingRead = _checkOngoing();
     _lifecycle = AppLifecycleListener(onResume: () {
@@ -897,6 +942,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _carsTick.dispose();
     _carsTimer?.cancel();
     _liveFeed.dispose();
+    _stopLive();
+    _live.dispose();
     _lifecycle?.dispose();
     _promoTimer?.cancel();
     _placeFeesTimer?.cancel();
@@ -976,7 +1023,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// On the home map it also puts the pickup there: the pin floats up and
   /// drops on the fix, as if the map had been dragged under it.
   void _recenter() {
-    if (recenterMap(_map, _me, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(_me!);
+    // Where they are now, while the dot is being kept up with; else the last fix.
+    final at = _live.latest ?? _me;
+    if (recenterMap(_map, at, zoom: homeStreetZoom, offset: _focusOffset)) _pinOnto(at!);
     unawaited(_locateAsked());
   }
 
@@ -1039,6 +1088,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await for (final p in locateFastThenFine(ref.read(locationSourceProvider))) {
       if (!mounted) return;
       setState(() => _me = p);
+      // A fix: location is allowed, so the dot can be kept up with from here on.
+      _startLive();
       // Record the country we're in, so the ID requirement + booking gate follow
       // where the rider actually is (migration 0400). Fire-and-forget.
       unawaited(ref.read(currentCountryReporterProvider).reportFrom(p));
@@ -3756,6 +3807,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ], () => RideMap(
               controller: _map,
               me: _me,
+              // The dot follows the rider as they move; the camera, the pin and
+              // its address do not ([_live]).
+              meLive: _live.shown,
               pickup: _pickup?.point,
               showPickup: !_pinMoving,
               hideCredit: _pinMoving,

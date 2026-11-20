@@ -35,6 +35,17 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
     for (final name in ['flutter.baseflow.com/geolocator', 'flutter.baseflow.com/geolocator_android']) {
       messenger.setMockMethodCallHandler(MethodChannel(name), geolocator);
     }
+    // And its position updates: a phone that has allowed location starts them
+    // when asked (the rider's home map follows them, as the driver's does) and
+    // then has no new fix to give. Unanswered, the request to start them was
+    // reported as an error by any test that waits on real time (a screenshot).
+    for (final name in [
+      'flutter.baseflow.com/geolocator_updates',
+      'flutter.baseflow.com/geolocator_updates_android',
+      'flutter.baseflow.com/geolocator_updates_apple',
+    ]) {
+      messenger.setMockMethodCallHandler(MethodChannel(name), (call) async => null);
+    }
     messenger.setMockMethodCallHandler(const MethodChannel('get_ride/permissions'), (call) async => null);
   });
   await testMain();

@@ -212,6 +212,114 @@ void main() {
       expect(lags, hasLength(followLateWindow));
     });
 
+    test('fixIsStill: next to no speed measured, or none and only good to tens of metres', () {
+      expect(fixIsStill(speedMps: 0, accuracyMetres: 5), isTrue);
+      expect(fixIsStill(speedMps: followCarryFrom, accuracyMetres: 5), isTrue);
+      expect(fixIsStill(speedMps: followCarryFrom + 0.1, accuracyMetres: 5), isFalse);
+      expect(fixIsStill(speedMps: null, accuracyMetres: 65), isTrue, reason: 'Wi-Fi or cell towers: it cannot say');
+      expect(fixIsStill(speedMps: null, accuracyMetres: 5), isFalse, reason: 'a GPS fix without a speed is not known to be still');
+      expect(fixIsStill(speedMps: null, accuracyMetres: null), isFalse);
+    });
+
+    test('FixFollower: fixes in, a point a frame at a time out', () {
+      final follower = FixFollower();
+      expect(follower.hasFix, isFalse);
+      expect(follower.advance(0.02), isFalse, reason: 'nothing to move yet');
+      DateTime now() => clock0;
+
+      const start = LatLng(3.15, 101.71);
+      final first = follower.take(start, speed: 10, course: 0, time: clock0, accuracy: 5, clock: now);
+      expect(first, (gap: null, speed: 10.0, course: 0.0));
+      expect(follower.shown, start);
+      // A second of frames: carried north at 10 m/s, and still going.
+      var more = true;
+      for (var f = 0; f < 50; f++) {
+        more = follower.advance(0.02);
+      }
+      expect(more, isTrue);
+      expect(follower.ageSeconds, closeTo(1.0, 1e-9));
+      expect(metresApart(start, follower.shown!), closeTo(10, 0.3));
+      expect(bearingBetween(start, follower.shown!), closeTo(0, 0.01));
+
+      // The next fix, a second on by the GPS's clock: the gap, and the speed and course it measured.
+      final second = follower.take(
+        movedAlong(start, 10, 0),
+        speed: 10,
+        course: 0,
+        time: clock0.add(const Duration(seconds: 1)),
+        accuracy: 5,
+        clock: now,
+      );
+      expect(second!.gap, 1.0);
+      expect(follower.speed, 10);
+      expect(follower.course, 0);
+
+      // A fix from before the one in hand: dropped, nothing changed.
+      final dot = follower.shown, age = follower.ageSeconds;
+      expect(follower.take(start, speed: 10, course: 0, time: clock0, accuracy: 5, clock: now), isNull);
+      expect(follower.shown, dot);
+      expect(follower.ageSeconds, age);
+      // Unless it is so much older that the clock itself was moved: then it is the news.
+      expect(
+        follower.take(start, speed: 0, course: null, time: clock0.subtract(const Duration(hours: 1)), clock: now),
+        isNotNull,
+      );
+    });
+
+    test('FixFollower: without a speed or course from the GPS, they are worked out from the fixes', () {
+      final follower = FixFollower();
+      const start = LatLng(3.15, 101.71);
+      follower.take(start, time: clock0, accuracy: 5, clock: () => clock0);
+      final taken = follower.take(
+        movedAlong(start, 9, 90),
+        time: clock0.add(const Duration(seconds: 1)),
+        accuracy: 5,
+        clock: () => clock0,
+      )!;
+      expect(taken.speed, closeTo(9, 0.01));
+      expect(taken.course, closeTo(90, 0.05));
+      // Hardly moved: a speed, but no course to speak of.
+      final crept = follower.take(
+        movedAlong(start, 10, 90),
+        time: clock0.add(const Duration(seconds: 2)),
+        accuracy: 5,
+        clock: () => clock0,
+      )!;
+      expect(crept.speed, closeTo(1, 0.01));
+      expect(crept.course, isNull);
+    });
+
+    test('FixFollower: the fix that first says it has stopped is where it stopped; the next ones are that spot again', () {
+      final follower = FixFollower();
+      DateTime now() => clock0;
+      const start = LatLng(3.15, 101.71);
+      follower.take(start, speed: 3, course: 0, time: clock0, accuracy: 5, clock: now);
+      for (var f = 0; f < 50; f++) {
+        follower.advance(0.02);
+      }
+      // Carried 3 m up the road — but the car had stopped after 1.5 m.
+      final stopped = movedAlong(start, 1.5, 0);
+      follower.take(stopped, speed: 0, course: null, time: clock0.add(const Duration(seconds: 1)), accuracy: 5, clock: now);
+      var more = true;
+      for (var f = 0; f < 100 && more; f++) {
+        more = follower.advance(0.02);
+      }
+      expect(more, isFalse, reason: 'at rest, the frames stop');
+      expect(metresApart(follower.shown!, stopped), lessThan(0.05), reason: 'on the spot, not left past it');
+
+      // Standing: the same spot measured a little differently does not move the dot.
+      follower.take(
+        movedAlong(stopped, 0.6, 200),
+        speed: 0.1,
+        course: null,
+        time: clock0.add(const Duration(seconds: 2)),
+        accuracy: 5,
+        clock: now,
+      );
+      expect(follower.advance(0.02), isFalse);
+      expect(metresApart(follower.shown!, stopped), lessThan(0.05));
+    });
+
     test('accelerationBetween: from two speeds, within what a car can do', () {
       expect(accelerationBetween(10, 12, 1), 2);
       expect(accelerationBetween(10, 7.5, 1), -2.5);
@@ -525,6 +633,31 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('a sharp stop the GPS only hears of a second later: the dot comes back onto the car at once', (
+      tester,
+    ) async {
+      await pump(tester);
+      // Crawling at 11 km/h, then stopped dead half a second after the fix at 5 s
+      // — nothing says so until the fix at 6 s.
+      Truth truth(double t) {
+        if (t <= 5.5) return (at: at(0, 3 * t), speed: 3, course: 0);
+        return (at: at(0, 16.5), speed: 0, course: 0);
+      }
+
+      var carriedPast = 0.0, afterASecond = double.infinity;
+      await drive(tester, truth, from: 0, to: 9, heading: false, each: (t, now) {
+        final north = local(dotOnGround(tester)).north;
+        if (t > 5.5 && t <= 6.0) carriedPast = math.max(carriedPast, north - 16.5);
+        if ((t - 7.0).abs() < 0.011) afterASecond = (north - 16.5).abs();
+      });
+      // It could not know: it was carried on past where the car stopped…
+      expect(carriedPast, greaterThan(0.8));
+      // …and is back on it within a second of being told, not left creeping back for five.
+      expect(afterASecond, lessThan(0.15));
+      expect(metresApart(dotOnGround(tester), at(0, 16.5)), lessThan(0.1));
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('pulling away from the lights: the dot leaves with the car', (tester) async {
       await pump(tester);
       // Standing for 2 s, then away at 2.5 m/s² up to 54 km/h.
@@ -645,13 +778,16 @@ void main() {
       tester,
     ) async {
       await pump(tester);
-      // A fix a second for half a minute, each up to 1.5 m off in some direction.
+      // Pulled up: the first fix to say so is where the car stopped.
+      fixes.add((at: origin, speed: 0.0, course: null, time: clock0, accuracy: 5));
+      await tester.pumpAndSettle();
+      // Then a fix a second for half a minute, each up to 1.5 m off in some direction.
       final wander = math.Random(7);
       final first = dotOnGround(tester);
       final map0 = camera(tester).center;
       LatLng? before;
       var biggestStep = 0.0, furthest = 0.0, mapMoved = 0.0;
-      for (var second = 0; second < 30; second++) {
+      for (var second = 1; second <= 30; second++) {
         fixes.add((
           at: movedAlong(origin, wander.nextDouble() * 1.5, wander.nextDouble() * 360),
           speed: wander.nextDouble() * 0.2,

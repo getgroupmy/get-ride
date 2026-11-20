@@ -10,6 +10,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'active_location.dart';
+import 'live_fix.dart';
+import 'shared_location.dart';
+
 /// The location calls [locateFastThenFine] makes; a fake in tests.
 abstract class LocationSource {
   Future<bool> serviceEnabled();
@@ -23,8 +27,17 @@ abstract class LocationSource {
   Future<LatLng> current(LocationAccuracy accuracy);
 }
 
+/// A [LocationSource] whose position can also be followed as it changes: the
+/// phone itself. A stand-in that only answers when asked (most tests') has no
+/// such stream, and a map following it simply stays on the fix it was given.
+abstract class LiveLocationSource implements LocationSource {
+  /// The position as it changes, for a map that shows the rider where they
+  /// are. It asks for nothing: permission is [requestPermission]'s to ask.
+  Stream<LiveFix> liveFixes();
+}
+
 /// The phone's own location, through Geolocator.
-class GeolocatorLocationSource implements LocationSource {
+class GeolocatorLocationSource implements LiveLocationSource {
   const GeolocatorLocationSource();
 
   @override
@@ -47,9 +60,31 @@ class GeolocatorLocationSource implements LocationSource {
     final p = await Geolocator.getCurrentPosition(locationSettings: LocationSettings(accuracy: accuracy));
     return LatLng(p.latitude, p.longitude);
   }
+
+  /// Off the app's one shared stream (shared_location.dart), at what a rider's
+  /// map asks of it ([riderMapLocationSettings]).
+  @override
+  Stream<LiveFix> liveFixes() => sharedPositionStream(riderMapLocationSettings()).map(liveFixOf);
 }
 
 final locationSourceProvider = Provider<LocationSource>((_) => const GeolocatorLocationSource());
+
+/// The phone's position as it changes, for a map that shows the rider where
+/// they are (the home map's dot; overridden in tests). Empty when the location
+/// source has none to give ([LiveLocationSource]), or location is off or not
+/// yet allowed — and it never asks: asking is [locateFastThenFine]'s job (and
+/// the recenter button's), so opening the app asks once, not twice. Whoever
+/// listens starts it again once a fix shows location is allowed.
+final liveFixesProvider = Provider<Stream<LiveFix> Function()>((ref) => () async* {
+  final source = ref.read(locationSourceProvider);
+  if (source is! LiveLocationSource) return;
+  try {
+    if (!await source.serviceEnabled()) return;
+    final perm = await source.checkPermission();
+    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+    yield* source.liveFixes();
+  } catch (_) {}
+});
 
 /// How long the accurate fix is waited for (as before).
 const fineFixTimeout = Duration(seconds: 12);

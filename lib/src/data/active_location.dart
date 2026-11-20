@@ -105,3 +105,29 @@ LocationSettings mapFollowLocationSettings({TargetPlatform? platform, bool? web}
       return const LocationSettings(accuracy: accuracy);
   }
 }
+
+/// The location settings for a map that shows a rider where they are while it
+/// is on screen (the home map's dot): the phone's best fix, every one of them,
+/// and one a second on Android as for [mapFollowLocationSettings]. A rider is
+/// as likely on foot as in a car, so iOS is told nothing about how they are
+/// moving (the automotive type is for whoever is driving). Nothing in the
+/// background: the dot is only looked at while the map is.
+LocationSettings riderMapLocationSettings({TargetPlatform? platform, bool? web}) {
+  const accuracy = LocationAccuracy.best;
+  if (web ?? kIsWeb) return const LocationSettings(accuracy: accuracy);
+  switch (platform ?? defaultTargetPlatform) {
+    case TargetPlatform.android:
+      return AndroidSettings(accuracy: accuracy, intervalDuration: driverFixInterval);
+    case TargetPlatform.iOS:
+    case TargetPlatform.macOS:
+      return AppleSettings(
+        accuracy: accuracy,
+        activityType: ActivityType.other,
+        pauseLocationUpdatesAutomatically: false,
+        allowBackgroundLocationUpdates: false,
+        showBackgroundLocationIndicator: false,
+      );
+    default:
+      return const LocationSettings(accuracy: accuracy);
+  }
+}

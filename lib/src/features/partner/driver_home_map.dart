@@ -9,6 +9,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/follow_motion.dart';
 import '../../data/compass.dart';
 import '../../data/models.dart';
 import '../../widgets/map_brightness.dart' show mapIsDark;
@@ -21,6 +22,10 @@ import '../../widgets/ride_map.dart';
 import '../../widgets/road_info_layers.dart';
 import 'driver_map_diagnostics.dart';
 import 'driver_map_diagnostics_overlay.dart';
+
+// The follow's arithmetic lives in core/follow_motion.dart (the rider's home map
+// draws its dot with it too); it is still reached through this file.
+export '../../core/follow_motion.dart';
 
 /// The driver's home map (Expo `partner-ehailing`): where they are and,
 /// while online, where each open request is waiting, with its fare. Tapping
@@ -91,216 +96,6 @@ const driverDrivingZoom = 18.0;
 bool nextMoving({required bool moving, required double speed, double enter = 2.5, double exit = 1.0}) =>
     moving ? speed >= exit : speed >= enter;
 
-// ---- The follow's arithmetic. Pure; see test/driver_follow_test.dart. ----
-
-/// How long the drawn position takes to close most of the gap to where the
-/// driver is: short enough that the dot keeps up, long enough that the small
-/// correction when a new fix lands is a glide and not a jump.
-const followEaseSeconds = 0.25;
-
-/// How long after a fix the driver is still carried forward at its speed. Two
-/// fixes' worth: a late or missed fix does not stall the dot, and a lost signal
-/// does not send it far down a road it may not have taken.
-const followCoastSeconds = 2.0;
-
-/// The speed (m/s) below which a fix is not carried forward at all — a GPS at
-/// rest reads a little speed along a random course — and the speed from which
-/// it is carried in full; between the two it ramps, so nothing switches.
-const followCarryFrom = 0.5;
-const followCarryFully = 1.5;
-
-/// The hardest acceleration and braking (m/s²) a fix is carried forward with:
-/// about what a car does flat out. A wilder figure from two noisy speed
-/// readings is held to these.
-const followMaxAcceleration = 3.5;
-const followMaxBraking = 5.0;
-
-/// Standing still, a GPS goes on wandering a metre or two around the car. A
-/// fix closer to the drawn dot than [followRestStill] leaves it where it is;
-/// one farther than [followRestMetres] — or than the fix's own accuracy, when
-/// that is looser — is somewhere new and is taken as it comes; one in between
-/// moves the dot [followRestShare] of the way, so it settles on the middle of
-/// where the fixes fall without being seen to move.
-const followRestStill = 0.75;
-const followRestMetres = 3.0;
-const followRestShare = 0.2;
-
-/// A fix no better than this (metres) is not from the GPS at all (Wi-Fi, cell
-/// towers): when it comes without a speed it cannot say whether the car is
-/// moving, and is treated as one that says it is not.
-const followCoarseMetres = 20.0;
-
-/// How many fixes back the follow looks to tell how late one has arrived, and
-/// the most lateness (seconds) it makes up for ([fixLateness]).
-const followLateWindow = 10;
-const followLateMost = 0.5;
-
-/// A fix older than the one in hand by less than this (seconds) is dropped: a
-/// cached position handed over when the stream restarts, or two that crossed on
-/// the way. Older than that and the clock itself has been moved, so it is taken.
-const followStaleSeconds = 10.0;
-
-/// Farther than this from where the driver is (metres), the drawn position
-/// jumps instead of gliding: the app coming back from the background, or the
-/// first real fix after a rough one.
-const followSnapMetres = 150.0;
-
-/// The ease on the heading the cone is drawn at and the map is turned to (and
-/// on where the dot is held on screen): only enough to round off a change of
-/// pace, since the heading itself already moves steadily ([headingBetween]).
-const followTurnSeconds = 0.25;
-
-/// The fastest the cone and the map turn, degrees a second: well above any
-/// turn a car makes, so it only paces the big sweeps — the map swinging round
-/// from north-up when the driver sets off.
-const followMaxTurnPerSecond = 240.0;
-
-/// How long the map takes to pull in most of the way to the driving zoom.
-const followZoomSeconds = 0.5;
-
-/// The shortest and longest time (seconds) a turn from one fix's course to the
-/// next is spread over: about the time between two fixes, whatever a late or a
-/// doubled fix made of it.
-const followTurnOverLeast = 0.5;
-const followTurnOverMost = 2.0;
-
-/// The fraction of the way to a target to move in a frame [dt] seconds long,
-/// for an ease that closes about 63% of any gap every [seconds]. The same ease
-/// at 60 frames a second or 120, or through a slow frame.
-double easeFraction(double dt, double seconds) => seconds <= 0 ? 1 : 1 - math.exp(-dt / seconds);
-
-/// The turn from [from] to [to] in degrees the short way round, −180 to 180:
-/// `shortestTurn(350, 10) == 20`, `shortestTurn(10, 350) == -20`.
-double shortestTurn(double from, double to) => ((to - from + 540) % 360) - 180;
-
-/// The way the driver is heading [ageSeconds] after a fix: turned steadily from
-/// [from] (the heading shown when the fix came in) to [to] (the course the fix
-/// measured) over [overSeconds] — the time between two fixes — and held there.
-///
-/// The GPS measures the course once a second. Turning to each as it comes is a
-/// lurch a second through every bend; guessing ahead from the last two swings
-/// past the end of the bend and back. Spreading each measured turn over the
-/// second until the next is steady through a bend and never turns further than
-/// the car did.
-double headingBetween(double from, double to, {required double ageSeconds, required double overSeconds}) {
-  final part = overSeconds <= 0 ? 1.0 : (ageSeconds / overSeconds).clamp(0.0, 1.0).toDouble();
-  return (from + shortestTurn(from, to) * part + 360) % 360;
-}
-
-/// How far to turn in a frame [dt] seconds long toward a heading [turn] degrees
-/// away: eased ([followTurnSeconds]), and no faster than
-/// [followMaxTurnPerSecond].
-double turnStep(double turn, double dt) {
-  final most = followMaxTurnPerSecond * dt;
-  return (turn * easeFraction(dt, followTurnSeconds)).clamp(-most, most).toDouble();
-}
-
-const _earthMetres = 6378137.0;
-const _radians = math.pi / 180;
-
-/// Metres between two points near each other. Flat-earth arithmetic: exact to
-/// well under a centimetre over the tens of metres the follow works with, and
-/// cheap enough to run every frame.
-double metresApart(LatLng a, LatLng b) {
-  final east = (b.longitude - a.longitude) * _radians * math.cos((a.latitude + b.latitude) / 2 * _radians);
-  final north = (b.latitude - a.latitude) * _radians;
-  return math.sqrt(east * east + north * north) * _earthMetres;
-}
-
-/// The bearing from [a] to [b] in degrees clockwise from north (0–360).
-double bearingBetween(LatLng a, LatLng b) {
-  final east = (b.longitude - a.longitude) * math.cos((a.latitude + b.latitude) / 2 * _radians);
-  final north = b.latitude - a.latitude;
-  return (math.atan2(east, north) / _radians + 360) % 360;
-}
-
-/// [from] moved [metres] along [bearingDegrees] (clockwise from north).
-LatLng movedAlong(LatLng from, double metres, double bearingDegrees) {
-  final bearing = bearingDegrees * _radians;
-  final north = metres * math.cos(bearing) / _earthMetres / _radians;
-  final east = metres * math.sin(bearing) / (_earthMetres * math.cos(from.latitude * _radians)) / _radians;
-  return LatLng(
-    (from.latitude + north).clamp(-90.0, 90.0).toDouble(),
-    (from.longitude + east + 540) % 360 - 180,
-  );
-}
-
-/// The point [t] of the way from [a] to [b].
-LatLng pointBetween(LatLng a, LatLng b, double t) =>
-    LatLng(a.latitude + (b.latitude - a.latitude) * t, a.longitude + (b.longitude - a.longitude) * t);
-
-/// How much of a fix's speed to carry it forward by: none while it is as good
-/// as stopped ([followCarryFrom]), all of it once clearly moving
-/// ([followCarryFully]).
-double carryWeight(double speedMps) =>
-    ((speedMps - followCarryFrom) / (followCarryFully - followCarryFrom)).clamp(0.0, 1.0).toDouble();
-
-/// Where the driver is [ageSeconds] after [fix] was taken: the fix carried
-/// forward along the course the GPS measured, at the speed it measured and
-/// speeding up or slowing down as it was ([accelMps2], from the change in speed
-/// since the fix before) — what a navigation app draws, since a fix is about a
-/// second old by the time the next one lands. A braking car is carried no
-/// further than where it stops. Stays on the fix without a course or below
-/// [followCarryFrom], and stops carrying after [followCoastSeconds].
-LatLng deadReckon(
-  LatLng fix, {
-  required double speedMps,
-  required double? courseDegrees,
-  required double ageSeconds,
-  double accelMps2 = 0,
-}) {
-  final weight = carryWeight(speedMps);
-  if (courseDegrees == null || weight <= 0 || ageSeconds <= 0) return fix;
-  var seconds = math.min(ageSeconds, followCoastSeconds);
-  if (accelMps2 < 0) seconds = math.min(seconds, speedMps / -accelMps2);
-  final metres = speedMps * seconds + accelMps2 * seconds * seconds / 2;
-  return movedAlong(fix, weight * math.max(0, metres), courseDegrees);
-}
-
-/// Where to take a fix as putting the driver, given where the dot is [drawn].
-///
-/// On the move that is the fix. Standing still — the GPS measured next to no
-/// speed, or could measure none and is only good to tens of metres — a fix that
-/// agrees with where the dot already is (inside its own accuracy, and within
-/// [followRestMetres] at the least) is the same place measured again: the dot
-/// stays put, or drifts a little toward it (see [followRestStill]). Only a fix
-/// that puts the car somewhere else moves it. Otherwise a parked car's dot
-/// creeps about with every fix, now that there is one a second.
-LatLng settledFix(LatLng? drawn, LatLng fix, {required double? speedMps, required double? accuracyMetres}) {
-  if (drawn == null) return fix;
-  final still = speedMps != null ? carryWeight(speedMps) <= 0 : (accuracyMetres ?? 0) > followCoarseMetres;
-  if (!still) return fix;
-  final apart = metresApart(drawn, fix);
-  if (apart > math.max(followRestMetres, accuracyMetres ?? 0)) return fix;
-  return apart < followRestStill ? drawn : pointBetween(drawn, fix, followRestShare);
-}
-
-/// How late a fix has reached the map, in seconds, so it can be carried
-/// forward by that much from the start: the car went on moving while the fix
-/// was on its way.
-///
-/// [lag] is the time on the app's clock when the fix arrived, less the time the
-/// GPS stamped on it. The two clocks need not agree — only how this fix's lag
-/// compares with the smallest of the last few ([lags], kept by the caller and
-/// brought up to date here): a fix that took 0.3 s longer than the promptest of
-/// them is 0.3 s late. Without this a fix held up for a moment (a busy phone,
-/// Android batching them) pulled the dot back and then let it catch up — a
-/// hitch each time. Never more than [followLateMost].
-double fixLateness(List<double> lags, double lag) {
-  lags.add(lag);
-  if (lags.length > followLateWindow) lags.removeAt(0);
-  return (lag - lags.reduce(math.min)).clamp(0.0, followLateMost).toDouble();
-}
-
-/// The acceleration (m/s², braking negative) between a fix at [earlierMps] and
-/// one [gapSeconds] later at [laterMps], held to what a car can do; 0 when
-/// either speed is unknown or the fixes are too close together or too far apart
-/// for the change to mean anything.
-double accelerationBetween(double? earlierMps, double? laterMps, double? gapSeconds) {
-  if (earlierMps == null || laterMps == null || gapSeconds == null || gapSeconds < 0.3 || gapSeconds > 3) return 0;
-  return ((laterMps - earlierMps) / gapSeconds).clamp(-followMaxBraking, followMaxAcceleration).toDouble();
-}
-
 /// The next follow / heading-up state when the locate button is tapped, cycling
 /// like Apple/Google Maps: (paused) → follow north-up → follow heading-up →
 /// follow north-up → … Pure.
@@ -332,42 +127,27 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
 
   // ---- The follow ---------------------------------------------------------
   //
-  // The GPS gives a fix about once a second, and each is about a second old by
-  // the time the next lands. Drawing fixes as they come — or gliding to each
-  // and waiting for the next — is what made the dot stop and start, trail the
-  // car and cut corners. A navigation app instead works out, every frame, where
-  // the driver is *now*: the latest fix carried forward along the course the
-  // GPS measured, at the speed it measured, for exactly as long as the fix is
-  // old ([deadReckon]) — counting the time it took to reach the app
-  // ([fixLateness]). The drawn point eases onto that estimate, so the small
-  // correction each new fix brings is a glide, and the camera is put on the
-  // drawn point every frame. The heading is the one thing not guessed ahead:
-  // the cone, and the map in heading-up, turn steadily from one fix's course
-  // to the next ([headingBetween]). The zoom and where on screen the dot is
-  // held are eased too. A car standing still is left standing still
-  // ([settledFix]). Nothing waits for a fix.
+  // Where the driver is, a frame at a time, is worked out by [FixFollower]
+  // (core/follow_motion.dart, which says why): the latest fix carried forward
+  // by the GPS's own speed and course for as long as it is old, the drawn point
+  // eased onto that. Here the camera is put on the drawn point every frame. The
+  // heading is the one thing not guessed ahead: the cone, and the map in
+  // heading-up, turn steadily from one fix's course to the next
+  // ([headingBetween]). The zoom and where on screen the dot is held are eased
+  // too. Nothing waits for a fix.
 
   /// Runs a frame at a time while there is something to move, and stops when
   /// the driver is parked and everything has settled.
   late final Ticker _ticker;
   Duration _lastTick = Duration.zero;
 
-  /// The latest fix, the GPS velocity that came with it (and how that speed
-  /// was changing), and how long ago it came, counted in frames' time.
-  LatLng? _fix; // where it is taken as putting the driver ([settledFix])
-  LatLng? _lastFix; // as the GPS gave it
-  DateTime? _fixTime; // when the GPS took it
-  double? _fixSpeedKnown; // m/s as measured; null when the fix gave none
-  double _fixSpeed = 0; // m/s to carry it forward at; 0 when not known
-  double _fixAccel = 0; // m/s², braking negative
-  double? _fixCourse; // degrees clockwise from north; null when not known
-  double _fixAge = 0; // seconds
-  final _fixLags = <double>[]; // arrival less GPS time, the last few ([fixLateness])
+  /// The latest fix, carried forward a frame at a time.
+  final _follower = FixFollower();
 
   /// The turn the latest fix asked for, while the driver is on the move: from
-  /// the heading that was showing when it came in ([_turnFrom]) to its course
-  /// ([_fixCourse]), spread over [_turnOver] seconds ([headingBetween]). Null
-  /// while parked or without a course: the phone's own heading is used then.
+  /// the heading that was showing when it came in ([_turnFrom]) to its course,
+  /// spread over [_turnOver] seconds ([headingBetween]). Null while parked or
+  /// without a course: the phone's own heading is used then.
   double? _turnFrom;
   double _turnOver = 1;
 
@@ -449,59 +229,27 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   /// A fix has come in: what the follow carries forward from now on ([_onTick]).
   /// [building] in initState, where there is nothing to rebuild yet.
   void _takeFix(LatLng me, {bool building = false}) {
-    final previous = _lastFix;
-    final time = widget.fixTime, before = _fixTime;
-    // By the GPS's own clock, so a fix that was slow to reach the app does not
-    // stretch the time between two.
-    final gap = time == null || before == null
-        ? null
-        : time.difference(before).inMicroseconds / Duration.microsecondsPerSecond;
-    // Never back in time: a fix from before the one in hand is not news.
-    if (gap != null && gap < 0 && gap > -followStaleSeconds) return;
-    // How long this one took to get here, beyond what they usually take: it is
-    // carried forward by that from the start.
-    final late = time == null
-        ? 0.0
-        : fixLateness(
-            _fixLags,
-            ref.read(driverMapClockProvider)().difference(time).inMicroseconds / Duration.microsecondsPerSecond,
-          );
-    // The velocity the GPS measured with this fix (Doppler: clean even at a
-    // crawl). A fix that comes without one — a platform or a moment that gives
-    // none — gets what the move from the last fix amounts to, so the motion is
-    // still continuous.
-    final measured = widget.speedMps;
-    var speed = measured;
-    var course = widget.courseDeg;
-    if ((speed == null || course == null) && previous != null && gap != null && gap >= 0.2 && gap <= 5) {
-      final moved = metresApart(previous, me);
-      speed ??= moved / gap;
-      if (moved >= 2) course ??= bearingBetween(previous, me);
-    }
-    // Speeding up or slowing down between the last two fixes: the fix is
-    // carried forward doing the same, so a car pulling away is not left behind
-    // and one braking is not run past where it stops.
-    _fixAccel = accelerationBetween(_fixSpeedKnown, measured, gap);
-    _fixSpeedKnown = measured;
-    // The heading on the move: turned from where it stands now to this fix's
-    // course over the time fixes are coming at. Read before the fix is taken,
-    // so the turn carries on from wherever the last one had got to. Only at a
-    // speed where the course means the direction of travel (as data/compass.dart
-    // has it); slower than that, the phone's own heading stands.
+    // The heading as it stands, read before the fix is taken: the turn to the
+    // new course carries on from wherever the last one had got to.
     final headingWas = _headingNow;
+    final taken = _follower.take(
+      me,
+      speed: widget.speedMps,
+      course: widget.courseDeg,
+      time: widget.fixTime,
+      accuracy: widget.accuracyMetres,
+      clock: ref.read(driverMapClockProvider),
+    );
+    if (taken == null) return; // from before the one in hand: not news
+    final speed = taken.speed, course = taken.course;
+    // The heading on the move: turned from where it stood to this fix's course
+    // over the time fixes are coming at. Only at a speed where the course means
+    // the direction of travel (as data/compass.dart has it); slower than that,
+    // the phone's own heading stands.
     final travelling = course != null && (speed ?? 0) >= movingSpeed;
     _turnFrom = travelling ? (_turnFrom == null ? course : headingWas ?? course) : null;
-    _turnOver = (gap ?? 1).clamp(followTurnOverLeast, followTurnOverMost).toDouble();
-    // Where the fix puts them: itself, unless the car is standing still and
-    // the fix is the same spot measured again ([settledFix]). The velocity
-    // above is worked out from the fixes as they came, not from this.
-    _lastFix = me;
-    _fix = settledFix(_shown.value, me, speedMps: measured, accuracyMetres: widget.accuracyMetres);
-    _fixTime = time;
-    _fixSpeed = speed ?? 0;
-    _fixCourse = course;
-    _fixAge = late;
-    _shown.value ??= me;
+    _turnOver = (taken.gap ?? 1).clamp(followTurnOverLeast, followTurnOverMost).toDouble();
+    _shown.value = _follower.shown;
     if (speed != null) {
       // Smoothed, so one odd reading cannot flip moving / stopped.
       final smoothed = _speedEma = _speedEma == null ? speed : _speedEma! * 0.6 + speed * 0.4;
@@ -527,9 +275,9 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
   /// latest fix asked for as far as it has got ([headingBetween]); parked, where
   /// the phone points ([_heading]). Null until either is known.
   double? get _headingNow {
-    final from = _turnFrom, to = _fixCourse;
+    final from = _turnFrom, to = _follower.course;
     if (from == null || to == null) return _heading;
-    return headingBetween(from, to, ageSeconds: _fixAge, overSeconds: _turnOver);
+    return headingBetween(from, to, ageSeconds: _follower.ageSeconds, overSeconds: _turnOver);
   }
 
   /// Starts the follow's frames if they are not already running.
@@ -545,36 +293,13 @@ class _DriverHomeMapState extends ConsumerState<DriverHomeMap> with SingleTicker
     // A long frame (a hitch, the app coming back) is not that much travel.
     final dt = math.min((elapsed - _lastTick).inMicroseconds / Duration.microsecondsPerSecond, 0.25);
     _lastTick = elapsed;
-    final fix = _fix;
-    if (!mounted || fix == null) {
+    if (!mounted || !_follower.hasFix) {
       _ticker.stop();
       return;
     }
-    _fixAge += dt;
-
-    // Where they are now. The estimate runs [followEaseSeconds] ahead of the
-    // fix's age, which is exactly how far behind it the eased point trails at a
-    // steady speed: the two cancel, and the dot sits on the driver.
-    final ahead = _fixAge + followEaseSeconds;
-    final now = deadReckon(
-      fix,
-      speedMps: _fixSpeed,
-      courseDegrees: _fixCourse,
-      ageSeconds: ahead,
-      accelMps2: _fixAccel,
-    );
-    final was = _shown.value;
-    final LatLng shown;
-    if (was == null) {
-      shown = now;
-    } else {
-      final off = metresApart(was, now);
-      // A big gap jumps; a hair's breadth is there.
-      shown = off > followSnapMetres || off < 0.03 ? now : pointBetween(was, now, easeFraction(dt, followEaseSeconds));
-    }
+    var busy = _follower.advance(dt);
+    final shown = _follower.shown!;
     _shown.value = shown;
-    final carrying = _fixCourse != null && carryWeight(_fixSpeed) > 0 && ahead < followCoastSeconds;
-    var busy = carrying || shown != now;
 
     // The way they are heading now, and the cone eased round to it.
     final heading = _headingNow;

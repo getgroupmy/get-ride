@@ -86,6 +86,7 @@ import '../../core/vehicle_assignment.dart';
 import '../../core/saved_drafts.dart';
 import '../../core/vehicle_onboarding.dart' show VehicleStep, firstVehicleStep;
 import '../../data/ride_draft_store.dart';
+import '../../data/live_fix.dart';
 import '../../data/shared_location.dart';
 import '../../data/vehicle_onboarding_repository.dart' show vehicleOnboardingRepositoryProvider;
 import '../ride/welcome_back_sheet.dart' show showWelcomeBackSaved;
@@ -156,37 +157,16 @@ class PartnerScreen extends ConsumerStatefulWidget {
 /// (overridden in tests).
 final driverPositionProvider = Provider<Future<LatLng?> Function()>((ref) => currentPosition);
 
-/// A fix from the driver's location stream: where they are, when the GPS took
-/// it, and the velocity vector the chip reports with it — speed (m/s) and
-/// course (the bearing of travel, degrees). Either is null when the GPS has
-/// none to give. The map carries the fix forward by them to where the driver is
-/// now, and tells moving from stopped, far cleaner than reconstructing them
-/// from how the point moved; the time between two fixes turns the change in
-/// speed into the braking or acceleration to carry it forward with.
-typedef DriverFix = ({LatLng at, double? speed, double? course, DateTime? time, double? accuracy});
+/// A fix from the driver's location stream, as the home map follows it
+/// ([LiveFix], data/live_fix.dart: the rider's home map follows the same).
+typedef DriverFix = LiveFix;
 
-/// A course the GPS itself puts this far out (degrees, its own estimate) is not
-/// one to carry the driver along: at a crawl the bearing swings about.
-const driverCourseTrustDegrees = 45.0;
+/// A course the GPS itself puts this far out is not one to carry the driver
+/// along ([courseTrustDegrees]).
+const driverCourseTrustDegrees = courseTrustDegrees;
 
-/// The fix the map follows, from a platform position, keeping only a velocity
-/// the platform really measured. The two platforms say "none" differently: iOS
-/// reports an unknown course as −1 and simply leaves an unknown speed out;
-/// Android leaves either out — and a value left out arrives as a 0.0
-/// placeholder (which would read as "stopped" or "heading due north") with its
-/// `has…` flag false. Pure; see test/driver_follow_test.dart.
-DriverFix driverFixOf(Position p) => (
-  at: LatLng(p.latitude, p.longitude),
-  speed: p.hasSpeed && p.speed.isFinite && p.speed >= 0 ? p.speed : null,
-  course: p.hasHeading &&
-          p.heading.isFinite &&
-          p.heading >= 0 &&
-          !(p.hasHeadingAccuracy && (p.headingAccuracy < 0 || p.headingAccuracy > driverCourseTrustDegrees))
-      ? p.heading % 360
-      : null,
-  time: p.timestamp,
-  accuracy: p.accuracy.isFinite && p.accuracy > 0 ? p.accuracy : null,
-);
+/// The fix the map follows, from a platform position ([liveFixOf]).
+DriverFix driverFixOf(Position p) => liveFixOf(p);
 
 /// The driver's position as it changes, so the home map follows them.
 /// Empty when location is unavailable or refused.
