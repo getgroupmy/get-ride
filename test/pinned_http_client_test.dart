@@ -108,11 +108,7 @@ Future<HttpServer> _serve(String name) async {
   final ctx = SecurityContext()
     ..useCertificateChain('$_dir/$name.pem')
     ..usePrivateKey('$_dir/$name.key');
-  final server = await HttpServer.bindSecure(
-    InternetAddress.loopbackIPv4,
-    0,
-    ctx,
-  );
+  final server = await HttpServer.bindSecure(InternetAddress.loopbackIPv4, 0, ctx);
   server.listen((req) {
     req.response
       ..write('ok ${req.headers.host}')
@@ -125,59 +121,35 @@ void main() {
   late SecurityContext trust;
   setUpAll(() async {
     await _makeCerts();
-    trust = SecurityContext(withTrustedRoots: false)
-      ..setTrustedCertificates('$_dir/ca.pem');
+    trust = SecurityContext(withTrustedRoots: false)..setTrustedCertificates('$_dir/ca.pem');
   });
   tearDownAll(() => Directory(_dir).delete(recursive: true));
 
   test('a name the DNS cannot find is reached at the pinned IP, certificate checked for the name', () async {
     final server = await _serve('api.example.test');
     addTearDown(() => server.close(force: true));
-    final client = pinnedHttpClient(
-      'api.example.test',
-      '127.0.0.1',
-      context: trust,
-    );
+    final client = pinnedHttpClient('api.example.test', '127.0.0.1', context: trust);
     addTearDown(client.close);
-    final res = await client.get(
-      Uri.parse('https://api.example.test:${server.port}/auth/v1/health'),
-    );
+    final res = await client.get(Uri.parse('https://api.example.test:${server.port}/auth/v1/health'));
     expect(res.statusCode, 200);
     expect(res.body, 'ok api.example.test');
   });
 
-  test(
-    'an IP serving another name\'s certificate is refused, not talked to',
-    () async {
-      final server = await _serve('other.example.test');
-      addTearDown(() => server.close(force: true));
-      final client = pinnedHttpClient(
-        'api.example.test',
-        '127.0.0.1',
-        context: trust,
-      );
-      addTearDown(client.close);
-      await expectLater(
-        client.get(Uri.parse('https://api.example.test:${server.port}/')),
-        throwsA(anything),
-      );
-    },
-  );
+  test('an IP serving another name\'s certificate is refused, not talked to', () async {
+    final server = await _serve('other.example.test');
+    addTearDown(() => server.close(force: true));
+    final client = pinnedHttpClient('api.example.test', '127.0.0.1', context: trust);
+    addTearDown(client.close);
+    await expectLater(client.get(Uri.parse('https://api.example.test:${server.port}/')), throwsA(anything));
+  });
 
   test('other hosts are not pinned', () async {
     final server = await _serve('api.example.test');
     addTearDown(() => server.close(force: true));
-    final client = pinnedHttpClient(
-      'api.example.test',
-      '127.0.0.1',
-      context: trust,
-    );
+    final client = pinnedHttpClient('api.example.test', '127.0.0.1', context: trust);
     addTearDown(client.close);
     // localhost resolves normally; its certificate is for another name, so
     // the normal path's own check refuses it -- the pin did not apply.
-    await expectLater(
-      client.get(Uri.parse('https://localhost:${server.port}/')),
-      throwsA(anything),
-    );
+    await expectLater(client.get(Uri.parse('https://localhost:${server.port}/')), throwsA(anything));
   });
 }
