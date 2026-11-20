@@ -1,0 +1,62 @@
+name: GET RIDE Mobile Builds
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: [self-hosted, macOS, ARM64, getride]
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Configure tools
+        run: |
+          echo "/opt/homebrew/share/flutter/bin" >> "$GITHUB_PATH"
+          echo "ANDROID_HOME=$HOME/Library/Android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$HOME/Library/Android/sdk" >> "$GITHUB_ENV"
+          xcodebuild -version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Flutter analysis
+        run: flutter analyze --no-pub
+
+      - name: Build iOS
+        run: flutter build ios --release --no-codesign --no-pub
+
+      - name: Package iOS
+             |
+             |
+ackage iOS
+ ios --release -       build/ios/iphoneos/Runner.app \
+            get-ride-ios-unsigned.zip
+
+      - name: Upload iOS
+        uses: actions/upload-artifact@v4
+        with:
+          name: get-ride-ios-unsigned
+          path: get-ride-ios-unsigned.zip
+          retention-days: 7
+
+      - name: Build Android
+        run: flutter build apk --debug --no-pub
+
+      - name: Upload Android
+        uses: actions/upload-artifact@v4
+        with:
+          name: get-ride-android-debug
+          path: build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7
