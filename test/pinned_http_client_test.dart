@@ -10,6 +10,12 @@ import 'package:get_ride/src/data/backend_lookup_io.dart';
 // throwaway test CA made with openssl for the run: the pinned client must
 // reach it by IP while still checking the certificate against the backend's
 // name.
+//
+// The certificates are made the way a public CA makes them (a CA that says
+// it is one, server certificates marked for TLS server use, SHA-256), from
+// this file's own config so the result does not depend on the machine's
+// openssl.cnf or on whether `openssl` is OpenSSL or LibreSSL. macOS and iOS
+// check all of that, Linux only the chain and the name.
 late String _dir;
 
 Future<void> _makeCerts() async {
@@ -19,11 +25,26 @@ Future<void> _makeCerts() async {
     if (r.exitCode != 0) throw StateError('openssl ${args.first}: ${r.stderr}');
   }
 
+  await File('$_dir/ca.cnf').writeAsString('''
+[req]
+distinguished_name = dn
+x509_extensions = v3_ca
+prompt = no
+[dn]
+CN = Test CA
+[v3_ca]
+basicConstraints = critical, CA:TRUE
+keyUsage = critical, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
+''');
   await run([
     'req',
     '-x509',
+    '-config',
+    'ca.cnf',
     '-newkey',
     'rsa:2048',
+    '-sha256',
     '-nodes',
     '-keyout',
     'ca.key',
@@ -31,12 +52,35 @@ Future<void> _makeCerts() async {
     'ca.pem',
     '-days',
     '2',
-    '-subj',
-    '/CN=Test CA',
   ]);
   for (final n in ['api.example.test', 'other.example.test']) {
-    await run(['req', '-newkey', 'rsa:2048', '-nodes', '-keyout', '$n.key', '-out', '$n.csr', '-subj', '/CN=$n']);
-    await File('$_dir/$n.ext').writeAsString('subjectAltName=DNS:$n');
+    await File('$_dir/$n.cnf').writeAsString('''
+[req]
+distinguished_name = dn
+prompt = no
+[dn]
+CN = $n
+[v3_server]
+basicConstraints = critical, CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = DNS:$n
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid
+''');
+    await run([
+      'req',
+      '-config',
+      '$n.cnf',
+      '-newkey',
+      'rsa:2048',
+      '-sha256',
+      '-nodes',
+      '-keyout',
+      '$n.key',
+      '-out',
+      '$n.csr',
+    ]);
     await run([
       'x509',
       '-req',
@@ -47,12 +91,15 @@ Future<void> _makeCerts() async {
       '-CAkey',
       'ca.key',
       '-CAcreateserial',
+      '-sha256',
       '-out',
       '$n.pem',
       '-days',
       '2',
       '-extfile',
-      '$n.ext',
+      '$n.cnf',
+      '-extensions',
+      'v3_server',
     ]);
   }
 }

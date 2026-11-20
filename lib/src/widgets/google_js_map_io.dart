@@ -16,7 +16,13 @@ import 'package:webview_windows/webview_windows.dart' as ww;
 import 'google_map_style.dart';
 
 bool get googleJsSupported =>
-    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isIOS || Platform.isAndroid);
+    debugGoogleJsSupported ??
+    (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isIOS || Platform.isAndroid));
+
+/// Tests set this to say whether this machine has a web view for the map,
+/// whatever machine they run on; null, the machine's own answer.
+@visibleForTesting
+bool? debugGoogleJsSupported;
 
 /// Google's name for why it refused the key ("ApiNotActivatedMapError" …),
 /// as the page reports it; only Admin → Settings → Maps → Test shows it.
