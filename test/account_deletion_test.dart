@@ -1,6 +1,6 @@
 // Deleting your own account and the admin's linking (migration 0194): the
 // pure rules, the Delete account page and the admin's section of a user.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_filters.dart';

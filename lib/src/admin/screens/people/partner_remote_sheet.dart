@@ -1,7 +1,7 @@
 // Admin › Edit Partner › Change status (migration 0286): support asks the
 // partner's phone to go online, go offline, link or unlink a vehicle; the
 // card then shows the request live until the phone answers.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 

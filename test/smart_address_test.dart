@@ -2,7 +2,7 @@
 // 0207): A clean two-line results, B places first with the rider's saved and
 // recent places on top, C a picked street address checked by Google; and
 // Autocomplete's suggestions looked up only when picked.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

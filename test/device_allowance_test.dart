@@ -1,7 +1,7 @@
 // More than one device for chosen accounts (migration 0298): the admin's
 // Devices section on an account, the list in Sign-in security, and what a
 // phone signed out past its allowance is told.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/security/sign_in_security_card.dart';

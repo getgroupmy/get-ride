@@ -4,7 +4,7 @@
 // approved vehicles still without an approved service type, to set first.
 // Airport Areas → Waiting queue shows the order and links here.
 import 'package:flutter/foundation.dart' show listEquals;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

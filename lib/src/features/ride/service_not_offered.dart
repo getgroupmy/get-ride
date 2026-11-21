@@ -2,7 +2,7 @@
 // at the pickup (SERVICE_NOT_OFFERED_HERE, migration 0302).
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/region_service_switches.dart';
 import '../../widgets/app_notice.dart';

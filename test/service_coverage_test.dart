@@ -1,6 +1,6 @@
 // Bolt's "currently unavailable": a pickup, stop or destination outside
 // every region the admin set up, or in a blocked one.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/geo/geo_logic.dart';
 import 'package:get_ride/src/core/ride_bidding.dart';

@@ -7,7 +7,7 @@
 // page never says whether a number has an account: the same words follow
 // "Text me a code" for every number, and a wrong code reads the same as a
 // number with no account.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

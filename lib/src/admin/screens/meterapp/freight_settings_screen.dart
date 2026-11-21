@@ -5,7 +5,7 @@
 // don't send. Kept in app_settings 'freight' (set_freight_config); the
 // waiting fee, the cancel fee and the declared value cap are by place, under
 // Charges and where offered.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/freight.dart';

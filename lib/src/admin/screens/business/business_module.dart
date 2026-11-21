@@ -1,7 +1,7 @@
 // Admin › People › Business accounts (migration 0313): the applications and
 // accounts, one account (approve, suspend, its overrides, wallet and
 // invoices) and the defaults per region.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/business_accounts.dart' show businessAccountsPage;

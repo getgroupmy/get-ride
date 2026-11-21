@@ -2,7 +2,7 @@
 // driver's acceptance to the end of the trip (never on an offer, never after
 // the trip): the permits of the ride's vehicle and driver that the country
 // shows passengers. A vehicle on bypass has none, so no button.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/permits.dart';

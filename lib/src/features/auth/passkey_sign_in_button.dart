@@ -1,7 +1,7 @@
 // "Sign in with a passkey" on the sign-in screen (migration 0179's
 // switches; features/auth/passkey/ does the ceremony).
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 

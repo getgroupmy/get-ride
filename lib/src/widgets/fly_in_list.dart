@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A scrolling list whose items fly in from the right as they arrive and
 /// fly back out (folding the gap) as they leave. Items are matched by

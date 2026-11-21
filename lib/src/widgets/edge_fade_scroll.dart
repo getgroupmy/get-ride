@@ -1,7 +1,7 @@
 // A row that scrolls sideways with a fade at the edge that has more: one
 // line instead of a wrap that pushes the page down, and still a visible hint
 // that the row goes on (the last chip half faded, not cut clean).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// [child] (a row) scrolled sideways, fading at the right edge while more
 /// lies to the right and at the left once scrolled. [fade] is the fade's

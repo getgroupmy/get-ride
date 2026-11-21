@@ -4,7 +4,7 @@
 // (features/shell/update_gate.dart): a phone below the minimum, or below the
 // latest while Force update is on, gets "Update required" in place of the
 // whole app until it is updated.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/live_tables.dart';

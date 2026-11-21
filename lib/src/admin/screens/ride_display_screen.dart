@@ -2,7 +2,7 @@
 // / City / Suburb (and one master default), an admin turns off the AI fare
 // (its pricing and badge) and/or the "12 km · 24 min" distance·time line on the
 // ride home. Scoped and resolved exactly like the commission rate.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ride_display_rules.dart';

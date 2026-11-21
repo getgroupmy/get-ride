@@ -2,7 +2,7 @@
 // to before the home map and partners before going online, each check
 // enforced or bypassed, and whether the app's Settings shows the
 // Permissions card.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/app_permissions.dart';

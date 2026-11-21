@@ -5,7 +5,7 @@
 // tells a signed-out visitor only what it may: a GET.Referral code's
 // referral code (carried into sign-up), or "sign in" for a driver's code,
 // after which the app comes back here.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/my_qr.dart';

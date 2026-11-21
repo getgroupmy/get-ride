@@ -1,7 +1,7 @@
 // Earnings → My ratings: the driver's rating and the tags riders picked
 // over the last 30 days, as totals only (migration 0297). The riders and
 // trips behind them are never shown, nor any flag the admin sees.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ride_rating.dart';

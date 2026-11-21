@@ -2,7 +2,7 @@
 // outline on the rider's map (on or off by the admin's showOutline), the
 // admin's switch for it, and the driver's scheduled rides with the place
 // fees a booking locked in their total.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

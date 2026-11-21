@@ -2,7 +2,7 @@
 // its preview (widgets/trip_card_preview.dart), in light and dark: the
 // switches and the done minutes save, a read-only admin can't change them,
 // and the preview draws App Page Settings' trip card colours.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/trip_card_settings_card.dart';
 import 'package:get_ride/src/core/page_inventory.g.dart';

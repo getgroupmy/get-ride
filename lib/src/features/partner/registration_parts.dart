@@ -2,7 +2,7 @@
 // by partner_onboarding_screen.dart and registration_steps.dart: the
 // coloured notice boxes, the upload tiles, the Partner Service type cards
 // with the citizens-only notice, and the eligibility modal.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../admin/screens/people/people_logic.dart';

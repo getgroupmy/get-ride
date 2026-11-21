@@ -2,7 +2,7 @@
 // 0206): its map as a MapLibre style the browser draws (web only, with the
 // app's own tiles whenever it can't be shown), its credit, and the admin's
 // choices for it.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

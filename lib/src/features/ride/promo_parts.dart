@@ -1,7 +1,7 @@
 // Rider promo codes in the app (migration 0242): the home "promo zone" bar,
 // the confirm step's promo bar and sheet, the driver's "Promo applied" mark,
 // and the promo lines on the driver's trip, receipts and history.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../core/format.dart' show formatDateTime, formatMoney;

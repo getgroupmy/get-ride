@@ -3,7 +3,7 @@
 // switches on "Ride extras I take", the "Passenger added extras" check
 // before an offer or Accept, the feed's "not shown" line and the admin's
 // read-only list, in light and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/driver_extras_card.dart';

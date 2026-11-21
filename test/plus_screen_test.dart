@@ -2,7 +2,7 @@
 // GET.Plus page (join from GET.wallet, cancel, keep, receipts), the member
 // banner and the booking card's member price and Premium rule line, and the
 // driver's Premium status card, in light and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

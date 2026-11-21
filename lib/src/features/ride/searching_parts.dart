@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/payment_types.dart' show paymentModeLabel;
 import '../../core/ride_bidding.dart' show driverTripsLabel;

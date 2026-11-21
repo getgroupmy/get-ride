@@ -3,7 +3,7 @@
 // Contact support and OK, wherever the number is saved (registration,
 // profile, admin edit), since they all report through showError /
 // showErrorNotice.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/widgets/common.dart';

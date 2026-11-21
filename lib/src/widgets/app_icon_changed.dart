@@ -1,7 +1,7 @@
 // The one-time "App icon updated" popup (Expo `AppIconChangeModal`): shown
 // once on each device after the admin publishes a new app icon (Admin → App
 // Settings → App Icon), with the new icon in it.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_branding.dart';

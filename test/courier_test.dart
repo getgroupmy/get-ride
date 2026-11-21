@@ -4,7 +4,7 @@
 // page and My deliveries, the driver's view of the parcel, the home Couriers
 // box and its admin editor ("Link to page" and what the box opens) -- light
 // and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';

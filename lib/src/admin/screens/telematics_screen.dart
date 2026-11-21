@@ -2,7 +2,7 @@
 // a vehicle — kilometres online, to pickups and with passengers (estimated
 // against actual), trips by type, the period's list and its CSV. Read on
 // the Telematics page (admin-telematics) or a full admin.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../data/telematics_repository.dart';
 import '../../features/telematics/telematics_scope_view.dart';

@@ -3,7 +3,7 @@
 // is shown exactly as Image.network would. With [StorageImage.preferThumb],
 // a document photo is shown from the small thumbnail stored beside it, and
 // from the file itself only when it has none (an older upload).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/doc_photo.dart' show docThumbUrl;
 import '../core/storage_links.dart';

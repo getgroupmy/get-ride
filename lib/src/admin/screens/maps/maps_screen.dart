@@ -4,7 +4,7 @@
 // each provider uses; and Map appearance, whether every map is light or
 // dark (app_settings 'map_appearance', no migration). Applies live, without
 // an app release.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

@@ -2,7 +2,7 @@
 // list, the driver's "Promo applied" mark and cash line, the receipt and
 // history lines. The confirm bar and the home zone bar are in
 // home_confirm_test.dart (they need the home screen).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

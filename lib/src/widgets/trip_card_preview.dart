@@ -2,7 +2,7 @@
 // the app for Admin → Display Settings → Trip card's preview. Its colours
 // are App Page Settings' "Trip card · Preview" ([tripCardSurface]), the same
 // ones the phone's own card takes.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/page_styles.dart';
 import '../core/trip_card.dart';

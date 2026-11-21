@@ -4,7 +4,7 @@
 // work, and where "Needs a closer look" starts. The orders are changed here
 // or in Dispatch › Accounts (the same fields). Scores only help the admin:
 // nothing is approved or rejected automatically.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/signin_checks.dart';

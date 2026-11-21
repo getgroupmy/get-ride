@@ -2,7 +2,7 @@
 // open when tapped. Each chip replaces an older inline control on the confirm
 // sheet; the shared gate `bookingChipShown` hides that control when its chip is
 // on. This file holds the chip sheets; the taps are wired in home_screen.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/city_ride_extras.dart' show LuggageRules;
 import '../../widgets/page_style_host.dart' show showAppSheet;

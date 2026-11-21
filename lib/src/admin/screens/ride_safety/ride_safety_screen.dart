@@ -2,7 +2,7 @@
 // the report window, blocking limits and the review flag, the driver request
 // filters and their limits, and passenger cover per region with the permit
 // line. Grantable to sub-admins (admin-settings-ride-safety).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

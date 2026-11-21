@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/app_branding.dart' show brandHexColor;
 import '../core/booking_chips.dart';

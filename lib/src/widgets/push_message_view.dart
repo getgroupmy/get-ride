@@ -2,7 +2,7 @@
 // top, then its headings, paragraphs, bullet lists, buttons and pictures.
 // Used by the page a push opens and by the composer's preview.
 import 'package:flutter/gestures.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/push_message.dart';
 import 'media_image.dart';

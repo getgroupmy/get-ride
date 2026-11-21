@@ -1,6 +1,6 @@
 // Admin → Settings → Mock / Simulation (Expo `admin-settings-mock`): the four
 // demo / simulation switches in the global display settings blob.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../widgets/busy.dart';

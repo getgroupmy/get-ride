@@ -6,7 +6,7 @@
 // The credit limit (how far below zero the stand's GET.credit may go with
 // counter-paid orders) works the same way: admins, or the stand admin within
 // the admin's cap (dispatch_set_credit_limit).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/dispatch.dart';

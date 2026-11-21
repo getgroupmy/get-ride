@@ -1,7 +1,7 @@
 // The credit under every map: the provider drawing the tiles, worked out from
 // Admin → Settings → Maps' attribution or the tile URL; Google's logo and the
 // viewport's copyright always on screen (light and dark).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/map_credit.dart';

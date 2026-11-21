@@ -2,7 +2,7 @@
 // on it. Drawn here (no image asset), light and dark.
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class MapPickIcon extends StatelessWidget {
   const MapPickIcon({super.key, this.size = 44});

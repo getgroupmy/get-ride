@@ -1,6 +1,6 @@
 // Document reading, part 4: what the office NAS read off a document, shown
 // in the admin review with what matches the record.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/doc_fields_section.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

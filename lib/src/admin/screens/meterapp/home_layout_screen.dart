@@ -3,7 +3,7 @@
 // country, state, city or suburb with its own; a place without one follows
 // the nearest place above it that has one, else the master
 // (core/home_layout.dart).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/home_layout.dart';

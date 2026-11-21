@@ -2,7 +2,7 @@
 // "Editing Home"): the name (other places only), the address, which can be
 // chosen again, and the entrance to wait at. A new place shows its spot on
 // the map above the form; a saved one can be deleted.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';

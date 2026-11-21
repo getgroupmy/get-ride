@@ -4,7 +4,7 @@
 // where the admin's rule switches it on at the pickup; the breakdown of what
 // the sender pays; and the sender's parcel cover claim after the delivery.
 // Colours come from the theme, so light and dark both read.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/delivery_addons.dart';

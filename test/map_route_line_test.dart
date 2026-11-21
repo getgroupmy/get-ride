@@ -1,7 +1,7 @@
 // MapRouteLine's value equality (apple_native_layer.dart) is what lets the
 // route notifier skip redundant redraws of MapKit's own polyline: the line is
 // only handed to the native map again when the points, colour or width change.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/widgets/apple_native_layer.dart';
 import 'package:latlong2/latlong.dart';

@@ -3,7 +3,7 @@
 // resolveScannedVehicle (pure, tested below), and the button renders in the
 // sheet. The pick→read round trip itself isn't widget-tested because the file
 // picker isn't injectable, so the mapping logic is unit-tested instead.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

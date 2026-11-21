@@ -2,7 +2,7 @@
 // ringed dot, stops numbered squares, the drop-off a flag, and the route
 // black on a light map and white on a dark one; and the "show whole route"
 // button a winding route to a pin.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';

@@ -1,7 +1,7 @@
 // Admin → Display Settings → Demo / Mockup Data: the accounts the demo is
 // for ("Demo riders", "Demo drivers"). The switches say the demo is on; these
 // lists say for whom. Kept in the display settings blob as bare profile ids.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/demo_mode.dart' show demoDriverIdsKey, demoRiderIdsKey;

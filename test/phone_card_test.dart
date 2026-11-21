@@ -2,7 +2,7 @@
 // repository, in light and dark: a tab per phone, newest first, the groups
 // and pills, "No phone details yet", and the link to the account's Session
 // History, shown only to an admin who may open it.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

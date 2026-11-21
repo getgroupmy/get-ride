@@ -2,7 +2,7 @@
 // how many of each, a photo and a size for every one), and the pets as the
 // driver and admins see them (the summary line, a thumbnail per pet, a
 // larger look at one). In the app's light or dark theme.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ride_chat.dart' show ridePhotoProblem;

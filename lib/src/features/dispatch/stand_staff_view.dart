@@ -1,7 +1,7 @@
 // A stand admin's own staff (migration 0251): staff IDs made by phone, each
 // with their access chips and on/off. The server lets a stand admin touch
 // only their stands' staff rows, and only their access and on/off.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/dispatch.dart';

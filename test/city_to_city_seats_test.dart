@@ -6,7 +6,7 @@
 // posted trip (requests with the locked offer motion, passengers, start),
 // and Find a trip and Book a seat (board 17), with the rider's trip page for
 // a request waiting for the driver and one declined.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';

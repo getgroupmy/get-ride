@@ -1,7 +1,7 @@
 // Admin › Settings › App Settings › Store review login (migration 0333):
 // the number Google Play and App Store reviewers sign in with (no SMS code,
 // no PIN) into the one sealed demo account, on or off, and every sign-in.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/format.dart';

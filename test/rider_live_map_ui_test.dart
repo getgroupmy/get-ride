@@ -2,7 +2,7 @@
 // button on the home map (hidden until the rider has an overlay to use),
 // its picker, each sheet, the layers, Settings › Map, the member's "Stop
 // sharing" and "Company trip", and Admin › Settings › Rider live map.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

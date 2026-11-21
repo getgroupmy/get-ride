@@ -3,7 +3,7 @@
 // Google's traffic while the traffic button is on (when the admin chose
 // Google traffic), and gives way to [fallback] tiles if Google refuses the
 // key or the API can't load.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

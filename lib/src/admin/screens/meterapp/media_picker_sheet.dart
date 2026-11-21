@@ -1,7 +1,7 @@
 // The one picker every admin icon or picture slot opens: the Media
 // Gallery's built-in icons and uploads of the slot's kind, with search,
 // "Default" to clear the slot's override, and Upload from inside the sheet.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../config.dart';

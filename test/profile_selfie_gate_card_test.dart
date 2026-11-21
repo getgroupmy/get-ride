@@ -1,6 +1,6 @@
 // Admin → App Settings → Live-selfie verification card (migration 0401): shows
 // the Master default and per-country rules, with Add / Edit when editable.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

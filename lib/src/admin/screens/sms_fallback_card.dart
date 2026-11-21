@@ -1,6 +1,6 @@
 // Admin → SMS / WhatsApp → SMS fallback for trips (migration 0150): a trip
 // alert the app never confirmed goes out as an SMS through the gateway phone.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/sms_fallback.dart';

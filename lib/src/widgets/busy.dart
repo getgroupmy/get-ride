@@ -8,7 +8,7 @@
 // widget.
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// What a busy control runs: anything, sync or async.
 typedef BusyAction = FutureOr<void> Function();

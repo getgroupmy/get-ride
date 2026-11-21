@@ -1,6 +1,6 @@
 // Shared pieces of the City to City admin pages (migration 0306): a stepper
 // row, place chips and the place picker.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../core/city_to_city.dart';
 import '../../../widgets/search_select.dart';

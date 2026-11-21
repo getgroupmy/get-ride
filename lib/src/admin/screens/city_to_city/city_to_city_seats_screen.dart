@@ -15,7 +15,7 @@
 //
 // Its own permission page (c2cSeatsPage), grantable to sub-admins; City to
 // City's page edits it too. The server enforces every part.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/city_to_city.dart';

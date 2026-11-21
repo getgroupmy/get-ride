@@ -1,6 +1,6 @@
 // The side menus' buttons follow the app's theme accent, not a colour of
 // their own.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show brandAccent;
 import 'package:get_ride/src/widgets/side_menu_style.dart';

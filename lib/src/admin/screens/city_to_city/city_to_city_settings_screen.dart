@@ -2,7 +2,7 @@
 // fee, the payment methods, the minimum driving experience, the permits a
 // driver needs per country, and where City to City is offered (the region
 // service switches, 0302, on the Regions page).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

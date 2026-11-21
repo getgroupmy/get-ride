@@ -4,7 +4,7 @@
 // referrals), with a conflict guard, an optional expiry, and a note. Revoking
 // is a soft revoke (the grant goes inactive, the approver loses the in-app menu
 // at once). Every change is in the audit log (the server's).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/approvers_repository.dart';

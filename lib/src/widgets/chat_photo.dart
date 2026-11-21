@@ -2,7 +2,7 @@
 // before it goes, and the full-screen view of one that was sent. All in the
 // app's light or dark theme.
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../data/photo_picker.dart';
 import 'net_image.dart';

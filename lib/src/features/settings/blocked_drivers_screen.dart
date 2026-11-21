@@ -1,7 +1,7 @@
 // Settings › Blocked drivers (migration 0311): the drivers the rider blocked,
 // each with Unblock. A blocked driver doesn't see the rider's requests and
 // isn't told.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

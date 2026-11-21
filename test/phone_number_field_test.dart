@@ -1,7 +1,7 @@
 // The shared PhoneNumberField: a country-code picker beside the national
 // number. It pre-fills from a stored E.164, drops the national trunk 0, and
 // reports the composed E.164 on every change.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/widgets/phone_number_field.dart';

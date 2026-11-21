@@ -1,6 +1,6 @@
 // The rides kept on the phone for when there is no connection
 // (lib/src/core/ride_cache.dart) and the strip shown over them.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/ride_cache.dart';

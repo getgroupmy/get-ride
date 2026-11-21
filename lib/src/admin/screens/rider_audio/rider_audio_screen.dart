@@ -4,7 +4,7 @@
 // suburb (the smallest place that sets a part decides it). Its own table
 // (rider_audio_rules) and page id, so it can later sit under "City ride
 // extras" as one card.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

@@ -1,7 +1,7 @@
 // The map shows what Admin → Settings → Maps set, not the app's own map
 // first and then that: blank until the settings (or the ones this device
 // kept) are known, the app's own only when neither can be had.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

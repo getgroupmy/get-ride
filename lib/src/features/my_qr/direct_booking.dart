@@ -3,7 +3,7 @@
 // destination, service, fare); this holds which driver it goes to until it
 // is booked or the rider drops it, and remembers who a direct request went
 // to so the searching screen can name them.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/my_ride.dart' show FavouriteDriver;

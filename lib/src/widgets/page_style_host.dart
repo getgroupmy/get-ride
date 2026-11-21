@@ -6,7 +6,7 @@
 // it is listed in App Page Settings (page_inventory.g.dart) and takes its
 // values; router pages take theirs from [PageStyleHost]. A value nobody set
 // leaves the app's own look.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/page_inventory.g.dart';
 import '../core/page_styles.dart';

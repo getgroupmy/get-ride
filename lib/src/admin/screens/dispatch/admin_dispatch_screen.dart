@@ -4,7 +4,7 @@
 // stand admins and fleet owners, and each stand's charges. Each tab follows
 // its own page grant; the server checks the same pages
 // (admin_table_pages → caller_admin_can_write).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 

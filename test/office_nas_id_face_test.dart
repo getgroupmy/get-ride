@@ -2,7 +2,7 @@
 // dark: the rows of the mockup from admin_nas_id_face, the order fields under
 // "Change the order", read only without edit; and the page is on the
 // Settings hub, grantable as admin-settings-office-nas.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

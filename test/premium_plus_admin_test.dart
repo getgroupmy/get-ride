@@ -2,7 +2,7 @@
 // region, every value editable, a region rule only overriding what it
 // sets), the members and the revenue, in light and dark, wide and on a
 // phone, read-only without the edit grant.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart' show AccessLevel;

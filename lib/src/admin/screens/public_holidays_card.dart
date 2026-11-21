@@ -1,7 +1,7 @@
 // Admin › Settings › Public holidays (migration 0328): the dates a weekly
 // or monthly hire skips (where its settings say so), for one country or
 // every country. Added with the date in boxes, searched when the list is long.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/hourly_hire_repository.dart';

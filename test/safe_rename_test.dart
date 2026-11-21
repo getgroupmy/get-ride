@@ -4,7 +4,7 @@
 // the preview lists every place with examples; a name already used is
 // refused; after the rename, "Renamed" and the Rename history card, whose
 // latest rename can be changed back. Light and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

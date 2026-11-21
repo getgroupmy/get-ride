@@ -2,7 +2,7 @@
 // (From and To each several places at any level; the most specific match
 // wins), the default for trips no rule matches, and an editor with a live
 // example worked out the way the server quotes (core/city_to_city.dart).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/city_to_city.dart';

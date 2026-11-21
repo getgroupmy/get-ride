@@ -4,7 +4,7 @@
 //   tag picked N times within D days).
 // - Partners → a driver: the tag totals and any flag, with Mark reviewed.
 // Flags are for admins only; the driver sees their totals, never a flag.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ride_rating.dart';

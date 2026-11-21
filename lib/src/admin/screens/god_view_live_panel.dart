@@ -2,7 +2,7 @@
 // the phone's last report, "Live now" with its lengths and countdown, the
 // map's "Live · every 5 s" badge, and the pencil by Phone's dialog. The
 // rules are in core/god_view_live.dart; the page keeps the state.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../config.dart';

@@ -1,7 +1,7 @@
 // Open-request privacy (migration 0195): a driver deciding on an open
 // request sees the rider's first name and an icon for a ride booked for
 // someone else, never who it is for.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/request_viewers.dart';

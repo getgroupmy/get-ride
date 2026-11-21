@@ -2,7 +2,7 @@
 // NAS app (full admins), a card per NAS service from its last check-in
 // (nas_services) and the box's numbers. Also the small pieces the other tabs
 // of this page share.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 

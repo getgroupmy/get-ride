@@ -2,7 +2,7 @@
 // Claude cloud sessions and office IPs that use the Supabase MCP tools without
 // a permission prompt. The list may only be changed from an office IP; the
 // database checks that on every write, this screen just says so up front.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/live_tables.dart';

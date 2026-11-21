@@ -9,7 +9,7 @@
 // busy areas without counts.
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:latlong2/latlong.dart';
 
 /// Admin › Settings › Rider live map; grantable to sub-admins.

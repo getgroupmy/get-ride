@@ -4,7 +4,7 @@
 // date. A booking opens its view (hire_booking_view.dart): its days, giving
 // every remaining day or one day to a driver, and cancelling, before day 1
 // as well as after.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

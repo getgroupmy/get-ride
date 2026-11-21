@@ -4,7 +4,7 @@
 // status in the corner is the NAS's newest check-in (nas_services, 0318).
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/office_nas.dart';

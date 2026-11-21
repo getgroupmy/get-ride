@@ -3,7 +3,7 @@
 // One global rate card plus country / state / city / suburb overrides in
 // `meter_digital_settings`, resolved on the driver's device narrowest-first.
 // All shaping and validation lives in `meter_logic.dart`; this is the form.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../providers.dart';

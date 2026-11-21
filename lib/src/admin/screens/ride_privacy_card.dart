@@ -1,7 +1,7 @@
 // Admin → App Settings → Open requests (migration 0195): while a request is
 // open, drivers see the area, distance, fare and the rider's first name and
 // rating; whether they also see the rider's photo is this switch.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';

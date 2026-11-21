@@ -3,7 +3,7 @@ import 'dart:async';
 // Handing a trip over mid-way (migration 0199): the pure parts, where the
 // notifications open, and the driver's, new partner's, passenger's and
 // admin's cards (light and dark).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';

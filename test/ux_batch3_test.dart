@@ -2,7 +2,7 @@
 // side (iPhone 15, 852x393 with its notch and home bar), on a small phone
 // at large text (iPhone SE, 375x667 at 1.3) and under the keyboard, and the
 // iOS, accessibility and contrast fixes that came with them.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/fare.dart' show RideService;

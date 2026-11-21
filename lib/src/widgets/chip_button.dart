@@ -3,7 +3,7 @@
 // their semantics, which web screen readers announced as "checkbox, not
 // checked" for chips that simply do something (quick replies, amount
 // presets, suggestions). Every action chip in the app is this one.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// [ActionChip] with button semantics: its label (or [semanticLabel]),
 /// enabled when [onPressed] is set, a tap action, and no checked state.

@@ -2,7 +2,7 @@
 // signed in or not: whether GET.ride issued that statement, to whose
 // initials, for which period and with what net, and whether it was final
 // or since revised (migration 0201). Nothing else about the driver.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 

@@ -1,6 +1,6 @@
 // On a driver's Partners sheet (migration 0311): their trip reports and the
 // riders who blocked them, with the review flag and Mark reviewed.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

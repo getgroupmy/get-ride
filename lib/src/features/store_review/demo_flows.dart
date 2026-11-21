@@ -3,7 +3,7 @@
 // booking screens call to play a demo booking on the phone. Each booking
 // becomes a demo request (demoRidesProvider) that demo drivers answer with
 // the shared offer motion, then the demo trip, pay, rate and receipt.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

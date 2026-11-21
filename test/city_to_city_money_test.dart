@@ -7,7 +7,7 @@
 // (paid in app, held; a fee to collect; the give-up rule), and Wallet's
 // fees owed with Pay now. The server's twin is
 // supabase/tests/city_to_city_money_0309.sql.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart' show AccessLevel;

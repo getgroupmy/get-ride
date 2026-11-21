@@ -2,7 +2,7 @@
 // stay neutral, Mark all read is a button, the pickup wheels show the same
 // rows and balanced columns, the promo sheet says where codes come from,
 // and the route card's time never breaks.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

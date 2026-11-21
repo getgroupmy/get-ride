@@ -2,7 +2,7 @@
 // trip code) day by day, how the pickup handshake went, what the trip
 // safety checks flagged, and the trips behind those numbers. Reads
 // ble_safety_report / ble_safety_report_trips (0158).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';

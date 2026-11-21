@@ -2,7 +2,7 @@
 // pays as the courier and admins read them, the confirmation code the
 // sender passes on, and the dialog where the courier types it in at
 // drop-off (the server checks it, courier_code_check).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/courier.dart';

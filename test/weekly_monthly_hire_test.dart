@@ -3,7 +3,7 @@
 // the weekdays in plain words; on screen (light and dark) the weeks and
 // weekdays on the booking panel, the review, the driver's card, the admin's
 // Weekly and Monthly settings and the public holidays.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/multi_hire_card.dart';

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A sideways shake of [child], as Expo's `triggerShake`: 8, −8, 6, −6, 0
 /// pixels, 50 ms a step. Something below it calls [Shake.maybeOf] to say

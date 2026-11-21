@@ -2,7 +2,7 @@
 // decline the driver's request, then see the new driver on their way.
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/trip_handover.dart';

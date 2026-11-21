@@ -1,7 +1,7 @@
 // The home map keeps its pickup pin (or the rider) in the middle of the map
 // left showing above the sheet when it is all the way down (inDrive's),
 // rather than in the middle of the whole map behind the sheet.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';

@@ -5,7 +5,7 @@
 // document is sent: if not, a modal asks them to take it now. Where the
 // check can't run (the web, desktops) the document is sent anyway and the
 // server records the match as not checked, flagged for the admin.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/identity_repository.dart';

@@ -2,7 +2,7 @@
 // banner, and the Settings row — and the invariant that the app never acks
 // (which is what unlocks server-side background reports) without first showing
 // the indicator. Light and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Pure: whether the shortcuts are revealed (open and not force-collapsed).
 /// See test/partner_toolbar_test.dart.

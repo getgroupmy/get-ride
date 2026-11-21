@@ -1,5 +1,5 @@
 // Shown over a trip while it is the copy kept on the phone (no connection).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/format.dart' show formatTime;
 

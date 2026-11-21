@@ -2,7 +2,7 @@
 // 0333): whether passengers may opt in to sharing their approximate
 // location with GET.ride safety while the app is closed. Off by default;
 // drivers are not affected.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../features/settings/location_checkins_card.dart' show locationCheckinsConfigProvider;

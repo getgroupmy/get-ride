@@ -1,7 +1,7 @@
 // GET.Plus on the booking card (migration 0316): the member banner over the
 // vehicles. The member's prices, with the full one struck through, are on
 // each card (ConfirmServiceCard.was).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/premium_plus.dart';
 

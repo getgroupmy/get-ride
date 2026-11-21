@@ -9,7 +9,7 @@
 // phones and Google's JavaScript map on the web (both drawn under the app's
 // layers, google_native_layer.dart / google_js_layer.dart) and Amazon /
 // MapLibre styles (maplibre_layer.dart).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';

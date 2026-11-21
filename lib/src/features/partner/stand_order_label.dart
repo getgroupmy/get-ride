@@ -3,7 +3,7 @@
 // ("Assigned to you") or to a group they are in ("Stand order · <group>").
 // It is taken with the same Accept; Decline on an assigned order sends it
 // straight back to the stand.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/dispatch.dart';
 import '../../data/models.dart';

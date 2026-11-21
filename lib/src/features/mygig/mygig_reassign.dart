@@ -5,7 +5,7 @@
 // passenger confirms the new driver (in the app, on the trip link, or on the
 // first driver's phone), keeps the first one, or cancels with no charge.
 // Nothing changes until the passenger confirms.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

@@ -3,7 +3,7 @@
 // are using the service in — current_country, else nationality, else the Master
 // default). An approver can also request one from anyone at any time. The server
 // enforces it on every booking module.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';

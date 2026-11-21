@@ -1,7 +1,7 @@
 // SMS fallback for trips (migration 0150): the admin's settings and the card
 // that edits them (lib/src/core/sms_fallback.dart,
 // lib/src/admin/screens/sms_fallback_card.dart).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/sms_fallback_card.dart';

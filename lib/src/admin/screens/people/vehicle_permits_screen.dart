@@ -4,7 +4,7 @@
 // plate colours, the expiry reminders and what expires soon. Every permit's
 // words and fields come from the country's permit types; nothing here
 // knows one country's permits.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

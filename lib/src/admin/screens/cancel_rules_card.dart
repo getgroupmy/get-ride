@@ -2,7 +2,7 @@
 // cancel and no-show fees by place (Default, or a country, state, city or
 // suburb, as Ride Options' charges are kept), and the driver cancel-rate
 // limit that pauses their offers.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/city_cancel.dart';

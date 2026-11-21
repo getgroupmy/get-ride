@@ -4,7 +4,7 @@
 // and the request button at the foot as "Find a driver" in its raised bar.
 // Colours come from the theme and App Page Settings (the page's own values,
 // `page_styles.dart`), never set here.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/page_styles.dart';
 import '../../widgets/busy.dart' show BusySpinner;

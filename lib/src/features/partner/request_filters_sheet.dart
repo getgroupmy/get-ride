@@ -2,7 +2,7 @@
 // pickup distance and sort, within the admin's limits (Admin › Settings ›
 // Ride safety). Saved on the phone and to the account. They only hide
 // requests from the driver's own list.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';

@@ -1,6 +1,6 @@
 // Admin › Settings › Rider live map (migration 0322): what riders may see on
 // the home map (cars near me, busy areas, my people, team), by region.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/rider_live_map.dart' show riderLiveMapPage;

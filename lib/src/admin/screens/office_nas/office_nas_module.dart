@@ -1,6 +1,6 @@
 // Office NAS (migration 0318 and the other NAS batches): one page under
 // Security & integrations, its tabs in office_nas_screen.dart.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/office_nas.dart' show officeNasPage, officeNasPath;

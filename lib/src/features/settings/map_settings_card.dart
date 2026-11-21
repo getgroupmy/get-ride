@@ -2,7 +2,7 @@
 // near the rider show on the home map (where the region shows them and lets
 // riders hide them), and whether the map overlays stay on as they were left.
 // Kept on the phone for each signed-in user.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/rider_live_map_repository.dart';

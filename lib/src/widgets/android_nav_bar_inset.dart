@@ -5,7 +5,7 @@
 // with the page colour; screens below see no bottom inset left, so none is
 // added twice.
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class AndroidNavBarInset extends StatelessWidget {
   const AndroidNavBarInset({super.key, required this.child});

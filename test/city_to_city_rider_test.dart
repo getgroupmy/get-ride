@@ -4,7 +4,7 @@
 // In app or Cash) and the request sent; the offers with the locked motion,
 // Decline and Accept; the booked trip with Call and the cancel fee; after
 // the trip, the rating; a cancelled trip; and the admin's Driving since.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart' show AccessLevel;

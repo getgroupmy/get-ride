@@ -9,7 +9,7 @@
 //   the vehicle (vehicleServiceStatuses): its age limit, paused when over
 //   it, and the vehicle permits GET.ride uploads. The server works out the
 //   same when the vehicle is submitted (0301).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../admin/screens/people/people_data.dart';

@@ -1,7 +1,7 @@
 // Asking for a driver by their code (migration 0198): the My Ride code typed
 // in, or their GET.me QR scanned or pasted. Used to hand a scheduled ride to
 // another driver and by a passenger choosing a driver for a booking.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../my_ride/my_ride_screen.dart' show MyRideScanScreen;
 import '../../widgets/page_style_host.dart';

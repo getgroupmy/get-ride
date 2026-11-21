@@ -4,7 +4,7 @@
 // before are checked only when an admin previews and applies them here.
 // Rows an admin set are kept. Shown on Edit Vehicle and on the partner
 // review.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/vehicle_onboarding.dart';

@@ -2,7 +2,7 @@
 // the backend on, and the DNS-over-HTTPS resolvers it asks when the phone's
 // own DNS cannot look any of them up (core/backend_network.dart). Saved on
 // its own, so a database without migration 0171 only fails this card.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../config.dart';

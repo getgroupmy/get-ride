@@ -1,7 +1,7 @@
 // City ride safety (migration 0311) on screen, light and dark: the receipt's
 // cover card, report and block; Settings › Blocked drivers; the driver's
 // request filters; Admin › Ride safety.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart' show AccessLevel;

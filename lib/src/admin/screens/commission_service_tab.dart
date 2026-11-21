@@ -2,7 +2,7 @@
 // have its own rate, used everywhere instead of the place rate. A driver's
 // own rate still comes first; tiers and a lower running promotion still
 // apply on top. A preview shows what a trip pays.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/city_to_city.dart' show commissionForService, CommissionSource, c2cMoney;

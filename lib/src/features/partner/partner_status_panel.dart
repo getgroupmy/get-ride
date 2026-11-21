@@ -2,7 +2,7 @@
 // status means, the admin's reason for a rejection or block, and what they
 // can do about it — finish or update the application, send a rejected one
 // back for review, or contact support (migration 0118).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';

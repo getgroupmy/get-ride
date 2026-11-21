@@ -4,7 +4,7 @@
 // "Passenger didn't come" and Change destination, the collect card (pay by
 // link, the per-trip fee, Block this number), the passenger's accept
 // screen with its Family row, the trip link page, and the admin's places.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

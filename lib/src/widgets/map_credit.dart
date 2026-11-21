@@ -5,7 +5,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
 
@@ -46,7 +46,7 @@ class MapCreditLayer extends StatelessWidget {
       return ValueListenableBuilder<bool>(
         valueListenable: maplibreFailed,
         builder: (context, failed, _) =>
-            _tilesCredit(failed ? fallbackShownSource(context, satellite: satellite) : source),
+            _tilesCredit(context, failed ? fallbackShownSource(context, satellite: satellite) : source),
       );
     }
     if (source.googleJsKey != null) {
@@ -55,13 +55,13 @@ class MapCreditLayer extends StatelessWidget {
       return ValueListenableBuilder<bool>(
         valueListenable: googleJsFailed,
         builder: (context, failed, _) =>
-            failed ? _tilesCredit(fallbackShownSource(context, satellite: satellite)) : const SizedBox.shrink(),
+            failed ? _tilesCredit(context, fallbackShownSource(context, satellite: satellite)) : const SizedBox.shrink(),
       );
     }
-    return _tilesCredit(source);
+    return _tilesCredit(context, source);
   }
 
-  Widget _tilesCredit(TileSource source) {
+  Widget _tilesCredit(BuildContext context, TileSource source) {
     // Apple's map draws its own logo and Legal link.
     if (source.appleNative) return const SizedBox.shrink();
     final credit = mapCreditFor(source.url, attribution: source.attribution);
@@ -73,6 +73,10 @@ class MapCreditLayer extends StatelessWidget {
       alignment: AttributionAlignment.bottomLeft,
       // The map's own provider beside the ⓘ, not flutter_map's logo.
       showFlutterMapAttribution: false,
+      // The app's surface, given here: flutter_map still reads its colours
+      // from Flutter's old built-in Material theme, which the app no longer
+      // sets, and would draw a light box in dark mode.
+      popupBackgroundColor: Theme.of(context).colorScheme.surface,
       // ⓘ and its close button: 44 × 44 targets with names, at any density.
       openButton: (context, open) => IconButton(
         key: const ValueKey('map-credit-open'),

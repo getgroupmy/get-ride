@@ -1,6 +1,6 @@
 // Admin → SMS / WhatsApp → Sign-in SMS limits (migration 0149): the limits
 // the sign-in SMS hook keeps to, and what it did in the last hour.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 

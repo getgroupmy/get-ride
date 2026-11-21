@@ -4,7 +4,7 @@
 // grey as well as the app's own), the session key dialog, flags on the web,
 // and pages on a phone on its side with the keyboard up (iPhone 15,
 // 852x393, safe area 59/59/21, keyboard 200).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

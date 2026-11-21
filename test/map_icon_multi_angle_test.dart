@@ -5,7 +5,7 @@
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/map_icon_angles_editor.dart';

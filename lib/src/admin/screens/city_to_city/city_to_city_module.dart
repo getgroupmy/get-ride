@@ -1,7 +1,7 @@
 // City to City (migration 0306): the settings and the route rules, under
 // Services & catalogue; payments, fees and reminders (0309); per-seat trips
 // (0310, its own permission page). Commission per service is a tab of Commission.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/city_to_city.dart' show c2cPage;

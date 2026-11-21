@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The "currently unavailable" picture: someone shading their eyes under a
 /// palm tree on a little island, looking out for a ride that can't reach

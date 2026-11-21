@@ -4,7 +4,7 @@
 // asks for one, an Admin's approval for a trip above its amount (asked from
 // here), or the reason it can't be booked. The database checks the booking
 // again as it is written.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/business_accounts.dart';

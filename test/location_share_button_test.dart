@@ -1,6 +1,6 @@
 // The passenger's location-sharing button on the trip map: shown while the
 // driver is on the way; off for this ride only or for all rides, and back on.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/data/models.dart';

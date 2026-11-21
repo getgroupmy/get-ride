@@ -3,7 +3,7 @@
 // and/or a percentage of the fare charged on a future-dated ("Later") booking.
 // Scoped and resolved like the commission rate / ride-display rule; with no
 // row the booking falls back to the global scheduled-rides fee.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart' show formatMoney;

@@ -3,7 +3,7 @@
 // guide (the Fees tab is place_fees_tab.dart, 0324). Each takes the
 // airport's settings and hands changes back; airport_editor.dart reads and
 // saves them.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/airport_queue.dart';

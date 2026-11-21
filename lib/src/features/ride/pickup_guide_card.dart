@@ -2,7 +2,7 @@
 // that has a step-by-step guide, and its airport or place shows guides, a
 // card on the ride offers "How to find your driver at <door>" until the
 // trip starts.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/airport_queue.dart';

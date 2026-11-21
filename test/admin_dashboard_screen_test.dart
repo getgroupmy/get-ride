@@ -3,7 +3,7 @@
 // cancellations falling read as good news; an open SOS is red; the period
 // bar switches and remembers the period; Custom has the date boxes; the
 // chart answers a tap; a failed read offers Retry; a KPI opens its list.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/dashboard_panels.dart';

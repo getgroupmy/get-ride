@@ -20,7 +20,7 @@
 // a server's score, never a decision.
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/signin_checks.dart';

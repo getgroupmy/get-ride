@@ -4,7 +4,7 @@
 // `tripCard`; its colours are App Page Settings' "Trip card · Preview".
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../core/trip_card.dart';
 import '../../../widgets/busy.dart';

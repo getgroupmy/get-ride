@@ -4,7 +4,7 @@
 // may pick their own, and the schedule itself (the first window covering a
 // day wins). The icons are built into the app;
 // changes here reach every phone the next time the app is opened.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/app_icons.dart';

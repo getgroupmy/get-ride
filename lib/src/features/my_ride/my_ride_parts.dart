@@ -4,7 +4,7 @@
 // rules, lib/src/data/my_ride_repository.dart for the server).
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/my_ride.dart';

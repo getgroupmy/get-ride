@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../../config.dart';
 import '../../widgets/in_app_page.dart';
 import '../../core/installed_app.dart';

@@ -1,7 +1,7 @@
 // SOS to GET.ride's safety team (migration 0193), for admins: the red banner
 // on every admin screen while an SOS is waiting, and the page that lists
 // them, where an admin acknowledges (stops the re-alerts) and resolves.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';

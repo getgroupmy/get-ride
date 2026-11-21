@@ -1,7 +1,7 @@
 // A hire for several days on the admin's ride details (migration 0327): the
 // booking (its price, what was paid, its state) and every day with its
 // pickup, status and whether a driver has it; cancelling it (free).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';

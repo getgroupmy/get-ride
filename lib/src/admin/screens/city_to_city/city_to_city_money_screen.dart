@@ -11,7 +11,7 @@
 //   Cancel fees a rider owes        how they are collected (any combination).
 //   Trip reminders                  on/off, the list, the channels, and how a
 //                                   reminder reads on the phone.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/city_to_city.dart';

@@ -2,7 +2,7 @@
 // line per fee ("KLIA kerbside fee (pickup)  RM 5.00", its note in the fare
 // details), the label on the map pin, the place's outline on the map (0325),
 // and Freight's and Courier's lines and total from the server's quote.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';

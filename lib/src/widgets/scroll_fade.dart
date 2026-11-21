@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A horizontal row that scrolls, its edges fading out where there is more
 /// to see that way: a sign the row goes on (a last chip cut to "F…" with

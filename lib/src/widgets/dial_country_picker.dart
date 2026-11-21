@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/dial_countries.dart';
 import 'page_style_host.dart';

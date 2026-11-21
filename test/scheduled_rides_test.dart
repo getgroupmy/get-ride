@@ -1,6 +1,6 @@
 // Scheduled rides (migration 0189): the settings, the fee and cancel rules,
 // the booking model, and the rider's row and bookings page.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/scheduled_rides.dart';

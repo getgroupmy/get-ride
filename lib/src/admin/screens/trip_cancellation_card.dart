@@ -2,7 +2,7 @@
 // cancellation request waits for the other side before it lapses (the ride
 // carries on), and whether one declined or not answered opens a support
 // ticket.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/ride_cancel.dart';

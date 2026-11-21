@@ -2,7 +2,7 @@
 // Admin › Push Notification's broadcasts (announcements and promotions)
 // reach this account, and (0335) the admin's marketing SMS to its number.
 // Trip, safety, payment and account messages always do.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';

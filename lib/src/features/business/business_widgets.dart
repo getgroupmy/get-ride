@@ -1,7 +1,7 @@
 // Shared pieces of the business account pages (migration 0313), in the
 // rider app and the admin: a value with − and + buttons, a figure on the
 // overview and a status pill.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A labelled value with − and + buttons. A null callback: that way is at
 /// its limit, or the page is read-only.

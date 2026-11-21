@@ -1,7 +1,7 @@
 // City to City, the rider's side (migration 0307): the colours and the
 // small pieces the page, the trip steps and the trip screen share. Colours
 // come from the theme, so the pages read in light and dark alike.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../widgets/common.dart' show inkOn, mutedTextColor;
 

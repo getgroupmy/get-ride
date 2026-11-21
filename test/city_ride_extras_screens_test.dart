@@ -2,7 +2,7 @@
 // page (Default and a region rule, wide and on a phone, read-only without
 // the edit grant), the rider's luggage and waiting rows, the waiting clock,
 // the rider's tip card and the driver's tip and cash tip card.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart' show AccessLevel;

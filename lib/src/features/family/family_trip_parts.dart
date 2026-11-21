@@ -2,7 +2,7 @@
 // family" chip and who can see the trip (only while the host can see it),
 // "Paid with Family", the child's pickup code for the parent, and the
 // driver's check of a child passenger (photo and code, with tries).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/family.dart';

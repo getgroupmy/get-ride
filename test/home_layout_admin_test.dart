@@ -1,7 +1,7 @@
 // Admin → Display Settings → Home page: the sections in order with their
 // switches, moving one, the search words, and a place's own layout made and
 // dropped, in light and dark; read-only access sees but cannot change.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart' show AccessLevel;

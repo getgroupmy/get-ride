@@ -1,7 +1,7 @@
 // The host's forms (migration 0317): invite a member by phone, add a child
 // without a phone, change what a member gets (limits, services, location),
 // and ask the admin for more members. Values the admin's region allows only.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/family.dart';

@@ -2,7 +2,7 @@
 // (only while scheduled rides are on, in its place in a menu the admin has
 // already arranged), the Scheduled tab on Trips, the driver's card on
 // Drive, and where a reminder opens.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/display_logic.dart';

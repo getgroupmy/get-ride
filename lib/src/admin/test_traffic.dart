@@ -6,7 +6,7 @@
 // edge functions mark a tester's calls as test traffic from the verified
 // caller id (fare AI response log, map usage). The label never changes how a
 // call is limited, charged or answered.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 

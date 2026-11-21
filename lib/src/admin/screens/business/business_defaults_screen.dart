@@ -5,7 +5,7 @@
 // the business discount, the commission on business trips, the default
 // member monthly limit, the payment terms and the services allowed. Each
 // account can still override any value on its own page.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/business_accounts.dart';

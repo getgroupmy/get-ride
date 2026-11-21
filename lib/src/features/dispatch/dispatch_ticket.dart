@@ -3,7 +3,7 @@
 // driver asks for at pickup; the link is the shared-ride page.
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/dispatch.dart';

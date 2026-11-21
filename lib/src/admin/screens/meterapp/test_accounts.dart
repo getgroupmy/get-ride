@@ -3,7 +3,7 @@
 // calls are labelled test traffic, so the speed and usage figures (Fare AI
 // response log, Maps usage) show real users unless the admin asks for test
 // traffic too. Being listed changes nothing else for the account.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../widgets/common.dart';

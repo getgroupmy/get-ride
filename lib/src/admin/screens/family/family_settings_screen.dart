@@ -3,7 +3,7 @@
 // wins, a place overrides only what it sets), every value editable, and the
 // Modules and Family matrix, which lists every registered booking module,
 // a new one switched off until its boxes are turned on.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

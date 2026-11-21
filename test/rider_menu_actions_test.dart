@@ -1,7 +1,7 @@
 // Every user (rider) side-menu item opens its page in this app, as the
 // admin's menu settings arrange it: the built-in action, or the page the
 // admin linked instead.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/display_logic.dart';

@@ -9,7 +9,7 @@
 // 0276: a quiet Always on phone's "Not moved since", "Ping now" and its
 // answer, and the God View settings sheet; the newest phone's report in the
 // details (admin/widgets/phone_card.dart PhoneFacts).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

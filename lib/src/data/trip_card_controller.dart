@@ -10,7 +10,7 @@
 //   * nothing at all on the web or a desktop.
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/demo_mode.dart' show isDemoRideId;

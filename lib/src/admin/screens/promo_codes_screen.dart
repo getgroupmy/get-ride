@@ -9,7 +9,7 @@
 // what it has given: trips, the total discount and the latest trips.
 //
 // Gated by the Promocode page grant (admin-settings-promocode), as before.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';

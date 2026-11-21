@@ -6,7 +6,7 @@
 // .github/workflows/{ios,android}-release.yml in this repository. The
 // console never sees a signing key or a token. The Expo admin has the same
 // screen over the same functions.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 

@@ -5,7 +5,7 @@
 // so the confirm button silently failed to lay out and an approver could not
 // complete a rejection or send-back (the image-failed case in particular). Now
 // OverflowBar, which needs no bounded width.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

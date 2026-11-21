@@ -3,7 +3,7 @@
 // ("Can't approve: …"); the admin asks the partner for the documents, or
 // approves anyway with a written reason, recorded with their name and the
 // failed rules and shown as "Approved with override".
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../core/registration_rules.dart';
 import '../../../widgets/busy.dart';

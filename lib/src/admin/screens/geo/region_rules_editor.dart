@@ -1,7 +1,7 @@
 // The Rules section of Admin → Country / States / Cities → add / edit: a
 // region's scheduled rules (service hours, bidding, taxes, surcharges) for
 // some services at some times. See core/region_rules.dart for what they mean.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 

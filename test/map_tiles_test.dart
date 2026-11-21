@@ -1,6 +1,6 @@
 // The base map tiles: keyless OpenStreetMap by default, darkened on the
 // device in dark mode, and a configured provider when one is set.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/map_profile.dart';

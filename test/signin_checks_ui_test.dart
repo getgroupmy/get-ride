@@ -3,7 +3,7 @@
 // selfie with the reason the last was rejected, the ID with what was read,
 // waiting for approval, paused), /dispatch while the role is shut, the
 // selfie camera where there is none, and the admin's review of an upload.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';

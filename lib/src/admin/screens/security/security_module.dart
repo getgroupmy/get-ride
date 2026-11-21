@@ -1,5 +1,5 @@
 // Security & integrations: session history, fraud tracing, IP access, Claude Code access, API keys, eLife, fare AI, backend diagnostics.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin_registry.dart';

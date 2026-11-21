@@ -1,6 +1,6 @@
 // The latest build to download / install directly: lib/src/core/app_builds.dart,
 // the Admin → App Release panel and the public install page.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

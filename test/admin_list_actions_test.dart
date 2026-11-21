@@ -1,7 +1,7 @@
 // The admin people lists' call button and one-tap status actions (Expo
 // AdminUserList / AdminPartnerList / AdminVehicleList), and assigning a
 // support ticket from the pool list.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

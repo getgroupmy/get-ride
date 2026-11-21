@@ -3,7 +3,7 @@
 // the admin allows, within the limits), waiting, the return charge, the
 // item types they take, the longest delivery, COD and recipient pays, and
 // how the price shows. The server keeps every value within the admin's.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

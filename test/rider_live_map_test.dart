@@ -1,6 +1,6 @@
 // Rider live map (migration 0322): the pure logic the home map draws with,
 // the twin of the server's (supabase/tests/rider_live_map_0322.sql).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/rider_live_map.dart';
 import 'package:latlong2/latlong.dart';

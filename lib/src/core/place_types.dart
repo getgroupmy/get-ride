@@ -12,7 +12,7 @@
 //
 // [guessPlaceType] is the server's `place_type_guess` (0264): change both
 // together.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The fallback type (Google's point_of_interest, "Other"): a place without
 /// a type, or with one that is gone or switched off.

@@ -2,7 +2,7 @@
 // printed on it, as the AI check read it, beside what GET.ride has on file,
 // with a match, something to check, or a mismatch. Which fields depends on
 // what the Required Document is read as (Admin > Required Documents).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/doc_kinds.dart';
