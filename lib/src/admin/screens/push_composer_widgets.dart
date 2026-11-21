@@ -1,7 +1,7 @@
 // The pieces of Admin -> Push Notification's composer (migration 0279): the
 // emoji grid, the full-message editor, the partner type chips and the phone
 // preview. The logic is in push_composer.dart and core/push_message.dart.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/push_message.dart';
 import '../../widgets/common.dart' show mutedTextColor;

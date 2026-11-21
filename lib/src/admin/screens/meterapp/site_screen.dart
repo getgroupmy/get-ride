@@ -5,7 +5,7 @@
 // Splash Screen pages, and the Expo screen's device-only copy of the same
 // fields, which no app ever read.)
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/app_branding.dart';

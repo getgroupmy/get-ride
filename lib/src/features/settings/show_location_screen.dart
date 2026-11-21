@@ -1,7 +1,7 @@
 // Settings → Show location to your driver: whether the passenger's live
 // position goes to the driver on the way to them (core/ride_cancel.dart
 // shareRiderLocation), drawn on the driver's map until pickup.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

@@ -2,7 +2,7 @@
 // when they sign in (editable), where they stand, how their profile photo
 // was taken, and their latest selfies and IDs (re-check selfies from a new
 // phone among them). Nothing when they hold no role and sent nothing.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

@@ -1,7 +1,7 @@
 // Handing a trip over mid-way (migration 0199), on the driver's trip screen:
 // the driver who asks (by code, or to partners nearby), and the partner who
 // takes over and meets the car.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

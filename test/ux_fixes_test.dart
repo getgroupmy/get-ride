@@ -1,7 +1,7 @@
 // What the testers found on web, iOS and Android: layouts that overflowed
 // or clipped (checked at phone sizes, large text (1.3, the app's cap) and
 // in both themes), and the small rules behind the other fixes.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

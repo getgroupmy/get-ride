@@ -12,7 +12,7 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../admin/screens/meterapp/pick_image.dart';
 import '../core/liveness.dart';

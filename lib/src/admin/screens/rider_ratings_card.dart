@@ -1,7 +1,7 @@
 // Admin → App Settings → Rider ratings (migration 0269): drivers rate riders
 // after a trip; the rider's average is over their last N ratings, a rider
 // with few ratings shows as "New rider", and a low average as "Low".
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/rider_rating.dart';

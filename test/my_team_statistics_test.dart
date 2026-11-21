@@ -1,7 +1,7 @@
 // My Team Member screen → Statistics tab (migration 0367): the KPI grid renders
 // the member's driver statistics from approverMemberStatsProvider, formatted
 // with thousands separators and RM amounts.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

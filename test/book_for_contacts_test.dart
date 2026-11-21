@@ -1,6 +1,6 @@
 // "Who's riding?": the passenger can be picked from the contacts, where the
 // phone or browser offers a picker, and is typed in otherwise.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/book_for.dart';

@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' show CheckedState;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -338,7 +338,10 @@ void main() {
       expect(tester.getRect(find.byKey(const ValueKey('ride-chat-peer'))).top, greaterThanOrEqualTo(bar.top));
       // The call button carries the whole name.
       expect(find.bySemanticsLabel('Call $name'), findsWidgets);
-      expect(find.byTooltip('Call $name'), findsOneWidget);
+      // Not find.byTooltip: this tooltip is kept out of semantics (the button
+      // has its own label), and flutter_test only reads the message of such
+      // a tooltip off Flutter's old built-in Tooltip class.
+      expect(find.byWidgetPredicate((w) => w is Tooltip && w.message == 'Call $name'), findsOneWidget);
       expect(tester.takeException(), isNull);
       handle.dispose();
     });

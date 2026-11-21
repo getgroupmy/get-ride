@@ -5,7 +5,7 @@
 // has the person's photo. Then "Send back to driver" (the driver sees each
 // note on "Changes needed"), or "Approve application" once every line is
 // approved or edited, which approves the partner and their vehicle together.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/partner_review.dart';

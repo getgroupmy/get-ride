@@ -2,7 +2,7 @@
 // history filters on one fading line each, the wallet cards side by side
 // from 600 wide, the trip filters fading at the edge, notification bodies
 // capitalised, and Receive's Share / Download pinned in view.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/commerce/get_coin.dart';

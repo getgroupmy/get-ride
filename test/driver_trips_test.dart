@@ -1,7 +1,7 @@
 // The driver's completed trips next to the rating (migration 0237): on the
 // rider's offer card and on the accepted driver's card, in both themes, on a
 // 412 px phone at 1.3x text and on a 360 px one.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/core/ride_bidding.dart';

@@ -5,7 +5,7 @@
 // ladder here the dispatch falls back to the service's min/max/widen config.
 // The ladder drives BOTH the push notifications and when the offer appears on
 // the driver's screen.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

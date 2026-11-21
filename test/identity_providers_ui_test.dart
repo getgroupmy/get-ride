@@ -3,7 +3,7 @@
 // the line saying a key is missing, and the review of an upload showing who
 // gave the score, why a face isn't checked, and reading the card again with
 // Google Vision.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';

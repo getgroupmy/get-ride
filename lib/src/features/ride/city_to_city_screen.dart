@@ -2,7 +2,7 @@
 // RiderHome card): what the service is, Plan a trip, and the rider's trips
 // (waiting for offers, booked, done), each opening the trip screen. The home
 // box "City to City" opens it once the Vehicle Service is switched on.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/city_to_city.dart';

@@ -3,7 +3,7 @@
 // service with Driver decides / Keep on / Keep off and how many drivers have
 // it off, Until, Save, the current locks (filter, edit, remove) and who
 // changed what. Read-only without the edit grant.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart' show AccessLevel;

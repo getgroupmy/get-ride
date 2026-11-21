@@ -1,7 +1,7 @@
 // The driver's My Ride code (migration 0160): the QR passengers scan (or the
 // code they type) to add the driver as a favourite, Share / Copy / Change
 // code, and the riders who have added them, each of whom can be hidden.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';

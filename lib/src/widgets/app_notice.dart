@@ -4,7 +4,7 @@
 // Settings like any other modal (page_inventory_scan.dart).
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/scheduler.dart';
 
 import 'page_style_host.dart';

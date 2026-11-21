@@ -1,5 +1,5 @@
 // Services & catalogue: services, vehicle services, partner types, documents, makes & models, service assignment.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin_registry.dart';

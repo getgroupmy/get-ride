@@ -1,7 +1,7 @@
 // Admin › People › Family (migration 0317): the values by place and the
 // Modules and Family matrix; the families, member caps, requests and the
 // logged God View look.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/family.dart' show familyAdminPage;

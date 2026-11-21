@@ -1,6 +1,6 @@
 // The side menus, the pickup pin and the chosen vehicle box follow the app's
 // light / dark theme rather than being drawn dark-only.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/fare.dart';
 import 'package:get_ride/src/features/ride/home_parts.dart';

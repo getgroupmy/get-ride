@@ -1,7 +1,7 @@
 // Order dispatch (migration 0251) on screen: the console's form and board,
 // the role tabs, the stand admin's staff and charges, the fleet owner's
 // fleet, the admin pages and the driver's side — in light and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

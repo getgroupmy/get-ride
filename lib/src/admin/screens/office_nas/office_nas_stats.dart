@@ -3,7 +3,7 @@
 // source on getride.my and qr.getride.my, read from Umami on the NAS by the
 // nas-stats function (key in API Keys › Umami). "NAS off" when it can't be
 // reached; nothing else depends on it.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 

@@ -1,6 +1,6 @@
 // Every network picture: a skeleton while it loads, the base icon only if it
 // fails; and the vehicle bar is a skeleton until the service catalogue lands.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/features/ride/home_parts.dart';
 import 'package:get_ride/src/admin/screens/commerce/commerce_widgets.dart' show StoredImage;

@@ -1,5 +1,5 @@
 // "• 4 min" on the confirm sheet: the nearest online driver to the pickup.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/driver_eta.dart';
 import 'package:get_ride/src/core/fare.dart';

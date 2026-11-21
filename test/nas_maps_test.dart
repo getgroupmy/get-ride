@@ -1,7 +1,7 @@
 // Office NAS maps (migration 0319): the settings and rules as the server
 // keeps them, the NAS's status, 'nas' in Admin > Maps and the keyless web
 // map, and the Office NAS > Maps tab in light and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

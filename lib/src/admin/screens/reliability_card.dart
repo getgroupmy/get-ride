@@ -1,7 +1,7 @@
 // Admin → SMS / WhatsApp → Reliability: switches for the parts of the app that
 // keep working without a connection (lib/src/core/reliability_settings.dart).
 // A switch applies the moment it moves; every app picks it up live.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

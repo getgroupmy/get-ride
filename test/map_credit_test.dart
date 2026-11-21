@@ -1,7 +1,7 @@
 // The credit under every map: the provider drawing the tiles, worked out from
 // Admin → Settings → Maps' attribution or the tile URL; Google's logo and the
 // viewport's copyright always on screen (light and dark).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/map_credit.dart';
@@ -102,6 +102,21 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(osmCredit), findsOneWidget);
       expect(find.textContaining('© ©'), findsNothing);
+    });
+
+    // flutter_map still reads Flutter's old built-in Material theme, which
+    // the app does not set: left to itself the box is that theme's light
+    // surface, under the app's light text in dark mode.
+    testWidgets("the credits box is drawn on the app's surface ($mode)", (tester) async {
+      activeMapProfile = MapProfile.builtIn;
+      await pumpMap(tester);
+      final surface = Theme.of(tester.element(find.byType(RichAttributionWidget))).colorScheme.surface;
+      await tester.tap(find.byIcon(Icons.info_outlined));
+      await tester.pumpAndSettle();
+      final box = tester.widget<DecoratedBox>(
+        find.ancestor(of: find.text(osmCredit), matching: find.byType(DecoratedBox)).first,
+      );
+      expect((box.decoration as BoxDecoration).color, surface);
     });
 
     testWidgets("the admin's provider credited ($mode)", (tester) async {

@@ -2,7 +2,7 @@
 // grouped, with a choice where the item asks for one and a note for the
 // driver), the help as the driver and admins see it, and the line naming
 // what the options add to the fare. In the app's light or dark theme.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/ride_assistance.dart';
 import '../../core/ride_option_charges.dart';

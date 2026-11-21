@@ -3,7 +3,7 @@
 // approve / suspend / reactivate / reject, its overrides of the defaults,
 // its rules and members (as its Admins set them), the business wallet and
 // the invoices (PDF, CSV, mark paid).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

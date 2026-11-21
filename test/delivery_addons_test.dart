@@ -3,7 +3,7 @@
 // checks them, the booking lines and refusals, the Courier page with cover
 // and cash on delivery, the driver's COD and return leg, the admin's rules
 // page and the cover claims -- light and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';

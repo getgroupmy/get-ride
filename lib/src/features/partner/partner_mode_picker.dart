@@ -3,7 +3,7 @@
 // to start before driver mode opens. TEKSI goes on to its permit screen (through
 // the documents and vehicle checks; Start Pickup there adds the permit's); any
 // other service opens the driver screen, ready to go online.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

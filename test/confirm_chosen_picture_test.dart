@@ -1,7 +1,7 @@
 // The chosen vehicle on the confirm page: a larger picture whose back is cut
 // off by the card's left edge, sized by App Page Settings (home surface,
 // "Confirm ride: chosen vehicle"); the rows not chosen keep 72 × 45.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/fare.dart';
 import 'package:get_ride/src/core/page_styles.dart';

@@ -1,7 +1,7 @@
 // Admin › SMS / WhatsApp › Test and staff numbers (migration 0292): numbers
 // that skip every country phone rule and daily code limit, so testing and
 // support never get locked out. Each code sent to one is logged.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 

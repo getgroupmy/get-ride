@@ -1,6 +1,6 @@
 // The Drive tab for a partner who cannot take jobs yet: the status, the
 // admin's reason, sending a rejected application back, support.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/partner_status.dart';

@@ -1,7 +1,7 @@
 // getride.my/install/<ios|android>: what a tester opens (or scans from
 // Admin → App Release) to install the latest build directly. Public, like a
 // shared ride: a tester installing the app has no account in it yet.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';

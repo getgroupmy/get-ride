@@ -1,7 +1,7 @@
 // getride.my/delete-account (migration 0334): the page's words follow the
 // server's days, never say whether a number has an account, and lay out at
 // phone and desktop width, in light and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_filters.dart';

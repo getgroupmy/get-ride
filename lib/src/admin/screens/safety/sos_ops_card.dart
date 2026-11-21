@@ -3,7 +3,7 @@
 // gateway's "Ops alert" channel, how often an unanswered SOS is sent again
 // (from the second round to every full admin too), and how long the
 // person's location keeps coming.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/live_tables.dart';

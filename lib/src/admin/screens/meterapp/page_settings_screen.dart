@@ -3,7 +3,7 @@
 // admin can change -- text size, curves, heights, icon sizes, colours for
 // light and dark, and the items of the home screen and the fare sheet.
 // Saved values apply on every open app at once (core/page_styles.dart).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app.dart' show appTheme;

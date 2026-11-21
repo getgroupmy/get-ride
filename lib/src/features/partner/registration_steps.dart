@@ -7,7 +7,7 @@
 // the partner row or the vehicle. Unreadable: the fields open empty.
 // Every message is a modal.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

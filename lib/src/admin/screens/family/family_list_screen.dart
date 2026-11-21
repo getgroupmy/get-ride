@@ -2,7 +2,7 @@
 // cap (raised by an admin), the hosts' requests for more members (approve or
 // decline), and God View's logged look: a reason first, every look logged
 // (who, when, why), the log below.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/date_order.dart' show formatDateForUser;

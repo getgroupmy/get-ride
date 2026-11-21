@@ -1,6 +1,6 @@
 // The admin people lists read `profiles` a page at a time (PERF-55): what a
 // list has asked for so far, and the bar pinned under it with "Load more".
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'admin_filters.dart';

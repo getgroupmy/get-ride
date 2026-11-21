@@ -2,7 +2,7 @@
 // hour, minute, AM/PM) under one highlighted row, with one button to
 // confirm. A wheel turned to a time that can't be booked rolls back to the
 // nearest one that can.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/pickup_slots.dart';
 import '../../core/scheduled_rides.dart';

@@ -6,7 +6,7 @@
 // picker isn't injectable), so the shaping (PermitRead.fromJson) and the plate
 // comparison (permitPlateMatches) are unit-tested, and the scan button is
 // asserted to render in the sheet.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

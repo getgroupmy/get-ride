@@ -2,7 +2,7 @@
 // icon, kept on the phone (data/app_icon_service.dart). Only on iPhone and
 // Android, only when the admin shows it, and locked when the admin doesn't
 // let passengers and drivers choose.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

@@ -4,7 +4,7 @@
 // some vehicle services. A place with nothing of its own uses the nearest
 // place above it; with nothing set anywhere a charge is free. Names, order,
 // show / hide and the two charge switches stay one setting for every place.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../config.dart' show AppConfig;

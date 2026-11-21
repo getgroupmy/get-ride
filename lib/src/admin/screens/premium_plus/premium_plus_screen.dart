@@ -3,7 +3,7 @@
 // and a rule per region (the most specific wins; a region rule only
 // overrides what it sets), every value editable; the members and the
 // revenue. Its own page and keys, beside City ride extras (0314).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/city_to_city.dart' show C2cPlace;

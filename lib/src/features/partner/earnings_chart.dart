@@ -5,7 +5,7 @@
 // migration 0201), the same calculation as the statements.
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/partner_statement.dart';
 

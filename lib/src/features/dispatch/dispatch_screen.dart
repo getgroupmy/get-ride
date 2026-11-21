@@ -7,7 +7,7 @@
 // sign-in checks (0281: a selfie, the ID, a new phone, waiting for approval)
 // the steps show instead, and a reminder above the tabs when the ID runs out
 // soon.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

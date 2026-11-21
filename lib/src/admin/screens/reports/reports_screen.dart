@@ -9,7 +9,7 @@
 // for another period, and emailed on a schedule (report_schedule_page.dart).
 // Read on the Reports page (admin-reports) or by a full admin; saving and
 // schedules need edit.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ai_report.dart';

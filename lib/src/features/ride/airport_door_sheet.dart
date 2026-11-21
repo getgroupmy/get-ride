@@ -3,7 +3,7 @@
 // up?" when it starts at one. A pickup door with a guide offers "How to get
 // there · N steps ›": photo, "Step x of n", text, dots, Back / Next, and
 // "Pick up here" on the last step, which chooses that door.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/airport_queue.dart';
 import '../../core/format.dart';

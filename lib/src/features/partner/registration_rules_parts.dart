@@ -3,7 +3,7 @@
 // permit), with its way to the step that fixes it, and the "Before you
 // submit" checklist on the Service documents step.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/document_text.dart' show IdDocType;
 import '../../core/partner_onboarding.dart' show OnboardingStep;

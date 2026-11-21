@@ -2,7 +2,7 @@
 // backs up, how many copies it keeps, which buckets, the monthly restore
 // test, the off-site copy, "Back up now" and "Run a restore test", and the
 // recent runs. Every change saves at once (EDIT on Office NAS).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/office_nas.dart';

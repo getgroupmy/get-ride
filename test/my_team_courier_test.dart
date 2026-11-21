@@ -2,7 +2,7 @@
 // an approver with can_edit_profile adds/removes the Courier service type in the
 // member's partner_types through the profile edit. Widget tests over the member
 // screen with a fake repository.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

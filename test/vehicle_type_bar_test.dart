@@ -1,6 +1,6 @@
 // The home vehicle bar, as inDrive's: unchosen boxes are the sheet itself,
 // names in full, and the chosen one filled with a blue "i".
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/fare.dart';

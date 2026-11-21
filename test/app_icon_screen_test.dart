@@ -1,6 +1,6 @@
 // Settings → App icon (light and dark), the admin's card, and the sync that
 // only asks the phone to switch when the icon differs.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';

@@ -4,7 +4,7 @@
 // a rule sees every service. The list of types on one side, the editor on
 // the other (stacked on a phone), and "Who sees this request?" under them,
 // worked out here with the database's rule (core/partner_type_services.dart).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/format.dart' show formatDateTime;

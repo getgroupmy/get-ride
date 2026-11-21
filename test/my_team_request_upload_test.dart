@@ -3,7 +3,7 @@
 // then shows how many reminders have been sent. Widget tests over the member
 // Documents tab with a fake repository, plus a pure test of the relative-time
 // label.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

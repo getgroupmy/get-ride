@@ -3,7 +3,7 @@
 // across, the last "see all" tile, and the tiles in order, each switched on
 // or off; then per tile its words, second line, corner label (words, corner,
 // colours), picture, background and page (core/home_tiles.dart).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/home_layout.dart';

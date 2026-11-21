@@ -1,7 +1,7 @@
 // Admin › Users, a user's sheet (migration 0194): a deleted account's story
 // and its final deletion, or linking a deleted account into this one; the
 // requests from getride.my/delete-account (0334), with their status.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 

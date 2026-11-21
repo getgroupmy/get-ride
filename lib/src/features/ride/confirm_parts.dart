@@ -5,7 +5,7 @@ import 'dart:math' as math;
 // entrance, route-stops and payment sheets (the promo bar and sheet are in
 // promo_parts.dart).
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../admin/screens/commerce/get_coin.dart' show formatCoins;
 import '../../core/fare.dart';

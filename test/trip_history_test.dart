@@ -1,7 +1,7 @@
 // Request history by side (core/trip_history.dart, trip_history_view.dart):
 // someone who is both a rider and a partner sees the rides they booked under
 // Trips and the trips they drove under Drive → Trip history, never mixed.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

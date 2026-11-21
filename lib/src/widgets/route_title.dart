@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// The browser tab's name for an app path: "Trips · GET.ride",
 /// "Fare tariffs · Admin · GET.ride", plain "GET.ride" for home and any

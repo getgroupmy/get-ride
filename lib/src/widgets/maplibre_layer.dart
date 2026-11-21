@@ -2,7 +2,7 @@
 // 0206, web only) as a FlutterMap's base layer: it follows the map's camera
 // and gives way to [fallback] tiles if MapLibre can't load or the key is
 // refused.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 
 import 'maplibre_map.dart';

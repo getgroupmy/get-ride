@@ -3,7 +3,7 @@
 // page; on the phone, then the cloud reader), then its details checked by
 // the applicant. get.ride approves it in Admin › People › Business accounts;
 // the applicant is its first Admin.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/business_accounts.dart';

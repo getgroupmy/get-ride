@@ -1,7 +1,7 @@
 // A number plate as the car shows it: in the country's colours for the
 // vehicle (a taxi, an EV...), else white capitals on a black plate,
 // kept whole (never broken after a "·" in a line of text).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/permits.dart' show PlateColours;
 export '../core/permits.dart' show PlateColours;

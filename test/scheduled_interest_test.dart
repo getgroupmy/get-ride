@@ -2,7 +2,7 @@
 // passenger choosing a driver (migration 0198): the pure parts, where the
 // notifications open, and the driver's and passenger's screens (light and
 // dark).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';

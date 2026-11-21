@@ -4,7 +4,7 @@
 // myGiG is off for the driver or at the daily limit, asks for a pass when
 // get.ride charges by the period, else opens the myGiG sheet: show the
 // booking QR (GET.now), enter the trip, or the myGiG settings.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

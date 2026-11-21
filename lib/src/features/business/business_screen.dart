@@ -2,7 +2,7 @@
 // invitations, applying for one, and one account's pages: Overview for every
 // member; Members, Rules and Invoices for its Admins. Members book as usual
 // and pick "Business: <company>" as the payment.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

@@ -99,6 +99,7 @@ dependencies:
   camera: ^0.12.1
   google_mlkit_face_detection: ^0.15.1
   google_mlkit_text_recognition: ^0.17.1
+  material_ui: ^1.11.1
 
 dev_dependencies:
   flutter_test:

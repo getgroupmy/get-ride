@@ -3,7 +3,7 @@
 // uptime and its history; adding and changing targets; when to alert and
 // where (admin app push, Telegram, WhatsApp/SMS, email), a test alert, and
 // the recent alerts. Every change saves at once (EDIT on Office NAS).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/office_nas.dart';

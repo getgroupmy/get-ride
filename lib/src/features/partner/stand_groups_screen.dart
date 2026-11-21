@@ -1,7 +1,7 @@
 // /drive/groups (migration 0251): the stand groups and fleets a driver can
 // ask to join, and where they stand in each. A closed or open group's
 // request is approved by an admin, a fleet's by its owner.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

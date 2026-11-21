@@ -1,6 +1,6 @@
 // Choose date and time: the slots a pickup can be booked for and the
 // four-wheel sheet that picks one.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/pickup_slots.dart';
 import 'package:get_ride/src/core/scheduled_rides.dart';

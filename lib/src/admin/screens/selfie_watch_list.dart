@@ -4,7 +4,7 @@
 // Set here, from Edit Partner, or from a low-match alert. Removing someone
 // puts them back on the normal rule. Every change is in the audit log (the
 // server's). The partner is never told.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

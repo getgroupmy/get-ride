@@ -1,7 +1,7 @@
 // Post-trip star ratings (migration 0159): lib/src/core/ride_rating.dart,
 // lib/src/data/ride_rating_repository.dart and the card in
 // lib/src/widgets/ride_rating_card.dart.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

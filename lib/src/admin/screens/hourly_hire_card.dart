@@ -3,7 +3,7 @@
 // end, the GET.wallet hold, cash, the km per hour, the reminder and the
 // auto-end, and the texts riders see. The rates are per Vehicle Service and
 // per fare tariff card.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/hourly_hire.dart';

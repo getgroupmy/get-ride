@@ -2,7 +2,7 @@
 // read-vs-stored, AI verification, face check and status/history — render from
 // approverDocumentDetailProvider when present, and nothing extra shows when the
 // detail is null (a plain document, or a legacy database).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

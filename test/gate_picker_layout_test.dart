@@ -11,7 +11,7 @@
 // map opens close in on the chosen gate, and that only one outline is drawn.
 import 'package:apple_maps_flutter/apple_maps_flutter.dart' as am;
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';

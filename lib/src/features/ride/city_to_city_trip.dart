@@ -6,7 +6,7 @@
 // Chat (the in-app ride chat, 0308), the payment and the cancel rule with Cancel booking (the fee as
 // the settings say); after the trip, the fare and the rating; a cancelled
 // or expired trip says so. All of it follows the rows live.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';

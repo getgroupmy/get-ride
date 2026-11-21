@@ -7,7 +7,7 @@
 // each test says which it is (debugGoogleJsSupported), so the same things
 // are checked on a Linux, macOS or Windows test machine, and the web view is
 // a stand-in the test drives as the page would.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -2,7 +2,7 @@
 // warning and the VoIP token retries (push_service.dart).
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/push_logic.dart';
 import 'package:get_ride/src/widgets/notifications_off_banner.dart';

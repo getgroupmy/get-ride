@@ -3,7 +3,7 @@
 // with its chance and daily cap), what counts as a low match, who gets the
 // push on one, and how long the partner has to answer. The watch list
 // (partners checked more often) is a page of its own.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

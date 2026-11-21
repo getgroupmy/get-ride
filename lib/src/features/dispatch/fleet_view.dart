@@ -3,7 +3,7 @@
 // the driver app's own vehicle steps and the admin's usual approval — with
 // who drives each (an assignment that waits for an admin), and today's stand
 // orders. The server lets a fleet owner touch only their own fleet.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/dispatch.dart';

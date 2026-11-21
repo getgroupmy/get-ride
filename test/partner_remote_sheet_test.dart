@@ -2,7 +2,7 @@
 // with why where they can't be asked), its vehicle picker (own first, a
 // vehicle another driver is online with can't be taken) and each state of
 // the request on the status card. Light and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/partner_live.dart';

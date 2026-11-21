@@ -5,7 +5,7 @@
 // padlock; Driver decides gives the choice back. Below the form: the locks
 // in force (filter, edit, remove), how many drivers switched each service
 // off, and who changed what.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/driver_services.dart';

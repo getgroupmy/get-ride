@@ -2,7 +2,7 @@
 // lock an account, and for how long. Every account must have a PIN; after
 // the second wrong try the sign-in screen says how many tries are left, and
 // a locked PIN always offers an SMS code instead.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/auth_utils.dart';

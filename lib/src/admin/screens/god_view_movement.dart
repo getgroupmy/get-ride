@@ -1,7 +1,7 @@
 // God View → Movement: the panel under a person's details (last 24 hours or
 // a chosen day, hour boxes, km, points, stops) and the trail drawn on the
 // map. Data from GodViewRepository.trail (migration 0278).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 

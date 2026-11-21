@@ -3,7 +3,7 @@
 // now, and adds, changes or removes them. A member sees what is shared, who
 // can see them, the admin looks at their family, and leaves at any time.
 // An invitee reads plain terms before Join or Not now.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/booking_modules.dart' show bookingModule;

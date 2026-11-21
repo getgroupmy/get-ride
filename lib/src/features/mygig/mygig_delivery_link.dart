@@ -8,7 +8,7 @@
 // with their return code. A recipient's link: tracking, their delivery
 // code, paying at the door when they pay, the proof afterwards, and
 // "Something wrong? Send it back".
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

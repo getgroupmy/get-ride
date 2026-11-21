@@ -1,7 +1,7 @@
 // "You're offline. Showing saved data.": a strip over a page that shows
 // what was last read (Wallet, Trips, Notifications) while the app knows it
 // can't reach GET.ride (appOfflineProvider).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/app_connection.dart';

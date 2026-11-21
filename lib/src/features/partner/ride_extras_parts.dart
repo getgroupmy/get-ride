@@ -2,7 +2,7 @@
 // take, the "Passenger added extras" check before an offer or Accept, and
 // the feed's "not shown" line. Everything is on until the driver turns it
 // off; a request carrying an extra they turned off never reaches them.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

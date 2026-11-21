@@ -1,6 +1,6 @@
 // SOS to GET.ride's safety team (migration 0193): the settings, the incident
 // as admins see it, the SOS sheet raising it, and the admin banner.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/safety/safety_incidents_screen.dart';

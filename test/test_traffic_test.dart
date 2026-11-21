@@ -1,7 +1,7 @@
 // Test traffic (migration 0241): Admin → Display Settings → Tester accounts,
 // and the "Include test traffic" switch on the figures that leave the
 // testers out (Fare AI response log, Maps usage).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

@@ -5,7 +5,7 @@
 // rule above. Each add-on has a switch per rule, its values on steppers, and
 // the two lists (excluded items, temperature levels) edited in their cards.
 // Parcel cover claims are decided on their own page.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../config.dart' show AppConfig;

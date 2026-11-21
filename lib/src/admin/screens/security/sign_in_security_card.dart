@@ -1,6 +1,6 @@
 // Admin → App Settings → Sign-in security (migrations 0179 and 0180), and
 // Admin → Users → an account's current device with "Sign out all devices".
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 

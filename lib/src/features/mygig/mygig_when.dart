@@ -3,7 +3,7 @@
 // Now / Later (Today, Tomorrow, a day chip, or another date typed in the
 // day, month and year boxes with the calendar button, and a time), and how
 // it is paid. The booking's terms as the passenger sees them.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/mygig.dart' show mygigMoney;
 import '../../core/mygig_hire.dart';

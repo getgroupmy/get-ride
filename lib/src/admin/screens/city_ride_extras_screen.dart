@@ -4,7 +4,7 @@
 // each card switchable on or off, every value with − and +. The cards are
 // [cityRideExtrasCards]: tips, waiting charge and luggage now; rider audio,
 // Premium and GET.Plus join the same list later.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

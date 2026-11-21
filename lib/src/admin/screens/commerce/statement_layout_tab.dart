@@ -5,7 +5,7 @@
 // preview redraws as you go; "Sample PDF" asks the server for the real PDF
 // in the layout being edited, before it is saved.
 import 'package:flutter/gestures.dart' show EagerGestureRecognizer;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/partner_statement.dart';

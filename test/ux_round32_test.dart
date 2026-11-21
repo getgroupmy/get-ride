@@ -3,7 +3,7 @@
 // so it never lands on the tiles or the pickup-distance chip. Round 33
 // (166) at 360x640: the map is tall enough, and fitted with room for the
 // chips, that the car, pickup and drop-off and their chips never stack.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

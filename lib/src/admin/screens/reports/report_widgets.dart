@@ -2,7 +2,7 @@
 // understood", the preview chart (one figure by the groups, as bars) and
 // the table with its total row. Theme colours only, so light and dark both
 // read.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../core/ai_report.dart';
 import '../../../widgets/common.dart' show mutedTextColor;

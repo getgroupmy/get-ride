@@ -2,7 +2,7 @@
 // sit in, the boxes in order (any number), and per box its service, page,
 // picture size and place, and a badge whose words take turns, flipping over
 // (core/service_boxes.dart). For the master layout or a place's own.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/home_layout.dart';

@@ -5,7 +5,7 @@
 // surcharge ticked, tolls, other charges), and the meter / TEKSI switch.
 // Tiers: lower rates for drivers who reach a number of trips, fare earnings
 // or online hours over 7 or 30 days, or a rating; each can be turned off.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

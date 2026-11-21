@@ -4,7 +4,7 @@
 // app read it as before. The home-screen icons built into the app (the
 // native icon-switch artwork, assets/app_icons) are listed with which the
 // schedule or the admin's choice uses.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

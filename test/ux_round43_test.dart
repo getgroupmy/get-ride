@@ -1,7 +1,7 @@
 // Web UX round 43 (190, 193) at 317 x 704 (412 at 1.3x) and 360, light and
 // dark: the Add a stop sheet says "Stop" and shows the trip it joins; a
 // transaction's title takes two lines before the amount.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

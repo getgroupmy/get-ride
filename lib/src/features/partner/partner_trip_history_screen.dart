@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/trip_history.dart';
 import '../../widgets/back_or_go_button.dart';

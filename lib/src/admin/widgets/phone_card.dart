@@ -2,7 +2,7 @@
 // account signed in on, newest first, with the device, the get.ride app and
 // the battery and network at its last report; and [PhoneFacts], the short
 // version in God View's details.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

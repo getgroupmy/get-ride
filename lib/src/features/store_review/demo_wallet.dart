@@ -2,7 +2,7 @@
 // GET.coin and GET.credit kept on this phone alone. Top-ups, ride payments
 // and a demo driver's earnings move it; no real money moves and nothing is
 // written to the server (which refuses the account every wallet write).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config.dart';

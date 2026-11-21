@@ -6,7 +6,7 @@
 // (set_courier_config); the waiting fee, the cancel fee and the most value a
 // sender may declare are by place, under Charges and where offered. The
 // vehicles' own weight and size limits are on Admin > Vehicle Services.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

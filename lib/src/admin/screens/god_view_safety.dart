@@ -5,7 +5,7 @@
 // panel shows whether the user has actually been shown the indicator yet
 // (notified_at). Who may do this is the server's (god_view_may_see + edit on
 // God View); this only asks.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/god_view.dart';

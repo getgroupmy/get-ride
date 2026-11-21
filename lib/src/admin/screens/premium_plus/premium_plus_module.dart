@@ -1,6 +1,6 @@
 // Premium service rules and GET.Plus (migration 0316), under Services &
 // catalogue.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/premium_plus.dart' show premiumPlusPage;

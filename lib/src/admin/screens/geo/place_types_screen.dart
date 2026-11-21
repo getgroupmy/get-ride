@@ -6,7 +6,7 @@
 // places use it) on one side, the editor on the other (stacked on a phone).
 // A type in use is removed by moving its places to another type first
 // (place_type_remove; Other by default).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/place_types.dart';

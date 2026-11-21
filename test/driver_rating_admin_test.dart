@@ -1,6 +1,6 @@
 // Rider tags on the driver rating, admin side (0297): the tag lists and the
 // flag rule in App Settings, and a driver's totals and flag in Partners.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/driver_rating_admin.dart';

@@ -1,5 +1,5 @@
 // Geography: countries/states/cities, airport areas, multi-gate places.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../admin_registry.dart';

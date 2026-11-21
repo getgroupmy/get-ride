@@ -3,7 +3,7 @@
 // again after an update adds a permission). OK only explains: the phone's
 // own questions still come where the app asks them, after its own page
 // where one is due (background location's prominent disclosure).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../core/store_review.dart';
 import 'page_style_host.dart';

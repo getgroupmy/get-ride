@@ -1,7 +1,7 @@
 // Admin → Airport Areas → Fees, and a Multi-Gate place's Fees tab
 // (migration 0324): the place's list of pickup / drop-off fees, each with
 // its editor, and the place fee settings shared by every place.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

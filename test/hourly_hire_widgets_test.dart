@@ -2,7 +2,7 @@
 // panel's switch, the hours stepper and the hire cards with the server's
 // prices, the driver's extension request modal on the rider's trip, the
 // driver's hire timer, and the admin's Hourly hire settings form.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/hourly_hire_card.dart';

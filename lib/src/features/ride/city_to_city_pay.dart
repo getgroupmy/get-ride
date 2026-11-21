@@ -6,7 +6,7 @@
 // Top up (the wallet top-up sheet) or Switch this trip to cash when short.
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/city_to_city.dart';

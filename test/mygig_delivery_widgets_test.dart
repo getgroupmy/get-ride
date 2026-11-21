@@ -5,7 +5,7 @@
 // cash), the door (pay first, then the code), a return's lines before it
 // starts, the recipient's and the sender's link pages, and the admin's
 // Money safety panel.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/mygig/mygig_delivery_admin.dart';

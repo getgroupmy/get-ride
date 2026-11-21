@@ -2,7 +2,7 @@
 // `Passkey` (gotrue) is @experimental: passkeys are a beta Supabase feature.
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/app_display.dart';

@@ -1,7 +1,7 @@
 // Dispatch > Telematics (migration 0255): a fleet owner's fleet vehicles and
 // the drivers in them; a stand's orders for its stand admin (and staff who
 // may see reports). The server holds each to that (telematics_access).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../data/dispatch_repository.dart';
 import '../../data/telematics_repository.dart';

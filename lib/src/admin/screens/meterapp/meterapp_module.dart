@@ -1,6 +1,6 @@
 // Meter & app: Meter Digital rate cards, display/mock settings, app settings (icon, splash, theme, start location),
 // always-on pages, store releases.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../config.dart';

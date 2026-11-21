@@ -1,7 +1,7 @@
 // The driver's incoming request on a phone on its side (iOS tester #55,
 // #56, iPhone 15 landscape 852x393): the fare, pickup and drop-off always
 // show, at 1.3x text too, and the map draws the world, and its pins, once.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/request_viewers.dart';

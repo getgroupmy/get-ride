@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// How a partner registration rule stands (0305), as a chip's colours.
 enum RuleTone { ok, bad, wait, none }

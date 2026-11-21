@@ -4,7 +4,7 @@
 // queue (a place's fees are place_fees_tab.dart's, 0324). The tools
 // themselves are the airports' (airport_tabs); these are the parts a place
 // does differently.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../core/airport_queue.dart';
 import 'airport_tabs.dart';

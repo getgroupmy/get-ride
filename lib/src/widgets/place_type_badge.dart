@@ -2,7 +2,7 @@
 // Material glyph on a rounded square of the type's colour (Google Maps'
 // category colours; drawn here, never Google's marker images), a coloured
 // label, or both in one line.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/place_types.dart';

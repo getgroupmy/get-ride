@@ -7,7 +7,7 @@
 // map all go by [mapBrightnessOf], never by the phone's brightness or the
 // theme's directly (test/map_brightness_test.dart fails when one does). A
 // new map page gets the admin's choice by using these.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 
 import '../core/map_appearance.dart';

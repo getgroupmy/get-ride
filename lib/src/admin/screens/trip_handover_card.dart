@@ -2,7 +2,7 @@
 // may hand a trip over mid-way, the share of the net earnings the partner
 // who takes over passes back, how far "nearby" reaches, and how long each
 // side has to answer. Regions can set their own share.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/trip_handover.dart';

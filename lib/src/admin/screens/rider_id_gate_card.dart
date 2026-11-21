@@ -2,7 +2,7 @@
 // country, whether a rider must verify a photo ID (and a selfie face-match)
 // before their Nth booking, which ID, and the auto-verify threshold. A rider
 // is matched to a rule by their profile nationality, else the master default.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/rider_id_gate.dart';

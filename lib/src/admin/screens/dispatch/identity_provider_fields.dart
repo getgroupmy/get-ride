@@ -9,7 +9,7 @@
 // key is missing in Admin → API Keys, or the NAS isn't connected, so nobody
 // wonders why a face reads "Not checked". The face match is a score only:
 // nothing here approves anyone.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/signin_checks.dart';

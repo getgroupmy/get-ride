@@ -1,6 +1,6 @@
 // The rider's badge on a driver's request card (migration 0269): "New rider"
 // under the admin's number of ratings, "Low" below their average.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/rider_rating.dart';

@@ -6,7 +6,7 @@
 // no e-Invoice connection to LHDN MyInvois yet, and the passenger is told
 // so), "Book <driver> again" (a favourite driver in My Ride when
 // registered), and for link passengers the app with the driver's code.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';

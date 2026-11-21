@@ -2,7 +2,7 @@
 // card and title, the offer cards (order, difference, Accept read out),
 // the drivers-viewing faces and the confirm step's AI mark: each in light
 // and dark, on an iPhone 15 and on an iPhone SE at 1.3x text.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/semantics.dart' show SemanticsAction;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';

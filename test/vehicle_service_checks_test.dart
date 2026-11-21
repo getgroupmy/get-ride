@@ -2,7 +2,7 @@
 // and the per-service checks the server works out for every vehicle (M9,
 // migration 0301): the pure pieces, and the Vehicle service field in light
 // and dark.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/people/people_logic.dart' show ServiceArea;

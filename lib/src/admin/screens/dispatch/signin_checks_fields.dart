@@ -3,7 +3,7 @@
 // has none); a live selfie and their ID are the admin's switches, with an
 // optional "finish within X days". In Dispatch → Accounts (Create an ID and
 // each account) and Users → Edit User.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../../core/signin_checks.dart';
 import '../../../widgets/page_style_host.dart';

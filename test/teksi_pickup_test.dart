@@ -1,7 +1,7 @@
 // Start Pickup on the TEKSI permit screen (Expo `partner-teksi`): the
 // permit's checks with the vehicle re-pick, "Select tariff", the trip summary
 // and "Confirm your trip", then the meter with the hire running on the tariff.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/meter_logic.dart';

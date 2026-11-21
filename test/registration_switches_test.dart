@@ -1,7 +1,7 @@
 // Admin → Display → Sign-in Screen: new passenger and new driver sign-up,
 // each its own switch (migration 0287), written so apps that only know the
 // old single switch still close when both are off.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart' show AccessLevel;

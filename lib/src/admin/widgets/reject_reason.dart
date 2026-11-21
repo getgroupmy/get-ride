@@ -3,7 +3,7 @@
 // Other, with an optional note (needed for Other). The person sees the
 // reason. Admin → Documents (partner, vehicle and sign-in checks) and
 // Users → ID documents.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/signin_checks.dart';
 import '../../widgets/page_style_host.dart';

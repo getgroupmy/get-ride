@@ -4,7 +4,7 @@
 // radius, and a request first seen in an UPDATE popping up as new).
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/my_ride.dart';

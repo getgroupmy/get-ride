@@ -1,7 +1,7 @@
 // Account → Profile (Expo `app/profile.tsx`): who the account is, read-only,
 // with Edit for the editor, the sign-in security shortcuts and sign out. The
 // side menus' profile header opens this page rather than the editor.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 

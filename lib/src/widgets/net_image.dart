@@ -4,7 +4,7 @@
 // reads as the real thing and then jumps; the skeleton says "coming".
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 
 import '../config.dart';

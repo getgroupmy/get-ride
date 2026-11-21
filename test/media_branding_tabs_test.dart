@@ -1,7 +1,7 @@
 // Media Gallery → App icon and Splash: the current values from App Settings
 // (the app_branding row), the built-in home-screen icons with which is in
 // use, and Choose from gallery only for admins who can edit App Settings.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

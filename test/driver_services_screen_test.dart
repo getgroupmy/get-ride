@@ -2,7 +2,7 @@
 // card, the tabs, a switch saved for this car with its toast, a greyed-out
 // service with its reason, a padlock row that says who set it, the street
 // hail and add-on rows (the guide dog a switch like the others), and no car in use.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;

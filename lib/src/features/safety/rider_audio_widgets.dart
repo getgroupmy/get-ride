@@ -1,7 +1,7 @@
 // Rider audio protection (migration 0315) in the apps: the rider's switch
 // on the booking sheet and the Safety page, the line on the rider's ride
 // screen while it records, and the driver's "Audio protection on (rider)".
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config.dart';

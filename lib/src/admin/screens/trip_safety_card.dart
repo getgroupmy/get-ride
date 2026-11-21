@@ -3,7 +3,7 @@
 // to answer before their emergency contacts and support are told, 0154's
 // start and mid-trip checks, and sharing trips with emergency contacts.
 // Kept in the reliability row, as 0154's switches are.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/trip_safety.dart';

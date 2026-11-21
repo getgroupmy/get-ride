@@ -3,7 +3,7 @@
 // per permit with its fields (each label in English with the local one
 // under it), a status badge for the driver and "View permit". What a box
 // says comes from the country's permit types (core/permits.dart).
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../config.dart';
 import '../core/permits.dart';

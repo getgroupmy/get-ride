@@ -2,7 +2,7 @@
 // passenger may move the drop on an ongoing ride, which changes apply at once
 // vs. need the driver, how long the driver has to answer, and how many changes
 // one ride allows.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/drop_change.dart';

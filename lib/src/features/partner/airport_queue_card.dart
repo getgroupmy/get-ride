@@ -5,7 +5,7 @@
 // the airport outside a waiting zone. Nothing outside an airport.
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/airport_queue.dart';

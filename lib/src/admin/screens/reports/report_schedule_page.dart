@@ -6,7 +6,7 @@
 // ({report}, {period}, {rows}), skip when empty, pause and "Send now". The
 // database sends it on time (ai_report_schedules_due, every 5 minutes) with
 // the ai-report-email function.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/ai_report.dart';

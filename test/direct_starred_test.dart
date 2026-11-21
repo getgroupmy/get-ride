@@ -4,7 +4,7 @@
 // row it looks like a favourites window too; the driver must read it as a
 // direct booking, pinned above every starred request, and never see a
 // ten-minute "for you first" countdown.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/my_ride.dart';
 import 'package:get_ride/src/data/models.dart';

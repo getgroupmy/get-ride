@@ -3,7 +3,7 @@
 // matches), "Select tariff", the destination, the "Trip summary" and the
 // "Confirm your trip" page, then the meter with the hire running. The meter
 // bills what it measures; every figure before it is an estimate, and says so.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';

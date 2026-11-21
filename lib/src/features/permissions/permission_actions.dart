@@ -3,7 +3,7 @@
 // rider's permissions page, the partner's go-online check, the map's locate
 // button and Settings → Permissions.
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/app_permissions.dart';
 import '../../core/permission_ask.dart';

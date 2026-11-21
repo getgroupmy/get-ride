@@ -2,7 +2,7 @@
 // checked by the server on submit and approval, and "Partners affected now"
 // lists the partners of this type, pending or approved, that would fail the
 // saved rules today, each with its review.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/registration_rules.dart';

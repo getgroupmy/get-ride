@@ -5,7 +5,7 @@
 // Dispatch tab are made of them.
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../../core/telematics.dart';
 import '../../widgets/date_boxes.dart';

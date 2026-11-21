@@ -1,7 +1,7 @@
 // Place fees (migration 0324) on screen, light and dark: the admin's fee
 // editor and settings form, and the rider's fee lines on the fare, in the
 // fare details and on the vehicle card.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/geo/place_fees_tab.dart';
 import 'package:get_ride/src/app.dart';

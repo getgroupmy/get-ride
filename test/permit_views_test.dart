@@ -3,7 +3,7 @@
 // none on bypass, both permits on a taxi ride), the driver's banners, the
 // admin's list (tabs and actions) and the expiry reminders editor.
 // All names and numbers are made up.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/admin_access.dart';

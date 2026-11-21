@@ -1,7 +1,7 @@
 // Traffic signals, speed limits and road classes from OpenStreetMap.
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/core/road_info.dart';
