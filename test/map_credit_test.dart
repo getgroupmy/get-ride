@@ -104,6 +104,21 @@ void main() {
       expect(find.textContaining('© ©'), findsNothing);
     });
 
+    // flutter_map still reads Flutter's old built-in Material theme, which
+    // the app does not set: left to itself the box is that theme's light
+    // surface, under the app's light text in dark mode.
+    testWidgets("the credits box is drawn on the app's surface ($mode)", (tester) async {
+      activeMapProfile = MapProfile.builtIn;
+      await pumpMap(tester);
+      final surface = Theme.of(tester.element(find.byType(RichAttributionWidget))).colorScheme.surface;
+      await tester.tap(find.byIcon(Icons.info_outlined));
+      await tester.pumpAndSettle();
+      final box = tester.widget<DecoratedBox>(
+        find.ancestor(of: find.text(osmCredit), matching: find.byType(DecoratedBox)).first,
+      );
+      expect((box.decoration as BoxDecoration).color, surface);
+    });
+
     testWidgets("the admin's provider credited ($mode)", (tester) async {
       const spec = MapTileSpec(
         url: 'https://api.mapbox.com/styles/v1/mapbox/s/tiles/{z}/{x}/{y}?access_token=t',
