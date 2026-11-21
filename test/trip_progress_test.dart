@@ -366,7 +366,10 @@ void main() {
       await tester.pump();
       expect(find.text('Mak'), findsOneWidget);
       expect(find.textContaining('Booked by Ali'), findsOneWidget);
-      expect(find.byTooltip('Call Mak'), findsOneWidget);
+      // Not find.byTooltip: this tooltip is kept out of semantics (the button
+      // has its own label), and flutter_test only reads the message of such
+      // a tooltip off Flutter's old built-in Tooltip class.
+      expect(find.byWidgetPredicate((w) => w is Tooltip && w.message == 'Call Mak'), findsOneWidget);
     });
 
     testWidgets('before pickup the driver cancels with a reason and goes back to requests', (tester) async {
