@@ -157,6 +157,10 @@ Marker labelAbovePin(LatLng point, Widget label, {double gap = 5, double width =
   );
 }
 
+/// A car as a map draws it: where, and the way it faces (degrees clockwise from
+/// north; null when not known).
+typedef CarOnMap = ({LatLng at, double? heading});
+
 /// OpenStreetMap view used on every platform (web, desktop, iOS, Android).
 class RideMap extends StatefulWidget {
   const RideMap({
@@ -192,6 +196,7 @@ class RideMap extends StatefulWidget {
     this.nativeMe = false,
     this.showMeDot = true,
     this.meLive,
+    this.driverLive,
   });
 
   /// Draw the device's own location dot with the native map (MapKit) itself
@@ -214,6 +219,14 @@ class RideMap extends StatefulWidget {
   /// [me] is still what the camera counts, so a rider walking along does not
   /// drag the map, the pickup pin or its address with them.
   final ValueListenable<LatLng?>? meLive;
+
+  /// The car a frame at a time, where the caller works out its motion between
+  /// the positions it has (the trip maps, live_ride_map.dart). The car is then
+  /// drawn there, facing that way — in a layer of its own, which a new frame
+  /// redraws alone — and at [driver] and [driverHeading] while it holds
+  /// nothing. [driver] is still the car's latest known position for everything
+  /// else (framing, and what the caller reads it for).
+  final ValueListenable<CarOnMap?>? driverLive;
 
   final LatLng? pickup;
   final LatLng? drop;
@@ -757,37 +770,45 @@ class _RideMapState extends State<RideMap> {
                 ),
               ),
             if (!w.dotPins && w.drop != null) _pin(w.drop!, Colors.red.shade700, Icons.location_on),
-            if (w.driver != null)
-              Marker(
-                point: w.driver!,
-                // …but the car turns with the map, so it keeps pointing
-                // the way it drives.
-                rotate: false,
-                width: 40,
-                height: 40,
-                child: MapVehicleIcon(
-                  key: const ValueKey('driver-car'),
-                  icon: w.driverIcon,
-                  heading: w.driverHeading,
-                  size: 40,
-                  fallback: CircleAvatar(
-                    backgroundColor: Colors.black,
-                    child: w.driverHeading == null
-                        ? const Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22)
-                        : Transform.rotate(
-                            key: const ValueKey('driver-heading'),
-                            angle: w.driverHeading! * math.pi / 180,
-                            child: const Icon(Icons.navigation, color: Color(0xFFFFD400), size: 22),
-                          ),
-                  ),
-                ),
-              ),
+            if (w.driver != null && w.driverLive == null) carMarker(w.driver!, carMark(w.driverHeading, w.driverIcon)),
           ],
         ),
+        // The car kept up with a frame at a time ([RideMap.driverLive]): over
+        // the pins, as the car above is, and in a layer of its own so a new
+        // frame redraws the car and nothing else.
+        if (w.driverLive != null)
+          RepaintBoundary(
+            child: _LiveCar(live: w.driverLive!, at: w.driver, heading: w.driverHeading, icon: w.driverIcon),
+          ),
         if (w.topMarkers.isNotEmpty) MarkerLayer(rotate: true, markers: w.topMarkers),
       ],
     );
   }
+
+  /// The car's marker at [at]. Pins stand upright on a map turned to the car's
+  /// heading, but the car turns with the map, so it keeps pointing the way it
+  /// drives.
+  static Marker carMarker(LatLng at, Widget mark) =>
+      Marker(point: at, rotate: false, width: 40, height: 40, child: mark);
+
+  /// The car as drawn: its service's Map Icon ([icon]) for [heading], or the
+  /// built-in mark turned to it.
+  static Widget carMark(double? heading, String? icon) => MapVehicleIcon(
+    key: const ValueKey('driver-car'),
+    icon: icon,
+    heading: heading,
+    size: 40,
+    fallback: CircleAvatar(
+      backgroundColor: Colors.black,
+      child: heading == null
+          ? const Icon(Icons.local_taxi, color: Color(0xFFFFD400), size: 22)
+          : Transform.rotate(
+              key: const ValueKey('driver-heading'),
+              angle: heading * math.pi / 180,
+              child: const Icon(Icons.navigation, color: Color(0xFFFFD400), size: 22),
+            ),
+    ),
+  );
 
   /// The device's own location: a blue dot ringed in white, on its point.
   static const _meDotSize = 22.0;
@@ -903,5 +924,42 @@ class _RideMapState extends State<RideMap> {
       size: rideMapPinIcon,
       shadows: const [Shadow(blurRadius: 4, color: Colors.black38)],
     ),
+  );
+}
+
+/// The car where [live] has it, a frame at a time ([RideMap.driverLive]); at
+/// [at], facing [heading], while [live] holds nothing.
+///
+/// The car's picture is kept from one frame to the next while it faces the
+/// same way — along a straight road only its place on the map changes — so a
+/// frame moves a picture already drawn.
+class _LiveCar extends StatefulWidget {
+  const _LiveCar({required this.live, required this.at, required this.heading, required this.icon});
+  final ValueListenable<CarOnMap?> live;
+  final LatLng? at;
+  final double? heading;
+  final String? icon;
+
+  @override
+  State<_LiveCar> createState() => _LiveCarState();
+}
+
+class _LiveCarState extends State<_LiveCar> {
+  Widget? _mark;
+  (double?, String?)? _markFor;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<CarOnMap?>(
+    valueListenable: widget.live,
+    builder: (context, live, _) {
+      final at = live?.at ?? widget.at;
+      if (at == null) return const SizedBox.shrink();
+      final looks = (live == null ? widget.heading : live.heading, widget.icon);
+      if (_mark == null || _markFor != looks) {
+        _markFor = looks;
+        _mark = RepaintBoundary(child: _RideMapState.carMark(looks.$1, looks.$2));
+      }
+      return MarkerLayer(markers: [_RideMapState.carMarker(at, _mark!)]);
+    },
   );
 }

@@ -8,6 +8,7 @@ import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/ride/live_ride_map.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:get_ride/src/widgets/map_recenter.dart';
+import 'package:get_ride/src/widgets/ride_map.dart';
 import 'package:latlong2/latlong.dart';
 
 const pickup = LatLng(3.1579, 101.7116);
@@ -242,6 +243,13 @@ void main() {
       now = t0.add(followResumeAfter + const Duration(seconds: 1));
       await pump(tester, ride('accepted', driver: const LatLng(3.162, 101.722)), now: () => now);
       await tester.pump(const Duration(seconds: 1));
+      // Back on the car, which is still driving to where it was last heard from…
+      final car = tester.widget<RideMap>(find.byType(RideMap)).driverLive!.value!.at;
+      expect(camera(tester).center, isNot(panned));
+      expect(camera(tester).center.latitude, closeTo(car.latitude, 1e-6));
+      expect(camera(tester).center.longitude, closeTo(car.longitude, 1e-6));
+      // …and gets there with it.
+      await tester.pump(const Duration(seconds: 10));
       expect(camera(tester).center.latitude, closeTo(3.162, 1e-6));
       expect(camera(tester).center.longitude, closeTo(101.722, 1e-6));
     });
