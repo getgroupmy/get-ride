@@ -7,6 +7,9 @@
   is never sent to a server.
 
   The app moves it:   setView(lat, lng, zoom, bearing)
+                        bearing is always 0: this kind of map is not turned.
+                        The app turns the whole page with its own layers
+                        instead (lib/src/widgets/google_js_layer.dart).
                       setLook(satellite, dark, traffic, mapType)
                         mapType: roadmap, satellite, hybrid or terrain (0211)
   It tells the app:   "ready", or "failed:<Google's error name>"
@@ -28,7 +31,7 @@
       (function () {
         var params = new URLSearchParams(location.hash.slice(1));
         var key = params.get("key") || "";
-        var map = null, traffic = null, look = { type: "roadmap", dark: false, traffic: false }, pending = null;
+        var map = null, traffic = null, look = { type: "roadmap", dark: false, traffic: false }, pending = null, last = null;
         var TYPES = ["roadmap", "satellite", "hybrid", "terrain"];
         var night = JSON.parse(params.get("night") || "[]");
         var failed = false;
@@ -72,9 +75,20 @@
         }
 
         window.setView = function (lat, lng, zoom, bearing) {
-          if (!map) { pending = [lat, lng, zoom, bearing]; return; }
+          last = [lat, lng, zoom, bearing];
+          if (!map) { pending = last; return; }
           map.moveCamera({ center: { lat: lat, lng: lng }, zoom: zoom, heading: bearing || 0 });
         };
+        // The app lays this page out at a new size when its own map is first
+        // turned (it is then drawn bigger, and turned by the app). A map
+        // resized keeps its top-left corner where it was, not its middle:
+        // put it back where the app last said, once the new size is in.
+        window.addEventListener("resize", function () {
+          if (!map || !last) return;
+          var again = function () { if (last) window.setView.apply(null, last); };
+          again();
+          requestAnimationFrame(function () { requestAnimationFrame(again); });
+        });
         window.setLook = function (satellite, dark, withTraffic, mapType) {
           // Older apps send no mapType: satellite or the roadmap.
           var type = TYPES.indexOf(mapType) >= 0 ? mapType : satellite ? "satellite" : "roadmap";

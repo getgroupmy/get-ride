@@ -13,6 +13,12 @@ import 'google_map_style.dart';
 
 const googleJsSupported = true;
 
+/// When, after the map's <div> is given a new size, the map is told again
+/// where it is. A map resized keeps its top-left corner where it was rather
+/// than its middle, and the browser lays the <div> out a little after the app
+/// asks: telling it once, at once, could land before the resize and be undone.
+const googleJsResizeResends = [Duration(milliseconds: 120), Duration(milliseconds: 400), Duration(seconds: 1)];
+
 /// The API's `maps` library, loaded once per page; null when it can't load.
 Future<JSObject?>? _maps;
 
@@ -76,6 +82,7 @@ class GoogleJsMapView extends StatefulWidget {
     required this.apiKey,
     required this.center,
     required this.zoom,
+    this.size,
     this.satellite = false,
     this.mapType,
     this.dark = false,
@@ -86,6 +93,11 @@ class GoogleJsMapView extends StatefulWidget {
   final String apiKey;
   final LatLng center;
   final double zoom;
+
+  /// The size the map's <div> is laid out at, when whoever lays it out can
+  /// say (google_js_layer.dart). A map given a new size has to be told where
+  /// it is again once it has it ([googleJsResizeResends]).
+  final Size? size;
   final bool satellite;
 
   /// "roadmap", "satellite", "hybrid" or "terrain" (migration 0211); null for
@@ -106,6 +118,7 @@ class _GoogleJsMapViewState extends State<GoogleJsMapView> {
   JSObject? _map;
   JSObject? _trafficLayer;
   web.HTMLElement? _div;
+  final _resends = <Timer>[];
 
   void _fail() => widget.onFailure?.call();
 
@@ -124,6 +137,9 @@ class _GoogleJsMapViewState extends State<GoogleJsMapView> {
   @override
   void dispose() {
     _authFailed.remove(_fail);
+    for (final t in _resends) {
+      t.cancel();
+    }
     _trafficLayer?.callMethod('setMap'.toJS, null);
     super.dispose();
   }
@@ -176,7 +192,21 @@ class _GoogleJsMapViewState extends State<GoogleJsMapView> {
     super.didUpdateWidget(old);
     final map = _map;
     if (map == null) return;
-    if (old.center != widget.center || old.zoom != widget.zoom) map.callMethod('moveCamera'.toJS, _camera());
+    final resized = old.size != widget.size;
+    if (resized) {
+      for (final t in _resends) {
+        t.cancel();
+      }
+      _resends.clear();
+      for (final after in googleJsResizeResends) {
+        _resends.add(Timer(after, () {
+          if (mounted) _map?.callMethod('moveCamera'.toJS, _camera());
+        }));
+      }
+    }
+    if (resized || old.center != widget.center || old.zoom != widget.zoom) {
+      map.callMethod('moveCamera'.toJS, _camera());
+    }
     if (old.satellite != widget.satellite || old.mapType != widget.mapType || old.dark != widget.dark) {
       map.callMethod('setOptions'.toJS, _look());
     }
