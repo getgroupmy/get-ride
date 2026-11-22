@@ -17,6 +17,7 @@ import '../../data/dispatch_repository.dart' show dispatchRepositoryProvider;
 import '../../widgets/app_notice.dart';
 import '../dispatch/dispatch_console.dart' show MeterFareDialog;
 import '../../data/active_location.dart';
+import '../../data/live_fix.dart';
 import '../../core/early_end.dart';
 import '../../core/fare.dart' show RideService;
 import '../../data/app_display_repository.dart' show rideServicesProvider, serviceBoxNamesProvider;
@@ -120,6 +121,23 @@ final tripPositionStreamProvider = Provider<Stream<TripFix> Function()>((ref) =>
         distanceFilter: 15,
       ),
     ).map((p) => (at: LatLng(p.latitude, p.longitude), heading: p.heading < 0 ? null : p.heading, accuracy: p.accuracy));
+  } catch (_) {}
+});
+
+/// Every fix the driver's phone gives while the trip screen is up, each with
+/// the speed and course the GPS measured: what the trip map's car and camera
+/// follow a frame at a time (live_ride_map.dart), as the driver's home map
+/// follows them. [tripPositionStreamProvider] above keeps its own pace for
+/// what is counted and shared — the distance driven, the position the
+/// passenger is sent — and the shared stream (shared_location.dart) gives each
+/// what it asked for. Empty when location is unavailable or refused: the map
+/// then follows the trip's own fixes as they come.
+final tripMapFixesProvider = Provider<Stream<LiveFix> Function()>((ref) => () async* {
+  try {
+    // Asked for by the trip's own stream, above: this one only looks.
+    final perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+    yield* sharedPositionStream(mapFollowLocationSettings()).map(liveFixOf);
   } catch (_) {}
 });
 
@@ -844,6 +862,7 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
                       partner: true,
                       driverAt: _mapAt,
                       driverHeading: _mapHeading,
+                      driverFixes: ref.read(tripMapFixesProvider),
                       now: ref.read(tripClockProvider),
                     ),
                   );

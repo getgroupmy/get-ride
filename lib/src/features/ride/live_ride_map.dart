@@ -1,18 +1,24 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/scheduler.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/car_playback.dart';
+import '../../core/follow_motion.dart';
 import '../../core/launch_destination.dart' show mapButtonsRightInset;
 import '../../core/live_eta.dart';
 import '../../core/trip_card.dart' show TripRouteFix;
 import '../../core/ride_cancel.dart' show riderLocationForDriver;
 import '../../core/ride_confirm.dart' show tripRecenterOffset;
 import '../../data/app_display_repository.dart';
+import '../../data/compass.dart' show movingSpeed;
 import '../../data/geo_service.dart';
+import '../../data/live_fix.dart';
 import '../../providers.dart';
 import '../../data/models.dart';
 import '../../data/trip_card_controller.dart' show tripRouteFeedProvider;
@@ -36,6 +42,13 @@ LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : Lat
 /// ([driverAt]), north up for the rider. Moving the map by hand stops the
 /// following; the recenter button starts it again, and so does the first
 /// new position once the map has been left alone for [followResumeAfter].
+///
+/// The car moves a frame at a time, and the camera with it. On the driver's
+/// own phone it is where the phone's GPS puts it now, each fix carried forward
+/// by its own speed and course (core/follow_motion.dart, as the driver's home
+/// map). On the passenger's it is played back from the positions the driver's
+/// phone sends every few seconds: driven from one to the next along the road,
+/// a few seconds behind the real car, rather than hopped (core/car_playback.dart).
 class LiveRideMap extends ConsumerStatefulWidget {
   const LiveRideMap({
     super.key,
@@ -43,10 +56,17 @@ class LiveRideMap extends ConsumerStatefulWidget {
     this.now,
     this.driverAt,
     this.driverHeading,
+    this.driverFixes,
     this.partner = false,
     this.riderPosition,
     this.topButton,
   });
+
+  /// The driver's own phone's fixes, every one with the speed and course the
+  /// GPS measured, when this map is the driver's own: what its car and camera
+  /// follow a frame at a time. Null (or a stream with nothing in it) follows
+  /// [driverAt] as it changes instead.
+  final Stream<LiveFix> Function()? driverFixes;
 
   /// A button over map type and recenter (the passenger's location
   /// sharing); it sizes itself, nothing when it has nothing to show.
@@ -63,7 +83,9 @@ class LiveRideMap extends ConsumerStatefulWidget {
   final bool partner;
 
   /// Where the driver is when this map is the driver's own (their phone's
-  /// fix, fresher than the published one); null reads the ride row.
+  /// fix, fresher than the published one); null reads the ride row. It is
+  /// where the road ahead and the ETA are counted from; the car is drawn
+  /// where [driverFixes] puts it, when that has anything to say.
   final LatLng? driverAt;
   final double? driverHeading;
 
@@ -85,6 +107,18 @@ const searchingZoom = 17.0;
 /// that arrives after this recentres on the car again by itself.
 const followResumeAfter = Duration(seconds: 10);
 
+/// How long the camera takes to come onto the car when it starts following:
+/// the map has just opened, or the recenter button was pressed.
+const followEngageSeconds = 0.9;
+
+/// How long the driver's own phone can give no fix before the map goes back to
+/// following the position its screen hands down ([LiveRideMap.driverAt]).
+const ownFixesQuietAfter = Duration(seconds: 5);
+
+/// How far the car is drawn moving (metres) before the road line is cut back
+/// to it again: the line starts under the car, never a car's length behind it.
+const carLineStepMetres = 12.0;
+
 class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProviderStateMixin {
   RouteInfo? _route;
   LatLng? _routeFrom, _routeTo;
@@ -97,15 +131,71 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
 
   /// When the map was last moved by hand (following paused).
   DateTime? _handAt;
-  late final _cam = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
-    ..addListener(_camTick);
-  _Cam? _camFrom, _camTo, _camNow;
 
   DateTime get _now => (widget.now ?? DateTime.now)();
+
+  // ---- The car, a frame at a time -----------------------------------------
+  //
+  // Where the car is drawn is worked out every frame, and the camera put on
+  // it: by [FixFollower] from the phone's own GPS on the driver's map, by
+  // [CarPlayback] from the positions heard every few seconds on the
+  // passenger's (see the top of each). Nothing glides to a position and then
+  // waits for the next.
+
+  /// Runs a frame at a time while there is something to move, and stops when
+  /// the car is where it is going and the camera is on it.
+  late final Ticker _ticker;
+  Duration _lastTick = Duration.zero;
+
+  /// Where the car is drawn and the way it faces: the car's marker, and what
+  /// the camera is put on.
+  final _car = ValueNotifier<CarOnMap?>(null);
+
+  /// The driver's own map: its phone's fixes, carried forward a frame at a
+  /// time. [_fixesLive] once the stream of them has given one: [LiveRideMap.
+  /// driverAt] is then the same position heard second-hand.
+  var _own = FixFollower();
+  StreamSubscription<LiveFix>? _fixes;
+  bool _fixesLive = false;
+  DateTime? _fixAt;
+  LatLng? _ownTaken;
+  double? _ownTakenHeading;
+
+  /// The turn the latest fix asked for while driving, as on the driver's home
+  /// map: from the heading showing when it came in ([_turnFrom]) to its
+  /// course, spread over [_turnOver] seconds ([headingBetween]); and the
+  /// heading the car is drawn at and the map turned to, eased onto that.
+  /// Stopped, both stay as they were: the car has not turned.
+  double? _turnFrom, _facing;
+  double _turnOver = 1;
+
+  /// The passenger's map: the positions heard, played back; and the last one
+  /// given to it, to tell a row that only says the same again.
+  final _heard = CarPlayback();
+  LatLng? _heardAt;
+  double? _heardHeading;
+
+  /// Whether the camera is on the car, or still on its way there from
+  /// [_engageFrom] ([_engaged] seconds of [followEngageSeconds] ago); and
+  /// where on screen the car is held, eased when the sheet moves.
+  bool _onCar = false;
+  _Cam? _engageFrom;
+  double _engaged = 0;
+  Offset? _heldOffset;
+
+  /// Where the car was drawn when the road line was last cut back to it.
+  LatLng? _lineFrom;
+
+  /// The driver's own map (turned to the way the car is going) rather than
+  /// the passenger's.
+  bool get _ownMap => widget.driverAt != null || widget.driverFixes != null;
 
   @override
   void initState() {
     super.initState();
+    _ticker = createTicker(_onTick);
+    _fixes = widget.driverFixes?.call().listen(_onOwnFix, onError: (_) {}, onDone: () => _fixesLive = false);
+    _takeCar();
     _maybeReroute();
     _syncMe();
   }
@@ -131,7 +221,9 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   @override
   void dispose() {
     _meSub?.cancel();
-    _cam.dispose();
+    _fixes?.cancel();
+    _ticker.dispose();
+    _car.dispose();
     _map.dispose();
     super.dispose();
   }
@@ -139,6 +231,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   @override
   void didUpdateWidget(covariant LiveRideMap old) {
     super.didUpdateWidget(old);
+    _takeCar();
     _maybeReroute();
     _syncMe();
     // A fresh position after the hand has been off the map a while: follow
@@ -148,9 +241,11 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
         _now.difference(hand) >= followResumeAfter) {
       _follow = true;
       _handAt = null;
-      _camTo = null;
+      _onCar = false;
     }
-    if (_driver != null) WidgetsBinding.instance.addPostFrameCallback((_) => _followCar());
+    // Whatever else changed (the sheet over the map, say), the camera is put
+    // where it now belongs.
+    if (_carNow != null) _wake();
     // Moved to a new pickup while searching: back onto it.
     if (_searching && (_pickup != _ll(old.ride.pickupLat, old.ride.pickupLng) || old.ride.status != widget.ride.status)) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _focusPickup());
@@ -175,67 +270,241 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     }
   }
 
-  /// The driver's own map turns to the way the car is going.
-  bool get _headingUp => widget.driverAt != null;
+  /// Whether the ride has a car to show: not once it is cancelled, and on the
+  /// passenger's map not while it is still on offer (a bidder is not their
+  /// driver yet).
+  bool get _hasCar {
+    final status = widget.ride.status;
+    return status != RideStatus.cancelled && (_ownMap || status != RideStatus.open);
+  }
 
-  double? get _heading => widget.driverAt != null ? widget.driverHeading : widget.ride.partnerLiveHeading;
+  /// Where the car is: as it is drawn, or — until it has been — where it was
+  /// last known to be.
+  LatLng? get _carNow => _car.value?.at ?? _driver;
 
-  /// Glides the camera onto the car: centred in the part of the map the
-  /// sheet leaves showing (on the driver's phone, lower down, to show more
-  /// of the road ahead).
-  void _followCar() {
-    final at = _driver;
-    if (!mounted || !_follow || !_mapReady || at == null) return;
-    final MapCamera camera;
-    try {
-      camera = _map.camera;
-    } catch (_) {
+  /// What the widget now says about the car, given to whichever follows it.
+  void _takeCar() {
+    if (!_hasCar) {
+      if (_car.value != null || _own.hasFix || _heard.shown != null) {
+        _own = FixFollower();
+        _heard.clear();
+        _car.value = null;
+        _ownTaken = _ownTakenHeading = _heardAt = _heardHeading = _turnFrom = _facing = null;
+        _onCar = false;
+        _engageFrom = null;
+      }
       return;
     }
-    final h = camera.nonRotatedSize.height;
-    final visible = h - MapBottomInset.of(context);
-    final y = (_headingUp ? visible * 0.65 : visible / 2) - h / 2;
-    final heading = _heading;
-    final to = _Cam(at, followZoom, _headingUp && heading != null ? -heading : 0, Offset(0, y));
-    if (_camTo != null && _camTo!.same(to)) return;
-    _camFrom = _camNow ?? _Cam(camera.center, camera.zoom, camera.rotation, Offset.zero);
-    _camTo = to;
-    _cam.forward(from: 0);
-  }
-
-  void _camTick() {
-    final a = _camFrom, b = _camTo;
-    if (a == null || b == null) return;
-    final c = _Cam.lerp(a, b, Curves.easeInOut.transform(_cam.value));
-    try {
-      _map.rotate(c.rotation);
-      _map.move(c.point, c.zoom, offset: c.offset);
-      _camNow = c;
-    } catch (_) {
-      // Not drawn yet.
+    if (_ownMap) {
+      final own = widget.driverAt;
+      if (own == null) return;
+      // The phone's own fixes are the news, and this the same position handed
+      // down by the screen some fixes later — unless they have stopped coming.
+      final last = _fixAt;
+      if (_fixesLive && last != null && _now.difference(last) < ownFixesQuietAfter) return;
+      if (own == _ownTaken && widget.driverHeading == _ownTakenHeading) return;
+      _ownTaken = own;
+      _ownTakenHeading = widget.driverHeading;
+      _takeOwn((at: own, speed: null, course: widget.driverHeading, time: _now, accuracy: null));
+      return;
+    }
+    final at = _driver;
+    if (at == null) return;
+    final r = widget.ride;
+    final heading = r.partnerLiveHeading;
+    // A row that says the same again, or a car standing still whose GPS has
+    // wandered a metre: not a move.
+    if (!carMovedOnMap(from: _heardAt, to: at, headingFrom: _heardHeading, headingTo: heading)) return;
+    _heardAt = at;
+    _heardHeading = heading;
+    if (_heard.take(at, heading: heading, sentAt: r.partnerLiveAt, heardAt: _now)) {
+      // The first is where the car is: there is nothing to play back yet.
+      _car.value ??= (at: _heard.shown!, heading: _heard.heading);
+      _wake();
     }
   }
 
-  /// A hand on the map: stop following until the recenter button.
+  void _onOwnFix(LiveFix fix) {
+    if (!mounted || !_hasCar) return;
+    _fixesLive = true;
+    _fixAt = _now;
+    _takeOwn(fix);
+  }
+
+  /// A fix from the driver's own phone: what the follow carries forward from
+  /// now on ([_onTick]).
+  void _takeOwn(LiveFix fix) {
+    // The heading as it stands, read before the fix is taken: the turn to the
+    // new course carries on from wherever the last one had got to.
+    final headingWas = _headingNow;
+    final taken = _own.take(
+      fix.at,
+      speed: fix.speed,
+      course: fix.course,
+      time: fix.time,
+      accuracy: fix.accuracy,
+      clock: widget.now ?? DateTime.now,
+    );
+    if (taken == null) return; // from before the one in hand: not news
+    final speed = taken.speed, course = taken.course;
+    // The course is the way the car is going only at a speed worth the name
+    // (data/compass.dart); slower, and the car faces the way it did. A fix
+    // that cannot say how fast is taken at its word.
+    final travelling = course != null && (speed == null || speed >= movingSpeed);
+    _turnFrom = travelling ? (_turnFrom == null ? course : headingWas ?? course) : null;
+    _turnOver = (taken.gap ?? 1).clamp(followTurnOverLeast, followTurnOverMost).toDouble();
+    if (_car.value == null) {
+      // Until it has driven anywhere, it faces the way the screen last knew.
+      _facing ??= _headingNow ?? widget.driverHeading;
+      _car.value = (at: _own.shown!, heading: _facing);
+    }
+    _wake();
+  }
+
+  /// The way the driver's own car is heading at this moment: the turn the
+  /// latest fix asked for, as far as it has got. Null while it is stopped or
+  /// has no course: it then faces the way it did.
+  double? get _headingNow {
+    final from = _turnFrom, to = _own.course;
+    if (from == null || to == null) return null;
+    return headingBetween(from, to, ageSeconds: _own.ageSeconds, overSeconds: _turnOver);
+  }
+
+  /// Starts the frames if they are not already running.
+  void _wake() {
+    if (!mounted || _ticker.isActive) return;
+    _lastTick = Duration.zero;
+    _ticker.start();
+  }
+
+  /// The driver's own map turns to the way the car is going.
+  bool get _headingUp => _ownMap;
+
+  /// Where on screen the car is held, from the map's centre: in the middle of
+  /// the part of the map the sheet leaves showing (on the driver's phone,
+  /// lower down, to show more of the road ahead).
+  Offset _offsetIn(MapCamera camera) {
+    final h = camera.nonRotatedSize.height;
+    final visible = h - MapBottomInset.of(context);
+    return Offset(0, (_headingUp ? visible * 0.65 : visible / 2) - h / 2);
+  }
+
+  /// One frame: where the car is now, and the camera put on it.
+  void _onTick(Duration elapsed) {
+    final dt = (elapsed - _lastTick).inMicroseconds / Duration.microsecondsPerSecond;
+    _lastTick = elapsed;
+    if (!mounted) {
+      _ticker.stop();
+      return;
+    }
+    var busy = false;
+    LatLng? at;
+    if (_ownMap) {
+      if (_own.hasFix) {
+        // A long frame (a hitch, the app coming back) is not that much travel.
+        final step = math.min(dt, 0.25);
+        busy = _own.advance(step);
+        at = _own.shown;
+        final heading = _headingNow, faced = _facing;
+        if (heading != null) {
+          if (faced == null) {
+            _facing = heading;
+          } else {
+            final turn = shortestTurn(faced, heading);
+            final settled = turn.abs() < 0.05;
+            _facing = settled ? heading : (faced + turnStep(turn, step) + 360) % 360;
+            busy = busy || !settled;
+          }
+        }
+        _car.value = (at: at!, heading: _facing);
+      }
+    } else if (_heard.shown != null) {
+      // Played back, not guessed: after a long frame the car is simply where
+      // it had got to by then.
+      busy = _heard.advance(dt);
+      at = _heard.shown;
+      _car.value = (at: at!, heading: _heard.heading);
+    }
+    at ??= _carNow;
+
+    if (_follow && _mapReady && at != null) {
+      try {
+        final camera = _map.camera;
+        // Coming onto the car: from wherever the camera is now.
+        if (!_onCar) {
+          _onCar = true;
+          _engageFrom = _Cam(camera.center, camera.zoom, camera.rotation, Offset.zero);
+          _engaged = 0;
+          _heldOffset = null;
+        }
+        // Where on screen the car is held: slid there when the sheet moves.
+        final wanted = _offsetIn(camera);
+        var held = _heldOffset ?? wanted;
+        if (held != wanted) {
+          final slide = wanted - held;
+          final settled = slide.distance < 0.5;
+          held = settled ? wanted : held + slide * easeFraction(dt, followTurnSeconds);
+          busy = busy || !settled;
+        }
+        _heldOffset = held;
+        final facing = _headingUp ? _facing : null;
+        final up = facing == null ? 0.0 : -facing;
+        var to = _Cam(at, followZoom, up, held);
+        final from = _engageFrom;
+        if (from != null) {
+          _engaged += dt;
+          final t = (_engaged / followEngageSeconds).clamp(0.0, 1.0).toDouble();
+          to = _Cam.lerp(from, to, Curves.easeInOut.transform(t));
+          if (t >= 1) {
+            _engageFrom = null;
+          } else {
+            busy = true;
+          }
+        } else {
+          // On the car: the map turns to its heading by the same ease as the
+          // car does, so a bend is one steady sweep.
+          final turn = shortestTurn(camera.rotation, up);
+          if (turn != 0) {
+            final settled = turn.abs() < 0.05;
+            to = _Cam(at, followZoom, camera.rotation + (settled ? turn : turnStep(turn, math.min(dt, 0.25))), held);
+            busy = busy || !settled;
+          }
+        }
+        if (to.rotation != camera.rotation) _map.rotate(to.rotation);
+        _map.move(to.point, to.zoom, offset: to.offset);
+      } catch (_) {
+        // Not drawn yet.
+      }
+    }
+    // The road line starts at the car: cut back to it as it drives on.
+    final drawn = _car.value?.at, cut = _lineFrom;
+    if (drawn != null && _route != null && (cut == null || metresApart(cut, drawn) >= carLineStepMetres)) {
+      setState(() {});
+    }
+    if (!busy) _ticker.stop();
+  }
+
+  /// A hand on the map: stop following until the recenter button. The car
+  /// keeps moving; only the camera is let go.
   void _onGesture() {
     _handAt = _now;
     if (!_follow) return;
-    _cam.stop();
-    _camNow = _camTo = null;
+    _onCar = false;
+    _engageFrom = null;
     setState(() => _follow = false);
   }
 
   void _recenter() {
     final r = widget.ride;
     if (_searching) return _focusPickup();
-    if (_driver == null) {
+    if (_carNow == null) {
       recenterMap(_map, _ll(r.pickupLat, r.pickupLng));
       return;
     }
     setState(() => _follow = true);
     _handAt = null;
-    _camTo = null;
-    _followCar();
+    _onCar = false;
+    _wake();
   }
 
   /// A bidder on an open request is not the rider's driver yet: no car. Nor
@@ -255,6 +524,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   void _maybeReroute() {
     final from = _driver, to = _target;
     if (from == null || to == null) {
+      _heard.road = null;
       if (_route != null) setState(() => _route = null);
       return;
     }
@@ -280,6 +550,8 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
         final r = await ref.read(geoServiceProvider).route(from, to);
         if (mounted && seq == _seq) {
           setState(() => _route = r);
+          // The road the passenger's car is played back along.
+          _heard.road = r.points;
           // The trip card's minutes follow the same road (core/trip_card.dart).
           ref
               .read(tripRouteFeedProvider.notifier)
@@ -287,6 +559,22 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
         }
       } catch (_) {}
     }());
+  }
+
+  /// The road line as drawn, for [route] with [ahead] of it still in front of
+  /// the car's latest position: starting at the car as it is drawn. On the
+  /// passenger's map that is some way short of where the car was last heard
+  /// from, so the line runs the way the car is driving there first, and on
+  /// down the road from it.
+  List<LatLng> _roadLine(RouteInfo? route, List<LatLng>? ahead) {
+    if (route == null) return const [];
+    final drawn = _car.value?.at;
+    _lineFrom = drawn;
+    final rest = ahead ?? route.points;
+    if (drawn == null) return rest;
+    if (_ownMap) return routeAhead(route.points, drawn)?.points ?? rest;
+    final lead = _heard.ahead;
+    return lead.isEmpty ? rest : [...lead, ...rest];
   }
 
   @override
@@ -331,18 +619,20 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
           stops: [for (final s in r.stops) s.point],
           driver: _driver,
           driverHeading: widget.driverAt != null ? widget.driverHeading : r.partnerLiveHeading,
+          // Where the car is drawn, a frame at a time.
+          driverLive: _car,
           // The service's Map Icon, a multi-angle one showing the frame
           // for the car's heading.
           driverIcon: ref.watch(serviceMapIconProvider(r.service)),
-          route: ahead?.points ?? route?.points ?? const [],
+          route: _roadLine(route, ahead?.points),
           satellite: ref.watch(mapSatelliteProvider),
           // With a car on the map the camera follows it instead; while a
           // driver is being found it sits on the pickup.
-          autoFit: driver == null && !_searching,
+          autoFit: driver == null && _car.value == null && !_searching,
           onGesture: _onGesture,
           onReady: () {
             _mapReady = true;
-            _followCar();
+            _wake();
             _focusPickup();
           },
           // The passenger's own dot while they wait, and the way to the
@@ -378,7 +668,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
               // Expo's trip maps recenter on the car; before a driver is on
               // the way, on the pickup.
               RecenterButton(
-                tooltip: driver == null ? 'Recenter' : 'Follow the car',
+                tooltip: driver == null && _car.value == null ? 'Recenter' : 'Follow the car',
                 onPressed: _recenter,
               ),
             ]),
@@ -471,15 +761,6 @@ class _Cam {
   final LatLng point;
   final double zoom, rotation;
   final Offset offset;
-
-  /// Close enough not to glide again: GPS jitter on a car standing still
-  /// (well under [carStillMetres], a degree or two of heading) restarted the
-  /// glide on every fix and kept the map wobbling (PERF-64).
-  bool same(_Cam o) =>
-      const Distance()(o.point, point) < carStillMetres &&
-      (o.zoom - zoom).abs() < 0.01 &&
-      _turn(o.rotation, rotation) < carStillDegrees &&
-      (o.offset - offset).distance < 1;
 
   /// The short way round from [a] to [b], in degrees.
   static double _turn(double a, double b) {
