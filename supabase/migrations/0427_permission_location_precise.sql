@@ -14,9 +14,10 @@
 -- Off by default, for both: nothing changes for anyone until an admin turns
 -- it on.
 --
--- Builds on 0215: permission_rules() reads it, set_permission_rules() sets
--- it; every other switch is as before. An app from before this ignores the
--- new key.
+-- Builds on 0215 and 0223: permission_rules() reads it, set_permission_rules()
+-- sets it, for the same admins as before (0223 scoped it to the admin pages
+-- that cover it); every other switch is as before. An app from before this
+-- ignores the new key.
 -- ============================================================================
 
 create or replace function public.permission_rules()
@@ -56,7 +57,9 @@ declare
   cur jsonb := public.permission_rules();
   r jsonb := coalesce(p_rules, '{}'::jsonb);
 begin
-  if not public.caller_is_admin() then
+  -- Who may change the rules is as 0223 left it: an admin whose pages cover
+  -- this function, not any admin.
+  if not public.caller_admin_can_write('rpc:set_permission_rules') then
     raise exception 'not_authorized' using errcode = '42501';
   end if;
   if jsonb_typeof(r) <> 'object' then
