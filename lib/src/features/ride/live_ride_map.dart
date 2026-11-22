@@ -46,9 +46,12 @@ LatLng? _ll(double? lat, double? lng) => lat == null || lng == null ? null : Lat
 /// The car moves a frame at a time, and the camera with it. On the driver's
 /// own phone it is where the phone's GPS puts it now, each fix carried forward
 /// by its own speed and course (core/follow_motion.dart, as the driver's home
-/// map). On the passenger's it is played back from the positions the driver's
-/// phone sends every few seconds: driven from one to the next along the road,
-/// a few seconds behind the real car, rather than hopped (core/car_playback.dart).
+/// map). On the passenger's it is the same while the driver's phone's fixes
+/// reach it steadily, about one a second ([carFixes]): the car is drawn where
+/// it is now. When they do not — a driver's phone that sends none, a poor
+/// signal — it is played back from the positions it does hear, the ride row's
+/// every few seconds among them: driven from one to the next along the road, a
+/// few seconds behind the real car, rather than hopped (core/car_playback.dart).
 class LiveRideMap extends ConsumerStatefulWidget {
   const LiveRideMap({
     super.key,
@@ -57,10 +60,18 @@ class LiveRideMap extends ConsumerStatefulWidget {
     this.driverAt,
     this.driverHeading,
     this.driverFixes,
+    this.carFixes,
     this.partner = false,
     this.riderPosition,
     this.topButton,
   });
+
+  /// The car's fixes as its driver's phone sends them, about one a second
+  /// (data/ride_live_fix_repository.dart), when this map is the passenger's.
+  /// While they come steadily the car is drawn where it is now, carried
+  /// forward from each as on the driver's own map. Null, or a stream with
+  /// nothing in it, follows the positions on the ride row instead.
+  final Stream<LiveFix> Function()? carFixes;
 
   /// The driver's own phone's fixes, every one with the speed and course the
   /// GPS measured, when this map is the driver's own: what its car and camera
@@ -119,6 +130,33 @@ const ownFixesQuietAfter = Duration(seconds: 5);
 /// to it again: the line starts under the car, never a car's length behind it.
 const carLineStepMetres = 12.0;
 
+/// How soon after one of the driver's phone's fixes the next must reach the
+/// passenger's map for them to count as coming steadily: a fix a second, with
+/// room for one to go missing. The car is followed live once two have come
+/// this close together, and goes on being while they do; one late fix does not
+/// end it, two in a row do ([carFixSlowMost]) — carried forward, a car would
+/// stand at the end of each fix's reach until the next arrived, and such fixes
+/// are better played back like the ride row's positions.
+const carFixSteadyWithin = Duration(milliseconds: 2500);
+const carFixSlowMost = 2;
+
+/// How near a fix (metres) the car must be drawn for the passenger's map to go
+/// over to following the fixes live. Farther back than this (the map has just
+/// opened on a position some seconds old, or the fixes have just come back) it
+/// is first driven up to them along the road, not slid across the map.
+const carFixJoinMetres = 40.0;
+
+/// How long the passenger's car is given to drive up to a fix that finds it
+/// drawn farther back than [carFixJoinMetres]: about the time to the next.
+const carFixCatchUpOver = Duration(seconds: 1);
+
+/// How long after the last of the driver's phone's fixes the ride row's
+/// positions are left unheeded on the passenger's map: a row that turns up
+/// sooner says where the car was at about the time of that fix, and the car
+/// has been carried on a second or two since ([followCoastSeconds]) — it would
+/// be pulled back. One that turns up later is from farther down the road.
+const carFixesQuietAfter = Duration(seconds: 4);
+
 class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProviderStateMixin {
   RouteInfo? _route;
   LatLng? _routeFrom, _routeTo;
@@ -137,10 +175,11 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   // ---- The car, a frame at a time -----------------------------------------
   //
   // Where the car is drawn is worked out every frame, and the camera put on
-  // it: by [FixFollower] from the phone's own GPS on the driver's map, by
-  // [CarPlayback] from the positions heard every few seconds on the
-  // passenger's (see the top of each). Nothing glides to a position and then
-  // waits for the next.
+  // it: by [FixFollower] from the phone's own GPS on the driver's map, and on
+  // the passenger's from the driver's phone's fixes while they reach it
+  // steadily; by [CarPlayback] from the positions the passenger's map hears
+  // less often than that (see the top of each). Nothing glides to a position
+  // and then waits for the next.
 
   /// Runs a frame at a time while there is something to move, and stops when
   /// the car is where it is going and the camera is on it.
@@ -170,10 +209,34 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   double _turnOver = 1;
 
   /// The passenger's map: the positions heard, played back; and the last one
-  /// given to it, to tell a row that only says the same again.
+  /// given to it, to tell a row that only says the same again. They come from
+  /// the ride row and from the driver's phone's fixes ([_heardFromFix] says
+  /// which the last one was): each stamped by a clock of its own, so the times
+  /// of two are only compared when both came the same way.
   final _heard = CarPlayback();
   LatLng? _heardAt;
   double? _heardHeading;
+  bool? _heardFromFix;
+
+  /// The passenger's map, while the driver's phone's fixes reach it steadily
+  /// ([_liveOn]): each carried forward a frame at a time, as on the driver's
+  /// own map. [_carFix] is the last of them and [_carFixAt] when it was heard,
+  /// by this phone's clock.
+  var _live = FixFollower(lateMost: followLateMostRemote, catchUp: followCatchUpRemote);
+  StreamSubscription<LiveFix>? _carFixes;
+  bool _liveOn = false;
+  LiveFix? _carFix;
+  DateTime? _carFixAt;
+
+  /// How many of the driver's phone's fixes in a row have come later than
+  /// [carFixSteadyWithin] after the one before.
+  int _slowFixes = 0;
+
+  /// The position on the ride row, and when this map first saw it there (by
+  /// this phone's clock): a row that was already there while the driver's
+  /// phone's fixes were coming says nothing they did not.
+  LatLng? _rowAt;
+  DateTime? _rowSeenAt;
 
   /// Whether the camera is on the car, or still on its way there from
   /// [_engageFrom] ([_engaged] seconds of [followEngageSeconds] ago); and
@@ -198,6 +261,22 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     _takeCar();
     _maybeReroute();
     _syncMe();
+    _syncCarFixes();
+  }
+
+  /// The passenger's map listens for the driver's phone's fixes while the ride
+  /// has a car under way, and only then.
+  void _syncCarFixes() {
+    final status = widget.ride.status;
+    final want = !_ownMap &&
+        widget.carFixes != null &&
+        (status == RideStatus.accepted || status == RideStatus.arrived || status == RideStatus.onTrip);
+    if (want && _carFixes == null) {
+      _carFixes = widget.carFixes!().listen(_onCarFix, onError: (_) {});
+    } else if (!want && _carFixes != null) {
+      _carFixes!.cancel();
+      _carFixes = null;
+    }
   }
 
   /// The passenger's own position on their map, and the subscription that
@@ -222,6 +301,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   void dispose() {
     _meSub?.cancel();
     _fixes?.cancel();
+    _carFixes?.cancel();
     _ticker.dispose();
     _car.dispose();
     _map.dispose();
@@ -234,6 +314,7 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     _takeCar();
     _maybeReroute();
     _syncMe();
+    _syncCarFixes();
     // A fresh position after the hand has been off the map a while: follow
     // the car again, as if the recenter button had been pressed.
     final hand = _handAt;
@@ -285,11 +366,16 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
   /// What the widget now says about the car, given to whichever follows it.
   void _takeCar() {
     if (!_hasCar) {
-      if (_car.value != null || _own.hasFix || _heard.shown != null) {
+      if (_car.value != null || _own.hasFix || _heard.shown != null || _liveOn || _carFixAt != null) {
         _own = FixFollower();
+        _live = FixFollower(lateMost: followLateMostRemote, catchUp: followCatchUpRemote);
+        _liveOn = false;
+        _carFix = null;
+        _carFixAt = null;
+        _slowFixes = 0;
         _heard.clear();
         _car.value = null;
-        _ownTaken = _ownTakenHeading = _heardAt = _heardHeading = _turnFrom = _facing = null;
+        _ownTaken = _ownTakenHeading = _heardAt = _heardHeading = _heardFromFix = _turnFrom = _facing = null;
         _onCar = false;
         _engageFrom = null;
       }
@@ -305,22 +391,151 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
       if (own == _ownTaken && widget.driverHeading == _ownTakenHeading) return;
       _ownTaken = own;
       _ownTakenHeading = widget.driverHeading;
-      _takeOwn((at: own, speed: null, course: widget.driverHeading, time: _now, accuracy: null));
+      _takeFix(_own, (at: own, speed: null, course: widget.driverHeading, time: _now, accuracy: null));
       return;
     }
     final at = _driver;
     if (at == null) return;
+    if (at != _rowAt) {
+      _rowAt = at;
+      _rowSeenAt = _now;
+    }
+    // The driver's phone's own fixes are the news while they come: the row
+    // says where the car was some seconds before them. Only a row that turns
+    // up once they have been quiet a while is from after the last of them.
+    final fixAt = _carFixAt, rowSeenAt = _rowSeenAt;
+    if (fixAt != null && rowSeenAt != null && rowSeenAt.difference(fixAt) < carFixesQuietAfter) return;
+    if (_liveOn) {
+      // Even so, never back the way it came: a row that puts the car a little
+      // behind where it is drawn is a position from before the last fix,
+      // however late it turned up.
+      final car = _car.value, facing = car?.heading;
+      if (car != null &&
+          facing != null &&
+          metresApart(car.at, at) <= carFixJoinMetres &&
+          shortestTurn(facing, bearingBetween(car.at, at)).abs() > 90) {
+        return;
+      }
+      // The fixes have stopped: the row is what there is to go on.
+      _leaveLive();
+    }
     final r = widget.ride;
-    final heading = r.partnerLiveHeading;
-    // A row that says the same again, or a car standing still whose GPS has
+    _playBack(at, heading: r.partnerLiveHeading, sentAt: r.partnerLiveAt, fromFix: false);
+  }
+
+  /// A position for the passenger's car to be played back to: from the ride
+  /// row, or one of the driver's phone's fixes while they are not coming
+  /// steadily enough to follow ([fromFix]). [sentAt] is when the car was
+  /// there, by the clock of whichever it came from.
+  void _playBack(LatLng at, {double? heading, DateTime? sentAt, double? accuracy, required bool fromFix}) {
+    // One that says the same again, or a car standing still whose GPS has
     // wandered a metre: not a move.
-    if (!carMovedOnMap(from: _heardAt, to: at, headingFrom: _heardHeading, headingTo: heading)) return;
+    if (!carMovedOnMap(from: _heardAt, to: at, headingFrom: _heardHeading, headingTo: heading, accuracy: accuracy)) {
+      return;
+    }
     _heardAt = at;
     _heardHeading = heading;
-    if (_heard.take(at, heading: heading, sentAt: r.partnerLiveAt, heardAt: _now)) {
+    // The row is stamped by the driver's phone's clock (or the server's) and a
+    // fix by its GPS's, which need not agree: the time between two positions
+    // is only taken from their stamps when both came the same way, else from
+    // when each was heard.
+    final sameClock = _heardFromFix == fromFix;
+    _heardFromFix = fromFix;
+    if (_heard.take(at, heading: heading, sentAt: sameClock ? sentAt : null, heardAt: _now)) {
       // The first is where the car is: there is nothing to play back yet.
       _car.value ??= (at: _heard.shown!, heading: _heard.heading);
       _wake();
+    }
+  }
+
+  /// One of the driver's phone's fixes has reached the passenger's map.
+  void _onCarFix(LiveFix fix) {
+    if (!mounted || _ownMap || !_hasCar) return;
+    final now = _now;
+    final heardBefore = _carFixAt, before = _carFix;
+    // A fix a second, or thereabouts: steady enough to carry each forward to
+    // where the car is now.
+    final prompt = heardBefore != null && now.difference(heardBefore) <= carFixSteadyWithin;
+    // A car standing still may be heard from less often (a phone reports
+    // little while it does not move): that is not the fixes failing to get
+    // through.
+    final stood = before != null && fixIsStill(speedMps: before.speed, accuracyMetres: before.accuracy);
+    _slowFixes = prompt || (stood && _liveOn) ? 0 : _slowFixes + 1;
+    _carFixAt = now;
+    _carFix = fix;
+    final drawn = _car.value?.at;
+    final near = drawn == null || metresApart(drawn, fix.at) <= carFixJoinMetres;
+    if (_liveOn) {
+      if (!prompt && !near) {
+        // Back after some seconds away (no signal, this phone's app behind
+        // another), and the car is drawn well short of where it is now. Not
+        // something to slide across the map to: it is driven up the road to
+        // it, or put there, and followed live again from the fix after.
+        _leaveLive(catchingUp: true);
+      } else if (_slowFixes >= carFixSlowMost) {
+        _leaveLive(last: before, heardAt: heardBefore);
+      }
+    }
+    if (_liveOn) {
+      _takeFix(_live, fix);
+      return;
+    }
+    if (prompt && before != null && near) {
+      _joinLive(before, heardBefore, fix);
+      return;
+    }
+    // Not steady yet, or the car is drawn some way behind them: it is driven
+    // up to this one along the road.
+    _playBack(fix.at, heading: fix.course, sentAt: fix.time, accuracy: fix.accuracy, fromFix: true);
+  }
+
+  /// The driver's phone's fixes are coming steadily and the car is drawn near
+  /// them: from here it is carried forward from each, to where the car is
+  /// now. [before] is the fix before [fix], heard at [beforeHeardAt]: it tells
+  /// the speed the car was doing then, and how promptly a fix can arrive.
+  void _joinLive(LiveFix before, DateTime beforeHeardAt, LiveFix fix) {
+    final car = _car.value;
+    _live = FixFollower(lateMost: followLateMostRemote, catchUp: followCatchUpRemote)..shown = car?.at;
+    _facing = car?.heading;
+    _turnFrom = null;
+    _liveOn = true;
+    _live.take(
+      before.at,
+      speed: before.speed,
+      course: before.course,
+      time: before.time,
+      accuracy: before.accuracy,
+      clock: () => beforeHeardAt,
+    );
+    _takeFix(_live, fix);
+  }
+
+  /// The driver's phone's fixes have stopped coming steadily: the car is
+  /// played back from where it is drawn. [last] is the last fix that was
+  /// followed and [heardAt] when it was heard (the latest, unless given).
+  ///
+  /// [catchingUp] is for a car drawn well short of the fix that has just
+  /// come: the way there is not played back in the time the real car took
+  /// over it, which would leave it as far behind as it is, but as if the car
+  /// had last been heard from a second ago — driven as fast as a car can be
+  /// taken to go, or put there when that is farther than it could have gone.
+  void _leaveLive({LiveFix? last, DateTime? heardAt, bool catchingUp = false}) {
+    _liveOn = false;
+    _turnFrom = null;
+    final car = _car.value;
+    if (car == null) {
+      _heard.clear();
+      _heardAt = _heardHeading = _heardFromFix = null;
+      return;
+    }
+    _heardAt = car.at;
+    _heardHeading = car.heading;
+    if (catchingUp) {
+      _heard.startAt(car.at, heading: car.heading, heardAt: _now.subtract(carFixCatchUpOver));
+      _heardFromFix = null;
+    } else {
+      _heard.startAt(car.at, heading: car.heading, sentAt: (last ?? _carFix)?.time, heardAt: heardAt ?? _carFixAt);
+      _heardFromFix = true;
     }
   }
 
@@ -328,16 +543,21 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     if (!mounted || !_hasCar) return;
     _fixesLive = true;
     _fixAt = _now;
-    _takeOwn(fix);
+    _takeFix(_own, fix);
   }
 
-  /// A fix from the driver's own phone: what the follow carries forward from
-  /// now on ([_onTick]).
-  void _takeOwn(LiveFix fix) {
+  /// The follower the car is drawn by: the driver's own phone's fixes on the
+  /// driver's map, the car's on the passenger's while they are followed live.
+  FixFollower get _follower => _ownMap ? _own : _live;
+
+  /// A fix for [follower] to carry forward from now on ([_onTick]): from the
+  /// driver's own phone on their map, from the driver's phone on the
+  /// passenger's.
+  void _takeFix(FixFollower follower, LiveFix fix) {
     // The heading as it stands, read before the fix is taken: the turn to the
     // new course carries on from wherever the last one had got to.
     final headingWas = _headingNow;
-    final taken = _own.take(
+    final taken = follower.take(
       fix.at,
       speed: fix.speed,
       course: fix.course,
@@ -356,18 +576,19 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     if (_car.value == null) {
       // Until it has driven anywhere, it faces the way the screen last knew.
       _facing ??= _headingNow ?? widget.driverHeading;
-      _car.value = (at: _own.shown!, heading: _facing);
+      _car.value = (at: follower.shown!, heading: _facing);
     }
     _wake();
   }
 
-  /// The way the driver's own car is heading at this moment: the turn the
-  /// latest fix asked for, as far as it has got. Null while it is stopped or
-  /// has no course: it then faces the way it did.
+  /// The way the followed car is heading at this moment: the turn the latest
+  /// fix asked for, as far as it has got. Null while it is stopped or has no
+  /// course: it then faces the way it did.
   double? get _headingNow {
-    final from = _turnFrom, to = _own.course;
+    final follower = _follower;
+    final from = _turnFrom, to = follower.course;
     if (from == null || to == null) return null;
-    return headingBetween(from, to, ageSeconds: _own.ageSeconds, overSeconds: _turnOver);
+    return headingBetween(from, to, ageSeconds: follower.ageSeconds, overSeconds: _turnOver);
   }
 
   /// Starts the frames if they are not already running.
@@ -399,12 +620,13 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     }
     var busy = false;
     LatLng? at;
-    if (_ownMap) {
-      if (_own.hasFix) {
+    if (_ownMap || _liveOn) {
+      final follower = _follower;
+      if (follower.hasFix) {
         // A long frame (a hitch, the app coming back) is not that much travel.
         final step = math.min(dt, 0.25);
-        busy = _own.advance(step);
-        at = _own.shown;
+        busy = follower.advance(step);
+        at = follower.shown;
         final heading = _headingNow, faced = _facing;
         if (heading != null) {
           if (faced == null) {
@@ -572,7 +794,8 @@ class _LiveRideMapState extends ConsumerState<LiveRideMap> with SingleTickerProv
     _lineFrom = drawn;
     final rest = ahead ?? route.points;
     if (drawn == null) return rest;
-    if (_ownMap) return routeAhead(route.points, drawn)?.points ?? rest;
+    // Followed live, the car is where it is: the road ahead of it.
+    if (_ownMap || _liveOn) return routeAhead(route.points, drawn)?.points ?? rest;
     final lead = _heard.ahead;
     return lead.isEmpty ? rest : [...lead, ...rest];
   }

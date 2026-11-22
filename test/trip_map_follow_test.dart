@@ -10,13 +10,12 @@ import 'dart:math' as math;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get_ride/src/core/car_playback.dart';
 import 'package:get_ride/src/core/follow_motion.dart';
 import 'package:get_ride/src/data/app_display_repository.dart';
 import 'package:get_ride/src/data/fare_tariff_repository.dart';
-import 'package:get_ride/src/data/geo_service.dart';
 import 'package:get_ride/src/data/live_fix.dart';
 import 'package:get_ride/src/data/models.dart';
+import 'package:get_ride/src/data/ride_live_fix_repository.dart';
 import 'package:get_ride/src/data/ride_repository.dart';
 import 'package:get_ride/src/features/partner/partner_trip_screen.dart';
 import 'package:get_ride/src/features/ride/live_ride_map.dart';
@@ -26,99 +25,19 @@ import 'package:get_ride/src/widgets/ride_map.dart';
 import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
 
-const origin = LatLng(3.1500, 101.7000);
-final t0 = DateTime.utc(2026, 11, 22, 4);
-const frame = Duration(microseconds: 16667);
-const frameSeconds = 1 / 60;
-
-/// A road: north from [origin], round a bend to the right, and on east.
-class Road {
-  Road({double north = 400, double east = 500, double radius = 40}) {
-    final points = <LatLng>[origin];
-    // Up to where the bend begins, round it two degrees at a time, and on.
-    final centre = movedAlong(movedAlong(origin, north, 0), radius, 90);
-    for (var turned = 0; turned <= 90; turned += 2) {
-      points.add(movedAlong(centre, radius, 270.0 + turned));
-    }
-    points.add(movedAlong(points.last, east, 90));
-    this.points = points;
-  }
-
-  late final List<LatLng> points;
-
-  double get length => lineMetres(points);
-
-  /// Where a car [metres] down the road is, and the way the road runs there.
-  ({LatLng at, double bearing}) spot(double metres) {
-    var left = metres.clamp(0.0, length).toDouble();
-    for (var i = 0; i < points.length - 1; i++) {
-      final l = metresApart(points[i], points[i + 1]);
-      if (left <= l || i == points.length - 2) {
-        return (
-          at: pointBetween(points[i], points[i + 1], l == 0 ? 0 : (left / l).clamp(0.0, 1.0)),
-          bearing: bearingBetween(points[i], points[i + 1]),
-        );
-      }
-      left -= l;
-    }
-    throw StateError('unreachable');
-  }
-
-  LatLng at(double metres) => spot(metres).at;
-  double offBy(LatLng p) => nearestOnRoad(points, p)!.offBy;
-  double along(LatLng p) => nearestOnRoad(points, p)!.along;
-}
-
-/// A router that sends the car down [road] from wherever it is.
-class _Geo extends GeoService {
-  _Geo(this.road);
-  final Road road;
-  int asked = 0;
-
-  @override
-  Future<RouteInfo> route(LatLng from, LatLng to, {List<LatLng> via = const []}) async {
-    asked++;
-    final points = [from, ...road.points.sublist(nearestOnRoad(road.points, from)!.index + 1)];
-    return RouteInfo(distanceKm: lineMetres(points) / 1000, durationMin: lineMetres(points) / 600, points: points);
-  }
-}
-
-RideRequest ride(Road road, {LatLng? car, DateTime? sent, double? heading, String status = 'accepted'}) => RideRequest({
-  'id': 'r1',
-  'rider_id': 'rider',
-  'partner_id': 'me',
-  'status': status,
-  'fare': 20,
-  'currency': 'MYR',
-  'pickup_name': 'KLCC',
-  'drop_name': 'KL Sentral',
-  'pickup_lat': road.points.last.latitude,
-  'pickup_lng': road.points.last.longitude,
-  'drop_lat': road.points.last.latitude,
-  'drop_lng': road.points.last.longitude,
-  'partner_live_lat': car?.latitude,
-  'partner_live_lng': car?.longitude,
-  'partner_live_heading': heading,
-  'partner_live_at': sent?.toIso8601String(),
-});
-
-/// What a frame of a run showed: the car as drawn, the camera, where the road
-/// line starts and where the real car was.
-typedef Seen = ({double t, CarOnMap car, MapCamera camera, LatLng? lineStart, double real});
-
-RideMap rideMap(WidgetTester tester) => tester.widget<RideMap>(find.byType(RideMap));
-MapCamera cameraOf(WidgetTester tester) => tester.widget<FlutterMap>(find.byType(FlutterMap)).mapController!.camera;
+import 'support/trip_road.dart';
 
 void main() {
   group("the passenger's map", () {
     late Road road;
-    late _Geo geo;
+    late RoadGeo geo;
     late DateTime clock;
 
     setUp(() {
       road = Road();
-      geo = _Geo(road);
+      geo = RoadGeo(road);
       clock = t0;
     });
 
@@ -313,7 +232,7 @@ void main() {
 
     Future<void> show(WidgetTester tester, {bool own = true, String status = 'on_trip'}) => tester.pumpWidget(
       ProviderScope(
-        overrides: [geoServiceProvider.overrideWithValue(_Geo(road))],
+        overrides: [geoServiceProvider.overrideWithValue(RoadGeo(road))],
         child: MaterialApp(
           home: Scaffold(
             body: LiveRideMap(
@@ -497,24 +416,36 @@ void main() {
   });
 
   group('the trip screen', () {
-    testWidgets("its map follows the phone's every fix; the distance driven and what is shared keep their own pace", (
-      tester,
-    ) async {
-      tester.view.physicalSize = const Size(1200, 1800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      final road = Road();
-      var now = t0;
-      final rows = StreamController<RideRequest>();
-      final trip = StreamController<TripFix>();
-      final own = StreamController<LiveFix>();
+    late Road road;
+    late DateTime now;
+    late StreamController<RideRequest> rows;
+    late StreamController<TripFix> trip;
+    late StreamController<LiveFix> own, live;
+    late _Rides rides;
+    late _LiveFixes sent;
+
+    setUp(() {
+      road = Road();
+      now = t0;
+      rows = StreamController<RideRequest>();
+      trip = StreamController<TripFix>();
+      own = StreamController<LiveFix>();
+      live = StreamController<LiveFix>();
+      rides = _Rides();
+      sent = _LiveFixes();
       // Not waited for: a stream nobody listened to never finishes closing.
       addTearDown(() {
         unawaited(rows.close());
         unawaited(trip.close());
         unawaited(own.close());
+        unawaited(live.close());
       });
-      final rides = _Rides();
+    });
+
+    Future<void> open(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(1200, 1800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       final router = GoRouter(
         initialLocation: '/trip',
         routes: [
@@ -526,12 +457,14 @@ void main() {
         ProviderScope(
           overrides: [
             rideRepositoryProvider.overrideWithValue(rides),
+            rideLiveFixRepositoryProvider.overrideWithValue(sent),
             rideStreamProvider.overrideWith((ref, id) => rows.stream),
             tripPositionStreamProvider.overrideWithValue(() => trip.stream),
             tripMapFixesProvider.overrideWithValue(() => own.stream),
+            tripLiveFixesProvider.overrideWithValue(() => live.stream),
             tripClockProvider.overrideWithValue(() => now),
             tripFixProvider.overrideWithValue(() async => null),
-            geoServiceProvider.overrideWithValue(_Geo(road)),
+            geoServiceProvider.overrideWithValue(RoadGeo(road)),
             currentUserIdProvider.overrideWithValue(null),
             fareTariffsProvider.overrideWith((ref) async => const []),
             rideServicesProvider.overrideWith((ref) async => const []),
@@ -540,6 +473,17 @@ void main() {
           child: MaterialApp.router(routerConfig: router),
         ),
       );
+    }
+
+    Future<void> close(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(const Duration(seconds: 20));
+    }
+
+    testWidgets("its map follows the phone's every fix; the distance driven and what is shared keep their own pace", (
+      tester,
+    ) async {
+      await open(tester);
       rows.add(ride(road, status: 'on_trip'));
       await tester.pump();
       await tester.pump();
@@ -562,8 +506,108 @@ void main() {
       expect(metresApart(was!, road.at(2.0 * 6)), lessThan(1.5));
       expect(find.text('0.0 km driven'), findsOneWidget, reason: "counted from the trip's own fixes alone");
       expect(rides.shared, 1, reason: "shared at the trip's own pace");
-      await tester.pumpWidget(const SizedBox());
-      await tester.pump(const Duration(seconds: 5));
+      await close(tester);
+    });
+
+    LiveFix fixAt(int second) =>
+        (at: road.at(12.0 * second), speed: 12, course: 0, time: t0.add(Duration(seconds: second)), accuracy: 5);
+
+    testWidgets("every fix goes to the passenger's map, one a second, while the ride is under way", (tester) async {
+      await open(tester);
+      rows.add(ride(road, status: 'accepted'));
+      await tester.pump();
+      await tester.pump();
+      expect(live.hasListener, isFalse, reason: 'not before location is known to be allowed: the first fix of the trip');
+      trip.add((at: road.at(0), heading: 0, accuracy: 5));
+      await tester.pump();
+      expect(live.hasListener, isTrue);
+      // On the way to the pickup, waiting there, and on the trip: a fix a
+      // second, each sent as it comes.
+      var second = 0;
+      for (final status in ['accepted', 'arrived', 'on_trip']) {
+        rows.add(ride(road, status: status));
+        await tester.pump();
+        for (var k = 0; k < 4; k++, second++) {
+          now = t0.add(Duration(seconds: second));
+          live.add(fixAt(second));
+          await tester.pump(const Duration(seconds: 1));
+        }
+      }
+      expect(sent.rides.toSet(), {'r1'});
+      expect(sent.fixes, [for (var k = 0; k < 12; k++) fixAt(k)], reason: 'every one, in order, none twice');
+      expect(rides.shared, lessThanOrEqualTo(1), reason: 'the ride row keeps its own pace: it is shared from the trip\'s 15 m fixes');
+      // The trip is over: nothing more is sent, whatever the phone goes on giving.
+      rows.add(ride(road, status: 'completed'));
+      await tester.pump();
+      for (var k = 0; k < 3; k++, second++) {
+        live.add(fixAt(second));
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(sent.fixes.length, 12);
+      await close(tester);
+      expect(live.hasListener, isFalse, reason: 'let go of with the screen');
+    });
+
+    testWidgets('a server that has nowhere to take them is asked once; the ride row is shared as it always was', (tester) async {
+      sent.answer = (_) => throw const PostgrestException(message: 'Could not find the function public.ride_live_fix', code: 'PGRST202');
+      await open(tester);
+      rows.add(ride(road, status: 'on_trip'));
+      await tester.pump();
+      await tester.pump();
+      trip.add((at: road.at(0), heading: 0, accuracy: 5));
+      await tester.pump();
+      for (var second = 0; second < 12; second++) {
+        now = t0.add(Duration(seconds: second));
+        live.add(fixAt(second));
+        // The trip's own stream, every fifteen metres or so.
+        trip.add((at: road.at(12.0 * second), heading: 0, accuracy: 5));
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(sent.asked, 1);
+      expect(rides.shared, 3, reason: 'at 0, 5 and 10 s');
+      await close(tester);
+    });
+
+    testWidgets('on a slow connection the fixes do not pile up: one on its way, and then the newest', (tester) async {
+      final answers = <Completer<bool>>[];
+      sent.answer = (_) {
+        final c = Completer<bool>();
+        answers.add(c);
+        return c.future;
+      };
+      await open(tester);
+      rows.add(ride(road, status: 'on_trip'));
+      await tester.pump();
+      await tester.pump();
+      trip.add((at: road.at(0), heading: 0, accuracy: 5));
+      await tester.pump();
+      for (var second = 0; second < 4; second++) {
+        live.add(fixAt(second));
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(sent.asked, 1, reason: 'the first has not been answered');
+      answers.single.complete(true);
+      await tester.pump();
+      await tester.pump();
+      expect(sent.fixes, [fixAt(0), fixAt(3)]);
+      answers.last.complete(true);
+      await close(tester);
+    });
+
+    testWidgets('a ride that takes none (it has passed to another driver) is left alone for a while', (tester) async {
+      sent.answer = (_) async => false;
+      await open(tester);
+      rows.add(ride(road, status: 'on_trip'));
+      await tester.pump();
+      await tester.pump();
+      trip.add((at: road.at(0), heading: 0, accuracy: 5));
+      await tester.pump();
+      for (var second = 0; second < 10; second++) {
+        live.add(fixAt(second));
+        await tester.pump(const Duration(seconds: 1));
+      }
+      expect(sent.asked, 1);
+      await close(tester);
     });
   });
 }
@@ -576,6 +620,26 @@ class _Rides implements RideRepository {
 
   @override
   Future<RideRequest?> ongoingForPartner() async => null;
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// What the trip screen sent to the passenger's map.
+class _LiveFixes implements RideLiveFixRepository {
+  final rides = <String>[];
+  final fixes = <LiveFix>[];
+  int asked = 0;
+  FutureOr<bool> Function(LiveFix fix)? answer;
+
+  @override
+  Future<bool> send(String rideId, LiveFix fix) async {
+    asked++;
+    rides.add(rideId);
+    fixes.add(fix);
+    final answer = this.answer;
+    return answer == null ? true : await answer(fix);
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
