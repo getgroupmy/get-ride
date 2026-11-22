@@ -7,6 +7,9 @@
 // each test says which it is (debugGoogleJsSupported), so the same things
 // are checked on a Linux, macOS or Windows test machine, and the web view is
 // a stand-in the test drives as the page would.
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,6 +30,10 @@ class _Page {
   final scripts = <String>[];
   void Function(JavaScriptMessage)? _channel;
   WebResourceErrorCallback? _onError;
+
+  /// While set, what the app runs in the page does not finish until this
+  /// does: a page that is slow to run it.
+  Completer<void>? busy;
 
   void say(String message) => _channel!(JavaScriptMessage(message: message));
   void failToLoad() => _onError!(const WebResourceError(errorCode: -1, description: 'offline', isForMainFrame: true));
@@ -73,7 +80,10 @@ class _FakeController extends PlatformWebViewController {
   Future<void> loadRequest(LoadRequestParams params) async => page.loaded = params;
 
   @override
-  Future<void> runJavaScript(String javaScript) async => page.scripts.add(javaScript);
+  Future<void> runJavaScript(String javaScript) async {
+    page.scripts.add(javaScript);
+    await page.busy?.future;
+  }
 }
 
 class _FakeNavigationDelegate extends PlatformNavigationDelegate {
@@ -292,4 +302,175 @@ void main() {
       });
     });
   }
+
+  // The driver's map turns to the way the car is going. This kind of Google
+  // map cannot be turned itself, so the page is turned with the app's layers.
+  group('a map that turns', () {
+    test('the page is drawn big enough to cover the map whichever way it is turned', () {
+      const map = Size(393, 852);
+      final page = turningMapSize(map);
+      expect(page.width, page.height, reason: 'one size for every angle');
+      expect(page.width, greaterThanOrEqualTo(math.sqrt(393 * 393 + 852 * 852)));
+      expect(page.width, lessThan(math.sqrt(393 * 393 + 852 * 852) + 1), reason: 'and no bigger than it has to be');
+      // Every corner of the map is inside the page, at any angle.
+      for (var degrees = 0; degrees < 360; degrees += 5) {
+        final turn = degrees * math.pi / 180;
+        for (final corner in [const Offset(-196.5, -426), const Offset(196.5, 426), const Offset(196.5, -426)]) {
+          // The corner, as the turned page sees it.
+          final x = corner.dx * math.cos(-turn) - corner.dy * math.sin(-turn);
+          final y = corner.dx * math.sin(-turn) + corner.dy * math.cos(-turn);
+          expect(x.abs(), lessThanOrEqualTo(page.width / 2), reason: 'at $degrees°');
+          expect(y.abs(), lessThanOrEqualTo(page.height / 2), reason: 'at $degrees°');
+        }
+      }
+      expect(turningMapSize(Size.zero), Size.zero);
+    });
+
+    late _FakeWebViewPlatform platform;
+    late MapController controller;
+
+    Future<_Page> open(WidgetTester tester) async {
+      debugGoogleJsSupported = true;
+      googleJsFailed.value = false;
+      googleJsError.value = null;
+      addTearDown(() {
+        debugGoogleJsSupported = null;
+        googleJsFailed.value = failedAtStart;
+        googleJsError.value = null;
+      });
+      platform = _FakeWebViewPlatform();
+      WebViewPlatform.instance = platform;
+      controller = MapController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        ProviderScope(
+          child: MaterialApp(
+            home: Center(
+              child: SizedBox(
+                width: 400,
+                height: 300,
+                child: FlutterMap(
+                  mapController: controller,
+                  options: const MapOptions(initialCenter: LatLng(3.15, 101.7), initialZoom: 14),
+                  children: const [
+                    GoogleJsBaseLayer(
+                      apiKey: 'BROWSER',
+                      fallback: Text('app tiles', key: ValueKey('fallback')),
+                    ),
+                    // One of the app's own layers, as flutter_map turns them.
+                    MobileLayerTransformer(child: SizedBox.expand(key: ValueKey('app layer'))),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final page = platform.pages.single;
+      page.say('ready');
+      return page;
+    }
+
+    final view = find.byKey(const ValueKey('web view'));
+
+    /// The way [finder]'s own left-to-right runs on the screen, in degrees.
+    double turnOf(WidgetTester tester, Finder finder) {
+      final box = tester.renderObject<RenderBox>(finder);
+      final along = box.localToGlobal(const Offset(100, 0)) - box.localToGlobal(Offset.zero);
+      return math.atan2(along.dy, along.dx) * 180 / math.pi;
+    }
+
+    Offset middleOf(WidgetTester tester, Finder finder) {
+      final box = tester.renderObject<RenderBox>(finder);
+      return box.localToGlobal(box.size.center(Offset.zero));
+    }
+
+    testWidgets('never turned, the page is exactly the map', (tester) async {
+      final page = await open(tester);
+      expect(tester.getSize(view), const Size(400, 300));
+      expect(turnOf(tester, view), closeTo(0, 1e-9));
+      controller.move(const LatLng(3.16, 101.71), 15);
+      await tester.pump();
+      expect(tester.getSize(view), const Size(400, 300));
+      expect(page.scripts.last, 'setView(3.16,101.71,15.0,0)');
+    });
+
+    testWidgets("turned, the page turns with the app's own layers about the middle of the map", (tester) async {
+      final page = await open(tester);
+      final middle = tester.getCenter(find.byType(FlutterMap));
+      for (final degrees in [40.0, 135.0, -90.0, 270.0]) {
+        controller.rotate(degrees);
+        await tester.pump();
+        expect(tester.getSize(view), const Size(500, 500), reason: 'the diagonal of 400 x 300, square');
+        expect(middleOf(tester, view).dx, closeTo(middle.dx, 1e-6));
+        expect(middleOf(tester, view).dy, closeTo(middle.dy, 1e-6));
+        final layer = turnOf(tester, find.byKey(const ValueKey('app layer')));
+        expect((turnOf(tester, view) - layer + 540) % 360 - 180, closeTo(0, 1e-6), reason: 'as the layers over it, at $degrees°');
+        expect((layer - degrees + 540) % 360 - 180, closeTo(0, 1e-6));
+      }
+      // The page itself is still told north up: it is the app that turns it.
+      expect(page.scripts.where((s) => s.startsWith('setView')).every((s) => s.endsWith(',0)')), isTrue);
+      await tester.pump(const Duration(seconds: 2));
+    });
+
+    testWidgets('a page slow to move is sent one move at a time, and only the latest of those it missed', (tester) async {
+      final page = await open(tester);
+      List<String> moves() => page.scripts.where((s) => s.startsWith('setView')).toList();
+      final before = moves().length;
+      // The page takes its time over the next move…
+      final busy = page.busy = Completer<void>();
+      controller.move(const LatLng(3.151, 101.7), 14);
+      await tester.pump();
+      expect(moves().length, before + 1);
+      // …while the camera goes on moving, a frame at a time.
+      for (var i = 2; i <= 6; i++) {
+        controller.move(LatLng(3.15 + i / 1000, 101.7), 14);
+        await tester.pump();
+      }
+      expect(moves().length, before + 1, reason: 'nothing queued behind the one it is running');
+      // Done: straight to where the camera is now, not through each place it was.
+      page.busy = null;
+      busy.complete();
+      await tester.pump();
+      expect(moves().length, before + 2);
+      expect(moves().last, 'setView(${3.15 + 6 / 1000},101.7,14.0,0)', reason: 'the last place the camera went');
+    });
+
+    testWidgets('a page that never answers a move does not hold the map still for good', (tester) async {
+      final page = await open(tester);
+      List<String> moves() => page.scripts.where((s) => s.startsWith('setView')).toList();
+      page.busy = Completer<void>();
+      controller.move(const LatLng(3.151, 101.7), 14);
+      await tester.pump();
+      controller.move(const LatLng(3.152, 101.7), 14);
+      await tester.pump();
+      expect(moves().last, 'setView(3.151,101.7,14.0,0)');
+      await tester.pump(googleJsMoveTimeout + const Duration(milliseconds: 10));
+      expect(moves().last, 'setView(3.152,101.7,14.0,0)', reason: 'sent anyway once it has waited long enough');
+      // Past the second one's wait too, so nothing is left pending.
+      await tester.pump(googleJsMoveTimeout + const Duration(milliseconds: 10));
+    });
+
+    testWidgets('given its new size, the page is told where its map is again; straightened, it keeps the size', (
+      tester,
+    ) async {
+      final page = await open(tester);
+      int told() => page.scripts.where((s) => s.startsWith('setView')).length;
+      final before = told();
+      controller.rotate(30);
+      await tester.pump();
+      expect(told(), before + 1, reason: 'at once');
+      await tester.pump(const Duration(seconds: 2));
+      expect(told(), before + 1 + googleJsResizeResends.length, reason: 'and again once the web view has the size');
+      expect(page.scripts.last, 'setView(3.15,101.7,14.0,0)');
+      // Back to north up: no new size, so nothing to tell it again.
+      final settled = told();
+      controller.rotate(0);
+      await tester.pump();
+      expect(tester.getSize(view), const Size(500, 500));
+      expect(turnOf(tester, view), closeTo(0, 1e-9));
+      await tester.pump(const Duration(seconds: 2));
+      expect(told(), settled);
+    });
+  });
 }
