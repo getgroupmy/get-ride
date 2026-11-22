@@ -23,12 +23,15 @@ Future<List<PermissionBlock>> currentPermissionBlocks(PermissionProbe probe, Per
   if (!checks.any) return const [];
   final (on, location) = await probe.location();
   final notifications = checks.notifications ? await probe.notifications() : PermState.unknown;
+  // Asked of the phone only when the admin holds people to it.
+  final precise = checks.locationPrecise ? await probe.locationPrecise() : null;
   return permissionBlocks(
     checks: checks,
     serviceOn: on,
     location: location,
     notifications: notifications,
     platform: defaultTargetPlatform,
+    precise: precise,
     web: kIsWeb,
   );
 }

@@ -63,6 +63,7 @@ class PermissionChecks {
     this.location = true,
     this.locationAlways = false,
     this.locationAlwaysAndroid = false,
+    this.locationPrecise = false,
     this.notifications = true,
   });
 
@@ -80,6 +81,12 @@ class PermissionChecks {
   /// foreground service with "While using the app" already.
   final bool locationAlwaysAndroid;
 
+  /// The phone's precise location, not an approximate one: Android 12 and
+  /// later let "Approximate" be picked when location is allowed, and an
+  /// iPhone has "Precise Location" to switch off. Either leaves the app a
+  /// few kilometres out. Off unless the admin turns it on.
+  final bool locationPrecise;
+
   /// GET.ride allowed to send notifications.
   final bool notifications;
 
@@ -96,6 +103,7 @@ class PermissionChecks {
       location: _on(m['location'], fallback.location),
       locationAlways: _on(m['locationAlways'], fallback.locationAlways),
       locationAlwaysAndroid: _on(m['locationAlwaysAndroid'], fallback.locationAlwaysAndroid),
+      locationPrecise: _on(m['locationPrecise'], fallback.locationPrecise),
       notifications: _on(m['notifications'], fallback.notifications),
     );
   }
@@ -105,6 +113,7 @@ class PermissionChecks {
     'location': location,
     if (always) 'locationAlways': locationAlways,
     if (always) 'locationAlwaysAndroid': locationAlwaysAndroid,
+    'locationPrecise': locationPrecise,
     'notifications': notifications,
   };
 
@@ -113,16 +122,19 @@ class PermissionChecks {
     bool? location,
     bool? locationAlways,
     bool? locationAlwaysAndroid,
+    bool? locationPrecise,
     bool? notifications,
   }) => PermissionChecks(
     locationService: locationService ?? this.locationService,
     location: location ?? this.location,
     locationAlways: locationAlways ?? this.locationAlways,
     locationAlwaysAndroid: locationAlwaysAndroid ?? this.locationAlwaysAndroid,
+    locationPrecise: locationPrecise ?? this.locationPrecise,
     notifications: notifications ?? this.notifications,
   );
 
-  bool get any => locationService || location || locationAlways || locationAlwaysAndroid || notifications;
+  bool get any =>
+      locationService || location || locationAlways || locationAlwaysAndroid || locationPrecise || notifications;
 }
 
 /// The admin's permission rules: riders before the home map, partners
@@ -233,6 +245,13 @@ enum PermissionBlock {
   // shown to riders and drivers alike before the phone is asked.
   notAlways('Location all the time', backgroundLocationDisclosure),
   notAllTheTime('Location all the time', backgroundLocationDisclosure),
+  // Location is allowed, but only an approximate one (Admin → App Settings →
+  // Permissions → Precise location, off unless the admin turns it on).
+  notPrecise(
+    'Precise location',
+    'GET.ride is only allowed your approximate location, which can be a few kilometres from where you are. That is '
+        'too rough to find your pickup, show the cars near you or follow a trip. Allow your precise location.',
+  ),
   notificationsNotAsked(
     'Allow notifications',
     'So you hear ride requests, calls and trip updates when GET.ride is not on screen.',
@@ -247,7 +266,7 @@ enum PermissionBlock {
   final String title;
   final String message;
 
-  bool get isLocation => index <= notAllTheTime.index;
+  bool get isLocation => index <= notPrecise.index;
 
   /// Only the phone's Settings can fix it (the app can't ask again).
   bool get needsSettings => this == serviceOff || this == locationOff || this == notificationsOff;
@@ -256,6 +275,10 @@ enum PermissionBlock {
   String? get settingsPath => switch (this) {
     notAlways || locationOff => 'Settings > GET.ride > Location > Always',
     notAllTheTime => 'Settings > Apps > GET.ride > Permissions > Location > Allow all the time',
+    notPrecise =>
+      defaultTargetPlatform == TargetPlatform.iOS
+          ? 'Settings > GET.ride > Location > Precise Location'
+          : 'Settings > Apps > GET.ride > Permissions > Location > Use precise location',
     notificationsOff => 'Settings > GET.ride > Notifications > Allow',
     _ => null,
   };
@@ -266,13 +289,19 @@ enum PermissionBlock {
 /// asked of the web. "Always" is an iPhone setting; Android's "All the
 /// time" is its own switch, off by default, since Android keeps an online
 /// driver's location through its foreground service with only "While using
-/// the app". Pure.
+/// the app".
+///
+/// [precise] is whether the location allowed is the phone's precise one:
+/// false when only an approximate one is, null when the phone can't say
+/// (which lets it through). It holds someone up only once location itself is
+/// allowed, and only with the admin's "Precise location" on. Pure.
 List<PermissionBlock> permissionBlocks({
   required PermissionChecks checks,
   required bool serviceOn,
   required PermState location,
   required PermState notifications,
   required TargetPlatform platform,
+  bool? precise,
   bool web = false,
 }) {
   if (web) return const [];
@@ -293,6 +322,9 @@ List<PermissionBlock> permissionBlocks({
       default:
         break;
     }
+  }
+  if (checks.locationPrecise && precise == false && (location == PermState.granted || location == PermState.limited)) {
+    out.add(PermissionBlock.notPrecise);
   }
   if (checks.notifications) {
     if (notifications == PermState.notAsked) out.add(PermissionBlock.notificationsNotAsked);
