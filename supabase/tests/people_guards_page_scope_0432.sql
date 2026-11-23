@@ -5,6 +5,9 @@
 --   * Through the API they are changed by an admin who may edit the table,
 --     and by nobody else: not the row's owner, not an admin who may only
 --     read the table, not an admin whose pages edit something else.
+--   * An approved partner's Partner Service types: also an approver who is
+--     also an admin, from My Team (renaming a type is covered in
+--     safe_renames_0304.sql).
 --   * The server changes them as before.
 --   * A signed-in user still does what is theirs: fills in and submits an
 --     application, replaces a document.
@@ -19,10 +22,12 @@ begin;
 insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000432a1'),  -- applies to be a partner
   ('00000000-0000-0000-0000-0000000432a2'),  -- an account with no partner row
+  ('00000000-0000-0000-0000-0000000432a3'),  -- an approved partner, on an approver's team
   ('00000000-0000-0000-0000-0000000432b1'),  -- back office: may only read partners; an approved partner
   ('00000000-0000-0000-0000-0000000432b2'),  -- back office: edits another page; an applicant
   ('00000000-0000-0000-0000-0000000432b3'),  -- back office: reads another page; no partner row yet
   ('00000000-0000-0000-0000-0000000432b4'),  -- back office: may edit vehicles, not partners; an applicant
+  ('00000000-0000-0000-0000-0000000432b5'),  -- back office: may only read users; an approver; an approved partner
   ('00000000-0000-0000-0000-0000000432c1'),  -- back office: may edit partners
   ('00000000-0000-0000-0000-0000000432c2'),  -- back office: may edit users
   ('00000000-0000-0000-0000-0000000432c3')   -- back office: full admin
@@ -35,6 +40,7 @@ insert into public.admin_access (profile_id, page, access_level) values
   ('00000000-0000-0000-0000-0000000432b2', 'admin-settings-ip-access', 'edit'),
   ('00000000-0000-0000-0000-0000000432b3', 'admin-settings-ip-access', 'read'),
   ('00000000-0000-0000-0000-0000000432b4', 'admin-vehicle-edit', 'edit'),
+  ('00000000-0000-0000-0000-0000000432b5', 'admin-users', 'read'),
   ('00000000-0000-0000-0000-0000000432c1', 'admin-partner-edit', 'edit'),
   ('00000000-0000-0000-0000-0000000432c2', 'admin-user-edit', 'edit'),
   ('00000000-0000-0000-0000-0000000432c3', '*', 'edit')
@@ -50,7 +56,12 @@ insert into public.partners (id, auth_user_id, name, phone, status) values
   ('00000000-0000-0000-0000-0000000432e1', '00000000-0000-0000-0000-0000000432b1', 'Reads Partners 0432', '+60100004322', 'approved'),
   ('00000000-0000-0000-0000-0000000432e2', '00000000-0000-0000-0000-0000000432b2', 'Other Page 0432', '+60100004323', 'unapproved'),
   ('00000000-0000-0000-0000-0000000432e4', '00000000-0000-0000-0000-0000000432b4', 'Edits Vehicles 0432', '+60100004324', 'unapproved'),
+  ('00000000-0000-0000-0000-0000000432e5', '00000000-0000-0000-0000-0000000432b5', 'Approver 0432', '+60100004328', 'approved'),
+  ('00000000-0000-0000-0000-0000000432d3', '00000000-0000-0000-0000-0000000432a3', 'Team Member 0432', '+60100004329', 'approved'),
   ('00000000-0000-0000-0000-0000000432f1', '00000000-0000-0000-0000-0000000432c1', 'Edits Partners 0432', '+60100004325', 'unapproved');
+-- An approver who may edit their team's profiles, everybody's but their own.
+insert into public.approvers (profile_id, scope, conflict_guard, use_own_region, regions, doc_types, can_edit_profile)
+values ('00000000-0000-0000-0000-0000000432b5', 'all', true, false, '[]'::jsonb, '{}', true);
 insert into public.vehicle (id, plate, auth_user_id, owner_partner_id, status) values
   ('00000000-0000-0000-0000-0000004320e1', 'TST4321', '00000000-0000-0000-0000-0000000432b1',
    '00000000-0000-0000-0000-0000000432e1', 'approved'),
@@ -152,6 +163,10 @@ select pg_temp.each_refused(
     $v$avatar_url = 'https://cdn.example/other-0432.jpg'$v$,
     $v$driving_since = '2001-01-01'$v$],
   'an admin who may only read partners');
+select pg_temp.refused($q$update public.partners set partner_types = array['Teksi 0432'] where auth_user_id = auth.uid()$q$,
+  'PARTNER_TYPES_LOCKED', 'an admin who may only read partners changing their approved Partner Service types');
+select pg_temp.refused($q$update public.partners set partner_type = 'Teksi 0432' where auth_user_id = auth.uid()$q$,
+  'PARTNER_TYPES_LOCKED', 'or their single type');
 update public.partners set my_ride_code = 'MINE0432', address = '2 Jalan Ujian' where auth_user_id = auth.uid();
 select pg_temp.check((select address = '2 Jalan Ujian' and my_ride_code <> 'MINE0432'
                         from public.partners where id = '00000000-0000-0000-0000-0000000432e1'),
@@ -217,8 +232,10 @@ update public.partners
    set rating = 4.5, total_rides = 12, display_id = 'PR-0432-A', permit = 'verified', status = 'blocked',
        status_note = 'Test note 0432', phone = '+60100004394', driving_since = '2015-06-01', my_ride_code = 'code0432'
  where id = '00000000-0000-0000-0000-0000000432d1';
--- ... an approved partner's name and photo ...
-update public.partners set name = 'Reads Partners Renamed', avatar_url = 'https://cdn.example/reviewed-0432.jpg'
+-- ... an approved partner's name, photo and types ...
+update public.partners
+   set name = 'Reads Partners Renamed', avatar_url = 'https://cdn.example/reviewed-0432.jpg',
+       partner_types = array['Courier 0432']
  where id = '00000000-0000-0000-0000-0000000432e1';
 -- ... their own ...
 update public.partners set rating = 4, status_note = 'Own row 0432' where auth_user_id = auth.uid();
@@ -233,8 +250,9 @@ select pg_temp.check((select rating = 4.5 and total_rides = 12 and display_id = 
                         from public.partners where id = '00000000-0000-0000-0000-0000000432d1'),
   'an admin who may edit partners changes a partner''s protected columns');
 select pg_temp.check((select name = 'Reads Partners Renamed' and avatar_url = 'https://cdn.example/reviewed-0432.jpg'
+                             and partner_types = array['Courier 0432']
                         from public.partners where id = '00000000-0000-0000-0000-0000000432e1'),
-  'and an approved partner''s name and photo');
+  'and an approved partner''s name, photo and types');
 select pg_temp.check((select rating = 4 and status_note = 'Own row 0432'
                         from public.partners where id = '00000000-0000-0000-0000-0000000432f1'),
   'and their own row');
@@ -252,7 +270,30 @@ select pg_temp.check((select rating = 3.5 and status = 'rejected' and status_not
                         from public.partners where id = '00000000-0000-0000-0000-0000000432e2'),
   'a full admin changes them too');
 
--- 7. The server's own writes are not checked ------------------------------------------------------
+-- 7. An approved member's types, from My Team ---------------------------------------------------
+-- An approver who is also an admin changes them there, though their admin
+-- pages do not edit partners: that step marks its own write. Their own types
+-- they change like anybody else: not by writing the row, even straight after.
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000432b5');
+select pg_temp.check(public.caller_is_admin() and not public.caller_admin_can_write('partners'),
+  'the approver is an admin who may not edit partners');
+select pg_temp.check((public.approver_edit_profile('00000000-0000-0000-0000-0000000432a3',
+                        '{"partner_types": ["Teksi 0432", "Courier 0432"]}'::jsonb) ->> 'ok') = 'true',
+  'an approver who is also an admin changes an approved member''s types from My Team');
+select pg_temp.check(coalesce(current_setting('app.approver_edit_profile', true), '') = '',
+  'the step''s mark ends with its write');
+select pg_temp.refused($q$update public.partners set partner_types = array['Teksi 0432'] where auth_user_id = auth.uid()$q$,
+  'PARTNER_TYPES_LOCKED', 'the approver changing their own approved types by writing the row');
+reset role;
+select pg_temp.check((select partner_types = array['Teksi 0432', 'Courier 0432']
+                        from public.partners where id = '00000000-0000-0000-0000-0000000432d3'),
+  'the member''s types are written');
+select pg_temp.check((select partner_types = '{}'::text[]
+                        from public.partners where id = '00000000-0000-0000-0000-0000000432e5'),
+  'the approver''s own types are as they were');
+
+-- 8. The server's own writes are not checked ------------------------------------------------------
 -- A direct session (migrations, cron, the SQL editor): no role, nobody signed in ...
 select set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 update public.partners
@@ -263,6 +304,10 @@ select pg_temp.check((select rating = 4.8 and total_rides = 321 and status = 'ap
                              and driving_since = '2010-01-01' and my_ride_code = 'SRV0432'
                         from public.partners where id = '00000000-0000-0000-0000-0000000432e4'),
   'a direct session writes as before');
+update public.partners set partner_types = array['Server 0432'] where id = '00000000-0000-0000-0000-0000000432d3';
+select pg_temp.check((select partner_types = array['Server 0432']
+                        from public.partners where id = '00000000-0000-0000-0000-0000000432d3'),
+  'and an approved partner''s types');
 -- ... and the service role (edge functions).
 set local role service_role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true), set_config('request.jwt.claim.sub', '', true);
@@ -285,7 +330,7 @@ select pg_temp.check((select status = 'approved' and rating = 0 and total_rides 
 -- ============================ public.profiles ==================================================
 set local role authenticated;
 
--- 8. An admin who may not edit profiles, on their own profile -------------------------------------
+-- 9. An admin who may not edit profiles, on their own profile -------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000432b1');
 select pg_temp.check(not public.caller_admin_can_write('profiles'), 'reading partners does not edit profiles');
 select pg_temp.each_refused(
@@ -333,7 +378,7 @@ select pg_temp.each_refused(
   array[$v$phone = '+60100004397'$v$, $v$status = 'approved'$v$, $v$id_verified = 'Verified'$v$, $v$rider_rating = 5$v$],
   'an admin who may edit vehicles');
 
--- 9. An admin who may edit users ------------------------------------------------------------------
+-- 10. An admin who may edit users ------------------------------------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000432c2');
 select pg_temp.check(public.caller_admin_can_write('profiles') and not public.caller_admin_can_write('partners'),
   'the Edit User page edits profiles, not partners');
@@ -352,7 +397,7 @@ select pg_temp.check((select name = 'Renamed On Profile' from public.profiles
                        where id = '00000000-0000-0000-0000-0000000432b1'),
   'and an approved partner''s name on the profile');
 
--- 10. The server ------------------------------------------------------------------------------------
+-- 11. The server ------------------------------------------------------------------------------------
 update public.profiles set status = 'approved', id_verified = 'Expired', rider_rating = 3, gender = 'male'
  where id = '00000000-0000-0000-0000-0000000432a1';
 set local role service_role;
@@ -368,7 +413,7 @@ select pg_temp.check((select status = 'approved' and id_verified = 'Expired' and
 -- ============================ public.vehicle ===================================================
 set local role authenticated;
 
--- 11. An admin who may not edit vehicles, on their own vehicle ------------------------------------
+-- 12. An admin who may not edit vehicles, on their own vehicle ------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000432b1');
 select pg_temp.check(not public.caller_admin_can_write('vehicle'), 'reading partners does not edit vehicles');
 select pg_temp.each_refused(
@@ -398,7 +443,7 @@ select pg_temp.refused($q$insert into public.vehicle (id, plate, auth_user_id, s
   values ('00000000-0000-0000-0000-0000004320e3', 'TST4323', auth.uid(), 'unapproved', true)$q$,
   'VEHICLE_PROTECTED_COLUMN:documents_ok', 'a new vehicle already submitted');
 
--- 12. An admin who may edit vehicles ---------------------------------------------------------------
+-- 13. An admin who may edit vehicles ---------------------------------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000432b4');
 select pg_temp.check(public.caller_admin_can_write('vehicle') and public.caller_admin_can_write('vehicle_documents')
                      and not public.caller_admin_can_write('provider_documents'),
@@ -415,7 +460,7 @@ select pg_temp.check((select permit = 'non-verified' and display_id = 'VH-0432-B
                         from public.vehicle where id = '00000000-0000-0000-0000-0000004320e4'),
   'and their own vehicle''s');
 
--- 13. The server ------------------------------------------------------------------------------------
+-- 14. The server ------------------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 update public.vehicle set status = 'approved', permit = 'pending' where id = '00000000-0000-0000-0000-0000004320e1';
 select pg_temp.check((select status = 'approved' and permit = 'pending'
@@ -425,7 +470,7 @@ select pg_temp.check((select status = 'approved' and permit = 'pending'
 -- ============================ the documents ====================================================
 set local role authenticated;
 
--- 14. An admin who may not edit documents, on their own documents ----------------------------------
+-- 15. An admin who may not edit documents, on their own documents ----------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000432b1');
 select pg_temp.each_refused(
   $q$update public.provider_documents set %s where id = '00000000-0000-0000-0000-0000004321e1'$q$,
@@ -447,7 +492,7 @@ select pg_temp.refused($q$insert into public.vehicle_documents (vehicle_id, auth
   values ('00000000-0000-0000-0000-0000004320e1', auth.uid(), 'puspakom', 'Inspection', 'Pending Review', 'Checked')$q$,
   'VEHICLE_DOCUMENTS_PROTECTED_COLUMN:reviewer_notes', 'a new document with a reviewer''s note');
 
--- 15. The table the document is in ------------------------------------------------------------------
+-- 16. The table the document is in ------------------------------------------------------------------
 -- An admin who may edit vehicles reviews a vehicle's document, not a partner's.
 select pg_temp.as_user('00000000-0000-0000-0000-0000000432b4');
 select pg_temp.refused($q$update public.provider_documents set status = 'Approved'
@@ -471,7 +516,7 @@ select pg_temp.check((select status = 'Approved' and reviewer_notes = 'Checked 0
                             from public.vehicle_documents where id = '00000000-0000-0000-0000-0000004322e4'),
   'an admin who may edit partners reviews a partner''s document and a vehicle''s');
 
--- 16. The owner replaces a reviewed document: back to review ---------------------------------------
+-- 17. The owner replaces a reviewed document: back to review ---------------------------------------
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000432b1');
 update public.provider_documents set file_url = 'https://cdn.example/licence-0432-new.jpg'
@@ -485,7 +530,7 @@ select pg_temp.check((select status = 'Pending Review' and reviewer_notes is nul
                             from public.vehicle_documents where id = '00000000-0000-0000-0000-0000004322e1'),
   'a replaced document goes back to review, whoever its owner is');
 
--- 17. The server ------------------------------------------------------------------------------------
+-- 18. The server ------------------------------------------------------------------------------------
 select set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 update public.provider_documents set status = 'Approved', reviewer_notes = 'Server 0432', reviewed_at = now()
  where id = '00000000-0000-0000-0000-0000004321e4';
@@ -502,8 +547,8 @@ select pg_temp.check((select status = 'Approved' and reviewer_notes = 'Server 04
 
 -- ============================ the guards themselves ============================================
 
--- 18. Each is on its table, enabled -----------------------------------------------------------------
-select pg_temp.check((select count(*) = 11
+-- 19. Each is on its table, enabled -----------------------------------------------------------------
+select pg_temp.check((select count(*) = 12
                         from pg_trigger t join pg_proc p on p.oid = t.tgfoid
                        where not t.tgisinternal and t.tgenabled = 'O'
                          and (t.tgrelid::regclass::text, t.tgname, p.proname) in (
@@ -511,6 +556,7 @@ select pg_temp.check((select count(*) = 11
                            ('partners', 'trg_partners_a_guard_phone', 'partners_guard_phone'),
                            ('partners', 'trg_partners_guard_driving_since', 'partners_guard_driving_since'),
                            ('partners', 'trg_partners_my_ride_code', 'partners_my_ride_code_guard'),
+                           ('partners', 'trg_partners_a_types_locked', 'partners_types_locked'),
                            ('profiles', 'trg_profiles_a_guard', 'profiles_guard_protected_columns'),
                            ('profiles', 'trg_profiles_c_partner_identity', 'profiles_guard_partner_identity'),
                            ('profiles', 'trg_profiles_b_guard_city_ride', 'profiles_guard_city_ride'),
@@ -520,7 +566,7 @@ select pg_temp.check((select count(*) = 11
                            ('vehicle_documents', 'vehicle_documents_a_guard', 'documents_guard_review_columns'))),
   'the guards are on their tables and enabled');
 
--- 19. A guard on these tables asks about its table --------------------------------------------------
+-- 20. A guard on these tables asks about its table --------------------------------------------------
 -- A rule that tells the apps' roles from the server's by current_user lets
 -- the back office through with public.caller_admin_can_write('<its table>'),
 -- the test the table's admin policies make.

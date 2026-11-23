@@ -12,7 +12,12 @@
 --   * the name, phone, IC and photo that were reviewed, once the partner is
 --     approved (0185);
 --   * the phone number at any time (0277), the date the driving licence was
---     first issued (0308) and the My Ride code (0160, 0287).
+--     first issued (0308) and the My Ride code (0160, 0287);
+--   * the Partner Service types, once the partner is approved (0299). Besides
+--     the back office, two admin steps change them, each marking its own write:
+--     an approver who is also an admin, from My Team (approver_edit_profile,
+--     0360), and renaming a type in Admin › Partner Type (safe_rename_run,
+--     0304).
 --
 -- The back office, for a table, is an admin who may edit that table: the test
 -- the table's own admin policies make, public.caller_admin_can_write('<table>')
@@ -41,8 +46,9 @@
 --     and submits their application, a vehicle's owner submits it, and the
 --     owner of a document replaces it (which sends it back to review).
 --   * The rules themselves. Each function below is its latest definition (the
---     migration is named above it) with that one test changed. Its triggers,
---     owner and grants are untouched. Every name in the bodies was already
+--     migration is named above it) with that one test changed;
+--     approver_edit_profile only marks its write of the types. Triggers,
+--     owners and grants are untouched. Every name in the bodies was already
 --     written in full, so each now runs with an empty search_path.
 --
 -- supabase/tests/people_guards_page_scope_0432.sql covers it.
@@ -181,6 +187,130 @@ begin
     new.my_ride_code := upper(btrim(new.my_ride_code));
   end if;
   return new;
+end;
+$$;
+
+-- As 0299: an approved partner's Partner Service types. Besides the back
+-- office, two admin steps change them: an approver who is also an admin, from
+-- My Team (approver_edit_profile, below), and renaming a type (safe_rename_run,
+-- 0304). Each says so with its own setting, only around its own write.
+create or replace function public.partners_types_locked()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if coalesce(nullif(current_setting('request.jwt.claims', true), ''), '') = ''
+     or coalesce(auth.jwt() ->> 'role', '') not in ('authenticated', 'anon')
+     or public.caller_admin_can_write('partners')
+     or (public.caller_is_admin()
+         and (coalesce(current_setting('app.approver_edit_profile', true), '') = 'on'
+              or coalesce(current_setting('app.safe_rename', true), '') = 'on')) then
+    return new;
+  end if;
+  if (old.status::text = 'approved' or old.status::text like 'permit-%')
+     and public.partner_type_set(new.partner_types, new.partner_type)
+         is distinct from public.partner_type_set(old.partner_types, old.partner_type) then
+    raise exception 'PARTNER_TYPES_LOCKED' using errcode = '42501',
+      hint = 'Your account is approved, so your Partner Service types can''t be changed here. '
+             'Contact support to add or change one: an admin reviews it first.';
+  end if;
+  return new;
+end;
+$$;
+
+-- As 0360, with its write of the member's types marked for the lock above.
+create or replace function public.approver_edit_profile(p_member uuid, p_fields jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  a         public.approvers;
+  v_me      uuid := auth.uid();
+  v_status  text;
+  v_pstatus text;
+  v_idver   text;
+  v_types   text[];
+begin
+  if v_me is null then
+    raise exception 'not_authorized' using errcode = '42501';
+  end if;
+  select * into a from public.approvers
+   where profile_id = v_me and active and (ends_at is null or ends_at > now());
+  if not found then
+    raise exception 'not_allowed';
+  end if;
+  if p_member is null or jsonb_typeof(p_fields) is distinct from 'object' then
+    raise exception 'bad_request' using errcode = '22023';
+  end if;
+  if not public.approver_covers(p_member) then
+    raise exception 'out_of_scope';
+  end if;
+
+  -- The ordinary profile fields + status + services need can_edit_profile.
+  if (p_fields ?| array['name','email','ic','nationality','address','status','partner_types'])
+     and not a.can_edit_profile then
+    raise exception 'not_allowed';
+  end if;
+  -- Marking the ID verified needs the higher flag.
+  if (p_fields ? 'id_verified') and not a.can_verify_id then
+    raise exception 'not_allowed';
+  end if;
+
+  -- Validate the enum-backed fields; a bad value is rejected.
+  if p_fields ? 'status' then
+    v_status := p_fields->>'status';
+    if v_status not in ('approved','unapproved','blocked','rejected','unapproved-docs') then
+      raise exception 'invalid_status';
+    end if;
+    v_pstatus := case v_status
+                   when 'approved' then 'Approved'
+                   when 'blocked' then 'Blocked'
+                   when 'rejected' then 'Rejected'
+                   else 'Un-Approved' end;
+  end if;
+  if p_fields ? 'id_verified' then
+    v_idver := p_fields->>'id_verified';
+    if v_idver not in ('Verified','Failed') then
+      raise exception 'invalid_id_verified';
+    end if;
+  end if;
+
+  update public.profiles set
+    name         = case when p_fields ? 'name'        then nullif(btrim(p_fields->>'name'), '') else name end,
+    email        = case when p_fields ? 'email'       then nullif(btrim(p_fields->>'email'), '') else email end,
+    ic           = case when p_fields ? 'ic'          then nullif(btrim(p_fields->>'ic'), '') else ic end,
+    nationality  = case when p_fields ? 'nationality' then nullif(btrim(p_fields->>'nationality'), '') else nationality end,
+    address      = case when p_fields ? 'address'     then nullif(btrim(p_fields->>'address'), '') else address end,
+    status       = case when p_fields ? 'status'      then v_status::public.user_status else status end,
+    profile_status = case when p_fields ? 'status'    then v_pstatus::public.profile_status else profile_status end,
+    id_verified  = case when p_fields ? 'id_verified' then v_idver::public.id_verification_status else id_verified end,
+    updated_at   = now()
+   where id = p_member;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+
+  -- Services (partner types) live on the member's partner row, if they have one.
+  if p_fields ? 'partner_types' and jsonb_typeof(p_fields->'partner_types') = 'array' then
+    v_types := array(select jsonb_array_elements_text(p_fields->'partner_types'));
+    -- Says it is this write to partners_types_locked (0432): an approver who
+    -- is also an admin changes an approved member's types here. Set only
+    -- around this write, then cleared.
+    perform set_config('app.approver_edit_profile', 'on', true);
+    update public.partners set partner_types = v_types, updated_at = now()
+     where auth_user_id = p_member;
+    perform set_config('app.approver_edit_profile', '', true);
+  end if;
+
+  insert into public.admin_audit_log (actor_id, action, target_profile_id, detail)
+  values (v_me, 'approver.edit_profile', p_member,
+          jsonb_build_object('keys', (select jsonb_agg(k) from jsonb_object_keys(p_fields) k)));
+
+  return jsonb_build_object('ok', true);
 end;
 $$;
 
