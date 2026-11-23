@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Regression test for migration 0405: continuous live tracking during a trip
--- (driver match corrected in 0426).
+-- (driver match corrected in 0429).
 --   * trip_live_kick wakes a participant whose active-trip fix is stale/missing
 --     and may background-report; it throttles to one wake a minute a phone and
 --     leaves a fresh fix (or an off-trip profile) alone.
@@ -10,7 +10,7 @@
 --   * The driver of a ride is ride_requests.partner_id = the driver's own
 --     account id (their auth uid), as the app writes it when a ride is taken.
 --     It is never a partners.id: 0405 matched on that, which no real ride
---     holds, and this test hid it by putting one there (0426).
+--     holds, and this test hid it by putting one there (0429).
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/trip_live_sessions_0405.sql
 --

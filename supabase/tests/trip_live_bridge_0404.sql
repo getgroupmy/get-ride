@@ -1,13 +1,13 @@
 -- ============================================================================
 -- Regression test for migration 0404: the trip live bridge (driver match
--- corrected in 0426).
+-- corrected in 0429).
 --   * trip_live_bridge updates the rider's live columns on a ride they booked,
 --     and the driver's on a ride they run, only while it is active, and never
 --     a ride the profile is not on.
 --   * The driver of a ride is ride_requests.partner_id = the driver's own
 --     account id (their auth uid), as the app writes it when a ride is taken.
 --     It is never a partners.id: 0404 matched on that, which no real ride
---     holds, and this test hid it by putting one there (0426).
+--     holds, and this test hid it by putting one there (0429).
 --   * push_live_location (the 5 s path) feeds the trip even with no God View
 --     session open.
 --   * push_background_location (the background path) feeds the trip for a phone
@@ -107,7 +107,7 @@ select pg_temp.check((select user_live_lat is null
   'the rider''s finished ride is never moved');
 
 -- 2. trip_live_bridge as the driver: heading kept, only the active ride moves ----------------------
--- The driver is the ride's partner_id, their account id (0426). On 0404's
+-- The driver is the ride's partner_id, their account id (0429). On 0404's
 -- match (partner_id = a partners.id) B stayed where the app left it and E moved.
 select public.trip_live_bridge('00000000-0000-0000-0000-0000000404b1', 3.20, 101.70, 88.0);
 select pg_temp.check((select partner_live_lat = 3.20 and partner_live_lng = 101.70

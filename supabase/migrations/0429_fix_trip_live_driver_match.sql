@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0426 — The trip live bridge finds the driver's rides.
+-- 0429 — The trip live bridge finds the driver's rides.
 --
 -- 0404 and 0405 looked for the rides a driver is running with
 --
@@ -88,7 +88,7 @@ begin
    where r.rider_id = p_profile
      and r.status in ('accepted', 'arrived', 'on_trip');
   -- As the driver on a ride they're running: ride_requests.partner_id is the
-  -- driver's account id (0426), not a partners.id.
+  -- driver's account id (0429), not a partners.id.
   update public.ride_requests r
      set partner_live_lat = p_lat, partner_live_lng = p_lng,
          partner_live_heading = coalesce(p_heading, r.partner_live_heading),
@@ -120,7 +120,7 @@ revoke execute on function public.profile_on_active_trip(uuid) from public, anon
 -- (or missing) and who may background-report, claim their eligible phones (at
 -- most one wake a minute a phone, like a God View ping) and send a
 -- `location_live` push. Returns how many phones were woken. The driver of a
--- ride is its partner_id (0426).
+-- ride is its partner_id (0429).
 create or replace function public.trip_live_kick()
 returns integer
 language plpgsql
