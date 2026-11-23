@@ -147,7 +147,7 @@ class DropChangePrompt {
 /// The passenger's review before a drop-off change is sent (0341): the new
 /// place, the old → new fare (the one fare when it stays as it is), and
 /// whether it applies at once or waits for the driver. The fare and that
-/// answer are the server's (0431).
+/// answer are the server's (0437).
 class DropChangeReviewDialog extends StatelessWidget {
   const DropChangeReviewDialog({
     super.key,

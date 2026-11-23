@@ -473,7 +473,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
   }
 
   /// The rider moves the drop-off mid-ride (0341): pick a new place, ask
-  /// the server what it comes to (0431), confirm, then send it. The server
+  /// the server what it comes to (0437), confirm, then send it. The server
   /// says whether it applies at once or waits for the driver.
   Future<void> _changeDrop(RideRequest r) async {
     if (_busy || _isDemo) return;
@@ -532,7 +532,7 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       newFare = quote.fare ?? oldFare;
       kind = quote.kind;
     } else {
-      // A database before 0431 doesn't say: the phone's own quote, on the
+      // A database before 0437 doesn't say: the phone's own quote, on the
       // ride's tariff, as it sent before.
       final cards = ref.read(fareTariffsProvider).value ?? const <FareTariff>[];
       RideService? svc;

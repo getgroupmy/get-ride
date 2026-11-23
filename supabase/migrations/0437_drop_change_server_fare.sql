@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0431 — The server prices a mid-ride drop-off change itself.
+-- 0437 — The server prices a mid-ride drop-off change itself.
 --
 -- When a passenger moves the drop-off of a ride under way (0341), the new fare
 -- is now worked out here, from what the server itself holds:
@@ -54,11 +54,13 @@
 -- the app shows the server's fare, and whether the driver will be asked,
 -- before the rider confirms.
 --
--- ride_drop_change_request is recreated from its body in 0341: same
--- arguments, same answer ({applied, pending, fare}), same grants, no DROP. An
--- app from before this migration keeps working: it is answered with the
--- server's fare. The driver's half (ride_drop_change_resolve, 0428) and the
--- rider's withdraw are not changed.
+-- ride_drop_change_request is recreated from its latest body, in 0434, which
+-- reads the ride under its row lock (select ... for update): the lock is kept,
+-- so the ride's status still cannot change between the checks and the write.
+-- Same arguments, same answer ({applied, pending, fare}), same grants, no DROP.
+-- An app from before this migration keeps working: it is answered with the
+-- server's fare. The driver's half (ride_drop_change_resolve, last recreated
+-- in 0434) and the rider's withdraw (0435) are not changed.
 --
 -- A drop-off is moved only through these RPCs, which are security definer. So
 -- a guard (ride_requests_guard_drop_change) keeps the drop_change_* columns
@@ -365,7 +367,7 @@ $$;
 revoke execute on function public.ride_drop_change_quote(uuid, double precision, double precision, numeric, numeric) from public, anon;
 grant execute on function public.ride_drop_change_quote(uuid, double precision, double precision, numeric, numeric) to authenticated;
 
--- ---- 5. Rider requests a new drop (0341) ------------------------------------------------------------
+-- ---- 5. Rider requests a new drop (0341; row lock 0434) ---------------------------------------------
 -- Returns {applied, pending, fare}, the fare being the server's
 -- (ride_drop_change_terms). [p_new_fare] is the fare the rider was shown: the
 -- change is refused when the server's fare is higher. [p_distance_km] and
@@ -392,7 +394,9 @@ declare
   v_km    numeric;
   v_min   numeric;
 begin
-  select * into v_ride from public.ride_requests where id = p_ride;
+  -- The ride is read under its row lock (0434), so its status cannot change
+  -- between the checks below and the write.
+  select * into v_ride from public.ride_requests where id = p_ride for update;
   if not found then
     raise exception 'not_found' using errcode = 'P0002';
   end if;
@@ -485,7 +489,7 @@ begin
     return new;
   end if;
   -- The held-change columns are written only by the drop-change RPCs (0341,
-  -- 0428, 0431).
+  -- 0428, 0431, 0434, 0435, 0437).
   if (new.drop_change_requested_at, new.drop_change_requested_by, new.drop_change_name,
       new.drop_change_address, new.drop_change_lat, new.drop_change_lng,
       new.drop_change_distance_km, new.drop_change_duration_min, new.drop_change_fare,

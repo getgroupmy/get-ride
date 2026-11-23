@@ -73,7 +73,7 @@ void main() {
     });
   });
 
-  // Migration 0431: the server prices a change; the app shows its answer.
+  // Migration 0437: the server prices a change; the app shows its answer.
   group('DropChangeQuote', () {
     test("the server's answer: the fare and whether it applies at once", () {
       final q = DropChangeQuote.fromJson({'fare': 22, 'instant': true})!;
@@ -128,8 +128,8 @@ void main() {
     });
   });
 
-  // The server's ride_card_fare (0431) is the booking sheet's quote in the
-  // database. supabase/tests/drop_change_0341.sql, section 16, prices the same
+  // The server's ride_card_fare (0437) is the booking sheet's quote in the
+  // database. supabase/tests/drop_change_0341.sql, section 19, prices the same
   // cards and services over the same trip there: the two lists are to agree.
   group("the fare card's price for 9.5 km in 24 minutes, as the server works it out too", () {
     const typeId = 'type', premiumId = 'premium';

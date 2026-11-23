@@ -1215,10 +1215,10 @@ class RideRepository {
       _db.from(_table).update({'cancel_requested_at': null, 'cancel_requested_by': null}).eq('id', id);
 
   /// What moving the drop-off of [rideId] to [lat], [lng] would come to, as
-  /// the server prices it (migration 0431): the fare, and whether it applies
+  /// the server prices it (migration 0437): the fare, and whether it applies
   /// at once or waits for the driver. Nothing changes. [distanceKm] and
   /// [durationMin] are the route the app was given; the server prices on its
-  /// own measurement when it has one. Null from a database before 0431, which
+  /// own measurement when it has one. Null from a database before 0437, which
   /// has no such answer: the phone quotes the change itself then.
   Future<DropChangeQuote?> quoteDropChange({
     required String rideId,
@@ -1243,7 +1243,7 @@ class RideRepository {
   }
 
   /// The passenger moves the drop-off mid-ride (migration 0341). The server
-  /// prices it (0431) and either applies it at once or holds it for the
+  /// prices it (0437) and either applies it at once or holds it for the
   /// driver. [shownFare] is the fare the rider was shown: the server refuses
   /// the change (DROP_CHANGE_FARE) when its own is higher. [applied] true
   /// means it is live now, false that it is waiting for the driver; [fare]

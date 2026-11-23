@@ -3,14 +3,14 @@
 // doesn't say.
 //
 // The passenger moves the drop during an ongoing ride; the fare re-computes.
-// The server prices it (migration 0431: the ride's fare card over the route
+// The server prices it (migration 0437: the ride's fare card over the route
 // it measured) and decides whether it applies at once or is held for the
 // driver to accept or reject: an increase within the admin threshold applies
 // at once, and so does a lower fare for a trip that got shorter to match.
 // The app asks before the rider confirms ([DropChangeQuote]) and shows that
 // fare; the fare it sends with the change is only the one the rider saw.
 // [dropChangeKind] and [quoteDropChangeFare] are the phone's own preview,
-// used only against a database from before 0431. Pure.
+// used only against a database from before 0437. Pure.
 library;
 
 import 'fare_tariff.dart';
@@ -41,7 +41,7 @@ class DropChangeSettings {
   final bool allow;
 
   /// A cheaper change applies at once only before the ride starts moving;
-  /// once on the trip the driver decides (0431). A ride whose fare was raised
+  /// once on the trip the driver decides (0437). A ride whose fare was raised
   /// above the card (a bid) always asks the driver.
   final bool autoApproveCheaper;
 
@@ -111,7 +111,7 @@ double? _amount(Object? v) {
 }
 
 /// What the server says moving the drop-off would come to
-/// (`ride_drop_change_quote`, migration 0431), before the rider confirms.
+/// (`ride_drop_change_quote`, migration 0437), before the rider confirms.
 class DropChangeQuote {
   const DropChangeQuote({required this.fare, required this.instant});
 
@@ -142,7 +142,7 @@ class DropChangeQuote {
 
 /// Whether moving the fare from [oldFare] to [newFare] applies instantly or
 /// needs the driver, under [rules]: the phone's own preview, as 0341 decided
-/// it. Only for a database from before 0431, which doesn't quote a change.
+/// it. Only for a database from before 0437, which doesn't quote a change.
 DropChangeKind dropChangeKind({required double oldFare, required double newFare, required DropChangeSettings rules}) {
   final delta = newFare - oldFare;
   if (delta <= 0) return rules.autoApproveCheaper ? DropChangeKind.instant : DropChangeKind.needsDriver;
@@ -157,7 +157,7 @@ double _max(double a, double b) => a > b ? a : b;
 /// the built-in TEKSI tariff), with the service [multiplier], over the new
 /// route's [distanceKm] / [durationMin], rounded as the ride's region books
 /// fares ([pricing]). The phone's own figure, only for a database from
-/// before 0431: since then the server works this out (`ride_card_fare`).
+/// before 0437: since then the server works this out (`ride_card_fare`).
 /// Pure.
 double quoteDropChangeFare({
   FareTariff? card,
