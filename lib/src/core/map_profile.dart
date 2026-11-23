@@ -154,21 +154,27 @@ bool _isTemplate(String url) =>
     url.startsWith('https://') && url.contains('{z}') && url.contains('{x}') && url.contains('{y}');
 
 /// The traffic overlay: off, a source (with an optional fallback), Google's
-/// own on its JavaScript map ([google]), or the app's own when
-/// [MapProfile.traffic] is null.
+/// own on its JavaScript or native map ([google]), Apple's own on its iOS map
+/// ([apple]), or the app's own when [MapProfile.traffic] is null.
 @immutable
 class MapTrafficSpec {
-  const MapTrafficSpec({this.off = false, this.url, this.fallback, this.google = false});
+  const MapTrafficSpec({this.off = false, this.url, this.fallback, this.google = false, this.apple = false});
 
   final bool off;
   final String? url;
   final String? fallback;
+
+  /// Google's own traffic, drawn by its JavaScript or native map engine.
   final bool google;
+
+  /// Apple's own traffic, drawn by MapKit on its native iOS map.
+  final bool apple;
 
   static MapTrafficSpec? fromJson(Object? json) {
     if (json is! Map) return null;
     if (json['off'] == true) return const MapTrafficSpec(off: true);
     if (json['google'] == true) return const MapTrafficSpec(google: true);
+    if (json['apple'] == true) return const MapTrafficSpec(apple: true);
     final url = '${json['url'] ?? ''}'.trim();
     if (!_isTemplate(url)) return null;
     final fb = '${json['fallback'] ?? ''}'.trim();

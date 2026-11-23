@@ -37,7 +37,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import countries from "npm:world-countries@5.1.0";
 
-import { fallbackKey, googleMapType, tokenCacheKey } from "../_shared/geo.ts";
+import { fallbackKey, googleMapType, googleTrafficSessionBody, tokenCacheKey } from "../_shared/geo.ts";
 import {
   errorDetail,
   geoParams,
@@ -257,6 +257,41 @@ Deno.serve(async (req) => {
           background((async () => {
             await countCall("google", "tiles", false, false, req.headers.get("Authorization"));
             await logError("google", "tiles", `${slot} map: ${errorDetail(e)}`);
+          })());
+          throw e;
+        }
+        const s = parseGoogleSession(answer);
+        if (!s) return null;
+        await db.from("map_tile_sessions").upsert({
+          kind,
+          session: s.session,
+          expires_at: new Date(s.expiresAt).toISOString(),
+        });
+        background((async () => {
+          await countCall("google", "tiles", true, false, req.headers.get("Authorization"));
+        })());
+        return s.session;
+      },
+      googleTrafficSession: async (key, region) => {
+        // One live-traffic overlay session per region, reused like the base
+        // tile sessions above. "google:traffic:my", …
+        const kind = `google:traffic:${region}`;
+        const { data } = await db.from("map_tile_sessions").select("session, expires_at").eq("kind", kind)
+          .maybeSingle();
+        if (data && Date.parse(data.expires_at) - Date.now() > 86_400_000) return data.session;
+        let answer: unknown;
+        try {
+          answer = await call({
+            url: `https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(key)}`,
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(googleTrafficSessionBody(region, "en-US")),
+          });
+        } catch (e) {
+          console.error("geo: Google traffic tile session refused:", e instanceof Error ? e.message : "failed");
+          background((async () => {
+            await countCall("google", "tiles", false, false, req.headers.get("Authorization"));
+            await logError("google", "tiles", `traffic overlay: ${errorDetail(e)}`);
           })());
           throw e;
         }

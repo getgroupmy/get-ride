@@ -11,9 +11,11 @@ import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'map_brightness.dart';
+import 'map_traffic.dart' show appleTrafficProvider, mapTrafficProvider;
 
 /// Whether this device can draw Apple's map: iPhone and iPad.
 bool get appleNativeSupported => debugAppleNativeSupported ?? (!kIsWeb && Platform.isIOS);
@@ -149,7 +151,7 @@ const mapKitCheckMinZoom = 5.0, mapKitCheckMaxZoom = 19.0;
 /// Sets Apple's maps light or dark (ios/Runner/AppDelegate.swift).
 const appleMapAppearanceChannel = MethodChannel('get_ride/map_appearance');
 
-class AppleNativeBaseLayer extends StatefulWidget {
+class AppleNativeBaseLayer extends ConsumerStatefulWidget {
   const AppleNativeBaseLayer({
     super.key,
     required this.fallback,
@@ -189,10 +191,10 @@ class AppleNativeBaseLayer extends StatefulWidget {
   final Widget fallback;
 
   @override
-  State<AppleNativeBaseLayer> createState() => _AppleNativeBaseLayerState();
+  ConsumerState<AppleNativeBaseLayer> createState() => _AppleNativeBaseLayerState();
 }
 
-class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
+class _AppleNativeBaseLayerState extends ConsumerState<AppleNativeBaseLayer> {
   am.AppleMapController? _map;
   MapCamera? _shown;
 
@@ -378,6 +380,9 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
     if (!appleNativeSupported) return widget.fallback;
     final camera = MapCamera.of(context);
     final dark = _wanted = mapIsDark(context);
+    // Apple's own traffic layer (MapKit), when the admin set it and the driver
+    // switched it on; otherwise the app's tile overlay draws over the map.
+    final traffic = ref.watch(appleTrafficProvider) && ref.watch(mapTrafficProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _follow(camera);
@@ -419,8 +424,9 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
               'hybrid' => am.MapType.hybrid,
               _ => am.MapType.standard,
             },
-            // The app's own traffic layer draws over it, as over any map.
-            trafficEnabled: false,
+            // Apple's own traffic (appleTrafficProvider); otherwise the app's
+            // tile overlay draws over it, as over any map.
+            trafficEnabled: traffic,
             // Only shows: the app's own map and buttons do the rest.
             compassEnabled: false,
             rotateGesturesEnabled: false,

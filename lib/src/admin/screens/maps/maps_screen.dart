@@ -75,6 +75,14 @@ class _AdminMapsScreenState extends ConsumerState<AdminMapsScreen> {
       );
       return;
     }
+    final appleTraffic = d.appleTrafficConflicts;
+    if (appleTraffic.isNotEmpty) {
+      showInfo(
+        context,
+        'Apple traffic needs Apple Maps (native) for Map and Map (dark mode), on iPhone & iPad: ${appleTraffic.join(', ')}.',
+      );
+      return;
+    }
     setState(() => _saving = true);
     final ok = await runAdminAction(context, () async {
       final saved = await ref.read(mapsRepositoryProvider).save(d);
@@ -166,6 +174,7 @@ class _DevicesTab extends ConsumerWidget {
     final t = Theme.of(context);
     final conflicts = settings.googleConflicts;
     final trafficConflicts = settings.googleTrafficConflicts;
+    final appleTrafficConflicts = settings.appleTrafficConflicts;
     final unofficial = settings.unofficialGoogleTiles;
     final keys = ref.watch(adminMapApiKeysProvider).value;
     // Synced from GitHub: `geo` uses these when Admin → API Keys has none.
@@ -218,6 +227,16 @@ class _DevicesTab extends ConsumerWidget {
                 "Google traffic is drawn by Google's own map. Set Google Maps (native) or Google Maps "
                 '(JavaScript) on phones, or Google Maps (JavaScript) on the web and desktop, for Map and Map (dark mode), or pick another traffic source: '
                 '${trafficConflicts.join(', ')}.',
+          ),
+        if (appleTrafficConflicts.isNotEmpty)
+          _Notice(
+            key: const ValueKey('maps-apple-traffic-warning'),
+            icon: Icons.traffic_outlined,
+            error: true,
+            text:
+                "Apple traffic is drawn by Apple's own map, on iPhone & iPad only. Set Apple Maps (native) for "
+                'Map and Map (dark mode) there, or pick another traffic source: '
+                '${appleTrafficConflicts.join(', ')}.',
           ),
         if (unofficial.isNotEmpty)
           _Notice(

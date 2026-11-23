@@ -50,7 +50,7 @@ const tileOptions = <String, List<String>>{
     'app', 'esri', 'google', 'google_native', 'google_js', 'apple_native', //
     'mapbox', 'here', 'tomtom', 'maptiler', 'google_xyz',
   ],
-  'traffic': ['app', 'tomtom', 'here', 'google', 'none'],
+  'traffic': ['app', 'tomtom', 'here', 'google', 'google_tiles', 'apple', 'none'],
 };
 
 /// The Google map [device] draws under the app's layers by default: its own
@@ -63,7 +63,7 @@ List<String> tileOptionsFor(String slot, String device) => [
   for (final p in tileOptions[slot]!)
     if (switch (p) {
       'google_native' => p == googleMapFor(device),
-      'apple_native' => device == 'ios',
+      'apple_native' || 'apple' => device == 'ios',
       'amazon_js' || 'nas' => device == 'web',
       _ => true,
     })
@@ -99,6 +99,8 @@ String mapProviderLabel(String p, {String slot = '', String device = ''}) => swi
   'osm' => slot == 'dark' ? 'OpenStreetMap (darkened)' : 'OpenStreetMap',
   'esri' => 'Esri imagery',
   'google' => slot == 'traffic' ? 'Google traffic (on a Google map)' : 'Google',
+  'google_tiles' => 'Google traffic (tiles, any map)',
+  'apple' => 'Apple traffic (on an Apple map)',
   'google_js' => 'Google Maps (JavaScript)',
   'google_native' => 'Google Maps (native)',
   'apple_native' => 'Apple Maps (native)',
@@ -220,10 +222,17 @@ class MapProfileSetting {
   static const _googleMaps = {'google', 'google_js', 'google_native'};
 
   /// Google traffic is drawn by Google's own or JavaScript map, so it needs
-  /// one of them for Map and Map (dark mode).
+  /// one of them for Map and Map (dark mode). "Google traffic (tiles)"
+  /// ('google_tiles') is a tile overlay and is not subject to this.
   bool get googleTrafficWithoutItsMap =>
       tiles['traffic'] == 'google' &&
       (!const {'google_js', 'google_native'}.contains(tiles['light']) || tiles['dark'] != tiles['light']);
+
+  /// Apple traffic is drawn by Apple's own (MapKit) map, so it needs that map
+  /// for Map and Map (dark mode); it is iOS only.
+  bool get appleTrafficWithoutItsMap =>
+      tiles['traffic'] == 'apple' &&
+      (tiles['light'] != 'apple_native' || tiles['dark'] != tiles['light']);
 
   @override
   bool operator ==(Object other) =>
@@ -465,6 +474,13 @@ class MapSettings {
     for (final r in mapRoles)
       for (final d in mapDevices)
         if (profile(r, d).googleTrafficWithoutItsMap) '${mapRoleLabel(r)} · ${mapDeviceLabel(d)}',
+  ];
+
+  /// "Rider · iPhone & iPad": Apple traffic without Apple's own map.
+  List<String> get appleTrafficConflicts => [
+    for (final r in mapRoles)
+      for (final d in mapDevices)
+        if (profile(r, d).appleTrafficWithoutItsMap) '${mapRoleLabel(r)} · ${mapDeviceLabel(d)}',
   ];
 
   /// The key slots some profile uses ("google:search" for Google's).

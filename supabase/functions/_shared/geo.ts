@@ -446,6 +446,16 @@ export function trafficTileUrl(provider: string, key: string | null): string | n
   return null;
 }
 
+/**
+ * The 2D-tiles overlay URL for a Google Map Tiles live-traffic session (made
+ * with [googleTrafficSessionBody]). Drawn over any base map, like the tomtom
+ * and here overlays; the session, not a layer, makes the tiles traffic. The
+ * key is in the URL (a map has to send it; restrict it to the app).
+ */
+export function googleTrafficTileUrl(session: string, key: string): string {
+  return `https://tile.googleapis.com/v1/2dtiles/{z}/{x}/{y}?session=${enc(session)}&key=${enc(key)}`;
+}
+
 /** A dark style for Google's roadmap tiles (Map Tiles API session `styles`). */
 export const GOOGLE_NIGHT_STYLES = [
   { stylers: [{ hue: "#242f3e" }, { invert_lightness: true }, { saturation: -30 }] },
@@ -471,6 +481,22 @@ export function googleSessionBody(
     region: region.toUpperCase(),
     ...(type === "hybrid" || type === "terrain" ? { layerTypes: ["layerRoadmap"] } : {}),
     ...(slot === "dark" ? { styles: GOOGLE_NIGHT_STYLES } : {}),
+  };
+}
+
+/**
+ * The body to create a Google Map Tiles session for the live-traffic overlay:
+ * the roadmap map type with the traffic layer, as a transparent overlay
+ * (`overlay: true`) so it draws over whatever base map is set, not only a
+ * Google one — see [googleTrafficTileUrl]. One session per region.
+ */
+export function googleTrafficSessionBody(region: string, language = "en-US") {
+  return {
+    mapType: "roadmap",
+    language,
+    region: region.toUpperCase(),
+    layerTypes: ["layerTraffic"],
+    overlay: true,
   };
 }
 

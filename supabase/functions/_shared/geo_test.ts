@@ -379,6 +379,39 @@ function deps(over: Partial<GeoDeps> = {}) {
 
 const q = (s: string) => new URLSearchParams(s);
 
+Deno.test("profile: Google-tiles traffic is a Tile-API overlay, Apple traffic is its engine's", async () => {
+  const trafficConfig = {
+    profiles: {
+      "rider.ios": {
+        tiles: { light: "google_xyz", dark: "google_xyz", satellite: "esri", traffic: "google_tiles" },
+        search: ["nominatim"],
+        reverse: ["nominatim"],
+        routing: ["osrm"],
+      },
+      "partner.ios": {
+        tiles: { light: "apple_native", dark: "apple_native", satellite: "apple_native", traffic: "apple" },
+        search: ["nominatim"],
+        reverse: ["nominatim"],
+        routing: ["osrm"],
+      },
+    },
+    keys: config.keys,
+  };
+  const { d } = deps({
+    settings: () => Promise.resolve({ config: trafficConfig, apiProviders }),
+    googleTrafficSession: () => Promise.resolve("TS-1"),
+  });
+  // deno-lint-ignore no-explicit-any
+  const g = (await handleGeo(q("action=profile&role=rider&device=ios"), "1.1.1.1", d)).body as any;
+  assertStringIncludes(g.profile.tiles.traffic.url, "2dtiles");
+  assertStringIncludes(g.profile.tiles.traffic.url, "session=TS-1");
+  assertStringIncludes(g.profile.tiles.traffic.url, "key=GTILES");
+  assertStringIncludes(g.profile.tiles.traffic.fallback, "key=TKEY");
+  // deno-lint-ignore no-explicit-any
+  const a = (await handleGeo(q("action=profile&role=partner&device=ios"), "1.1.1.1", d)).body as any;
+  assertEquals(a.profile.tiles.traffic, { apple: true });
+});
+
 Deno.test("profile: tiles resolved with keys, the app's own where unset", async () => {
   const { d } = deps();
   // deno-lint-ignore no-explicit-any
