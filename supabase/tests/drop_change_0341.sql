@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Regression test for migration 0341: the mid-ride drop-off change (driver
--- check corrected in 0428).
+-- check corrected in 0428; answered only while the ride is under way, 0431).
 --   * A change within the admin's threshold applies at once; a dearer one is
 --     held for the driver.
 --   * The ride's driver accepts a held change (the drop and the fare change)
@@ -11,6 +11,10 @@
 --     It is never a partners.id: 0341 looked the driver up by that, which no
 --     real ride holds, so the driver's own answer was refused (0428).
 --   * With nothing held there is nothing to answer.
+--   * A held change is answered only while the ride is under way, the rule the
+--     request already has: once the ride is completed or cancelled, its
+--     driver's accept and decline are refused with not_ongoing and the ride is
+--     left as it is (0431).
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/drop_change_0341.sql
 --
@@ -48,8 +52,11 @@ insert into public.app_settings (key, value) values
                           "responseWindowSec": 30, "maxChangesPerRide": 2}')
 on conflict (key) do update set value = excluded.value, updated_at = now();
 
--- Three rides under way, booked to Mid Valley at 20.00. Each carries the
--- driver's account id in partner_id, as a ride the app has taken does.
+-- Five rides under way, booked to Mid Valley at 20.00. Each carries the
+-- driver's account id in partner_id, as a ride the app has taken does. The
+-- first three stay on the trip. The last two end with a change still held
+-- (section 7): one is on the trip and is completed, the other is cancelled
+-- with the driver still on the way.
 insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_fare, pickup_name,
                                   drop_name, drop_address, drop_lat, drop_lng, distance_km, duration_min) values
   ('00000000-0000-0000-0000-0000000341e1', '00000000-0000-0000-0000-0000000341a1',
@@ -60,6 +67,12 @@ insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_f
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20),
   ('00000000-0000-0000-0000-0000000341e3', '00000000-0000-0000-0000-0000000341a1',
    '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20),
+  ('00000000-0000-0000-0000-0000000341e4', '00000000-0000-0000-0000-0000000341a1',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20),
+  ('00000000-0000-0000-0000-0000000341e5', '00000000-0000-0000-0000-0000000341a1',
+   '00000000-0000-0000-0000-0000000341b1', 'accepted', 20, 20, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20)
 on conflict (id) do nothing;
 
@@ -99,7 +112,7 @@ grant execute on function pg_temp.refused(text, text, text) to authenticated;
 -- here, whatever the functions under test do with it.
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
-select pg_temp.check((select count(*) = 3 from public.ride_requests
+select pg_temp.check((select count(*) = 5 from public.ride_requests
                        where id::text like '00000000-0000-0000-0000-0000000341e%'),
   'signed in, the driver reads the rides that carry their account id');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341b2');
@@ -246,7 +259,76 @@ select pg_temp.check((select count(*) = 3 from public.ride_requests
                           or (id = '00000000-0000-0000-0000-0000000341e3' and ride_fare = 20 and drop_change_count = 0)),
   'and the rides are left as they were');
 
--- 7. Still for signed-in callers only, as 0341 granted it -------------------------------------------
+-- 7. Once the ride is no longer under way, a held change is not answered ----------------------------
+-- The request is taken only while the ride is accepted, arrived or on_trip
+-- (ride_drop_change_request, not_ongoing otherwise), and the answer has the
+-- same rule (0431). A change is held on each of the last two rides; the ride
+-- then ends the way the app ends it, signed in as its driver.
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000341e4', 'Sunway Pyramid',
+                                  'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 35)
+    = '{"applied": false, "pending": true, "fare": 35}'::jsonb,
+  'a dearer drop is held on a ride that is on the trip');
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000341e5', 'Sunway Pyramid',
+                                  'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 35)
+    = '{"applied": false, "pending": true, "fare": 35}'::jsonb,
+  'and on a ride whose driver is still on the way');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
+update public.ride_requests set status = 'completed', completed_at = now()
+ where id = '00000000-0000-0000-0000-0000000341e4';
+update public.ride_requests set status = 'cancelled', cancelled_at = now(), cancel_reason = 'vehicle_issue',
+                                cancel_requested_by = 'partner', cancel_requested_at = now()
+ where id = '00000000-0000-0000-0000-0000000341e5' and status in ('accepted', 'arrived');
+reset role;
+
+-- The two rides once they have ended: as booked, with the drop and fare asked
+-- for still held beside them and no answer recorded.
+create or replace function pg_temp.ended_with_change_held() returns boolean language sql as $$
+  select count(*) = 2 from public.ride_requests
+   where ((id = '00000000-0000-0000-0000-0000000341e4' and status = 'completed')
+       or (id = '00000000-0000-0000-0000-0000000341e5' and status = 'cancelled'))
+     and drop_name = 'Mid Valley' and drop_address = 'Lingkaran Syed Putra, Kuala Lumpur'
+     and drop_lat = 3.1177 and drop_lng = 101.6774
+     and distance_km = 8.0 and duration_min = 20
+     and ride_fare = 20 and fare = 20
+     and drop_change_count = 0
+     and drop_change_requested_at is not null and drop_change_requested_by = 'rider'
+     and drop_change_name = 'Sunway Pyramid'
+     and drop_change_address = 'Jalan PJS 11/15, Subang Jaya'
+     and drop_change_lat = 3.0733 and drop_change_lng = 101.6078
+     and drop_change_distance_km = 21.5 and drop_change_duration_min = 38
+     and drop_change_fare = 35
+     and drop_change_outcome is null and drop_change_outcome_by is null
+     and drop_change_outcome_at is null
+$$;
+select pg_temp.check(pg_temp.ended_with_change_held(),
+  'one ride is completed and one cancelled, each as booked with its change still held');
+
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e4', true)$q$,
+                       'not_ongoing', 'the ride''s driver accepting a held change after the ride was completed');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e4', false)$q$,
+                       'not_ongoing', 'the ride''s driver declining a held change after the ride was completed');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e5', true)$q$,
+                       'not_ongoing', 'the ride''s driver accepting a held change after the ride was cancelled');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e5', false)$q$,
+                       'not_ongoing', 'the ride''s driver declining a held change after the ride was cancelled');
+-- Anybody else is still told only that the ride is not theirs to answer for.
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e4', true)$q$,
+                       'not_authorized', 'the rider accepting their own change after the ride was completed');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341c1');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e5', false)$q$,
+                       'not_authorized', 'a stranger declining the change after the ride was cancelled');
+reset role;
+select pg_temp.check(pg_temp.ended_with_change_held(),
+  'the refused answers changed nothing: the fare, the drop and the held change are as they were');
+
+-- 8. Still for signed-in callers only, as 0341 granted it -------------------------------------------
 select pg_temp.check(
   has_function_privilege('authenticated', 'public.ride_drop_change_resolve(uuid, boolean)', 'execute')
   and not has_function_privilege('anon', 'public.ride_drop_change_resolve(uuid, boolean)', 'execute'),
