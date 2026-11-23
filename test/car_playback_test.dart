@@ -428,5 +428,48 @@ void main() {
       car.take(at, sentAt: t0.add(const Duration(seconds: 1)), heardAt: t0.add(const Duration(seconds: 1)));
       expect(car.shown, at, reason: 'the first position is where it is, not a drive from the old one');
     });
+
+    test('put somewhere by whatever was drawing it before, it is played back on from there', () {
+      // It was being followed live and drawn here, heard from four seconds ago
+      // by its driver's clock.
+      final was = movedAlong(start, 40, 0);
+      final car = CarPlayback()..take(start, heading: 0, sentAt: t0, heardAt: t0);
+      // On its way somewhere else, a second into a drive of two hundred metres.
+      car.take(movedAlong(start, 200, 90), sentAt: t0.add(const Duration(seconds: 5)), heardAt: t0.add(const Duration(seconds: 5)));
+      expect(car.advance(1), isTrue);
+      expect(car.ahead, isNotEmpty);
+      car.startAt(was, heading: 12, sentAt: t0.add(const Duration(seconds: 20)), heardAt: t0.add(const Duration(seconds: 21)));
+      expect(car.shown, was);
+      expect(car.heading, 12);
+      expect(car.latest, was);
+      expect(car.ahead, isEmpty, reason: 'the drive it was on is forgotten');
+      expect(car.advance(frame), isFalse, reason: 'and it has nowhere to go until it is heard from');
+      expect(car.shown, was);
+      // The next position is driven to from there, in the time since.
+      final next = movedAlong(start, 100, 0);
+      expect(car.take(next, sentAt: t0.add(const Duration(seconds: 24)), heardAt: t0.add(const Duration(seconds: 25))), isTrue);
+      var seconds = 0.0;
+      while (car.advance(frame)) {
+        seconds += frame;
+        expect(metresApart(car.shown!, start), inInclusiveRange(40 - 1e-6, 100 + 1e-6), reason: 'straight on from where it was');
+      }
+      expect(car.shown, next);
+      expect(seconds, closeTo(4 * playbackStretch, 0.05), reason: 'four seconds by its driver\'s clock');
+      // One stamped before it was put there is from before: dropped.
+      expect(car.take(start, sentAt: t0.add(const Duration(seconds: 19)), heardAt: t0.add(const Duration(seconds: 26))), isFalse);
+    });
+
+    test('put somewhere with no time from its driver, the next position is spaced by when each was heard', () {
+      final car = CarPlayback()..startAt(start, heading: 0, heardAt: t0);
+      final next = movedAlong(start, 60, 0);
+      // Stamped by another clock altogether: only when it was heard counts.
+      expect(car.take(next, sentAt: null, heardAt: t0.add(const Duration(seconds: 6))), isTrue);
+      var seconds = 0.0;
+      while (car.advance(frame)) {
+        seconds += frame;
+      }
+      expect(car.shown, next);
+      expect(seconds, closeTo(6 * playbackStretch, 0.05));
+    });
   });
 }

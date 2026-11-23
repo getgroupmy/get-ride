@@ -276,6 +276,21 @@ class CarPlayback {
     return busy;
   }
 
+  /// Puts the car at [at], facing [heading], with nowhere to drive to: it was
+  /// being drawn there by something else (the driver's fixes followed live,
+  /// live_ride_map.dart), and is played back from there on. [sentAt] and
+  /// [heardAt] are when it was last heard from, by its driver's clock and by
+  /// this phone's, for the time the next position took.
+  void startAt(LatLng at, {double? heading, DateTime? sentAt, DateTime? heardAt}) {
+    shown = _latest = at;
+    this.heading = heading;
+    _sentAt = sentAt;
+    _heardAt = heardAt;
+    _turnTo = null;
+    _path = const [];
+    _length = _done = _speed = 0;
+  }
+
   /// Forgets the car: there is none on the map any more.
   void clear() {
     shown = heading = _latest = _sentAt = _heardAt = _turnTo = null;

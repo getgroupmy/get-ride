@@ -18,6 +18,8 @@ import '../../widgets/app_notice.dart';
 import '../dispatch/dispatch_console.dart' show MeterFareDialog;
 import '../../data/active_location.dart';
 import '../../data/live_fix.dart';
+import '../../data/live_fix_sender.dart';
+import '../../data/ride_live_fix_repository.dart';
 import '../../core/early_end.dart';
 import '../../core/fare.dart' show RideService;
 import '../../data/app_display_repository.dart' show rideServicesProvider, serviceBoxNamesProvider;
@@ -141,6 +143,24 @@ final tripMapFixesProvider = Provider<Stream<LiveFix> Function()>((ref) => () as
   } catch (_) {}
 });
 
+/// Every fix the driver's phone gives during a trip, with the app on screen
+/// or behind another (a navigation app, the lock screen): what the passenger's
+/// map is sent, each as it comes, so it can draw the car where it is now
+/// (data/ride_live_fix_repository.dart). Asked for as the trip's own stream
+/// asks, without that stream's 15 m between fixes; the shared stream
+/// (shared_location.dart) gives each what it asked for. Empty when location is
+/// unavailable or refused.
+final tripLiveFixesProvider = Provider<Stream<LiveFix> Function()>((ref) => () async* {
+  try {
+    // Asked for by the trip's own stream, above: this one only looks.
+    final perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) return;
+    yield* sharedPositionStream(
+      activeLocationSettings(ActiveLocationUse.driverTrip, accuracy: LocationAccuracy.bestForNavigation),
+    ).map(liveFixOf);
+  } catch (_) {}
+});
+
 /// The trip screen's clock, for the running trip time. For tests.
 final tripClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
@@ -159,6 +179,12 @@ class PartnerTripScreen extends ConsumerStatefulWidget {
 
 class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   StreamSubscription<TripFix>? _gps;
+
+  /// Every fix, sent to the passenger's map as it comes ([tripLiveFixesProvider]):
+  /// listened to from the trip's first fix on, by when location has been
+  /// allowed.
+  StreamSubscription<LiveFix>? _liveFixes;
+  late final LiveFixSender _liveSender;
   LatLng? _me;
   // The running trip: when this screen first saw it on trip (the row's
   // started_at wins), the distance driven since, and the last fix it counted.
@@ -205,6 +231,12 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
       if (thread != null) _readAloud(thread);
     }, fireImmediately: true);
     _voice = ref.read(voiceProtectionProvider.notifier);
+    _liveSender = LiveFixSender(
+      (fix) => ref.read(rideLiveFixRepositoryProvider).send(widget.requestId, fix),
+      // A server from before the fix-a-second channel: the passenger's map
+      // follows the position shared below, as it always has.
+      unsupported: liveFixUnsupported,
+    );
     _gps = ref.read(tripPositionStreamProvider)().listen(_onPosition, onError: (_) {});
     // VoiceProtection records the trip from the moment it starts (gated by the
     // driver's own switch inside the controller) and files it when it ends.
@@ -412,8 +444,22 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
 
   static String _tripLabel(RideRequest r) => '${r.pickupLabel} to ${r.dropLabel}';
 
+  /// A fix for the passenger's map: sent while the ride is under way.
+  void _onLiveFix(LiveFix fix) {
+    if (!mounted) return;
+    final status = _status;
+    if (status == RideStatus.accepted || status == RideStatus.arrived || status == RideStatus.onTrip) {
+      _liveSender.offer(fix);
+    } else {
+      _liveSender.drop();
+    }
+  }
+
   void _onPosition(TripFix p) {
     if (!mounted) return;
+    // Location is allowed by now: every fix from here on goes to the
+    // passenger's map as well.
+    _liveFixes ??= ref.read(tripLiveFixesProvider)().listen(_onLiveFix, onError: (_) {});
     final now = _now;
     _me = p.at;
     // Only the trip itself counts toward the distance driven.
@@ -475,6 +521,8 @@ class _PartnerTripScreenState extends ConsumerState<PartnerTripScreen> {
   void dispose() {
     unawaited(_speaker.stop());
     _gps?.cancel();
+    _liveFixes?.cancel();
+    _liveSender.dispose();
     _tick?.cancel();
     _closeTimer?.cancel();
     _clockTicks.dispose();
