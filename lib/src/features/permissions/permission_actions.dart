@@ -16,6 +16,9 @@ String permissionBlockAction(PermissionBlock block) => switch (block) {
   PermissionBlock.locationNotAsked => 'Allow location',
   // After the background-location disclosure: Continue, not "Allow" (Apple).
   PermissionBlock.notAlways || PermissionBlock.notAllTheTime => 'Continue',
+  // Android asks in a question of its own; an iPhone changes it in Settings.
+  PermissionBlock.notPrecise =>
+    defaultTargetPlatform == TargetPlatform.iOS ? 'Open settings' : 'Allow precise location',
   PermissionBlock.notificationsNotAsked => 'Allow notifications',
   PermissionBlock.locationOff || PermissionBlock.notificationsOff => kIsWeb ? 'How to allow' : 'Open settings',
 };
@@ -159,6 +162,14 @@ Future<PermissionFix> resolvePermissionBlock(BuildContext context, PermissionPro
       // Android 11+ answers with the app's Location page, where "Allow all
       // the time" is picked; refused before, only the app's Settings can.
       if (await probe.requestLocationAlways() == PermState.granted) return PermissionFix.asked;
+      return open(probe.openAppSettings());
+    case PermissionBlock.notPrecise:
+      // Android 12 and later ask "Change to precise location?" while they
+      // still will. Told there to keep it approximate, that is the answer for
+      // now; where the phone does not ask (an iPhone, or Android refused
+      // twice), only the app's Settings can change it.
+      final asked = await probe.askLocationPrecise();
+      if (asked.answer != AskAnswer.blocked || asked.prompted) return PermissionFix.asked;
       return open(probe.openAppSettings());
     case PermissionBlock.locationOff:
       // The button said "Open settings": asked first all the same (Settings

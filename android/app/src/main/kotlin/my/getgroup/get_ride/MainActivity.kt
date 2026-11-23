@@ -19,6 +19,7 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     private companion object {
         const val ALWAYS_REQUEST = 7311
+        const val PRECISE_REQUEST = 7312
     }
 
     private var classicPrinter: ClassicPrinterChannel? = null
@@ -45,6 +46,7 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "statuses" -> result.success(permissionStatuses())
                 "requestLocationAlways" -> requestLocationAlways(result)
+                "requestPreciseLocation" -> requestPreciseLocation(result)
                 "openNotificationSettings" -> result.success(openNotificationSettings())
                 "batteryUnrestricted" -> result.success(batteryUnrestricted())
                 "openBatterySettings" -> result.success(openBatterySettings())
@@ -88,8 +90,37 @@ class MainActivity : FlutterActivity() {
         requestPermissions(arrayOf(background), ALWAYS_REQUEST)
     }
 
+    // Admin → App Settings → Permissions → "Precise location": the phone's
+    // precise location asked for once an approximate one is allowed, which on
+    // Android 12 and later is its "Change to precise location?" question. Asked
+    // on its own here: the location plugin's own request adds background
+    // location to it, and Android 11 and later ignore the two asked together.
+    // Answers whether the precise location is allowed afterwards; refused
+    // twice, Android answers at once without asking (the Dart side then sends
+    // them to Settings).
+    private var preciseResult: MethodChannel.Result? = null
+
+    private fun requestPreciseLocation(result: MethodChannel.Result) {
+        val fine = Manifest.permission.ACCESS_FINE_LOCATION
+        if (checkSelfPermission(fine) == PackageManager.PERMISSION_GRANTED) {
+            result.success(true)
+            return
+        }
+        preciseResult?.success(null)
+        preciseResult = result
+        // Both, as Android asks: the precise permission is never granted alone.
+        requestPermissions(arrayOf(fine, Manifest.permission.ACCESS_COARSE_LOCATION), PRECISE_REQUEST)
+    }
+
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == PRECISE_REQUEST) {
+            preciseResult?.success(
+                checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED,
+            )
+            preciseResult = null
+            return
+        }
         if (requestCode != ALWAYS_REQUEST) return
         val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
         alwaysResult?.success(if (granted) "always" else "whileInUse")

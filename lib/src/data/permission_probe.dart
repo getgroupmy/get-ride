@@ -35,6 +35,20 @@ abstract class PermissionProbe {
   /// location is allowed while in use. Answers where it stands afterwards.
   Future<PermState> requestLocationAlways();
 
+  /// Whether the location the app is allowed is the phone's precise one:
+  /// false when it is only an approximate one (Android 12 and later's
+  /// "Approximate", an iPhone's "Precise Location" switched off); null when
+  /// the phone can't say, location is not allowed at all, or on the web.
+  Future<bool?> locationPrecise();
+
+  /// Asks for the phone's precise location in place of an approximate one,
+  /// and says how it went: [AskAnswer.granted] when it is precise now;
+  /// [AskAnswer.denied] when the phone asked and was told to keep it
+  /// approximate; [AskAnswer.blocked] when the phone would not ask, as an
+  /// iPhone never does (only its Settings change it); and
+  /// [AskAnswer.unsupported] on a phone that can't say which it has.
+  Future<AskResult> askLocationPrecise();
+
   /// Asks for [p] where the phone can still show its question.
   Future<void> request(AppPermission p);
 
@@ -234,6 +248,45 @@ class DevicePermissionProbe implements PermissionProbe {
       }
     } catch (_) {}
     return (await location()).$2;
+  }
+
+  @override
+  Future<bool?> locationPrecise() async {
+    if (kIsWeb) return null;
+    try {
+      return switch (await Geolocator.getLocationAccuracy()) {
+        LocationAccuracyStatus.precise => true,
+        LocationAccuracyStatus.reduced => false,
+        LocationAccuracyStatus.unknown => null,
+      };
+    } catch (_) {
+      // Not allowed at all (which is for another check to say), or a phone
+      // that can't tell the two apart.
+      return null;
+    }
+  }
+
+  @override
+  Future<AskResult> askLocationPrecise() async {
+    final before = await locationPrecise();
+    if (before == null) return const AskResult(AskAnswer.unsupported, prompted: false);
+    if (before) return const AskResult(AskAnswer.granted, prompted: false);
+    // An iPhone has no question for this: Settings > Location > Precise Location.
+    if (!_android) return const AskResult(AskAnswer.blocked, prompted: false);
+    final watch = Stopwatch()..start();
+    try {
+      // Asked on its own (MainActivity.kt): the plugin's own request adds
+      // background location to it, and Android 11 and later ignore the two
+      // asked together.
+      await permissionsChannel.invokeMethod<bool>('requestPreciseLocation');
+    } catch (_) {
+      // A build from before the native half: Settings it is.
+      return const AskResult(AskAnswer.blocked, prompted: false);
+    }
+    watch.stop();
+    if (await locationPrecise() == true) return const AskResult(AskAnswer.granted);
+    // Answered at once is Android declining to ask any more (refused twice).
+    return refusal(forever: false, took: watch.elapsed);
   }
 
   @override

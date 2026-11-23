@@ -87,6 +87,15 @@ class PermissionRulesCard extends ConsumerWidget {
                   (v) => user(u.copyWith(location: v)),
                 ),
                 rule(
+                  'user-location-precise',
+                  'Precise location',
+                  'A phone can allow only an approximate location (Android\'s "Approximate", an iPhone\'s Precise '
+                      'Location switched off), which is up to a few kilometres out. On: users are asked for the '
+                      'precise one before the home map.',
+                  u.locationPrecise,
+                  (v) => user(u.copyWith(locationPrecise: v)),
+                ),
+                rule(
                   'user-notifications',
                   'Notifications allowed',
                   'Apple may reject an app that requires notifications to use it (App Store guideline 4.5.4).',
@@ -122,6 +131,15 @@ class PermissionRulesCard extends ConsumerWidget {
                       'pick "Allow all the time" in Android Settings before going online.',
                   p.locationAlwaysAndroid,
                   (v) => partner(p.copyWith(locationAlwaysAndroid: v)),
+                ),
+                rule(
+                  'partner-location-precise',
+                  'Precise location',
+                  'A phone can allow only an approximate location (Android\'s "Approximate", an iPhone\'s Precise '
+                      'Location switched off), which is up to a few kilometres out. On: partners are asked for the '
+                      'precise one before going online.',
+                  p.locationPrecise,
+                  (v) => partner(p.copyWith(locationPrecise: v)),
                 ),
                 rule(
                   'partner-notifications',
