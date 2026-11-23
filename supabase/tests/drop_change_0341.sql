@@ -796,6 +796,71 @@ select pg_temp.check(
       and distance_km = 21.5 and duration_min = 38),
   'and the measured route to Sunway Pyramid is as the route service wrote it');
 
+-- 18. The held change and the service are the server's (0431) ----------------------------------------
+-- A participant may update their own ride row directly, but the drop_change_*
+-- columns and the service can't be written that way: only the drop-change
+-- RPCs, which run as the owner, do. The held change and the service a ride is
+-- priced on are the server's.
+insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_fare, pickup_name,
+                                  drop_name, drop_address, drop_lat, drop_lng, distance_km, duration_min,
+                                  pickup_lat, pickup_lng, country, stops) values
+  ('00000000-0000-0000-0000-0000000431ef', '00000000-0000-0000-0000-0000000341a1',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
+   3.1579, 101.7116, 'Testland 0341', '[]')
+on conflict (id) do nothing;
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+-- A client writing the held-change columns directly.
+select pg_temp.refused($q$update public.ride_requests
+                            set drop_change_fare = 1, drop_change_requested_at = now(),
+                                drop_change_requested_by = 'rider', drop_change_name = 'Anywhere',
+                                drop_change_lat = 3.1, drop_change_lng = 101.6
+                          where id = '00000000-0000-0000-0000-0000000431ef'$q$,
+                       'RIDE_DROP_CHANGE_SERVER_ONLY', 'a client writing the held-change columns directly');
+select pg_temp.refused($q$update public.ride_requests set drop_change_count = 9
+                          where id = '00000000-0000-0000-0000-0000000431ef'$q$,
+                       'RIDE_DROP_CHANGE_SERVER_ONLY', 'a client writing the per-ride change count');
+select pg_temp.refused($q$update public.ride_requests set drop_change_outcome = 'accepted', drop_change_outcome_by = 'auto'
+                          where id = '00000000-0000-0000-0000-0000000431ef'$q$,
+                       'RIDE_DROP_CHANGE_SERVER_ONLY', 'a client writing a change outcome');
+-- A client changing the service.
+select pg_temp.refused($q$update public.ride_requests set service = 'Test Bike 0431'
+                          where id = '00000000-0000-0000-0000-0000000431ef'$q$,
+                       'RIDE_SERVICE_LOCKED', 'a client changing the service a ride is priced on');
+reset role;
+select pg_temp.check((select service is not distinct from null and ride_fare = 20 and drop_change_count = 0
+                         and drop_change_requested_at is null and drop_change_fare is null
+                         and drop_change_outcome is null
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000431ef'),
+  'the refused writes changed nothing: no held change, the service and fare as booked');
+
+-- The Change button still works: the RPC runs as the owner and passes the
+-- guard, prices the change on the server's card and route, and the driver
+-- accepts it.
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431ef', 'Sunway Pyramid',
+                                  'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 35)
+    = '{"applied": false, "pending": true, "fare": 35}'::jsonb,
+  'the Change button stages the held change through the guard, at the server''s fare');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
+select pg_temp.check(
+  public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000431ef', true) = '{"accepted": true}'::jsonb,
+  'the driver accepts it');
+reset role;
+select pg_temp.check((select drop_name = 'Sunway Pyramid' and ride_fare = 35 and drop_change_count = 1
+                         and drop_change_requested_at is null and drop_change_outcome = 'accepted'
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000431ef'),
+  'the ride goes to Sunway Pyramid at the server''s 35.00');
+
+-- The guard is not a client's to call.
+select pg_temp.check(
+  not has_function_privilege('authenticated', 'public.ride_requests_guard_drop_change()', 'execute')
+  and not has_function_privilege('anon', 'public.ride_requests_guard_drop_change()', 'execute'),
+  'ride_requests_guard_drop_change is not open to clients');
+
 rollback;
 
 select 'drop_change_0341: all passed';

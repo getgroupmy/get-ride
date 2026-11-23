@@ -53,6 +53,13 @@
 -- server's fare. The driver's half (ride_drop_change_resolve, 0428) and the
 -- rider's withdraw are not changed.
 --
+-- A drop-off is moved only through these RPCs, which are security definer. So
+-- a guard (ride_requests_guard_drop_change) keeps the drop_change_* columns
+-- and the service server-only on a client update: the held change and the
+-- service a ride is priced on are the server's, not a column a client writes.
+-- The RPCs run as the owner and pass it, as they pass the older fare and route
+-- guards (0174, 0223).
+--
 -- Checked in supabase/tests/drop_change_0341.sql.
 -- ============================================================================
 
@@ -428,5 +435,57 @@ end;
 $$;
 revoke execute on function public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric) from public, anon;
 grant execute on function public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric) to authenticated;
+
+-- ---- 6. The held change and the service are the server's -------------------------------------------
+-- The pricing above is reached only through the three drop-change RPCs, which
+-- are security definer. A participant can also update their own
+-- ride_requests row directly ("ride_requests participant update"), and the
+-- older guards (0174 ride_requests_guard_fare, 0223
+-- ride_requests_guard_client_columns) fix the fare, the pricing, the route and
+-- the place once a ride is under way — this adds the drop_change_* columns and
+-- the service to what a client can't write. The held change is the server's
+-- (it is priced and staged by ride_drop_change_request, applied by
+-- ride_drop_change_resolve), and so is the service a ride is priced on. For a
+-- client (not a security definer function, not an admin) neither can change on
+-- an update; the RPCs run as the owner and pass, as the other guards let them.
+create or replace function public.ride_requests_guard_drop_change()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if current_user not in ('anon', 'authenticated') or public.caller_admin_can_write('ride_requests') then
+    return new;
+  end if;
+  -- The held-change columns are written only by the drop-change RPCs (0341,
+  -- 0428, 0431).
+  if (new.drop_change_requested_at, new.drop_change_requested_by, new.drop_change_name,
+      new.drop_change_address, new.drop_change_lat, new.drop_change_lng,
+      new.drop_change_distance_km, new.drop_change_duration_min, new.drop_change_fare,
+      new.drop_change_outcome, new.drop_change_outcome_by, new.drop_change_outcome_at,
+      new.drop_change_count)
+     is distinct from
+     (old.drop_change_requested_at, old.drop_change_requested_by, old.drop_change_name,
+      old.drop_change_address, old.drop_change_lat, old.drop_change_lng,
+      old.drop_change_distance_km, old.drop_change_duration_min, old.drop_change_fare,
+      old.drop_change_outcome, old.drop_change_outcome_by, old.drop_change_outcome_at,
+      old.drop_change_count) then
+    raise exception 'RIDE_DROP_CHANGE_SERVER_ONLY' using errcode = '42501',
+      hint = 'Move the drop-off through the app''s Change button; the server prices it.';
+  end if;
+  -- The service a ride was booked on is what it is priced on, so it is fixed.
+  if new.service is distinct from old.service then
+    raise exception 'RIDE_SERVICE_LOCKED' using errcode = '42501',
+      hint = 'The service a ride was booked on can''t be changed.';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.ride_requests_guard_drop_change() from public, anon, authenticated;
+
+drop trigger if exists trg_ride_requests_b_guard_drop_change on public.ride_requests;
+create trigger trg_ride_requests_b_guard_drop_change
+  before update on public.ride_requests
+  for each row execute function public.ride_requests_guard_drop_change();
 
 notify pgrst, 'reload schema';
