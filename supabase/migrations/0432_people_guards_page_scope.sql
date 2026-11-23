@@ -17,7 +17,7 @@
 --     the back office, two admin steps change them, each marking its own write:
 --     an approver who is also an admin, from My Team (approver_edit_profile,
 --     0360), and renaming a type in Admin › Partner Type (safe_rename_run,
---     0304).
+--     0304). An approver who is not an admin does not change them.
 --
 -- The back office, for a table, is an admin who may edit that table: the test
 -- the table's own admin policies make, public.caller_admin_can_write('<table>')

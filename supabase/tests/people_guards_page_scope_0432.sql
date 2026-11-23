@@ -6,8 +6,8 @@
 --     and by nobody else: not the row's owner, not an admin who may only
 --     read the table, not an admin whose pages edit something else.
 --   * An approved partner's Partner Service types: also an approver who is
---     also an admin, from My Team (renaming a type is covered in
---     safe_renames_0304.sql).
+--     also an admin, from My Team, and not an approver who is not one
+--     (renaming a type is covered in safe_renames_0304.sql).
 --   * The server changes them as before.
 --   * A signed-in user still does what is theirs: fills in and submits an
 --     application, replaces a document.
@@ -23,6 +23,7 @@ insert into auth.users (id) values
   ('00000000-0000-0000-0000-0000000432a1'),  -- applies to be a partner
   ('00000000-0000-0000-0000-0000000432a2'),  -- an account with no partner row
   ('00000000-0000-0000-0000-0000000432a3'),  -- an approved partner, on an approver's team
+  ('00000000-0000-0000-0000-0000000432a4'),  -- an approver, not an admin
   ('00000000-0000-0000-0000-0000000432b1'),  -- back office: may only read partners; an approved partner
   ('00000000-0000-0000-0000-0000000432b2'),  -- back office: edits another page; an applicant
   ('00000000-0000-0000-0000-0000000432b3'),  -- back office: reads another page; no partner row yet
@@ -59,9 +60,10 @@ insert into public.partners (id, auth_user_id, name, phone, status) values
   ('00000000-0000-0000-0000-0000000432e5', '00000000-0000-0000-0000-0000000432b5', 'Approver 0432', '+60100004328', 'approved'),
   ('00000000-0000-0000-0000-0000000432d3', '00000000-0000-0000-0000-0000000432a3', 'Team Member 0432', '+60100004329', 'approved'),
   ('00000000-0000-0000-0000-0000000432f1', '00000000-0000-0000-0000-0000000432c1', 'Edits Partners 0432', '+60100004325', 'unapproved');
--- An approver who may edit their team's profiles, everybody's but their own.
+-- Approvers who may edit their team's profiles, everybody's but their own.
 insert into public.approvers (profile_id, scope, conflict_guard, use_own_region, regions, doc_types, can_edit_profile)
-values ('00000000-0000-0000-0000-0000000432b5', 'all', true, false, '[]'::jsonb, '{}', true);
+values ('00000000-0000-0000-0000-0000000432b5', 'all', true, false, '[]'::jsonb, '{}', true),
+       ('00000000-0000-0000-0000-0000000432a4', 'all', true, false, '[]'::jsonb, '{}', true);
 insert into public.vehicle (id, plate, auth_user_id, owner_partner_id, status) values
   ('00000000-0000-0000-0000-0000004320e1', 'TST4321', '00000000-0000-0000-0000-0000000432b1',
    '00000000-0000-0000-0000-0000000432e1', 'approved'),
@@ -272,9 +274,15 @@ select pg_temp.check((select rating = 3.5 and status = 'rejected' and status_not
 
 -- 7. An approved member's types, from My Team ---------------------------------------------------
 -- An approver who is also an admin changes them there, though their admin
--- pages do not edit partners: that step marks its own write. Their own types
--- they change like anybody else: not by writing the row, even straight after.
+-- pages do not edit partners: that step marks its own write. An approver who
+-- is not an admin does not. Their own types an approver changes like anybody
+-- else: not by writing the row, even straight after.
 set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000432a4');
+select pg_temp.check(not public.caller_is_admin(), 'this approver is not an admin');
+select pg_temp.refused($q$select public.approver_edit_profile('00000000-0000-0000-0000-0000000432a3',
+  '{"partner_types": ["Teksi 0432"]}'::jsonb)$q$,
+  'PARTNER_TYPES_LOCKED', 'an approver who is not an admin changing an approved member''s types from My Team');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000432b5');
 select pg_temp.check(public.caller_is_admin() and not public.caller_admin_can_write('partners'),
   'the approver is an admin who may not edit partners');

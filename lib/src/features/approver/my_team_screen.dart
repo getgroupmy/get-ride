@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../admin/admin_providers.dart' show adminAccessProvider;
 import '../../admin/screens/people/people_logic.dart' show partnerTypeOptions;
 import '../../admin/screens/people/people_widgets.dart' show PartnerTypeField;
 import '../../admin/screens/meterapp/pick_image.dart' show pickDocumentImage, PickedImage;
@@ -1238,7 +1239,9 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
       final m = e is PostgrestException ? e.message : e.toString();
       unawaited(showAppNotice(
         id: 'notice.approver-status', context: context,
-        message: m.contains('not_allowed') ? "You can't change this member's services." : "Couldn't update. Try again.",
+        message: m.contains('not_allowed')
+            ? "You can't change this member's services."
+            : (m.contains('PARTNER_TYPES_LOCKED') ? _servicesAdminOnlyText : "Couldn't update. Try again."),
         kind: NoticeKind.error));
     } finally {
       if (mounted) setState(() => _busyCourier = false);
@@ -1454,6 +1457,7 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
     final idVerified = ((detail?['id_verified'] as String?) ?? member.idVerified) == 'Verified';
     final services = [for (final e in (detail?['partner_types'] as List? ?? const [])) '$e'.trim()]
       ..removeWhere((e) => e.isEmpty);
+    final servicesAdminOnly = isPartner && _servicesAdminOnly(ref, detail?['partner_status']);
 
     Widget tile(String label, Widget value, {VoidCallback? onEdit, String? editKey}) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 5),
@@ -1501,7 +1505,16 @@ class _MyTeamMemberScreenState extends ConsumerState<MyTeamMemberScreen> {
                             ),
                         ]),
                   onEdit: _openEditProfile, editKey: 'profile-edit-services'),
-            if (isPartner && canEditProfile)
+            if (isPartner && canEditProfile && servicesAdminOnly)
+              Padding(
+                padding: const EdgeInsets.only(left: 96, bottom: 2),
+                child: Text(
+                  _servicesAdminOnlyText,
+                  key: const ValueKey('services-admin-only'),
+                  style: text.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                ),
+              ),
+            if (isPartner && canEditProfile && !servicesAdminOnly)
               Padding(
                 padding: const EdgeInsets.only(left: 96, bottom: 2),
                 child: Builder(builder: (_) {
@@ -3441,6 +3454,7 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
           if (!_loaded) _fill(d);
           final verified = (d['id_verified'] as String?) == 'Verified';
           final isPartner = d['is_partner'] == true;
+          final servicesAdminOnly = isPartner && _servicesAdminOnly(ref, d['partner_status']);
           return SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -3473,21 +3487,27 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                   Text('Services', style: t.textTheme.labelLarge),
                   const SizedBox(height: 2),
                   Text(
-                    'The partner service types this member drives for.',
+                    servicesAdminOnly ? _servicesAdminOnlyText : 'The partner service types this member drives for.',
                     style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
                   ),
                   const SizedBox(height: 6),
-                  Builder(builder: (context) {
-                    final options = partnerTypeOptions(
-                        ref.watch(partnerTypeEntriesProvider).value?.map((e) => e.values) ?? const []);
-                    return PartnerTypeField(
-                      key: const ValueKey('edit-services'),
-                      options: options,
-                      value: _types,
-                      enabled: !_busy,
-                      onChanged: (v) => setState(() => _types = v),
-                    );
-                  }),
+                  if (servicesAdminOnly)
+                    Text(
+                      _origTypes.isEmpty ? '—' : _origTypes.join(', '),
+                      key: const ValueKey('edit-services-read-only'),
+                    )
+                  else
+                    Builder(builder: (context) {
+                      final options = partnerTypeOptions(
+                          ref.watch(partnerTypeEntriesProvider).value?.map((e) => e.values) ?? const []);
+                      return PartnerTypeField(
+                        key: const ValueKey('edit-services'),
+                        options: options,
+                        value: _types,
+                        enabled: !_busy,
+                        onChanged: (v) => setState(() => _types = v),
+                      );
+                    }),
                 ],
                 const SizedBox(height: 14),
                 FilledButton(
@@ -3539,7 +3559,21 @@ String? _editErrorText(Object e) {
   if (m.contains('out_of_scope')) return "This member isn't in your scope.";
   if (m.contains('invalid_status')) return 'Pick a valid status.';
   if (m.contains('invalid_id_verified')) return 'Invalid ID verification value.';
+  if (m.contains('PARTNER_TYPES_LOCKED')) return _servicesAdminOnlyText;
   return null;
+}
+
+const _servicesAdminOnlyText = 'This member is approved, so an admin changes their services.';
+
+/// Whether an approved member's services are an admin's to change here
+/// (0432): the server takes an approved partner's Partner Service types from
+/// an approver who is also an admin, not from other approvers. [partnerStatus]
+/// is the member detail's `partner_status`; the admin grants are read only for
+/// an approved member.
+bool _servicesAdminOnly(WidgetRef ref, Object? partnerStatus) {
+  final s = '${partnerStatus ?? ''}'.trim();
+  if (s != 'approved' && !s.startsWith('permit-')) return false;
+  return !(ref.watch(adminAccessProvider).value?.isAdmin ?? false);
 }
 
 /// Set a covered member's payout account (migration 0361): a bank or e-wallet,
