@@ -1,12 +1,12 @@
 -- ============================================================================
--- 0433 — The drop-off change withdraw reads the ride under its row lock.
+-- 0435 — The drop-off change withdraw reads the ride under its row lock.
 --
 -- ride_drop_change_withdraw (0341) is the rider taking back a drop-off change
 -- that is held for the driver: their own cancel, or the passenger's app when
 -- the response window runs out. It reads the ride, checks the caller and that
 -- a change is held, and then clears it. That read now takes the ride's row
 -- lock (select ... for update), as the request and the answer have it since
--- 0432, so the held change it checks is the one it writes to.
+-- 0434, so the held change it checks is the one it writes to.
 --
 -- The function is recreated from its body in 0341 with only that change: same
 -- signature, same grants, same search_path, no DROP. The app is not touched.
@@ -28,7 +28,7 @@ as $$
 declare
   v_ride public.ride_requests;
 begin
-  -- The ride is read under its row lock (0433), so the held change checked
+  -- The ride is read under its row lock (0435), so the held change checked
   -- below is the one the write clears.
   select * into v_ride from public.ride_requests where id = p_ride for update;
   if not found then

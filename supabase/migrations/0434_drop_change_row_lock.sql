@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0432 — The drop-off change functions read the ride under its row lock.
+-- 0434 — The drop-off change functions read the ride under its row lock.
 --
 -- ride_drop_change_request (the rider's half, 0341) and
 -- ride_drop_change_resolve (the driver's half, last recreated in 0431) each
@@ -47,7 +47,7 @@ declare
   v_thresh numeric;
   v_auto boolean;
 begin
-  -- The ride is read under its row lock (0432), so its status cannot change
+  -- The ride is read under its row lock (0434), so its status cannot change
   -- between the checks below and the write.
   select * into v_ride from public.ride_requests where id = p_ride for update;
   if not found then
@@ -129,7 +129,7 @@ as $$
 declare
   v_ride public.ride_requests;
 begin
-  -- The ride is read under its row lock (0432), so its status cannot change
+  -- The ride is read under its row lock (0434), so its status cannot change
   -- between the checks below and the write.
   select * into v_ride from public.ride_requests where id = p_ride for update;
   if not found then

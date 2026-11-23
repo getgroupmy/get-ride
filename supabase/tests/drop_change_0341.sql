@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Regression test for migration 0341: the mid-ride drop-off change (driver
 -- check corrected in 0428; answered only while the ride is under way, 0431;
--- the ride read under its row lock, 0432 and 0433).
+-- the ride read under its row lock, 0434 and 0435).
 --   * A change within the admin's threshold applies at once; a dearer one is
 --     held for the driver.
 --   * The ride's driver accepts a held change (the drop and the fare change)
@@ -20,9 +20,9 @@
 --     change is recorded as expired, by the rider. Nobody else withdraws it
 --     for them, and with nothing held a withdraw changes nothing.
 --   * The request and the answer both read the ride under its row lock, so its
---     status cannot change between the check and the write (0432). The
+--     status cannot change between the check and the write (0434). The
 --     withdraw reads it the same way, so the held change it checks is the one
---     it writes to (0433). One transaction cannot show two calls overlapping,
+--     it writes to (0435). One transaction cannot show two calls overlapping,
 --     so this file checks that each function reads the ride for update.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/drop_change_0341.sql
@@ -426,7 +426,7 @@ select pg_temp.check((select p.prosecdef and p.proconfig @> array['search_path="
                         from pg_proc p
                        where p.oid = 'public.ride_drop_change_resolve(uuid, boolean)'::regprocedure),
   'ride_drop_change_resolve is security definer with an empty search_path');
--- And the request, recreated in 0432.
+-- And the request, recreated in 0434.
 select pg_temp.check(
   has_function_privilege('authenticated', 'public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric)', 'execute')
   and not has_function_privilege('anon', 'public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric)', 'execute'),
@@ -435,7 +435,7 @@ select pg_temp.check((select p.prosecdef and p.proconfig @> array['search_path="
                         from pg_proc p
                        where p.oid = 'public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric)'::regprocedure),
   'ride_drop_change_request is security definer with an empty search_path');
--- And the withdraw, recreated in 0433.
+-- And the withdraw, recreated in 0435.
 select pg_temp.check(
   has_function_privilege('authenticated', 'public.ride_drop_change_withdraw(uuid)', 'execute')
   and not has_function_privilege('anon', 'public.ride_drop_change_withdraw(uuid)', 'execute'),
@@ -445,12 +445,12 @@ select pg_temp.check((select p.prosecdef and p.proconfig @> array['search_path="
                        where p.oid = 'public.ride_drop_change_withdraw(uuid)'::regprocedure),
   'ride_drop_change_withdraw is security definer with an empty search_path');
 
--- 10. All three functions read the ride under its row lock (0432, 0433) -----------------------------
+-- 10. All three functions read the ride under its row lock (0434, 0435) -----------------------------
 -- The request and the answer each read the ride, check the caller and the
 -- ride's status, and then write to the ride. The read is "for update", so the
--- status cannot change between the check and the write (0432). The withdraw
+-- status cannot change between the check and the write (0434). The withdraw
 -- reads the ride the same way, so the held change it checks is the one it
--- writes to (0433). One transaction cannot show two calls overlapping, so this
+-- writes to (0435). One transaction cannot show two calls overlapping, so this
 -- looks at the functions as they are stored: a later migration that recreates
 -- one of them from its body has to keep the lock.
 select pg_temp.check(
