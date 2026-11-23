@@ -16,8 +16,10 @@ import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/widgets/apple_native_layer.dart';
+import 'package:get_ride/src/widgets/map_traffic.dart';
 import 'package:latlong2/latlong.dart';
 
 /// An iPhone with a Dynamic Island: 393 × 852 points, 59 kept clear at the top
@@ -268,11 +270,17 @@ void main() {
         messenger.setMockMethodCallHandler(appleMapAppearanceChannel, null);
       });
       await tester.pumpWidget(
-        MaterialApp(
-          home: FlutterMap(
-            mapController: controller,
-            options: MapOptions(initialCenter: _home, initialZoom: zoom),
-            children: const [AppleNativeBaseLayer(fallback: SizedBox.shrink())],
+        // AppleNativeBaseLayer is a ConsumerStatefulWidget (it reads
+        // appleTrafficProvider for MapKit's traffic layer): give it a scope.
+        // Traffic off here keeps this an alignment test, nothing more.
+        ProviderScope(
+          overrides: [appleTrafficProvider.overrideWithValue(false)],
+          child: MaterialApp(
+            home: FlutterMap(
+              mapController: controller,
+              options: MapOptions(initialCenter: _home, initialZoom: zoom),
+              children: const [AppleNativeBaseLayer(fallback: SizedBox.shrink())],
+            ),
           ),
         ),
       );
