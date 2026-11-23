@@ -534,15 +534,21 @@ class _LineCard extends StatelessWidget {
               if (line.docStatus != null)
                 Chip(label: Text('Document: ${line.docStatus}'), visualDensity: VisualDensity.compact),
             ]),
-          Wrap(spacing: 8, runSpacing: 6, children: [
-            for (final (n, f) in line.files.indexed)
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
-                icon: const Icon(Icons.visibility_outlined, size: 18),
-                label: Text(line.files.length == 1 ? 'View' : 'View ${n + 1}'),
-                onPressed: () => onView(f),
-              ),
-            if (enabled) ...[
+          // The View buttons (a line's photos/files) sit on their own row, so
+          // the Approve/Reject/Edit actions drop to the line below rather than
+          // sharing a row with them and wrapping raggedly.
+          if (line.files.isNotEmpty)
+            Wrap(spacing: 8, runSpacing: 6, children: [
+              for (final (n, f) in line.files.indexed)
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+                  icon: const Icon(Icons.visibility_outlined, size: 18),
+                  label: Text(line.files.length == 1 ? 'View' : 'View ${n + 1}'),
+                  onPressed: () => onView(f),
+                ),
+            ]),
+          if (enabled)
+            Wrap(spacing: 8, runSpacing: 6, children: [
               BusyButton.text(
                 key: ValueKey('review-approve-${line.key}'),
                 icon: const Icon(Icons.check),
@@ -570,8 +576,7 @@ class _LineCard extends StatelessWidget {
                   onPressed: locked ? null : onClear,
                   child: const Text('Back to pending'),
                 ),
-            ],
-          ]),
+            ]),
           if (log.isNotEmpty)
             ExpansionTile(
               key: ValueKey('review-log-${line.key}'),
