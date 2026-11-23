@@ -19,6 +19,9 @@
 --     it is there when the change is sent. An answer a phone worked out by
 --     itself (Apple Maps on an iPhone, logged as apple_device) is the
 --     phone's, not the server's, and is not taken.
+--   * The ride's own option charges. The pets and luggage on the ride
+--     (option_charges) don't change when the drop-off moves, so they are kept
+--     in the new fare (ride_option_charges_total), as the booking had them.
 --
 -- The fare the app sends with the change (p_new_fare) is the fare the rider
 -- was shown, and nothing more: a change whose fare here is higher (a cent of
@@ -32,10 +35,14 @@
 --   * Dearer: at once within the admin's threshold, else the driver. As 0341.
 --   * The same fare: at once when "Auto-approve when it is cheaper" is on. As
 --     0341.
---   * Cheaper: at once only when that switch is on and the trip got shorter
---     to match: the fare falls by no bigger a share than the straight line
---     from the pickup to the drop-off did. A lower fare for a trip that is
---     not that much shorter waits for the driver, who sees both fares.
+--   * Cheaper: at once only when that switch is on and the ride has not
+--     started yet (accepted or arrived). Before the car drives, the pickup is
+--     where it is, so the card over pickup → new drop is the honest fare; once
+--     on trip the driver decides, since the car may already have driven
+--     further than the straight line to the new drop.
+--   * A ride whose booked fare is above the card (a bid or an offer was taken)
+--     waits for the driver on any change: repricing to the card would drop the
+--     premium they agreed to.
 --   * Where the server cannot price the change, the fare stays as it is and
 --     the driver is asked about the new drop-off. That is a change with no
 --     route of the server's own (none measured, or a ride with stops, whose
@@ -205,11 +212,25 @@ revoke execute on function public.ride_route_measured(double precision, double p
 -- the fare, the distance and time the change is recorded with, whether it
 -- applies at once (else the driver is asked), whether the fare card prices
 -- this kind of ride, and whether the server has a route of its own for it.
--- The fare is the card's over that route when both hold; otherwise it is the
--- fare the ride has, and the driver is asked. [p_distance_km] and
--- [p_duration_min] are what the app sent: recorded when the server has no
--- route of its own, and never priced. Raises drop_change_off and
--- drop_change_limit, as 0341.
+--
+-- The fare is the card over the new route, plus the ride's own option charges
+-- (pets, luggage; moving the drop doesn't change them), rounded as the ride's
+-- region books fares. When there is nothing to price it on, it is the fare the
+-- ride has, and the driver is asked. [p_distance_km] / [p_duration_min] are
+-- what the app sent: recorded when the server has no route of its own, and
+-- never priced. Raises drop_change_off and drop_change_limit, as 0341.
+--
+-- What applies at once:
+--   * dearer within the admin's threshold;
+--   * the same fare, when "Auto-approve when it is cheaper" is on;
+--   * cheaper, when that is on AND the ride has not started yet (accepted or
+--     arrived) — before the car drives, the pickup is where it is, so the
+--     card over pickup → new drop is the honest fare. Once on trip the driver
+--     decides, since the car may already have driven further than the straight
+--     line to the new drop.
+-- A ride whose fare was raised above the card at booking (a bid or an offer)
+-- is always held for the driver: repricing to the card would drop the premium
+-- they agreed to.
 create or replace function public.ride_drop_change_terms(
   p_ride public.ride_requests,
   p_lat double precision,
@@ -227,14 +248,14 @@ declare
   v_old      numeric;
   v_thresh   numeric;
   v_delta    numeric;
-  -- Straight lines from the pickup, in km: to the drop-off as it is, and to
-  -- the new one. The server's own measure of how far the trip goes.
-  v_line_old double precision;
-  v_line_new double precision;
+  v_options  numeric;
+  v_booked   numeric;  -- the card's price of the booked trip, options and all
+  v_bid      boolean;  -- the booked fare is above the card (a bid or an offer)
   v_priced   boolean;
   v_measured boolean := false;
   v_km       numeric;
   v_min      numeric;
+  v_card     numeric;
   v_fare     numeric;
   v_instant  boolean;
 begin
@@ -266,28 +287,34 @@ begin
                               'instant', false, 'priced', v_priced, 'measured', false);
   end if;
 
-  v_fare := public.ride_card_fare(p_ride.service, p_ride.country, p_ride.state, p_ride.city, p_ride.suburb, v_km, v_min);
-  v_fare := case when v_fare is null or v_fare <= 0 then 0
-                 when p_ride.whole_fare then ceil(v_fare)
-                 else round(v_fare, 2) end;
-
+  v_options := public.ride_option_charges_total(p_ride.option_charges);
   v_old := coalesce(p_ride.ride_fare, p_ride.fare, 0);
+
+  -- The fare: the card over the new route, with the ride's option charges kept.
+  v_card := public.ride_card_fare(p_ride.service, p_ride.country, p_ride.state, p_ride.city, p_ride.suburb, v_km, v_min);
+  v_fare := coalesce(v_card, 0) + v_options;
+  v_fare := case when v_fare <= 0 then 0 when p_ride.whole_fare then ceil(v_fare) else round(v_fare, 2) end;
+
+  -- The booked fare priced the same way, to tell a bid or an offer apart from
+  -- the route: what the card says the booked trip (its stored distance and
+  -- time) is worth, options and all. A booked fare above it is a premium.
+  v_booked := coalesce(public.ride_card_fare(p_ride.service, p_ride.country, p_ride.state, p_ride.city,
+                                             p_ride.suburb, p_ride.distance_km, p_ride.duration_min), 0) + v_options;
+  v_booked := case when v_booked <= 0 then 0 when p_ride.whole_fare then ceil(v_booked) else round(v_booked, 2) end;
+  v_bid := v_old > v_booked + 0.01;
+
   v_delta := v_fare - v_old;
   v_thresh := greatest((v_cfg->>'autoApproveRm')::numeric, v_old * (v_cfg->>'autoApprovePct')::numeric / 100.0);
-  if v_delta > 0 then
+  if v_bid then
+    -- The driver agreed to a fare above the card; they decide on any change.
+    v_instant := false;
+  elsif v_delta > 0 then
     v_instant := v_delta <= v_thresh;
   elsif v_delta = 0 then
     v_instant := (v_cfg->>'autoApproveCheaper')::boolean;
   else
-    -- Cheaper: only when the trip got shorter to match, the fare falling by
-    -- no bigger a share than the straight line did.
-    v_line_new := public.geo_distance_m(p_ride.pickup_lat, p_ride.pickup_lng, p_lat, p_lng) / 1000.0;
-    if p_ride.drop_lat is not null and p_ride.drop_lng is not null then
-      v_line_old := public.geo_distance_m(p_ride.pickup_lat, p_ride.pickup_lng, p_ride.drop_lat, p_ride.drop_lng) / 1000.0;
-    end if;
-    v_instant := (v_cfg->>'autoApproveCheaper')::boolean
-                 and v_line_old is not null and v_line_new < v_line_old
-                 and v_fare * v_line_old::numeric >= v_old * v_line_new::numeric;
+    -- Cheaper: at once only before the car has started driving.
+    v_instant := (v_cfg->>'autoApproveCheaper')::boolean and p_ride.status in ('accepted', 'arrived');
   end if;
 
   return jsonb_build_object('fare', v_fare, 'distance_km', round(v_km, 2), 'duration_min', round(v_min, 1),

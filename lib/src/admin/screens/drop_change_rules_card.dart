@@ -121,8 +121,8 @@ class _DropChangeRulesCardState extends ConsumerState<DropChangeRulesCard> {
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Auto-approve when it is cheaper'),
                     subtitle: const Text(
-                      'A change that keeps the fare, or lowers it for a trip that got shorter to match, applies '
-                      'instantly. Any other lower fare is held for the driver.',
+                      'A cheaper change applies instantly before the ride starts; once the car is driving the '
+                      'driver decides. A ride with a fare raised above the card always asks the driver.',
                     ),
                     value: _cheaper,
                     onChanged: widget.canEdit ? (v) => setState(() => _cheaper = v) : null,

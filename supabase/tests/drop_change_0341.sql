@@ -12,12 +12,14 @@
 --     real ride holds, so the driver's own answer was refused (0428).
 --   * With nothing held there is nothing to answer.
 --   * The fare of a change is the server's (0431): the ride's fare card over
---     the route the server measured. The fare sent with the change is only
---     the fare the rider was shown, and a change is refused when the server's
---     fare is higher. A lower fare applies at once only when the trip got
---     shorter to match. With no route of the server's own, or on a ride the
---     fare card does not price, the fare stays and the driver decides.
---     ride_drop_change_quote says the same before the rider confirms.
+--     the route the server measured, with the ride's option charges kept. The
+--     fare sent with the change is only the fare the rider was shown, and a
+--     change is refused when the server's fare is higher. A cheaper change
+--     applies at once only before the ride starts; a bid ride, a ride with no
+--     route of the server's own, and a ride the fare card does not price all
+--     wait for the driver. ride_drop_change_quote says the same beforehand.
+--   * The drop_change_* columns and the service are server-only: a client
+--     can't write them on a direct update.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/drop_change_0341.sql
 --
@@ -83,30 +85,31 @@ insert into public.fare_tariffs (id, level, country, state, city, label, base_fa
    25, 1, null, null)
 on conflict (id) do nothing;
 
--- Three rides under way, booked to Mid Valley at 20.00. Each carries the
--- driver's account id in partner_id, as a ride the app has taken does. They
--- were picked up at KLCC, in the made-up country.
+-- Three rides under way, booked to Mid Valley. Each carries the driver's
+-- account id in partner_id, as a ride the app has taken does, and is booked at
+-- the card's price of its 8 km / 20 min trip (19.25), so none reads as a bid.
+-- They were picked up at KLCC, in the made-up country.
 insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_fare, pickup_name,
                                   drop_name, drop_address, drop_lat, drop_lng, distance_km, duration_min,
                                   pickup_lat, pickup_lng, country) values
   ('00000000-0000-0000-0000-0000000341e1', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 19.25, 19.25, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
    3.1579, 101.7116, 'Testland 0341'),
   ('00000000-0000-0000-0000-0000000341e2', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 19.25, 19.25, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
    3.1579, 101.7116, 'Testland 0341'),
   ('00000000-0000-0000-0000-0000000341e3', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 19.25, 19.25, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
    3.1579, 101.7116, 'Testland 0341')
 on conflict (id) do nothing;
 
 -- The routes the route service measured from KLCC a moment ago (0431), as it
 -- logs every route the app asks it for: to Bangsar Village 9.5 km in 24
--- minutes (22.00 on the card), to Sunway Pyramid 21.5 km in 38 (35.00), to
--- Mid Valley 8.0 km in 20 (19.25) and to Pavilion 1.6 km in 6 (9.05).
+-- minutes (22.00 on the card), to Sunway Pyramid 21.5 km in 38 (35.00) and to
+-- Pavilion 1.6 km in 6 (9.05). Bukit Bintang is not here (section 12).
 insert into public.fare_ai_responses (provider, origin_lat, origin_lng, dest_lat, dest_lng, success,
                                       distance_km, duration_min) values
   ('waze', 3.1579, 101.7116, 3.1302, 101.6712, true, 9.5, 24),
@@ -114,76 +117,93 @@ insert into public.fare_ai_responses (provider, origin_lat, origin_lng, dest_lat
   ('waze', 3.1579, 101.7116, 3.1177, 101.6774, true, 8.0, 20),
   ('waze', 3.1579, 101.7116, 3.1488, 101.7133, true, 1.6, 6);
 
--- The rides of the 0431 sections, each booked like the three above unless it
--- says otherwise.
+-- The rides of the 0431 sections. Each is picked up at KLCC and booked to Mid
+-- Valley over 8 km / 20 min, at the card's 19.25 unless it says otherwise, and
+-- carries the driver's account id. "arr" is arrived (not yet driving), "trip"
+-- is on trip.
 insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_fare, pickup_name,
                                   drop_name, drop_address, drop_lat, drop_lng, distance_km, duration_min,
-                                  pickup_lat, pickup_lng, country, whole_fare, stops, cargo_description,
-                                  airport_fare, mygig, fare_mode) values
+                                  pickup_lat, pickup_lng, country, whole_fare, stops, option_charges,
+                                  cargo_description, airport_fare, mygig, fare_mode) values
   ('00000000-0000-0000-0000-0000000431e1', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 19.25, 19.25, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null),
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null, null),
   ('00000000-0000-0000-0000-0000000431e2', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 19.25, 19.25, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null),
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null, null),
+  -- Arrived, not yet driving: a cheaper change applies at once.
   ('00000000-0000-0000-0000-0000000431e3', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'arrived', 19.25, 19.25, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null),
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null, null),
+  -- On trip: the same cheaper change waits for the driver.
   ('00000000-0000-0000-0000-0000000431e4', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 19.25, 19.25, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null),
-  -- Agreed at 30.00 and at 40.00: more than the card's 19.25 for the trip.
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null, null),
+  -- A bid: booked at 30, above the card's 19.25 for the trip.
   ('00000000-0000-0000-0000-0000000431e5', '00000000-0000-0000-0000-0000000341a1',
    '00000000-0000-0000-0000-0000000341b1', 'on_trip', 30, 30, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null),
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null, null),
+  -- A bid, and arrived: still the driver's call, though cheaper and pre-trip.
   ('00000000-0000-0000-0000-0000000431e6', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 40, 40, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'arrived', 30, 30, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null),
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null, null),
+  -- A pet charge of 10, in the fare (29.25): kept when the drop moves.
   ('00000000-0000-0000-0000-0000000431e7', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 29.25, 29.25, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null),
-  -- Where fares are whole amounts.
+   3.1579, 101.7116, 'Testland 0341', false, '[]',
+   '[{"kind": "pet", "name": "Pet charge", "amount": 10}]', null, null, null, null),
+  -- Arrived, where fares are whole amounts (booked 20 = ceil of 19.25).
   ('00000000-0000-0000-0000-0000000431e8', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'arrived', 20, 20, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', true, '[]', null, null, null, null),
-  -- With a stop on the way.
+   3.1579, 101.7116, 'Testland 0341', true, '[]', null, null, null, null, null),
+  -- With a stop on the way: its route is not pickup → drop.
   ('00000000-0000-0000-0000-0000000431e9', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 19.25, 19.25, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
    3.1579, 101.7116, 'Testland 0341', false,
-   '[{"name": "Pavilion", "address": "Jalan Bukit Bintang, Kuala Lumpur", "lat": 3.1488, "lng": 101.7133}]', null, null, null, null),
+   '[{"name": "Pavilion", "address": "Jalan Bukit Bintang, Kuala Lumpur", "lat": 3.1488, "lng": 101.7133}]',
+   null, null, null, null, null),
   -- Rides the fare card does not price, at 50.00: Freight, an airport fare,
   -- myGiG and an operator's booking.
   ('00000000-0000-0000-0000-0000000431ea', '00000000-0000-0000-0000-0000000341a1',
    '00000000-0000-0000-0000-0000000341b1', 'on_trip', 50, 50, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', 'Boxes of books', null, null, null),
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, 'Boxes of books', null, null, null),
   ('00000000-0000-0000-0000-0000000431eb', '00000000-0000-0000-0000-0000000341a1',
    '00000000-0000-0000-0000-0000000341b1', 'on_trip', 50, 50, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', null, '{"total": 50}', null, null),
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, '{"total": 50}', null, null),
   ('00000000-0000-0000-0000-0000000431ec', '00000000-0000-0000-0000-0000000341a1',
    '00000000-0000-0000-0000-0000000341b1', 'on_trip', 50, 50, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, '{}', null),
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, '{}', null),
   ('00000000-0000-0000-0000-0000000431ed', '00000000-0000-0000-0000-0000000341a1',
    '00000000-0000-0000-0000-0000000341b1', 'on_trip', 50, 50, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, 'fixed')
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null, 'fixed'),
+  -- Arrived, for the no-route-then-route check (section 12).
+  ('00000000-0000-0000-0000-0000000431e0'::uuid, '00000000-0000-0000-0000-0000000341a1',
+   '00000000-0000-0000-0000-0000000341b1', 'arrived', 19.25, 19.25, 'KLCC',
+   'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
+   3.1579, 101.7116, 'Testland 0341', false, '[]', null, null, null, null, null)
 on conflict (id) do nothing;
--- And one still waiting for a driver.
-insert into public.ride_requests (id, rider_id, status, fare, ride_fare, pickup_name, drop_name, drop_lat, drop_lng,
-                                  distance_km, duration_min, pickup_lat, pickup_lng, country) values
-  ('00000000-0000-0000-0000-0000000431ee', '00000000-0000-0000-0000-0000000341a1', 'open', 20, 20, 'KLCC',
-   'Mid Valley', 3.1177, 101.6774, 8.0, 20, 3.1579, 101.7116, 'Testland 0341')
+-- And one still waiting for a driver, and one for the guard test (section 18).
+insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_fare, pickup_name, drop_name,
+                                  drop_address, drop_lat, drop_lng, distance_km, duration_min, pickup_lat, pickup_lng,
+                                  country, stops) values
+  ('00000000-0000-0000-0000-0000000431ee', '00000000-0000-0000-0000-0000000341a1', null, 'open', 19.25, 19.25, 'KLCC',
+   'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20, 3.1579, 101.7116, 'Testland 0341', '[]'),
+  ('00000000-0000-0000-0000-0000000431ef', '00000000-0000-0000-0000-0000000341a1', '00000000-0000-0000-0000-0000000341b1',
+   'on_trip', 19.25, 19.25, 'KLCC',
+   'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20, 3.1579, 101.7116, 'Testland 0341', '[]')
 on conflict (id) do nothing;
 
 create or replace function pg_temp.check(p_ok boolean, p_what text) returns void language plpgsql as $$
@@ -236,12 +256,12 @@ select pg_temp.check(
   public.ride_drop_change_request('00000000-0000-0000-0000-0000000341e1', 'Bangsar Village',
                                   'Jalan Telawi 1, Kuala Lumpur', 3.1302, 101.6712, 9.5, 24, 22)
     = '{"applied": true, "pending": false, "fare": 22}'::jsonb,
-  'RM 2 more on a RM 20 ride is within the threshold: applied at once');
+  'the card''s 22.00, RM 2.75 more, is within the threshold: applied at once');
 reset role;
 select pg_temp.check((select drop_name = 'Bangsar Village' and drop_address = 'Jalan Telawi 1, Kuala Lumpur'
                          and drop_lat = 3.1302 and drop_lng = 101.6712
                          and distance_km = 9.5 and duration_min = 24
-                         and ride_fare = 22 and fare = 20
+                         and ride_fare = 22 and fare = 19.25
                          and drop_change_count = 1
                          and drop_change_requested_at is null and drop_change_fare is null
                          and drop_change_outcome = 'accepted' and drop_change_outcome_by = 'auto'
@@ -256,7 +276,7 @@ select pg_temp.check(
   public.ride_drop_change_request('00000000-0000-0000-0000-0000000341e2', 'Sunway Pyramid',
                                   'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 35)
     = '{"applied": false, "pending": true, "fare": 35}'::jsonb,
-  'RM 15 more is over the threshold: held for the driver');
+  'the card''s 35.00 is over the threshold: held for the driver');
 select pg_temp.check(
   public.ride_drop_change_request('00000000-0000-0000-0000-0000000341e3', 'Sunway Pyramid',
                                   'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 35)
@@ -268,7 +288,7 @@ select pg_temp.check((select count(*) = 2 from public.ride_requests
                          and drop_name = 'Mid Valley' and drop_address = 'Lingkaran Syed Putra, Kuala Lumpur'
                          and drop_lat = 3.1177 and drop_lng = 101.6774
                          and distance_km = 8.0 and duration_min = 20
-                         and ride_fare = 20 and fare = 20
+                         and ride_fare = 19.25 and fare = 19.25
                          and drop_change_count = 0
                          and drop_change_requested_at is not null and drop_change_requested_by = 'rider'
                          and drop_change_name = 'Sunway Pyramid'
@@ -292,7 +312,7 @@ reset role;
 select pg_temp.check((select drop_name = 'Sunway Pyramid' and drop_address = 'Jalan PJS 11/15, Subang Jaya'
                          and drop_lat = 3.0733 and drop_lng = 101.6078
                          and distance_km = 21.5 and duration_min = 38
-                         and ride_fare = 35 and fare = 20
+                         and ride_fare = 35 and fare = 19.25
                          and drop_change_count = 1
                          and drop_change_requested_at is null and drop_change_requested_by is null
                          and drop_change_name is null and drop_change_address is null
@@ -324,7 +344,7 @@ select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-
 select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e3', false)$q$,
                        'not_authorized', 'a driver whose partners.id is the ride''s partner_id declining the change');
 reset role;
-select pg_temp.check((select drop_name = 'Mid Valley' and ride_fare = 20 and drop_change_count = 0
+select pg_temp.check((select drop_name = 'Mid Valley' and ride_fare = 19.25 and drop_change_count = 0
                          and drop_change_requested_at is not null and drop_change_requested_by = 'rider'
                          and drop_change_name = 'Sunway Pyramid' and drop_change_fare = 35
                          and drop_change_outcome is null and drop_change_outcome_by is null
@@ -341,7 +361,7 @@ reset role;
 select pg_temp.check((select drop_name = 'Mid Valley' and drop_address = 'Lingkaran Syed Putra, Kuala Lumpur'
                          and drop_lat = 3.1177 and drop_lng = 101.6774
                          and distance_km = 8.0 and duration_min = 20
-                         and ride_fare = 20 and fare = 20
+                         and ride_fare = 19.25 and fare = 19.25
                          and drop_change_count = 0
                          and drop_change_requested_at is null and drop_change_requested_by is null
                          and drop_change_name is null and drop_change_address is null
@@ -366,7 +386,7 @@ reset role;
 select pg_temp.check((select count(*) = 3 from public.ride_requests
                        where (id = '00000000-0000-0000-0000-0000000341e1' and ride_fare = 22 and drop_change_count = 1)
                           or (id = '00000000-0000-0000-0000-0000000341e2' and ride_fare = 35 and drop_change_count = 1)
-                          or (id = '00000000-0000-0000-0000-0000000341e3' and ride_fare = 20 and drop_change_count = 0)),
+                          or (id = '00000000-0000-0000-0000-0000000341e3' and ride_fare = 19.25 and drop_change_count = 0)),
   'and the rides are left as they were');
 
 -- 7. Still for signed-in callers only, as 0341 granted it -------------------------------------------
@@ -390,17 +410,17 @@ set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
 select pg_temp.check(
   public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e1', 3.1302, 101.6712, 9.5, 24) = '{"fare": 22, "instant": true}'::jsonb,
-  'to Bangsar Village: 22.00, RM 2 more, applied at once');
+  'to Bangsar Village: 22.00, within the threshold, applied at once');
 select pg_temp.check(
   public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e1', 3.0733, 101.6078, 21.5, 38) = '{"fare": 35, "instant": false}'::jsonb,
-  'to Sunway Pyramid: 35.00, RM 15 more, for the driver to accept');
+  'to Sunway Pyramid: 35.00, over the threshold, for the driver to accept');
 select pg_temp.check(
   public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e1', 3.0733, 101.6078, 1, 2) = '{"fare": 35, "instant": false}'::jsonb,
   'the route is the one the server measured (21.5 km in 38 minutes), whatever distance and time are sent');
 select pg_temp.check(
   public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e1', 3.0733, 101.6078, null, null) = '{"fare": 35, "instant": false}'::jsonb,
   'and with none sent');
-select pg_temp.refused($q$select public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431ff', 3.1302, 101.6712, 9.5, 24)$q$,
+select pg_temp.refused($q$select public.ride_drop_change_quote('00000000-0000-0000-0000-000000999999', 3.1302, 101.6712, 9.5, 24)$q$,
                        'not_found', 'a quote for a ride that is not there');
 select pg_temp.refused($q$select public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431ee', 3.1302, 101.6712, 9.5, 24)$q$,
                        'not_ongoing', 'a quote for a ride no driver has taken');
@@ -419,7 +439,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000341c1');
 select pg_temp.refused($q$select public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e1', 3.1302, 101.6712, 9.5, 24)$q$,
                        'not_authorized', 'a stranger asking for the rider''s quote');
 reset role;
-select pg_temp.check((select drop_name = 'Mid Valley' and ride_fare = 20 and distance_km = 8.0 and duration_min = 20
+select pg_temp.check((select drop_name = 'Mid Valley' and ride_fare = 19.25 and distance_km = 8.0 and duration_min = 20
                          and drop_change_count = 0 and drop_change_requested_at is null and drop_change_fare is null
                          and drop_change_outcome is null
                         from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e1'),
@@ -461,254 +481,208 @@ reset role;
 select pg_temp.check((select count(*) = 2 from public.ride_requests
                        where id in ('00000000-0000-0000-0000-0000000431e1', '00000000-0000-0000-0000-0000000431e2')
                          and drop_name = 'Mid Valley' and drop_lat = 3.1177 and drop_lng = 101.6774
-                         and distance_km = 8.0 and duration_min = 20 and ride_fare = 20 and fare = 20
+                         and distance_km = 8.0 and duration_min = 20 and ride_fare = 19.25 and fare = 19.25
                          and drop_change_count = 0 and drop_change_requested_at is null
                          and drop_change_fare is null and drop_change_outcome is null),
   'the refused changes left both rides as booked, with nothing waiting');
 
--- Sent at the server's fare, or above it, the change goes on at the server's
--- fare. A lower fare for the trip the ride is making already is not a
--- shorter trip: the driver decides. So does a dearer one over the threshold.
+-- 10. A dearer change within the threshold applies at once --------------------------------------------
+-- The ride is on trip; a dearer change is not held back by that.
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
 select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e1', 'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20, 19.25)
-    = '{"applied": false, "pending": true, "fare": 19.25}'::jsonb,
-  'a lower fare for the same drop-off waits for the driver');
-select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e2', 'Sunway Pyramid', 'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 1, 2, 99)
-    = '{"applied": false, "pending": true, "fare": 35}'::jsonb,
-  'a drop-off 21.5 km away is held at the server''s fare, whatever fare and distance are sent');
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e1', 'Bangsar Village',
+                                  'Jalan Telawi 1, Kuala Lumpur', 3.1302, 101.6712, 9.5, 24, 22)
+    = '{"applied": true, "pending": false, "fare": 22}'::jsonb,
+  'sent at the card''s 22.00, the change applies at once');
 reset role;
-select pg_temp.check((select drop_name = 'Mid Valley' and ride_fare = 20 and drop_change_count = 0
-                         and drop_change_requested_at is not null and drop_change_requested_by = 'rider'
-                         and drop_change_fare = 19.25 and drop_change_distance_km = 8.0 and drop_change_duration_min = 20
-                         and drop_change_outcome is null
+select pg_temp.check((select drop_name = 'Bangsar Village' and ride_fare = 22 and fare = 19.25
+                         and distance_km = 9.5 and duration_min = 24 and drop_change_count = 1
+                         and drop_change_requested_at is null
+                         and drop_change_outcome = 'accepted' and drop_change_outcome_by = 'auto'
                         from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e1'),
-  'the ride keeps its fare of 20.00 while the driver is asked about 19.25');
-select pg_temp.check((select drop_name = 'Mid Valley' and ride_fare = 20 and distance_km = 8.0 and duration_min = 20
+  'the ride goes to Bangsar Village over the measured 9.5 km at 22.00');
+
+-- 11. A dearer change over the threshold waits for the driver -----------------------------------------
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e2', 'Sunway Pyramid',
+                                  'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 1, 2, 35)
+    = '{"applied": false, "pending": true, "fare": 35}'::jsonb,
+  'held at the server''s 35.00, over the measured route, whatever distance is sent');
+reset role;
+select pg_temp.check((select drop_name = 'Mid Valley' and ride_fare = 19.25 and distance_km = 8.0 and duration_min = 20
                          and drop_change_name = 'Sunway Pyramid' and drop_change_fare = 35
                          and drop_change_distance_km = 21.5 and drop_change_duration_min = 38
                         from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e2'),
-  'the held change carries the server''s fare and the route it measured, not the 1 km and the 99.00 sent');
--- The driver turns the lower fare down: the ride stays at 20.00.
+  'the held change carries the server''s fare and the route it measured, not the 1 km sent');
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
 select pg_temp.check(
-  public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000431e1', false) = '{"accepted": false}'::jsonb,
-  'the driver declines the lower fare for the same drop-off');
+  public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000431e2', true) = '{"accepted": true}'::jsonb,
+  'the driver accepts it');
 reset role;
-select pg_temp.check((select ride_fare = 20 and drop_name = 'Mid Valley' and drop_change_count = 0
-                         and drop_change_outcome = 'declined' and drop_change_outcome_by = 'partner'
-                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e1'),
-  'and the fare is still 20.00');
+select pg_temp.check((select drop_name = 'Sunway Pyramid' and ride_fare = 35 and distance_km = 21.5 and duration_min = 38
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e2'),
+  'the ride goes to Sunway Pyramid at 35.00');
 
--- 10. Without a route of the server's own the fare stays --------------------------------------------
--- To Bukit Bintang the route service has measured nothing that counts: one
--- answer is 20 minutes old, one is a phone's own, one went through a stop
--- and one failed. There is nothing to price the change on, so the fare stays
--- as it is, whatever distance and time are sent, and the driver is asked
--- about the new drop-off.
-insert into public.fare_ai_responses (provider, origin_lat, origin_lng, dest_lat, dest_lng, success,
-                                      distance_km, duration_min, extra, created_at) values
-  ('waze', 3.1579, 101.7116, 3.1466, 101.7108, true, 2.4, 9, null, now() - interval '20 minutes'),
-  ('apple_device', 3.1579, 101.7116, 3.1466, 101.7108, true, 2.4, 9, null, now()),
-  ('waze', 3.1579, 101.7116, 3.1466, 101.7108, true, 4.0, 15, '{"stops": [{"lat": 3.14, "lng": 101.69}]}', now()),
-  ('waze', 3.1579, 101.7116, 3.1466, 101.7108, false, 2.4, 9, null, now());
+-- 12. A cheaper change applies at once before the trip, and waits once on it --------------------------
+-- Pavilion is 9.05 on the card, cheaper than the 19.25 booked.
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
 select pg_temp.check(
-  public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e3', 3.1466, 101.7108, 0.2, 1) = '{"fare": 20, "instant": false}'::jsonb,
-  'the quote without a measured route: the fare the ride has, for the driver to accept');
-select pg_temp.refused($q$select public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e3', 'Bukit Bintang', 'Jalan Sultan Ismail, Kuala Lumpur', 3.1466, 101.7108, 0.2, 1, 6)$q$,
-                       'DROP_CHANGE_FARE', 'a drop-off with no measured route, sent at a lower fare');
+  public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e3', 3.1488, 101.7133, 1.6, 6) = '{"fare": 9.05, "instant": true}'::jsonb,
+  'on an arrived ride the quote says it applies at once');
 select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e3', 'Bukit Bintang', 'Jalan Sultan Ismail, Kuala Lumpur', 3.1466, 101.7108, 0.2, 1, 20)
-    = '{"applied": false, "pending": true, "fare": 20}'::jsonb,
+  public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e4', 3.1488, 101.7133, 1.6, 6) = '{"fare": 9.05, "instant": false}'::jsonb,
+  'on a ride under way the quote says the driver decides');
+-- Arrived (not yet driving): the cheaper drop applies at once.
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e3', 'Pavilion', 'Jalan Bukit Bintang, Kuala Lumpur',
+                                  3.1488, 101.7133, 1.6, 6, 9.05)
+    = '{"applied": true, "pending": false, "fare": 9.05}'::jsonb,
+  'before the ride starts the cheaper drop applies at once');
+-- On trip: the same cheaper drop waits for the driver.
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e4', 'Pavilion', 'Jalan Bukit Bintang, Kuala Lumpur',
+                                  3.1488, 101.7133, 1.6, 6, 9.05)
+    = '{"applied": false, "pending": true, "fare": 9.05}'::jsonb,
+  'once the car is driving the cheaper drop waits for the driver');
+reset role;
+select pg_temp.check((select drop_name = 'Pavilion' and ride_fare = 9.05 and drop_change_count = 1
+                         and drop_change_requested_at is null and drop_change_outcome = 'accepted'
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e3'),
+  'the arrived ride is at Pavilion at 9.05');
+select pg_temp.check((select drop_name = 'Mid Valley' and ride_fare = 19.25 and drop_change_count = 0
+                         and drop_change_requested_at is not null and drop_change_fare = 9.05
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e4'),
+  'the on-trip ride keeps its fare while the driver is asked about 9.05');
+
+-- Where fares are whole amounts the cheaper fare is rounded up, as a booking is.
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e8', 'Pavilion', 'Jalan Bukit Bintang, Kuala Lumpur',
+                                  3.1488, 101.7133, 1.6, 6, 10)
+    = '{"applied": true, "pending": false, "fare": 10}'::jsonb,
+  'where fares are whole amounts 9.05 is 10, applied at once on an arrived ride');
+reset role;
+
+-- With no route of the server's own the fare stays and the driver is asked;
+-- once the route is measured the cheaper drop applies (the ride is arrived).
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.check(
+  public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e0'::uuid, 3.1466, 101.7108, 0.2, 1) = '{"fare": 19.25, "instant": false}'::jsonb,
+  'without a measured route the quote is the fare the ride has, for the driver');
+select pg_temp.refused($q$select public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e0', 'Bukit Bintang', 'Jalan Sultan Ismail, Kuala Lumpur', 3.1466, 101.7108, 0.2, 1, 6)$q$,
+                       'DROP_CHANGE_FARE', 'a drop with no measured route, sent at a lower fare');
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e0', 'Bukit Bintang', 'Jalan Sultan Ismail, Kuala Lumpur',
+                                  3.1466, 101.7108, 0.2, 1, 19.25)
+    = '{"applied": false, "pending": true, "fare": 19.25}'::jsonb,
   'without a route of the server''s own the change waits for the driver, at the fare the ride has');
+select pg_temp.check(
+  public.ride_drop_change_withdraw('00000000-0000-0000-0000-0000000431e0') = '{"withdrawn": true}'::jsonb,
+  'the rider withdraws it');
 reset role;
-select pg_temp.check((select drop_name = 'Mid Valley' and ride_fare = 20 and distance_km = 8.0 and duration_min = 20
-                         and drop_change_count = 0
-                         and drop_change_requested_at is not null and drop_change_name = 'Bukit Bintang'
-                         and drop_change_distance_km = 0.2 and drop_change_duration_min = 1
-                         and drop_change_fare = 20
-                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e3'),
-  'the fare asked of the driver is the 20.00 the ride has: the 0.2 km sent prices nothing');
--- The rider takes the request back; the route service then measures the
--- route (2.4 km in 9 minutes, 10.95) and the same change applies at once: a
--- lower fare for a trip that is shorter to match.
+insert into public.fare_ai_responses (provider, origin_lat, origin_lng, dest_lat, dest_lng, success, distance_km, duration_min)
+  values ('gmap', 3.1579, 101.7116, 3.1466, 101.7108, true, 2.4, 9);
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
 select pg_temp.check(
-  public.ride_drop_change_withdraw('00000000-0000-0000-0000-0000000431e3') = '{"withdrawn": true}'::jsonb,
-  'the rider withdraws the held change');
-reset role;
-insert into public.fare_ai_responses (provider, origin_lat, origin_lng, dest_lat, dest_lng, success,
-                                      distance_km, duration_min) values
-  ('gmap', 3.1579, 101.7116, 3.1466, 101.7108, true, 2.4, 9);
-set local role authenticated;
-select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
-select pg_temp.check(
-  public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e3', 3.1466, 101.7108, 0.2, 1) = '{"fare": 10.95, "instant": true}'::jsonb,
-  'the quote once the route is measured: the card over it, applied at once');
-select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e3', 'Bukit Bintang', 'Jalan Sultan Ismail, Kuala Lumpur', 3.1466, 101.7108, 0.2, 1, 20)
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e0', 'Bukit Bintang', 'Jalan Sultan Ismail, Kuala Lumpur',
+                                  3.1466, 101.7108, 0.2, 1, 10.95)
     = '{"applied": true, "pending": false, "fare": 10.95}'::jsonb,
-  'with the route measured by the server the change applies at once, at the server''s fare');
+  'with the route measured (2.4 km in 9 minutes) the cheaper drop applies at once on the arrived ride');
 reset role;
-select pg_temp.check((select drop_name = 'Bukit Bintang' and drop_lat = 3.1466 and drop_lng = 101.7108
-                         and distance_km = 2.4 and duration_min = 9 and ride_fare = 10.95 and fare = 20
-                         and drop_change_count = 1 and drop_change_requested_at is null
-                         and drop_change_outcome = 'accepted' and drop_change_outcome_by = 'auto'
-                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e3'),
+select pg_temp.check((select drop_name = 'Bukit Bintang' and ride_fare = 10.95 and distance_km = 2.4 and duration_min = 9
+                         and drop_change_count = 1
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e0'),
   'the ride goes to Bukit Bintang over the measured 2.4 km at 10.95, not the 0.2 km sent');
 
--- 11. A lower fare applies at once when the trip got shorter to match ---------------------------------
--- Pavilion is 1.03 km from the pickup in a straight line, Mid Valley 5.87:
--- the trip is under a fifth as long, and the fare falls from 20.00 to 9.05.
-set local role authenticated;
-select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
-select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e4', 'Pavilion', 'Jalan Bukit Bintang, Kuala Lumpur', 3.1488, 101.7133, 1.6, 6, 9.05)
-    = '{"applied": true, "pending": false, "fare": 9.05}'::jsonb,
-  'a nearer drop-off at a lower fare applies at once');
--- Where fares are whole amounts the fare is rounded up, as a booking is.
-select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e8', 'Pavilion', 'Jalan Bukit Bintang, Kuala Lumpur', 3.1488, 101.7133, 1.6, 6, 10)
-    = '{"applied": true, "pending": false, "fare": 10}'::jsonb,
-  'where fares are whole amounts 9.05 is 10');
-reset role;
-select pg_temp.check((select count(*) = 2 from public.ride_requests
-                       where ((id = '00000000-0000-0000-0000-0000000431e4' and ride_fare = 9.05) or (id = '00000000-0000-0000-0000-0000000431e8' and ride_fare = 10))
-                         and drop_name = 'Pavilion' and distance_km = 1.6 and duration_min = 6 and fare = 20
-                         and drop_change_count = 1 and drop_change_outcome = 'accepted'
-                         and drop_change_outcome_by = 'auto'),
-  'both rides go to Pavilion at the lower fare');
-
--- 12. A lower fare for a trip that is not shorter to match waits for the driver -----------------------
--- A ride agreed at 30.00, above its card's 19.25. Bangsar Village is 5.44 km
--- from the pickup against Mid Valley's 5.87, so the trip is 7 % shorter;
--- the card's 22.00 there is 27 % less. And a ride agreed at 40.00 moved to
--- Sunway Pyramid: a longer trip at a lower fare (35.00).
+-- 13. A bid waits for the driver on any change -------------------------------------------------------
+-- e5 and e6 were booked at 30, above the card's 19.25. Repricing to the card
+-- would drop the premium, so the driver decides -- even a cheaper drop, even
+-- before the trip starts.
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
 select pg_temp.check(
   public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e5', 3.1302, 101.6712, 9.5, 24) = '{"fare": 22, "instant": false}'::jsonb,
-  'the quote says the driver will be asked');
+  'a bid ride under way: the card''s 22.00, for the driver');
 select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e5', 'Bangsar Village', 'Jalan Telawi 1, Kuala Lumpur', 3.1302, 101.6712, 9.5, 24, 22)
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e5', 'Bangsar Village', 'Jalan Telawi 1, Kuala Lumpur',
+                                  3.1302, 101.6712, 9.5, 24, 22)
     = '{"applied": false, "pending": true, "fare": 22}'::jsonb,
-  'a fare that falls further than the trip shortens waits for the driver');
--- (Sent a cent under the server's fare, as an app's own rounding may be: it
--- goes on, at the server's fare.)
+  'the bid ride''s change is held');
 select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e6', 'Sunway Pyramid', 'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 34.99)
-    = '{"applied": false, "pending": true, "fare": 35}'::jsonb,
-  'a lower fare for a longer trip waits for the driver');
-reset role;
-select pg_temp.check((select count(*) = 2 from public.ride_requests
-                       where ((id = '00000000-0000-0000-0000-0000000431e5' and ride_fare = 30 and drop_change_fare = 22)
-                           or (id = '00000000-0000-0000-0000-0000000431e6' and ride_fare = 40 and drop_change_fare = 35))
-                         and drop_name = 'Mid Valley' and drop_change_count = 0
-                         and drop_change_requested_at is not null and drop_change_outcome is null),
-  'both rides keep the fare agreed while the driver is asked');
--- The driver may take it: the answer is theirs.
-set local role authenticated;
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e6', 'Pavilion', 'Jalan Bukit Bintang, Kuala Lumpur',
+                                  3.1488, 101.7133, 1.6, 6, 9.05)
+    = '{"applied": false, "pending": true, "fare": 9.05}'::jsonb,
+  'a bid ride, arrived and a cheaper drop, still waits for the driver');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
 select pg_temp.check(
   public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000431e5', true) = '{"accepted": true}'::jsonb,
-  'the driver accepts the lower fare');
+  'the driver accepts the bid ride''s change');
 reset role;
 select pg_temp.check((select drop_name = 'Bangsar Village' and ride_fare = 22 and fare = 30
-                         and distance_km = 9.5 and duration_min = 24 and drop_change_count = 1
-                         and drop_change_outcome = 'accepted' and drop_change_outcome_by = 'partner'
                         from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e5'),
-  'accepted by the driver, the ride goes to Bangsar Village at 22.00');
+  'accepted, the bid ride goes to Bangsar Village at the card''s 22.00');
 
--- 13. The admin's rules still decide (0341) ----------------------------------------------------------
--- "Auto-approve when it is cheaper" off: a lower fare waits for the driver
--- even for a trip that is shorter to match.
-update public.app_settings set value = value || '{"autoApproveCheaper": false}' where key = 'drop_change_rules';
+-- 14. The ride's option charges are kept -------------------------------------------------------------
+-- e7 carries a 10.00 pet charge in its 29.25 fare. Moving the drop keeps it:
+-- the fare is the card over the new route plus the 10.00.
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
 select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e7', 'Pavilion', 'Jalan Bukit Bintang, Kuala Lumpur', 3.1488, 101.7133, 1.6, 6, 9.05)
-    = '{"applied": false, "pending": true, "fare": 9.05}'::jsonb,
-  'with auto-approve when cheaper off, the nearer drop-off waits for the driver');
+  public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e7', 3.1302, 101.6712, 9.5, 24) = '{"fare": 32, "instant": true}'::jsonb,
+  'to Bangsar Village: 22.00 on the card plus the 10.00 pet charge, within the threshold');
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e7', 'Bangsar Village', 'Jalan Telawi 1, Kuala Lumpur',
+                                  3.1302, 101.6712, 9.5, 24, 32)
+    = '{"applied": true, "pending": false, "fare": 32}'::jsonb,
+  'applied at the card fare plus the pet charge');
 reset role;
--- One change a ride: a ride that has had one takes no more, and says so
--- before the rider confirms too.
-update public.app_settings set value = value || '{"autoApproveCheaper": true, "maxChangesPerRide": 1}'
- where key = 'drop_change_rules';
-set local role authenticated;
-select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
-select pg_temp.refused($q$select public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e4', 'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20, 20)$q$,
-                       'drop_change_limit', 'a second change on a ride allowed one');
-select pg_temp.refused($q$select public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e4', 3.1177, 101.6774, 8.0, 20)$q$,
-                       'drop_change_limit', 'a quote for a second change on a ride allowed one');
-reset role;
--- Changes switched off.
-update public.app_settings set value = value || '{"allow": false, "maxChangesPerRide": 2}'
- where key = 'drop_change_rules';
-set local role authenticated;
-select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
-select pg_temp.refused($q$select public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e9', 'Bangsar Village', 'Jalan Telawi 1, Kuala Lumpur', 3.1302, 101.6712, 9.5, 24, 22)$q$,
-                       'drop_change_off', 'a change while changes are switched off');
-select pg_temp.refused($q$select public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e9', 3.1302, 101.6712, 9.5, 24)$q$,
-                       'drop_change_off', 'a quote while changes are switched off');
-reset role;
-update public.app_settings set value = value || '{"allow": true}' where key = 'drop_change_rules';
+select pg_temp.check((select ride_fare = 32 and drop_name = 'Bangsar Village'
+                         and public.ride_option_charges_total(option_charges) = 10
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e7'),
+  'the ride is at 32.00 and keeps its pet charge');
 
--- 14. A ride with stops ------------------------------------------------------------------------------
--- Its route goes through the stop, so the route measured straight from the
--- pickup to Bangsar Village is not its route: the fare stays, and the driver
--- is asked. (The same change on a ride without stops was priced at 22.00 and
--- applied at once, section 1.)
+-- 15. A ride with a stop, and rides the fare card does not price, keep their fare --------------------
+-- e9's route goes through its stop, so the measurement straight to Bangsar is
+-- not its route: the fare stays and the driver is asked. (The same change on a
+-- ride without a stop applied at once, section 10.)
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
 select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e9', 'Bangsar Village', 'Jalan Telawi 1, Kuala Lumpur', 3.1302, 101.6712, 10.5, 25, 23)
-    = '{"applied": false, "pending": true, "fare": 20}'::jsonb,
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e9', 'Bangsar Village', 'Jalan Telawi 1, Kuala Lumpur',
+                                  3.1302, 101.6712, 12.5, 30, 20)
+    = '{"applied": false, "pending": true, "fare": 19.25}'::jsonb,
   'a change on a ride with a stop waits for the driver, at the fare the ride has');
 reset role;
-select pg_temp.check((select ride_fare = 20 and drop_name = 'Mid Valley' and drop_change_count = 0
-                         and drop_change_fare = 20 and drop_change_distance_km = 10.5
-                         and drop_change_duration_min = 25 and drop_change_requested_at is not null
+select pg_temp.check((select ride_fare = 19.25 and drop_change_fare = 19.25 and drop_change_distance_km = 12.5
+                         and drop_change_duration_min = 30 and drop_change_requested_at is not null
                         from public.ride_requests where id = '00000000-0000-0000-0000-0000000431e9'),
-  'it is kept with the 10.5 km and 25 minutes sent for the trip through the stop');
+  'kept with the 12.5 km and 30 minutes sent for the trip through the stop');
 
--- 15. A ride the fare card does not price keeps its fare ---------------------------------------------
--- Freight, an airport fare, myGiG and an operator's booking are priced
--- another way. Their fare stays, and the driver is asked about the new
--- drop-off.
+-- Freight, an airport fare, myGiG and an operator's booking are priced another
+-- way: their fare stays, and the driver is asked.
 select pg_temp.check(
   (select count(*) = 4
      from public.ride_requests r,
           lateral public.ride_drop_change_terms(r, 3.0733, 101.6078, 21.5, 38) t
-    where r.id in ('00000000-0000-0000-0000-0000000431ea', '00000000-0000-0000-0000-0000000431eb', '00000000-0000-0000-0000-0000000431ec', '00000000-0000-0000-0000-0000000431ed')
+    where r.id in ('00000000-0000-0000-0000-0000000431ea', '00000000-0000-0000-0000-0000000431eb',
+                   '00000000-0000-0000-0000-0000000431ec', '00000000-0000-0000-0000-0000000431ed')
       and t = '{"fare": 50, "distance_km": 21.5, "duration_min": 38, "instant": false, "priced": false, "measured": false}'::jsonb),
-  'Freight, an airport fare, myGiG and an operator''s booking keep their fare of 50.00 and wait for the driver');
-select pg_temp.check(
-  (select t = '{"fare": 35, "distance_km": 21.5, "duration_min": 38, "instant": false, "priced": true, "measured": true}'::jsonb
-     from public.ride_requests r,
-          lateral public.ride_drop_change_terms(r, 3.0733, 101.6078, 1, 2) t
-    where r.id = '00000000-0000-0000-0000-0000000431e2'),
-  'where a plain ride is priced on the card over the measured route');
-select pg_temp.check(
-  (select t = '{"fare": 20, "distance_km": 1, "duration_min": 2, "instant": false, "priced": true, "measured": false}'::jsonb
-     from public.ride_requests r,
-          lateral public.ride_drop_change_terms(r, 2.9264, 101.6964, 1, 2) t
-    where r.id = '00000000-0000-0000-0000-0000000431e2'),
-  'and keeps its fare to a place the server has no route to');
+  'Freight, an airport fare, myGiG and an operator''s booking keep their 50.00 and wait for the driver');
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
 select pg_temp.refused($q$select public.ride_drop_change_request('00000000-0000-0000-0000-0000000431ea', 'Sunway Pyramid', 'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 35)$q$,
                        'DROP_CHANGE_FARE', 'a Freight ride''s drop-off moved at the card''s fare, under its own');
 select pg_temp.check(
-  public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431ea', 3.0733, 101.6078, 21.5, 38) = '{"fare": 50, "instant": false}'::jsonb,
-  'the quote for a Freight ride: the fare it has, for the driver to accept');
-select pg_temp.check(
-  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431ea', 'Sunway Pyramid', 'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 50)
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000431ea', 'Sunway Pyramid', 'Jalan PJS 11/15, Subang Jaya',
+                                  3.0733, 101.6078, 21.5, 38, 50)
     = '{"applied": false, "pending": true, "fare": 50}'::jsonb,
   'a Freight ride''s new drop-off waits for the driver at the fare it has');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
@@ -716,9 +690,7 @@ select pg_temp.check(
   public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000431ea', true) = '{"accepted": true}'::jsonb,
   'the driver accepts the Freight ride''s new drop-off');
 reset role;
-select pg_temp.check((select drop_name = 'Sunway Pyramid' and ride_fare = 50 and fare = 50
-                         and distance_km = 21.5 and duration_min = 38 and drop_change_count = 1
-                         and drop_change_outcome = 'accepted' and drop_change_outcome_by = 'partner'
+select pg_temp.check((select drop_name = 'Sunway Pyramid' and ride_fare = 50 and fare = 50 and drop_change_count = 1
                         from public.ride_requests where id = '00000000-0000-0000-0000-0000000431ea'),
   'the Freight ride goes to the new drop-off at the fare it had');
 
@@ -754,7 +726,39 @@ select pg_temp.check(
   and public.ride_card_fare(null, 'Nowhere 0431', null, null, null, -5, -5) = 4.00,
   'with neither, the built-in tariff: 4.00 flag fall + 43 x 0.35, a taxi at its multiplier');
 
--- 17. Who may do what --------------------------------------------------------------------------------
+-- 17. The admin's rules still decide (0341) ----------------------------------------------------------
+-- "Auto-approve when it is cheaper" off: a cheaper change waits for the driver
+-- even before the trip starts.
+update public.app_settings set value = value || '{"autoApproveCheaper": false}' where key = 'drop_change_rules';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.check(
+  public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431ef', 3.1488, 101.7133, 1.6, 6) = '{"fare": 9.05, "instant": false}'::jsonb,
+  'with auto-approve-when-cheaper off, a cheaper drop waits for the driver');
+reset role;
+-- One change a ride.
+update public.app_settings set value = value || '{"autoApproveCheaper": true, "maxChangesPerRide": 1}'
+ where key = 'drop_change_rules';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.refused($q$select public.ride_drop_change_request('00000000-0000-0000-0000-0000000431e3', 'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20, 20)$q$,
+                       'drop_change_limit', 'a second change on a ride allowed one');
+select pg_temp.refused($q$select public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431e3', 3.1177, 101.6774, 8.0, 20)$q$,
+                       'drop_change_limit', 'a quote for a second change on a ride allowed one');
+reset role;
+-- Changes switched off.
+update public.app_settings set value = value || '{"allow": false, "maxChangesPerRide": 2}'
+ where key = 'drop_change_rules';
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.refused($q$select public.ride_drop_change_request('00000000-0000-0000-0000-0000000431ef', 'Bangsar Village', 'Jalan Telawi 1, Kuala Lumpur', 3.1302, 101.6712, 9.5, 24, 22)$q$,
+                       'drop_change_off', 'a change while changes are switched off');
+select pg_temp.refused($q$select public.ride_drop_change_quote('00000000-0000-0000-0000-0000000431ef', 3.1302, 101.6712, 9.5, 24)$q$,
+                       'drop_change_off', 'a quote while changes are switched off');
+reset role;
+update public.app_settings set value = value || '{"allow": true}' where key = 'drop_change_rules';
+
+-- 18. Who may do what --------------------------------------------------------------------------------
 select pg_temp.check(
   has_function_privilege('authenticated', 'public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric)', 'execute')
   and not has_function_privilege('anon', 'public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric)', 'execute')
@@ -787,28 +791,13 @@ select pg_temp.refused(
      values ('waze', 3.1579, 101.7116, 3.0733, 101.6078, true, 1, 2)$q$,
   'new row violates row-level security policy for table "fare_ai_responses"',
   'a signed-in caller adding a measured route');
-update public.fare_ai_responses set distance_km = 1, duration_min = 2
- where origin_lat = 3.1579 and dest_lat = 3.0733;
 reset role;
-select pg_temp.check(
-  (select count(*) = 1 from public.fare_ai_responses
-    where origin_lat = 3.1579 and origin_lng = 101.7116 and dest_lat = 3.0733 and dest_lng = 101.6078
-      and distance_km = 21.5 and duration_min = 38),
-  'and the measured route to Sunway Pyramid is as the route service wrote it');
 
--- 18. The held change and the service are the server's (0431) ----------------------------------------
+-- 19. The held change and the service are the server's (0431) ----------------------------------------
 -- A participant may update their own ride row directly, but the drop_change_*
 -- columns and the service can't be written that way: only the drop-change
 -- RPCs, which run as the owner, do. The held change and the service a ride is
 -- priced on are the server's.
-insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_fare, pickup_name,
-                                  drop_name, drop_address, drop_lat, drop_lng, distance_km, duration_min,
-                                  pickup_lat, pickup_lng, country, stops) values
-  ('00000000-0000-0000-0000-0000000431ef', '00000000-0000-0000-0000-0000000341a1',
-   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
-   'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20,
-   3.1579, 101.7116, 'Testland 0341', '[]')
-on conflict (id) do nothing;
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
 -- A client writing the held-change columns directly.
@@ -829,7 +818,7 @@ select pg_temp.refused($q$update public.ride_requests set service = 'Test Bike 0
                           where id = '00000000-0000-0000-0000-0000000431ef'$q$,
                        'RIDE_SERVICE_LOCKED', 'a client changing the service a ride is priced on');
 reset role;
-select pg_temp.check((select service is not distinct from null and ride_fare = 20 and drop_change_count = 0
+select pg_temp.check((select service is not distinct from null and ride_fare = 19.25 and drop_change_count = 0
                          and drop_change_requested_at is null and drop_change_fare is null
                          and drop_change_outcome is null
                         from public.ride_requests where id = '00000000-0000-0000-0000-0000000431ef'),

@@ -40,8 +40,9 @@ class DropChangeSettings {
   /// Whether a passenger may move the drop on an ongoing ride at all.
   final bool allow;
 
-  /// A change that keeps the fare, or lowers it for a trip that got shorter
-  /// to match, applies at once, no driver ask (0431).
+  /// A cheaper change applies at once only before the ride starts moving;
+  /// once on the trip the driver decides (0431). A ride whose fare was raised
+  /// above the card (a bid) always asks the driver.
   final bool autoApproveCheaper;
 
   /// An increase up to this many RM applies at once.
