@@ -1,5 +1,5 @@
 -- ============================================================================
--- Regression test for migration 0431: a partner row's id cannot be an account
+-- Regression test for migration 0436: a partner row's id cannot be an account
 -- id.
 --   * a signed-in user creates their own partner row with a new id, as the app
 --     does, and the row keeps the id that was sent;
@@ -12,25 +12,25 @@
 --     writes are not checked.
 -- All names are made up.
 --
---   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/partner_id_not_account_0431.sql
+--   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/partner_id_not_account_0436.sql
 --
 -- Runs in one transaction and is rolled back. A failed assertion raises.
 -- ============================================================================
 begin;
 
 insert into auth.users (id) values
-  ('00000000-0000-0000-0000-0000000431a1'),  -- applies to be a partner
-  ('00000000-0000-0000-0000-0000000431b1'),  -- another account
-  ('00000000-0000-0000-0000-0000000431b2'),  -- and another
-  ('00000000-0000-0000-0000-0000000431c1'),  -- back office: may edit partners
-  ('00000000-0000-0000-0000-0000000431c2')   -- back office: may only read them
+  ('00000000-0000-0000-0000-0000000436a1'),  -- applies to be a partner
+  ('00000000-0000-0000-0000-0000000436b1'),  -- another account
+  ('00000000-0000-0000-0000-0000000436b2'),  -- and another
+  ('00000000-0000-0000-0000-0000000436c1'),  -- back office: may edit partners
+  ('00000000-0000-0000-0000-0000000436c2')   -- back office: may only read them
 on conflict do nothing;
 insert into public.profiles (id) select id from auth.users
- where id::text like '00000000-0000-0000-0000-0000000431%'
+ where id::text like '00000000-0000-0000-0000-0000000436%'
 on conflict do nothing;
 insert into public.admin_access (profile_id, page, access_level) values
-  ('00000000-0000-0000-0000-0000000431c1', 'admin-partners', 'edit'),
-  ('00000000-0000-0000-0000-0000000431c2', 'admin-partners', 'read')
+  ('00000000-0000-0000-0000-0000000436c1', 'admin-partners', 'edit'),
+  ('00000000-0000-0000-0000-0000000436c2', 'admin-partners', 'read')
 on conflict do nothing;
 
 -- Partner sign-up open, as shipped.
@@ -72,105 +72,105 @@ grant execute on function pg_temp.refused(text, text, text) to authenticated;
 set local role authenticated;
 
 -- 1. A new partner row, as the app makes it: its own new id ------------------------------------
-select pg_temp.as_user('00000000-0000-0000-0000-0000000431a1');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000436a1');
 with made as (
   insert into public.partners (id, auth_user_id, name, phone, status)
-  values ('00000000-0000-0000-0000-0000000431d1', auth.uid(), 'Test Partner 0431', '+60100004311', 'unapproved')
+  values ('00000000-0000-0000-0000-0000000436d1', auth.uid(), 'Test Partner 0436', '+60100004311', 'unapproved')
   returning id, auth_user_id, status)
 select pg_temp.check((select count(*) = 1 from made
-                       where id = '00000000-0000-0000-0000-0000000431d1'
-                         and auth_user_id = '00000000-0000-0000-0000-0000000431a1'
+                       where id = '00000000-0000-0000-0000-0000000436d1'
+                         and auth_user_id = '00000000-0000-0000-0000-0000000436a1'
                          and status = 'unapproved'),
   'a signed-in user creates their own partner row, and it keeps the id that was sent');
 -- The owner goes on filling it in: by an update, or by sending the row again
 -- with its own id (an upsert names every column it sends, the id too).
-update public.partners set address = '1 Jalan Ujian' where id = '00000000-0000-0000-0000-0000000431d1';
+update public.partners set address = '1 Jalan Ujian' where id = '00000000-0000-0000-0000-0000000436d1';
 insert into public.partners (id, auth_user_id, name, phone, status, email)
-values ('00000000-0000-0000-0000-0000000431d1', auth.uid(), 'Test Partner 0431', '+60100004311', 'unapproved',
-        'partner0431@example.com')
+values ('00000000-0000-0000-0000-0000000436d1', auth.uid(), 'Test Partner 0436', '+60100004311', 'unapproved',
+        'partner0436@example.com')
 on conflict (id) do update set id = excluded.id, email = excluded.email;
-select pg_temp.check((select address = '1 Jalan Ujian' and email = 'partner0431@example.com' from public.partners
-                       where id = '00000000-0000-0000-0000-0000000431d1'),
+select pg_temp.check((select address = '1 Jalan Ujian' and email = 'partner0436@example.com' from public.partners
+                       where id = '00000000-0000-0000-0000-0000000436d1'),
   'the owner still edits the row they made, and sending it again with its own id is not a change of id');
 
 -- 2. A new row whose id is an account's id is refused ------------------------------------------
 select pg_temp.refused($q$insert into public.partners (id, auth_user_id, name, phone, status)
-  values ('00000000-0000-0000-0000-0000000431b1', auth.uid(), 'Test Partner 0431', '+60100004311', 'unapproved')$q$,
+  values ('00000000-0000-0000-0000-0000000436b1', auth.uid(), 'Test Partner 0436', '+60100004311', 'unapproved')$q$,
   'PARTNERS_ID_IS_ACCOUNT_ID', 'a partner row whose id is another account''s id');
 select pg_temp.refused($q$insert into public.partners (id, auth_user_id, name, phone, status)
-  values (auth.uid(), auth.uid(), 'Test Partner 0431', '+60100004311', 'unapproved')$q$,
+  values (auth.uid(), auth.uid(), 'Test Partner 0436', '+60100004311', 'unapproved')$q$,
   'PARTNERS_ID_IS_ACCOUNT_ID', 'a partner row whose id is the user''s own account id');
 select pg_temp.refused($q$insert into public.partners (id, auth_user_id, name, phone, status)
-  values ('00000000-0000-0000-0000-0000000431b1', auth.uid(), 'Test Partner 0431', '+60100004311', 'unapproved')
+  values ('00000000-0000-0000-0000-0000000436b1', auth.uid(), 'Test Partner 0436', '+60100004311', 'unapproved')
   on conflict (id) do update set name = excluded.name$q$,
   'PARTNERS_ID_IS_ACCOUNT_ID', 'the same row sent as an upsert');
 select pg_temp.refused($q$insert into public.partners (id, auth_user_id, name, phone, status) values
-  ('00000000-0000-0000-0000-0000000431d2', auth.uid(), 'Test Partner 0431', '+60100004311', 'unapproved'),
-  ('00000000-0000-0000-0000-0000000431b2', auth.uid(), 'Test Partner 0431', '+60100004311', 'unapproved')$q$,
+  ('00000000-0000-0000-0000-0000000436d2', auth.uid(), 'Test Partner 0436', '+60100004311', 'unapproved'),
+  ('00000000-0000-0000-0000-0000000436b2', auth.uid(), 'Test Partner 0436', '+60100004311', 'unapproved')$q$,
   'PARTNERS_ID_IS_ACCOUNT_ID', 'an account''s id among several rows sent at once');
 
 -- 3. A row's id cannot be changed to an account's id --------------------------------------------
 -- Its owner cannot change it at all: the column guard (0185) answers first.
-select pg_temp.refused($q$update public.partners set id = '00000000-0000-0000-0000-0000000431b1'
-  where id = '00000000-0000-0000-0000-0000000431d1'$q$,
+select pg_temp.refused($q$update public.partners set id = '00000000-0000-0000-0000-0000000436b1'
+  where id = '00000000-0000-0000-0000-0000000436d1'$q$,
   'PARTNERS_PROTECTED_COLUMN:id', 'the owner changing their row''s id to an account''s id');
 select pg_temp.refused($q$insert into public.partners (id, auth_user_id, name, phone, status)
-  values ('00000000-0000-0000-0000-0000000431d1', auth.uid(), 'Test Partner 0431', '+60100004311', 'unapproved')
-  on conflict (id) do update set id = '00000000-0000-0000-0000-0000000431b1'$q$,
+  values ('00000000-0000-0000-0000-0000000436d1', auth.uid(), 'Test Partner 0436', '+60100004311', 'unapproved')
+  on conflict (id) do update set id = '00000000-0000-0000-0000-0000000436b1'$q$,
   'PARTNERS_PROTECTED_COLUMN:id', 'the owner changing it through an upsert of the row');
 
 -- An admin who may only read partners is not the back office here: their own
--- row, made like anybody's, and checked by 0431 like anybody's.
-select pg_temp.as_user('00000000-0000-0000-0000-0000000431c2');
+-- row, made like anybody's, and checked by 0436 like anybody's.
+select pg_temp.as_user('00000000-0000-0000-0000-0000000436c2');
 insert into public.partners (id, auth_user_id, name, phone, status)
-values ('00000000-0000-0000-0000-0000000431d3', auth.uid(), 'Read Only 0431', '+60100004314', 'unapproved');
+values ('00000000-0000-0000-0000-0000000436d3', auth.uid(), 'Read Only 0436', '+60100004314', 'unapproved');
 select pg_temp.refused($q$insert into public.partners (id, auth_user_id, name, phone, status)
-  values ('00000000-0000-0000-0000-0000000431b1', auth.uid(), 'Read Only 0431', '+60100004314', 'unapproved')$q$,
+  values ('00000000-0000-0000-0000-0000000436b1', auth.uid(), 'Read Only 0436', '+60100004314', 'unapproved')$q$,
   'PARTNERS_ID_IS_ACCOUNT_ID', 'an admin who may only read partners creating a row under an account''s id');
 -- An id change by such an admin is caught by the column guard (0185), the same
 -- as for the owner above, so this guard only has to hold the insert.
 
 -- 4. The back office writes as before ------------------------------------------------------------
-select pg_temp.as_user('00000000-0000-0000-0000-0000000431c1');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000436c1');
 insert into public.partners (id, auth_user_id, name, phone, status)
-values ('00000000-0000-0000-0000-0000000431b1', '00000000-0000-0000-0000-0000000431b1', 'Back Office 0431',
+values ('00000000-0000-0000-0000-0000000436b1', '00000000-0000-0000-0000-0000000436b1', 'Back Office 0436',
         '+60100004312', 'unapproved');
 reset role;
 select pg_temp.check((select count(*) = 1 from public.partners
-                       where id = '00000000-0000-0000-0000-0000000431b1'
-                         and auth_user_id = '00000000-0000-0000-0000-0000000431b1'),
+                       where id = '00000000-0000-0000-0000-0000000436b1'
+                         and auth_user_id = '00000000-0000-0000-0000-0000000436b1'),
   'an admin who may edit partners writes as before');
 
 -- 5. The server's own writes are not checked ----------------------------------------------------
 -- A direct session (migrations, cron, the SQL editor): no role, nobody signed in ...
 select set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 insert into public.partners (id, auth_user_id, name, phone, status)
-values ('00000000-0000-0000-0000-0000000431b2', '00000000-0000-0000-0000-0000000431b2', 'Server 0431',
+values ('00000000-0000-0000-0000-0000000436b2', '00000000-0000-0000-0000-0000000436b2', 'Server 0436',
         '+60100004313', 'unapproved');
-delete from public.partners where id = '00000000-0000-0000-0000-0000000431b2';
+delete from public.partners where id = '00000000-0000-0000-0000-0000000436b2';
 -- ... and the service role (edge functions).
 set local role service_role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true), set_config('request.jwt.claim.sub', '', true);
 insert into public.partners (id, auth_user_id, name, phone, status)
-values ('00000000-0000-0000-0000-0000000431b2', '00000000-0000-0000-0000-0000000431b2', 'Server 0431',
+values ('00000000-0000-0000-0000-0000000436b2', '00000000-0000-0000-0000-0000000436b2', 'Server 0436',
         '+60100004313', 'unapproved');
 reset role;
 select set_config('request.jwt.claims', '', true), set_config('request.jwt.claim.sub', '', true);
 select pg_temp.check((select count(*) = 1 from public.partners
-                       where id = '00000000-0000-0000-0000-0000000431b2'),
+                       where id = '00000000-0000-0000-0000-0000000436b2'),
   'the server writes as before');
 
 -- 6. What the refused writes left behind: nothing -----------------------------------------------
-select pg_temp.check((select count(*) = 1 and bool_and(p.id = '00000000-0000-0000-0000-0000000431d1')
+select pg_temp.check((select count(*) = 1 and bool_and(p.id = '00000000-0000-0000-0000-0000000436d1')
                         from public.partners p
-                       where p.auth_user_id = '00000000-0000-0000-0000-0000000431a1'),
+                       where p.auth_user_id = '00000000-0000-0000-0000-0000000436a1'),
   'the applicant has the one row they made, under its own id');
-select pg_temp.check((select count(*) = 1 and bool_and(p.id = '00000000-0000-0000-0000-0000000431d3')
+select pg_temp.check((select count(*) = 1 and bool_and(p.id = '00000000-0000-0000-0000-0000000436d3')
                         from public.partners p
-                       where p.auth_user_id = '00000000-0000-0000-0000-0000000431c2'),
+                       where p.auth_user_id = '00000000-0000-0000-0000-0000000436c2'),
   'so has the admin who may only read partners');
 select pg_temp.check((select count(*) = 0 from public.partners
-                       where id = '00000000-0000-0000-0000-0000000431d2'),
+                       where id = '00000000-0000-0000-0000-0000000436d2'),
   'a statement with one refused row keeps none of its rows');
 
 -- 7. The guard is the table's own: not something the apps call ----------------------------------
@@ -184,4 +184,4 @@ select pg_temp.check(exists (select 1 from pg_trigger t
 
 rollback;
 
-select 'partner_id_not_account_0431: all passed';
+select 'partner_id_not_account_0436: all passed';

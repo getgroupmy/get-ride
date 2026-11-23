@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0431 — A partner row's id cannot be an account id.
+-- 0436 — A partner row's id cannot be an account id.
 --
 -- partners.id is the partner record's own id. The app makes a new random one
 -- for each application and the server stores the id it is sent. The account
@@ -24,7 +24,7 @@
 --   * Rows that already exist are not read or changed, and an update that
 --     leaves a row's id as it is is not checked.
 --
--- supabase/tests/partner_id_not_account_0431.sql covers it.
+-- supabase/tests/partner_id_not_account_0436.sql covers it.
 -- ============================================================================
 
 -- Definer: the apps cannot read auth.users. Inside it current_user is the
