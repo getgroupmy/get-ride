@@ -64,7 +64,8 @@ Everything in [`supabase/`](../supabase); full notes in
     `supabase/migrations/` (from the `0097` squashed baseline). CI's
     *Migrations replay* job rebuilds a fresh DB from the folder and runs
     `supabase/tests/*.sql`. Migrations reach the live project with
-    `supabase db push`, **run by a person after merge, never automatically**.
+    `supabase db push --remote` (CLI 3), **run by a person after merge, never
+    automatically**.
 - **Edge Functions** (Deno) for work that can't live in the DB or needs a
   secret: `send-push`, `ip-lookup`, the `android-release` / `ios-release`
   dispatchers, etc. On-demand; nothing to keep warm.

@@ -56,5 +56,8 @@ jobs:
             echo "::warning::None of the Google map keys is set in GitHub; nothing copied."
             exit 0
           fi
-          supabase secrets set --project-ref "$PROJECT_REF" --env-file "$env_file" > /dev/null
+          # setup-cli installs Supabase CLI 3: a change to the hosted project
+          # needs --yes when nobody can answer its prompt, and --remote names
+          # the project (--project-ref is deprecated).
+          supabase secrets set --env-file "$env_file" --yes --remote="$PROJECT_REF" > /dev/null
           echo "Copied:$names"

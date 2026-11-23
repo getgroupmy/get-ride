@@ -15,13 +15,15 @@ archived Expo app; the Flutter equivalents are under `lib/src/`.
 ```bash
 ./supabase/check-migration-numbers.sh   # CI runs this on every PR
 deno test supabase/functions            # edge-function unit tests (CI too)
-supabase db push                        # run by a person after merge, never automatically
 supabase functions deploy <name> --no-verify-jwt
 ```
 
 New tables/columns: update `supabase/schema.sql` **and** add the next numbered
-migration (one higher than the highest on `main`). See
-[`supabase/README.md`](../supabase/README.md) → Deploying migrations.
+migration (one higher than the highest on `main`). After merge a person, never
+automation, applies it to the live project with
+`npx supabase@3 db push --remote` (Supabase CLI 3 works on a local stack
+without `--remote`). See [`supabase/README.md`](../supabase/README.md) →
+Deploying migrations.
 
 ## Database notes
 
