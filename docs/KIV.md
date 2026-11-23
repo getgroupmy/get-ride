@@ -110,6 +110,11 @@ Phase E (phone line) — hardware **decided**, using the owner's own kit:
   than the brain. (Synology DSM can't load DAHDI drivers, which is another reason the bridge is a *network*
   FXO ATA, not an internal/USB card.)
 
+## Follow-ups (23 Nov 2026)
+
+- My Team on a phone (0432): for an approved member, an approver who is not an admin sees "This member is approved, so an admin changes their services." in place of the Courier toggle, and the services read-only in the profile edit sheet. Checked by widget tests only; look at it on a phone once the next app build is out.
+- Supabase CLI 4 (before upgrading, not urgent): rename `auth.email.enable_signup` and `auth.sms.enable_signup` in `supabase/config.toml` and move CI's local build (`.github/workflows/backend.yml`, CLI 2.119.0) to CLI 3, together. CLI 3's `auth.email.enabled` / `auth.sms.enabled` switch the whole provider on or off (new sign-ups are blocked with `[auth] enable_signup`), so keep phone sign-in on for the local stack. The deploy steps in [supabase/README.md](../supabase/README.md) pin `npx supabase@3` until then.
+
 ## Owner setup
 
 - Online payment: wallet top-up through the payment gateway is built (Fiuu, Billplz; FPX and e-wallets). Add the merchant account keys in Admin › Payment gateways, then turn Card back on. DuitNow QR top-up is not built.
@@ -120,4 +125,5 @@ Phase E (phone line) — hardware **decided**, using the owner's own kit:
 - Sign-in checks ID reading, Google Cloud Vision (optional): enable Cloud Vision API in a Google Cloud project with billing, make an API key kept to that API, add it in API Keys (Google › Cloud Vision (ID reading)) and test it, then switch Google Vision on in Admin › Dispatch › Accounts › ID card reading (the order: Phone, then NAS, then Google Vision). First 1,000 reads a month are free. Deploy the `id-read` function and apply migration 0283 first.
 - Test database on the NAS (later): run `deploy/nas-testdb` (a read-only database user, a read-only GitHub token, a code from Admin › Settings › Office NAS › Test database), deploy the `nas-testdb` function (`--no-verify-jwt`) and apply migration 0321. Steps in [deploy/nas-testdb/README.md](../deploy/nas-testdb/README.md).
 - Visitor stats on the NAS (later): run `deploy/nas-stats` (Umami) behind a Cloudflare Tunnel at stats.getride.my, add the Umami key in API Keys and the website ID in Admin › Settings › Office NAS › Visitor stats, deploy the `nas-stats` function, then set the STATS_SCRIPT_URL and STATS_WEBSITE_ID repository variables. Steps in [deploy/nas-stats/README.md](../deploy/nas-stats/README.md).
+- Google map keys sync (GitHub › Actions › Sync map keys, monthly on the 1st and by hand): the `SUPABASE_ACCESS_TOKEN` repository secret was refused as an invalid access token on 1 Nov 2026, so the copy of the Google keys to the `geo` function's secrets fails. Create a personal access token in Supabase (Account › Access Tokens), save it as that secret in GitHub › Settings › Secrets and variables › Actions, then run the workflow once by hand. The next scheduled run is 1 Dec 2026.
 
