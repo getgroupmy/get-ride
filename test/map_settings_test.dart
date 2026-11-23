@@ -243,6 +243,33 @@ void main() {
       expect(s.keyRef('google_js'), 'google/maps_js');
     });
 
+    test('Google-tiles and Apple traffic: options, labels and gates', () {
+      // Google traffic as a tile overlay: any base, any device.
+      expect(tileOptionsFor('traffic', 'web'), contains('google_tiles'));
+      expect(tileOptionsFor('traffic', 'ios'), contains('google_tiles'));
+      expect(mapProviderLabel('google_tiles', slot: 'traffic'), 'Google traffic (tiles, any map)');
+      // Apple traffic is iOS only.
+      expect(tileOptionsFor('traffic', 'ios'), contains('apple'));
+      expect(tileOptionsFor('traffic', 'web'), isNot(contains('apple')));
+      expect(tileOptionsFor('traffic', 'android'), isNot(contains('apple')));
+      expect(mapProviderLabel('apple', slot: 'traffic'), 'Apple traffic (on an Apple map)');
+      // Google-tiles traffic is an overlay: no "needs a Google map" gate.
+      const gt = MapProfileSetting(
+        tiles: {'light': 'google_xyz', 'dark': 'google_xyz', 'satellite': 'esri', 'traffic': 'google_tiles'},
+      );
+      expect(gt.googleTrafficWithoutItsMap, isFalse);
+      expect(gt.appleTrafficWithoutItsMap, isFalse);
+      // Apple traffic needs the Apple map for Map and Map (dark mode).
+      const ap = MapProfileSetting(
+        tiles: {'light': 'apple_native', 'dark': 'apple_native', 'satellite': 'apple_native', 'traffic': 'apple'},
+      );
+      expect(ap.appleTrafficWithoutItsMap, isFalse);
+      expect(ap.withTile('dark', 'osm').appleTrafficWithoutItsMap, isTrue);
+      expect(ap.withTile('light', 'google_js').appleTrafficWithoutItsMap, isTrue);
+      final s = MapSettings.fromJson(null).withProfile('rider', 'ios', ap.withTile('dark', 'osm'));
+      expect(s.appleTrafficConflicts, ['Rider · iPhone & iPad']);
+    });
+
     test("Google's terms: its search or lookup only on Google's map", () {
       var s = MapSettings.fromJson(null)
           .withProfile('rider', 'android', const MapProfileSetting(search: ['google', 'nominatim']));

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/app.dart' show appTheme;
 import 'package:get_ride/src/features/partner/driver_home_map.dart';
+import 'package:get_ride/src/core/map_profile.dart';
 import 'package:get_ride/src/widgets/map_traffic.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +20,16 @@ void main() {
       expect(resolveTrafficTileUrl(configured: 'http://insecure/{z}/{x}/{y}.png'), isNull);
       expect(resolveTrafficTileUrl(configured: 'https://no-placeholders.example/tile.png'), isNull);
       expect(resolveTrafficTileUrl(configured: ' $_url '), _url);
+    });
+
+    test('MapTrafficSpec.fromJson: off, Google and Apple engine, and overlay URLs', () {
+      expect(MapTrafficSpec.fromJson({'off': true})!.off, isTrue);
+      expect(MapTrafficSpec.fromJson({'google': true})!.google, isTrue);
+      final apple = MapTrafficSpec.fromJson({'apple': true})!;
+      expect(apple.apple, isTrue);
+      expect(apple.url, isNull, reason: 'engine traffic has no overlay URL');
+      expect(MapTrafficSpec.fromJson({'url': _url})!.url, _url);
+      expect(MapTrafficSpec.fromJson({'url': 'not a template'}), isNull);
     });
 
     test('no layer unless configured and switched on', () {

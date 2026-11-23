@@ -29,6 +29,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/map_profile_repository.dart' show mapProfileProvider;
+import 'apple_native_layer.dart' show appleNativeSupported;
 import 'google_js_map.dart' show googleJsSupported;
 import 'google_native_layer.dart' show googleNativeSupported;
 import 'map_tiles.dart' show appTileProvider, retryingTileClient;
@@ -50,7 +51,7 @@ String? resolveTrafficTileUrl({String configured = _configuredTraffic}) {
 /// hides the traffic button.
 final trafficTileUrlProvider = Provider<String?>((ref) {
   final set = ref.watch(mapProfileProvider).value?.traffic;
-  if (set != null) return set.off || set.google ? null : set.url;
+  if (set != null) return set.off || set.google || set.apple ? null : set.url;
   return resolveTrafficTileUrl();
 });
 
@@ -61,6 +62,20 @@ final googleTrafficProvider = Provider<bool>(
   (ref) =>
       (kIsWeb || googleNativeSupported || googleJsSupported) &&
       ref.watch(mapProfileProvider).value?.traffic?.google == true,
+);
+
+/// Apple's own traffic, drawn by its native map (MapKit) on iOS (migration
+/// 0214): set by the admin, where this device can draw it. The traffic button
+/// switches it.
+final appleTrafficProvider = Provider<bool>(
+  (ref) => appleNativeSupported && ref.watch(mapProfileProvider).value?.traffic?.apple == true,
+);
+
+/// Apple's own traffic drawn and switched on: the admin set it and the driver
+/// turned the traffic button on. The Apple map layer (apple_native_layer.dart)
+/// reads this.
+final appleTrafficOnProvider = Provider<bool>(
+  (ref) => ref.watch(appleTrafficProvider) && ref.watch(mapTrafficProvider),
 );
 
 /// The backup traffic source, validated the same way; null when there is
@@ -75,7 +90,7 @@ String? resolveTrafficFallbackUrl({
 
 final trafficFallbackTileUrlProvider = Provider<String?>((ref) {
   final set = ref.watch(mapProfileProvider).value?.traffic;
-  if (set != null) return set.off || set.google ? null : set.fallback;
+  if (set != null) return set.off || set.google || set.apple ? null : set.fallback;
   return resolveTrafficFallbackUrl(primary: ref.watch(trafficTileUrlProvider));
 });
 
@@ -152,7 +167,11 @@ class TrafficButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(trafficTileUrlProvider) == null && !ref.watch(googleTrafficProvider)) return const SizedBox.shrink();
+    if (ref.watch(trafficTileUrlProvider) == null &&
+        !ref.watch(googleTrafficProvider) &&
+        !ref.watch(appleTrafficProvider)) {
+      return const SizedBox.shrink();
+    }
     final on = ref.watch(mapTrafficProvider);
     final scheme = Theme.of(context).colorScheme;
     return Padding(

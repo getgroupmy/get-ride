@@ -98,6 +98,7 @@ import {
   type TileSource,
   tileSource,
   trafficTileUrl,
+  googleTrafficTileUrl,
 } from "./geo.ts";
 import {
   isTimeout,
@@ -148,6 +149,8 @@ export interface GeoDeps {
     region: string,
     look: GoogleLook,
   ): Promise<string | null>;
+  /** A Google Map Tiles session for the live-traffic overlay in [region], reused until near its expiry. */
+  googleTrafficSession?(key: string, region: string): Promise<string | null>;
   /** ISO alpha-2 → alpha-3 ("my" → "MYS"), or null. */
   iso3(cc: string): string | null;
   /** The function's own secret for a key slot, when Admin → API Keys has none. */
@@ -440,7 +443,23 @@ export async function handleGeo(params: URLSearchParams, ip: string, deps: GeoDe
     if (t === "none") {
       traffic = { off: true };
     } else if (t === "google") {
+      // Google's own traffic, drawn by its JavaScript or native map engine.
       traffic = { google: true };
+    } else if (t === "apple") {
+      // Apple's own traffic, drawn by MapKit on its native iOS map.
+      traffic = { apple: true };
+    } else if (t === "google_tiles") {
+      // Google traffic as a Map Tiles overlay (a traffic session), so it draws
+      // over any base map. Falls back to a keyed tomtom/here overlay when the
+      // session can't be made; if neither is available there is no traffic.
+      const gk = key(t, "tiles");
+      const region = countries[0] ?? "my";
+      const session = gk && deps.googleTrafficSession
+        ? await deps.googleTrafficSession(gk, region).catch(() => null)
+        : null;
+      const url = session && gk ? googleTrafficTileUrl(session, gk) : null;
+      const fb = trafficTileUrl("tomtom", key("tomtom", "tiles")) ?? trafficTileUrl("here", key("here", "tiles"));
+      traffic = url ? (fb ? { url, fallback: fb } : { url }) : (fb ? { url: fb } : null);
     } else if (t !== "app") {
       const url = trafficTileUrl(t, key(t, "tiles"));
       const other = t === "tomtom" ? "here" : "tomtom";

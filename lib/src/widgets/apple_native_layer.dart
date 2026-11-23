@@ -11,9 +11,11 @@ import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'map_brightness.dart';
+import 'map_traffic.dart' show appleTrafficOnProvider;
 
 /// Whether this device can draw Apple's map: iPhone and iPad.
 bool get appleNativeSupported => debugAppleNativeSupported ?? (!kIsWeb && Platform.isIOS);
@@ -209,12 +211,34 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
   Timer? _settle;
   MapCamera? _leftAlone;
 
+  /// Apple's own traffic, followed from [appleTrafficOnProvider]; off when
+  /// there is no ProviderScope to read it from (a bare test tree).
+  bool _traffic = false;
+  ProviderSubscription<bool>? _trafficSub;
+
   @override
   void initState() {
     super.initState();
     widget.route?.addListener(_redraw);
     widget.showMe?.addListener(_redraw);
     widget.annotations?.addListener(_redraw);
+    _watchTraffic();
+  }
+
+  /// Follow [appleTrafficOnProvider] where there is a ProviderScope; off in a
+  /// bare widget tree. Kept a plain StatefulWidget so the Apple map can be
+  /// pumped without a scope, as many map tests do.
+  void _watchTraffic() {
+    try {
+      final container = ProviderScope.containerOf(context, listen: false);
+      _traffic = container.read(appleTrafficOnProvider);
+      _trafficSub = container.listen<bool>(appleTrafficOnProvider, (_, on) {
+        if (mounted) setState(() => _traffic = on);
+      });
+    } on StateError {
+      // No ProviderScope (a bare test tree): Apple traffic stays off.
+      _traffic = false;
+    }
   }
 
   @override
@@ -237,6 +261,7 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
   @override
   void dispose() {
     _settle?.cancel();
+    _trafficSub?.close();
     widget.route?.removeListener(_redraw);
     widget.showMe?.removeListener(_redraw);
     widget.annotations?.removeListener(_redraw);
@@ -419,8 +444,9 @@ class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
               'hybrid' => am.MapType.hybrid,
               _ => am.MapType.standard,
             },
-            // The app's own traffic layer draws over it, as over any map.
-            trafficEnabled: false,
+            // Apple's own traffic (appleTrafficOnProvider); otherwise the app's
+            // tile overlay draws over it, as over any map.
+            trafficEnabled: _traffic,
             // Only shows: the app's own map and buttons do the rest.
             compassEnabled: false,
             rotateGesturesEnabled: false,
