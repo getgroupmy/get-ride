@@ -132,6 +132,37 @@ A tester session rendered every screen as an iPhone would show it and sent each 
   - The built-in TEKSI fare differs by one 0.35 step between the app (`calculateFare`, doubles) and the server (`c2c_teksi_fare`, numeric): 1.6 km with no waiting is 5.40 in the app and 5.05 on the server. A ride booked on it reads as above the card, so its changes wait for the driver. Make both count the same.
   - The driver's prompt, when the fare stays (no server measurement): also show how far the new drop is, so the driver can judge it.
   - App versions from before 0437 send their own fare; where it is under the server's (a service with a multiplier above 1, which they priced at ×1), the change is refused with DROP_CHANGE_FARE until the rider updates. Optional: offer the Change button only from the version with 0437.
+- Admin guard scoping (after 0432 people guards / 0433 the 16 ride_requests guards): a few guard triggers on secondary tables still exempt any admin via `caller_is_admin()` instead of `caller_admin_can_write('<table>')` — `ride_calls_guard` (ride_calls), `ride_messages_guard_update` (ride_messages), `scheduled_rides_hire_driver` (scheduled_rides), `support_calls_guard` (support_calls), `ev_orders_freeze_owner` (ev_orders). Per-table judgment, since some may legitimately want any-admin; re-enumerate from the tree when picked up. Not a blanket convert.
+- myGiG / Services test findings (tested on 1 Nov main; re-verify against current main before fixing):
+  - CRITICAL (mitigated in production): a driver, with only a passenger's registered phone number, can self-accept a myGiG ride (`way='here'` or the booking link token returned to the driver) and trigger `mygig_no_show`, taking RM10 from the passenger's GET.wallet with no consent. Cause: `mygig_terms.canCharge` ignores who accepted; `mygig_ways` allows 'here' for every payment but family. Fix: charge wallet/business only when `way='app'` (as family); don't return the token to the driver. Safe now only because the owner set noShow.on and cancel.on = false at region level on 1 Nov — the flaw returns if those are enabled.
+  - HIGH: myGiG trip minutes come from the driver (capped only at 24h); a 6 km trip with min=1440 quoted RM369.70 (the guard compares the same inflated minutes). Cap minutes against km, or compute the duration server-side.
+  - HIGH: `partner_type_allows_service` returns true when a type has no `partner_type_services` row (`coalesce(...,true)`), with no backfill — a no-vehicle type could offer on a car Ride.
+  - Also: the Register-vehicle service picker lists all services, not just the driver's types'; a rider can book a service no partner type takes with no admin warning; after "End ride here" the driver's collect card shows the old fare until reload (completion PATCH doesn't return the row); `DRIVER_SERVICE_OFF` message wrong when the partner type (not the driver) excludes the service; the region service check defaults to "record" (consider refuse); a "Driver" choice at sign-up isn't stored (set_login_pin only checks it), so a sign-up closed before onboarding lands on the rider home with no partner row.
+- Security review follow-ups (checked 23 Nov, main 31feb34 + live ≤ 0436):
+  - MEDIUM: `vercel.json` sends no security headers (no CSP, no frame-ancestors/X-Frame-Options, no HSTS).
+  - MEDIUM: the gateway device key is kept in SharedPreferences (`gateway/lib/src/settings.dart`) — move to `flutter_secure_storage` and add key rotation.
+  - INFO: `anon` can still EXECUTE `net.http_post`/`net.http_get` — `revoke execute on all functions in schema net from public, anon, authenticated;`.
+  - INFO: `claude_access_rules` is readable by `anon`, exposing office IPs and approved session ids.
+  - LOW: the fixed-window rate limiter (0229) lets a burst reach 2× the limit across a window boundary; it matters most for the trip_code bucket.
+- Performance follow-ups (from the perf tester, baselines 19 Oct; some may be done — verify and drop any that are):
+  - PERF-71 region pinning (#432): re-measure geo / pin-login / ip-lookup / ai-route-proxy / turn-credentials before vs after via `function_edge_logs` filtered `request.cf.country='MY'`, and confirm `response.headers.x_sb_edge_region = ap-northeast-2` on forceFunctionRegion calls. Pre-pinning MY p50: geo profile 731 ms, geo reverse 1,469 ms, ip-lookup 439 ms, turn-credentials 448 ms, ai-route-proxy ~2.5 s.
+  - PERF-73/74 geo hop cuts + Max-Age + fixed POST URL: confirm the web OPTIONS:GET ratio drops to ~0, and compare reverse p50 vs 1.47 s MY.
+  - PERF-68 app side of ip-lookup (`ip_only`, drop the ~800 ms map wait): re-measure the sign-in path.
+  - PERF-69 per-ABI APKs: check sizes after the next Android release (the universal APK was 154 MB).
+  - PERF-75 admin doc thumbnails: batch-sign with `createSignedUrls` (signed URLs defeat the long cache across restarts).
+  - PERF-77 trip-follow camera: a dead zone so the camera glides only when the car leaves the middle of the map (~80–90% fewer tile rebuilds; trip probe was 9,071); in heading-up mode use one `moveAndRotate` per frame instead of rotate + move.
+  - IceServerCache keeps a STUN-only answer (relay:false) for 5.5 h — keep it only when relay is true, or for a few minutes only.
+  - PERF-29 countries geofence select (1.4 s) and PERF-30 `get_coin_market_stats` (105 ms × ~2k) were the top app queries on 19 Oct.
+  - Hygiene: ~70% of production function traffic is from Claude cloud sessions (us-east-1), spending Google quota and skewing admin Usage and latency stats — tag or point test runs at staging, and filter real-user stats to country MY. Probe tests: `test/zz_perf_probe*_test.dart` on `claude/affectionate-cori-batxpz`.
+
+## myGiG
+
+- Subscription types the driver chooses (parked 1 Nov 2026): instead of the one admin-set pass, a driver picks from per day RM5, per week RM15, per month RM25, 6 months RM125 and 1 year RM200, paid from GET.credit.
+  - Only one subscription is active at a time.
+  - The driver can cancel the active subscription.
+  - A new one can be bought while one is active; it stays pending until the active one's validity is completely used up.
+  - GET.credit is taken only when the new subscription activates, not when it is bought.
+  - If there isn't enough GET.credit at that moment, the subscription fails and the driver gets a notification saying why.
 
 ## Owner setup
 
