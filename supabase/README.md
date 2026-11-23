@@ -50,12 +50,22 @@ does this for you).
 Migrations reach a live project with the Supabase CLI. Nothing deploys
 automatically: a person runs `db push`.
 
+The commands here are for Supabase CLI 3 (`npx supabase@3`). In CLI 3 the
+database commands (`db push`, `migration repair`, `migration list`) work on a
+local stack unless they end with `--remote`, which means the linked project.
+Without it, `db push` fails with `failed to connect to postgres` on
+`127.0.0.1:54322`, or pushes to a local stack if one is running. A change to
+the live project lists what it will do and asks first; answer `y`. The two
+`WARN … enable_signup` lines CLI 3 prints come from `config.toml`'s settings
+for the local stack and are harmless. CI's Migrations replay pins its own CLI
+(2.119.0) for the local build.
+
 **One-time setup per machine**, from a clone of this repo (the live GET.ride
 project is `rqlavogkgywxspuxgiwk`):
 
 ```bash
-npx supabase login
-npx supabase link --project-ref rqlavogkgywxspuxgiwk
+npx supabase@3 login
+npx supabase@3 link --project-ref rqlavogkgywxspuxgiwk
 ```
 
 The commands in this section have no trailing `# comments`: zsh passes them
@@ -75,9 +85,9 @@ revoke; both idempotent), so it has to actually run. From an up-to-date
 ```bash
 export SUPABASE_DB_URL="postgres://postgres:PASSWORD@db.REF.supabase.co:5432/postgres"
 ./supabase/baseline-migration-history.sh
-npx supabase migration repair --status reverted 0099
-npx supabase db push --dry-run
-npx supabase db push
+npx supabase@3 migration repair 0099 --status reverted --remote
+npx supabase@3 db push --dry-run --remote
+npx supabase@3 db push --remote
 ```
 
 The script removes the old history rows and records every file in
@@ -115,11 +125,18 @@ special characters in the password (`@` → `%40`, `:` → `%3A`, `/` → `%2F`,
 2. After it merges, from an up-to-date `main`:
 
    ```bash
-   npx supabase db push --dry-run
-   npx supabase db push
+   npx supabase@3 db push --dry-run --remote
+   npx supabase@3 db push --remote
    ```
 
    The dry run lists exactly what will run; it should be only the new files.
+   The push lists them again and asks before applying them. Run the dry run
+   once more afterwards: it should say the remote database is up to date.
+
+   If the dry run asks for `--include-all`, a migration numbered below the
+   newest one on the live project has not run there yet (pull requests
+   merged out of order). Check that the files it names are the ones you
+   expect, then add `--include-all` to both commands.
 
 **Don't** paste migrations into the SQL editor or apply them through other
 tools (the Supabase MCP, the dashboard's migration runner): that records a
