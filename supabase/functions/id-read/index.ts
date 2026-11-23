@@ -33,7 +33,8 @@
 // reason: "nas" } while the NAS has the ID; what the NAS can't read the
 // database hands on: POST { check_id, by: "database" } with x-push-secret.
 //
-// Deploy: supabase functions deploy id-read
+// Deploy: supabase functions deploy id-read --no-verify-jwt (the database
+// calls it without a user token; see supabase/config.toml)
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 

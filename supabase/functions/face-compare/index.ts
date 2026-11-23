@@ -27,7 +27,8 @@
 // (x-push-secret) or an admin, and keeps the better score
 // (online_selfie_check_store), which alerts on a low match.
 //
-// Deploy: supabase functions deploy face-compare
+// Deploy: supabase functions deploy face-compare --no-verify-jwt (the database
+// calls it without a user token; see supabase/config.toml)
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
