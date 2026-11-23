@@ -110,6 +110,17 @@ Phase E (phone line) — hardware **decided**, using the owner's own kit:
   than the brain. (Synology DSM can't load DAHDI drivers, which is another reason the bridge is a *network*
   FXO ATA, not an internal/USB card.)
 
+## App updates without a store build (study of 26 Oct 2026)
+
+Goal: send code fixes to installed Android and iPhone apps without a new store build and review.
+
+- Shorebird code push (shorebird.dev), free tier first. Store builds come from `shorebird release` in the CI release workflows; a patch workflow runs `shorebird patch android` / `shorebird patch ios`. Phones download the patch in the background and use it on the next launch. Needs a Shorebird account and its token as a GitHub secret.
+- Works on Android (Play and the install-page APKs) and iPhone (App Store and TestFlight; changed code runs a little slower there). Apple allows it as long as the app's purpose doesn't change.
+- Only Dart code in `lib/` can be patched. New or upgraded native plugins, permissions, `Info.plist` / `AndroidManifest`, icons, splash and a Flutter version change still need a store build. A patch targets one release version, and builds made without Shorebird can't be patched.
+- Check first: that Shorebird supports the pinned Flutter 3.47.7 (`docs/store-release.md`), and the free tier's current monthly patch-install limit.
+- Not self-hostable: Shorebird's patch server isn't open, so it can't run on the NAS. The NAS can still serve the Android APK as a second download place (a fallback only, per `docs/NAS.md`).
+- Free extras without code push: keep changeable things in live settings (Supabase, App Page Settings); `rfw` (Remote Flutter Widgets) for screens built to be downloaded; web pages inside the app (`webview_flutter`).
+
 ## Follow-ups (23 Nov 2026)
 
 - My Team on a phone (0432): for an approved member, an approver who is not an admin sees "This member is approved, so an admin changes their services." in place of the Courier toggle, and the services read-only in the profile edit sheet. Checked by widget tests only; look at it on a phone once the next app build is out.
