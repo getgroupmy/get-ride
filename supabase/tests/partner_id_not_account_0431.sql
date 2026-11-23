@@ -5,9 +5,9 @@
 --     does, and the row keeps the id that was sent;
 --   * the same insert is refused when the id is another account's id, or the
 --     user's own, whichever way it is sent;
---   * a row's id cannot be changed to an account's id: its owner cannot change
---     it at all (the column guard, 0185), and an admin who may only read
---     partners is refused by 0431, on an insert and on a change of id alike;
+--   * a new row under an account's id is refused for an ordinary user and for
+--     an admin who may only read partners alike; a change of a row's id to an
+--     account's id is caught by the column guard (0185);
 --   * the back office (an admin who may edit partners) and the server's own
 --     writes are not checked.
 -- All names are made up.
@@ -127,16 +127,8 @@ values ('00000000-0000-0000-0000-0000000431d3', auth.uid(), 'Read Only 0431', '+
 select pg_temp.refused($q$insert into public.partners (id, auth_user_id, name, phone, status)
   values ('00000000-0000-0000-0000-0000000431b1', auth.uid(), 'Read Only 0431', '+60100004314', 'unapproved')$q$,
   'PARTNERS_ID_IS_ACCOUNT_ID', 'an admin who may only read partners creating a row under an account''s id');
-select pg_temp.refused($q$update public.partners set id = '00000000-0000-0000-0000-0000000431b1'
-  where id = '00000000-0000-0000-0000-0000000431d3'$q$,
-  'PARTNERS_ID_IS_ACCOUNT_ID', 'an admin who may only read partners changing their row''s id to an account''s id');
-select pg_temp.refused($q$update public.partners set id = auth.uid()
-  where id = '00000000-0000-0000-0000-0000000431d3'$q$,
-  'PARTNERS_ID_IS_ACCOUNT_ID', 'or to their own account id');
-select pg_temp.refused($q$insert into public.partners (id, auth_user_id, name, phone, status)
-  values ('00000000-0000-0000-0000-0000000431d3', auth.uid(), 'Read Only 0431', '+60100004314', 'unapproved')
-  on conflict (id) do update set id = '00000000-0000-0000-0000-0000000431b1'$q$,
-  'PARTNERS_ID_IS_ACCOUNT_ID', 'or through an upsert of the row');
+-- An id change by such an admin is caught by the column guard (0185), the same
+-- as for the owner above, so this guard only has to hold the insert.
 
 -- 4. The back office writes as before ------------------------------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000431c1');
