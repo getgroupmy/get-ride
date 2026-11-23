@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+import '../core/drop_change.dart' show DropChangeKind;
 import 'page_style_host.dart';
 
 /// The popup the driver answers when the passenger asks to move the drop-off
@@ -140,5 +141,103 @@ class DropChangePrompt {
     final open = _open;
     _open = null;
     if (open != null && open.mounted) Navigator.of(open).pop();
+  }
+}
+
+/// The passenger's review before a drop-off change is sent (0341): the new
+/// place, the old → new fare (the one fare when it stays as it is), and
+/// whether it applies at once or waits for the driver. The fare and that
+/// answer are the server's (0437).
+class DropChangeReviewDialog extends StatelessWidget {
+  const DropChangeReviewDialog({
+    super.key,
+    required this.oldLabel,
+    required this.newLabel,
+    required this.oldFare,
+    required this.newFare,
+    required this.fareText,
+    required this.kind,
+  });
+
+  final String oldLabel, newLabel;
+  final double oldFare, newFare;
+  final String Function(num?) fareText;
+  final DropChangeKind kind;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final delta = newFare - oldFare;
+    final deltaText = '${delta >= 0 ? '+' : '−'}${fareText(delta.abs())}';
+    final instant = kind == DropChangeKind.instant;
+    // The fare stays where the server has nothing to price the change on.
+    final sameFare = delta.abs() < 0.005;
+    return AlertDialog(
+      key: const ValueKey('drop-change-review-dialog'),
+      icon: Icon(Icons.edit_location_alt_outlined, color: t.colorScheme.primary),
+      title: const Text('Change drop-off'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            leading: const Icon(Icons.location_on_outlined),
+            title: Text(newLabel),
+            subtitle: Text('was $oldLabel'),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              if (!sameFare) ...[
+                Text(
+                  fareText(oldFare),
+                  style: t.textTheme.titleMedium?.copyWith(
+                    color: t.colorScheme.onSurfaceVariant,
+                    decoration: TextDecoration.lineThrough,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Icon(Icons.arrow_forward, size: 18),
+                const SizedBox(width: 8),
+              ],
+              Text(fareText(newFare), style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
+              if (!sameFare) ...[
+                const SizedBox(width: 8),
+                Text(deltaText, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+              ],
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            sameFare
+                ? (instant
+                    ? 'The fare stays the same. This applies straight away.'
+                    : 'The fare stays the same. Your driver needs to accept the new drop-off first.')
+                : (instant
+                    ? 'This applies straight away.'
+                    : 'Your driver needs to accept the new drop-off and fare first.'),
+            textAlign: TextAlign.center,
+            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          key: const ValueKey('drop-change-review-cancel'),
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Keep original'),
+        ),
+        FilledButton(
+          key: const ValueKey('drop-change-review-confirm'),
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(instant ? 'Change drop-off' : 'Request change'),
+        ),
+      ],
+    );
   }
 }

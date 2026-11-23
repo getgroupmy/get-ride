@@ -114,6 +114,13 @@ Phase E (phone line) — hardware **decided**, using the owner's own kit:
 
 - My Team on a phone (0432): for an approved member, an approver who is not an admin sees "This member is approved, so an admin changes their services." in place of the Courier toggle, and the services read-only in the profile edit sheet. Checked by widget tests only; look at it on a phone once the next app build is out.
 - Supabase CLI 4 (before upgrading, not urgent): rename `auth.email.enable_signup` and `auth.sms.enable_signup` in `supabase/config.toml` and move CI's local build (`.github/workflows/backend.yml`, CLI 2.119.0) to CLI 3, together. CLI 3's `auth.email.enabled` / `auth.sms.enabled` switch the whole provider on or off (new sign-ups are blocked with `[auth] enable_signup`), so keep phone sign-in on for the local stack. The deploy steps in [supabase/README.md](../supabase/README.md) pin `npx supabase@3` until then.
+- Drop-off change priced by the server (0437), follow-ups:
+  - Route source: price a change only on a live-traffic measurement (Waze, Google Maps or Apple Maps on a server). Where only the empty-road route (OSRM) or the AI answered, keep the fare and ask the driver, as when nothing was measured.
+  - Distance and time: make a ride's `distance_km` / `duration_min` server-written once it is booked, as the fare and the route are (the driver app's early-end share reads `distance_km`). A held change with no server measurement should keep the booked distance rather than the one the app sent.
+  - Check: a drop moved into or out of an airport or a fenced place keeps the place fees stamped at booking (`charges`, 0324). Price the new drop's fees too, or hold such a change for the driver.
+  - The built-in TEKSI fare differs by one 0.35 step between the app (`calculateFare`, doubles) and the server (`c2c_teksi_fare`, numeric): 1.6 km with no waiting is 5.40 in the app and 5.05 on the server. A ride booked on it reads as above the card, so its changes wait for the driver. Make both count the same.
+  - The driver's prompt, when the fare stays (no server measurement): also show how far the new drop is, so the driver can judge it.
+  - App versions from before 0437 send their own fare; where it is under the server's (a service with a multiplier above 1, which they priced at ×1), the change is refused with DROP_CHANGE_FARE until the rider updates. Optional: offer the Change button only from the version with 0437.
 
 ## Owner setup
 

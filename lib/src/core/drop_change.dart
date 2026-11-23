@@ -1,12 +1,16 @@
-// Mid-ride drop-off change (migration 0341): the admin rules, and the pure
-// logic that decides whether a change applies instantly or needs the driver.
+// Mid-ride drop-off change (migration 0341): the admin rules, what the server
+// says a change comes to, and the phone's own quote for a database that
+// doesn't say.
 //
 // The passenger moves the drop during an ongoing ride; the fare re-computes.
-// A cheaper change (or an increase within the admin threshold) applies at
-// once; a bigger increase is held for the driver to accept or reject. The
-// server (city_ride_config 'dropChange' + ride_drop_change_request) is the
-// source of truth — this mirrors it so the app can preview the outcome and
-// the admin can edit the rules. Pure.
+// The server prices it (migration 0437: the ride's fare card over the route
+// it measured) and decides whether it applies at once or is held for the
+// driver to accept or reject: an increase within the admin threshold applies
+// at once, and so does a lower fare for a trip that got shorter to match.
+// The app asks before the rider confirms ([DropChangeQuote]) and shows that
+// fare; the fare it sends with the change is only the one the rider saw.
+// [dropChangeKind] and [quoteDropChangeFare] are the phone's own preview,
+// used only against a database from before 0437. Pure.
 library;
 
 import 'fare_tariff.dart';
@@ -36,7 +40,9 @@ class DropChangeSettings {
   /// Whether a passenger may move the drop on an ongoing ride at all.
   final bool allow;
 
-  /// A change that lowers (or keeps) the fare applies at once, no driver ask.
+  /// A cheaper change applies at once only before the ride starts moving;
+  /// once on the trip the driver decides (0437). A ride whose fare was raised
+  /// above the card (a bid) always asks the driver.
   final bool autoApproveCheaper;
 
   /// An increase up to this many RM applies at once.
@@ -90,18 +96,53 @@ class DropChangeSettings {
       Object.hash(allow, autoApproveCheaper, autoApproveRm, autoApprovePct, responseWindowSec, maxChangesPerRide);
 }
 
-/// What a proposed change will do, previewed on the client with the same rule
-/// the server applies ([DropChangeSettings]). The server decides for real.
+/// What a proposed change will do. The server decides ([DropChangeQuote]).
 enum DropChangeKind {
-  /// Applies at once (cheaper/same, or a small-enough increase).
+  /// Applies at once.
   instant,
 
-  /// Held for the driver to accept or reject (a bigger increase).
+  /// Held for the driver to accept or reject.
   needsDriver,
 }
 
+double? _amount(Object? v) {
+  final d = v is num ? v.toDouble() : (v is String ? double.tryParse(v) : null);
+  return d == null || !d.isFinite || d < 0 ? null : d;
+}
+
+/// What the server says moving the drop-off would come to
+/// (`ride_drop_change_quote`, migration 0437), before the rider confirms.
+class DropChangeQuote {
+  const DropChangeQuote({required this.fare, required this.instant});
+
+  /// The ride's fare with the new drop-off: the server's own figure. Null
+  /// when the ride has no fare yet (a metered trip): it stays so.
+  final double? fare;
+
+  /// Applies at once; otherwise the driver is asked first.
+  final bool instant;
+
+  DropChangeKind get kind => instant ? DropChangeKind.instant : DropChangeKind.needsDriver;
+
+  /// The server's answer `{fare, instant}`; null when it is not one.
+  static DropChangeQuote? fromJson(Object? json) {
+    if (json is! Map || json['instant'] is! bool) return null;
+    final fare = json['fare'];
+    if (fare != null && _amount(fare) == null) return null;
+    return DropChangeQuote(fare: _amount(fare), instant: json['instant'] as bool);
+  }
+}
+
+/// The server's answer to a change that was sent (`ride_drop_change_request`,
+/// `{applied, pending, fare}`): whether it is live now (else it waits for the
+/// driver), and the fare the server put on it; null from a server that
+/// didn't say.
+({bool applied, double? fare}) parseDropChangeAnswer(Object? json) =>
+    (applied: json is Map && json['applied'] == true, fare: json is Map ? _amount(json['fare']) : null);
+
 /// Whether moving the fare from [oldFare] to [newFare] applies instantly or
-/// needs the driver, under [rules]. Mirrors ride_drop_change_request.
+/// needs the driver, under [rules]: the phone's own preview, as 0341 decided
+/// it. Only for a database from before 0437, which doesn't quote a change.
 DropChangeKind dropChangeKind({required double oldFare, required double newFare, required DropChangeSettings rules}) {
   final delta = newFare - oldFare;
   if (delta <= 0) return rules.autoApproveCheaper ? DropChangeKind.instant : DropChangeKind.needsDriver;
@@ -115,7 +156,9 @@ double _max(double a, double b) => a > b ? a : b;
 /// priced it: on the ride's tariff [card] (null → the service's [rates], else
 /// the built-in TEKSI tariff), with the service [multiplier], over the new
 /// route's [distanceKm] / [durationMin], rounded as the ride's region books
-/// fares ([pricing]). Pure.
+/// fares ([pricing]). The phone's own figure, only for a database from
+/// before 0437: since then the server works this out (`ride_card_fare`).
+/// Pure.
 double quoteDropChangeFare({
   FareTariff? card,
   required double distanceKm,

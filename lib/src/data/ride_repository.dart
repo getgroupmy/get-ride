@@ -20,6 +20,7 @@ import '../core/fare_coins.dart';
 import '../core/freight.dart' show FreightRecipient, freightRequestColumns;
 import '../core/courier.dart' show CourierPayer, ParcelSize, courierRequestColumns;
 import '../core/delivery_addons.dart' show AddonPicks;
+import '../core/drop_change.dart' show DropChangeQuote, parseDropChangeAnswer;
 import '../core/my_qr.dart' show QrBookingError, QrBookingFailure;
 import '../core/my_ride.dart' show myRideMaxTargets;
 import '../core/region_pricing.dart';
@@ -1213,11 +1214,41 @@ class RideRepository {
   Future<void> declineCancellation(String id) =>
       _db.from(_table).update({'cancel_requested_at': null, 'cancel_requested_by': null}).eq('id', id);
 
+  /// What moving the drop-off of [rideId] to [lat], [lng] would come to, as
+  /// the server prices it (migration 0437): the fare, and whether it applies
+  /// at once or waits for the driver. Nothing changes. [distanceKm] and
+  /// [durationMin] are the route the app was given; the server prices on its
+  /// own measurement when it has one. Null from a database before 0437, which
+  /// has no such answer: the phone quotes the change itself then.
+  Future<DropChangeQuote?> quoteDropChange({
+    required String rideId,
+    required double lat,
+    required double lng,
+    double? distanceKm,
+    double? durationMin,
+  }) async {
+    try {
+      final res = await _db.rpc('ride_drop_change_quote', params: {
+        'p_ride': rideId,
+        'p_lat': lat,
+        'p_lng': lng,
+        'p_distance_km': distanceKm,
+        'p_duration_min': durationMin,
+      });
+      return DropChangeQuote.fromJson(res);
+    } on PostgrestException catch (e) {
+      if (e.code != 'PGRST202' && e.code != '42883') rethrow;
+      return null;
+    }
+  }
+
   /// The passenger moves the drop-off mid-ride (migration 0341). The server
-  /// re-prices and either applies it at once (cheaper / within the admin
-  /// threshold) or holds it for the driver. [applied] true means it is live
-  /// now; false means it is waiting for the driver.
-  Future<({bool applied})> requestDropChange({
+  /// prices it (0437) and either applies it at once or holds it for the
+  /// driver. [shownFare] is the fare the rider was shown: the server refuses
+  /// the change (DROP_CHANGE_FARE) when its own is higher. [applied] true
+  /// means it is live now, false that it is waiting for the driver; [fare]
+  /// is the fare the server put on it.
+  Future<({bool applied, double? fare})> requestDropChange({
     required String rideId,
     required String name,
     String? address,
@@ -1225,7 +1256,7 @@ class RideRepository {
     required double lng,
     double? distanceKm,
     double? durationMin,
-    required double newFare,
+    required double shownFare,
   }) async {
     final res = await _db.rpc('ride_drop_change_request', params: {
       'p_ride': rideId,
@@ -1235,10 +1266,9 @@ class RideRepository {
       'p_lng': lng,
       'p_distance_km': distanceKm,
       'p_duration_min': durationMin,
-      'p_new_fare': newFare,
+      'p_new_fare': shownFare,
     });
-    final applied = res is Map && res['applied'] == true;
-    return (applied: applied);
+    return parseDropChangeAnswer(res);
   }
 
   /// The driver accepts or rejects a held drop-off change (0341).
