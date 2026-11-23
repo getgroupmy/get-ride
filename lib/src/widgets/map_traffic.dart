@@ -71,6 +71,13 @@ final appleTrafficProvider = Provider<bool>(
   (ref) => appleNativeSupported && ref.watch(mapProfileProvider).value?.traffic?.apple == true,
 );
 
+/// Apple's own traffic drawn and switched on: the admin set it and the driver
+/// turned the traffic button on. The Apple map layer (apple_native_layer.dart)
+/// reads this.
+final appleTrafficOnProvider = Provider<bool>(
+  (ref) => ref.watch(appleTrafficProvider) && ref.watch(mapTrafficProvider),
+);
+
 /// The backup traffic source, validated the same way; null when there is
 /// none, or when it is the same as the primary (nothing to fall back to).
 String? resolveTrafficFallbackUrl({

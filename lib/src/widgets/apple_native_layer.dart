@@ -15,7 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'map_brightness.dart';
-import 'map_traffic.dart' show appleTrafficProvider, mapTrafficProvider;
+import 'map_traffic.dart' show appleTrafficOnProvider;
 
 /// Whether this device can draw Apple's map: iPhone and iPad.
 bool get appleNativeSupported => debugAppleNativeSupported ?? (!kIsWeb && Platform.isIOS);
@@ -151,7 +151,7 @@ const mapKitCheckMinZoom = 5.0, mapKitCheckMaxZoom = 19.0;
 /// Sets Apple's maps light or dark (ios/Runner/AppDelegate.swift).
 const appleMapAppearanceChannel = MethodChannel('get_ride/map_appearance');
 
-class AppleNativeBaseLayer extends ConsumerStatefulWidget {
+class AppleNativeBaseLayer extends StatefulWidget {
   const AppleNativeBaseLayer({
     super.key,
     required this.fallback,
@@ -191,10 +191,10 @@ class AppleNativeBaseLayer extends ConsumerStatefulWidget {
   final Widget fallback;
 
   @override
-  ConsumerState<AppleNativeBaseLayer> createState() => _AppleNativeBaseLayerState();
+  State<AppleNativeBaseLayer> createState() => _AppleNativeBaseLayerState();
 }
 
-class _AppleNativeBaseLayerState extends ConsumerState<AppleNativeBaseLayer> {
+class _AppleNativeBaseLayerState extends State<AppleNativeBaseLayer> {
   am.AppleMapController? _map;
   MapCamera? _shown;
 
@@ -211,12 +211,34 @@ class _AppleNativeBaseLayerState extends ConsumerState<AppleNativeBaseLayer> {
   Timer? _settle;
   MapCamera? _leftAlone;
 
+  /// Apple's own traffic, followed from [appleTrafficOnProvider]; off when
+  /// there is no ProviderScope to read it from (a bare test tree).
+  bool _traffic = false;
+  ProviderSubscription<bool>? _trafficSub;
+
   @override
   void initState() {
     super.initState();
     widget.route?.addListener(_redraw);
     widget.showMe?.addListener(_redraw);
     widget.annotations?.addListener(_redraw);
+    _watchTraffic();
+  }
+
+  /// Follow [appleTrafficOnProvider] where there is a ProviderScope; off in a
+  /// bare widget tree. Kept a plain StatefulWidget so the Apple map can be
+  /// pumped without a scope, as many map tests do.
+  void _watchTraffic() {
+    try {
+      final container = ProviderScope.containerOf(context, listen: false);
+      _traffic = container.read(appleTrafficOnProvider);
+      _trafficSub = container.listen<bool>(appleTrafficOnProvider, (_, on) {
+        if (mounted) setState(() => _traffic = on);
+      });
+    } on StateError {
+      // No ProviderScope (a bare test tree): Apple traffic stays off.
+      _traffic = false;
+    }
   }
 
   @override
@@ -239,6 +261,7 @@ class _AppleNativeBaseLayerState extends ConsumerState<AppleNativeBaseLayer> {
   @override
   void dispose() {
     _settle?.cancel();
+    _trafficSub?.close();
     widget.route?.removeListener(_redraw);
     widget.showMe?.removeListener(_redraw);
     widget.annotations?.removeListener(_redraw);
@@ -380,9 +403,6 @@ class _AppleNativeBaseLayerState extends ConsumerState<AppleNativeBaseLayer> {
     if (!appleNativeSupported) return widget.fallback;
     final camera = MapCamera.of(context);
     final dark = _wanted = mapIsDark(context);
-    // Apple's own traffic layer (MapKit), when the admin set it and the driver
-    // switched it on; otherwise the app's tile overlay draws over the map.
-    final traffic = ref.watch(appleTrafficProvider) && ref.watch(mapTrafficProvider);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _follow(camera);
@@ -424,9 +444,9 @@ class _AppleNativeBaseLayerState extends ConsumerState<AppleNativeBaseLayer> {
               'hybrid' => am.MapType.hybrid,
               _ => am.MapType.standard,
             },
-            // Apple's own traffic (appleTrafficProvider); otherwise the app's
+            // Apple's own traffic (appleTrafficOnProvider); otherwise the app's
             // tile overlay draws over it, as over any map.
-            trafficEnabled: traffic,
+            trafficEnabled: _traffic,
             // Only shows: the app's own map and buttons do the rest.
             compassEnabled: false,
             rotateGesturesEnabled: false,
