@@ -99,8 +99,7 @@ begin
     raise exception 'FAILED: %', p_what;
   end if;
 end $$;
--- Refused with one of [p_codes] (0268's own, or a later migration's
--- version of the same function when replayed in file order).
+-- Refused with one of [p_codes].
 create or replace function pg_temp.refused_with(p_sql text, p_codes text[], p_what text) returns void language plpgsql as $$
 declare c text;
 begin
@@ -226,8 +225,9 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000268d3');
 select pg_temp.check(pg_temp.sees((select id from rides where k = 'moto')) = 1, 'the courier car sees it');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000268d2');
 select pg_temp.check(pg_temp.sees((select id from rides where k = 'moto')) = 0, 'a ride car doesn''t');
+-- 0268's ride_offer_make, which 0430 keeps in a replay: the courier reason.
 select pg_temp.refused_with(format('select public.ride_offer_make(%L, 12)', (select id from rides where k = 'moto')),
-  array['COURIER_DRIVER_NO_COURIER', 'FREIGHT_DRIVER_NO_FREIGHT'], 'a ride car''s offer on a courier request');
+  array['COURIER_DRIVER_NO_COURIER'], 'a ride car''s offer on a courier request');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000268d4');
 select pg_temp.check(pg_temp.sees((select id from rides where k = 'moto')) = 0, 'a freight van doesn''t');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000268a1');
@@ -383,9 +383,10 @@ set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000268c2');
 select pg_temp.check((public.ride_cancel_terms((select id from rides where k = 'late'))->>'freight')::boolean,
   'no city fee: the terms say freight');
-select pg_temp.check(not (public.ride_cancel_terms((select id from rides where k = 'late')) ? 'courier')
-                     or (public.ride_cancel_terms((select id from rides where k = 'late'))->>'freightArrivedFee')::numeric = 4,
-  'with 0268 last (as live), the courier fee: '
+-- 0268's ride_cancel_terms, which 0430 keeps in a replay.
+select pg_temp.check((public.ride_cancel_terms((select id from rides where k = 'late'))->>'courier')::boolean
+                     and (public.ride_cancel_terms((select id from rides where k = 'late'))->>'freightArrivedFee')::numeric = 4,
+  'the terms say courier and quote the courier fee: '
   || (public.ride_cancel_terms((select id from rides where k = 'late')))::text);
 update public.ride_requests set status = 'cancelled' where id = (select id from rides where k = 'late');
 reset role;
