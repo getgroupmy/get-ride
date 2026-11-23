@@ -1,6 +1,7 @@
 -- ============================================================================
 -- Regression test for migration 0341: the mid-ride drop-off change (driver
--- check corrected in 0428).
+-- check corrected in 0428; answered only while the ride is under way, 0431;
+-- the ride read under its row lock, 0434 and 0435).
 --   * A change within the admin's threshold applies at once; a dearer one is
 --     held for the driver.
 --   * The ride's driver accepts a held change (the drop and the fare change)
@@ -11,6 +12,18 @@
 --     It is never a partners.id: 0341 looked the driver up by that, which no
 --     real ride holds, so the driver's own answer was refused (0428).
 --   * With nothing held there is nothing to answer.
+--   * A held change is answered only while the ride is under way, the rule the
+--     request already has: once the ride is completed or cancelled, its
+--     driver's accept and decline are refused with not_ongoing and the ride is
+--     left as it is (0431).
+--   * The rider can withdraw a held change: the ride stays as booked and the
+--     change is recorded as expired, by the rider. Nobody else withdraws it
+--     for them, and with nothing held a withdraw changes nothing.
+--   * The request and the answer both read the ride under its row lock, so its
+--     status cannot change between the check and the write (0434). The
+--     withdraw reads it the same way, so the held change it checks is the one
+--     it writes to (0435). One transaction cannot show two calls overlapping,
+--     so this file checks that each function reads the ride for update.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/drop_change_0341.sql
 --
@@ -48,8 +61,12 @@ insert into public.app_settings (key, value) values
                           "responseWindowSec": 30, "maxChangesPerRide": 2}')
 on conflict (key) do update set value = excluded.value, updated_at = now();
 
--- Three rides under way, booked to Mid Valley at 20.00. Each carries the
--- driver's account id in partner_id, as a ride the app has taken does.
+-- Six rides under way, booked to Mid Valley at 20.00. Each carries the
+-- driver's account id in partner_id, as a ride the app has taken does. The
+-- first three stay on the trip. The next two end with a change still held
+-- (section 7): one is on the trip and is completed, the other is cancelled
+-- with the driver still on the way. On the last one the rider withdraws a
+-- held change (section 8).
 insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_fare, pickup_name,
                                   drop_name, drop_address, drop_lat, drop_lng, distance_km, duration_min) values
   ('00000000-0000-0000-0000-0000000341e1', '00000000-0000-0000-0000-0000000341a1',
@@ -59,6 +76,15 @@ insert into public.ride_requests (id, rider_id, partner_id, status, fare, ride_f
    '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20),
   ('00000000-0000-0000-0000-0000000341e3', '00000000-0000-0000-0000-0000000341a1',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20),
+  ('00000000-0000-0000-0000-0000000341e4', '00000000-0000-0000-0000-0000000341a1',
+   '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
+   'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20),
+  ('00000000-0000-0000-0000-0000000341e5', '00000000-0000-0000-0000-0000000341a1',
+   '00000000-0000-0000-0000-0000000341b1', 'accepted', 20, 20, 'KLCC',
+   'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20),
+  ('00000000-0000-0000-0000-0000000341e6', '00000000-0000-0000-0000-0000000341a1',
    '00000000-0000-0000-0000-0000000341b1', 'on_trip', 20, 20, 'KLCC',
    'Mid Valley', 'Lingkaran Syed Putra, Kuala Lumpur', 3.1177, 101.6774, 8.0, 20)
 on conflict (id) do nothing;
@@ -99,7 +125,7 @@ grant execute on function pg_temp.refused(text, text, text) to authenticated;
 -- here, whatever the functions under test do with it.
 set local role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
-select pg_temp.check((select count(*) = 3 from public.ride_requests
+select pg_temp.check((select count(*) = 6 from public.ride_requests
                        where id::text like '00000000-0000-0000-0000-0000000341e%'),
   'signed in, the driver reads the rides that carry their account id');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000341b2');
@@ -246,7 +272,152 @@ select pg_temp.check((select count(*) = 3 from public.ride_requests
                           or (id = '00000000-0000-0000-0000-0000000341e3' and ride_fare = 20 and drop_change_count = 0)),
   'and the rides are left as they were');
 
--- 7. Still for signed-in callers only, as 0341 granted it -------------------------------------------
+-- 7. Once the ride is no longer under way, a held change is not answered ----------------------------
+-- The request is taken only while the ride is accepted, arrived or on_trip
+-- (ride_drop_change_request, not_ongoing otherwise), and the answer has the
+-- same rule (0431). A change is held on each of the last two rides; the ride
+-- then ends the way the app ends it, signed in as its driver.
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000341e4', 'Sunway Pyramid',
+                                  'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 35)
+    = '{"applied": false, "pending": true, "fare": 35}'::jsonb,
+  'a dearer drop is held on a ride that is on the trip');
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000341e5', 'Sunway Pyramid',
+                                  'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 35)
+    = '{"applied": false, "pending": true, "fare": 35}'::jsonb,
+  'and on a ride whose driver is still on the way');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
+update public.ride_requests set status = 'completed', completed_at = now()
+ where id = '00000000-0000-0000-0000-0000000341e4';
+update public.ride_requests set status = 'cancelled', cancelled_at = now(), cancel_reason = 'vehicle_issue',
+                                cancel_requested_by = 'partner', cancel_requested_at = now()
+ where id = '00000000-0000-0000-0000-0000000341e5' and status in ('accepted', 'arrived');
+reset role;
+
+-- The two rides once they have ended: as booked, with the drop and fare asked
+-- for still held beside them and no answer recorded.
+create or replace function pg_temp.ended_with_change_held() returns boolean language sql as $$
+  select count(*) = 2 from public.ride_requests
+   where ((id = '00000000-0000-0000-0000-0000000341e4' and status = 'completed')
+       or (id = '00000000-0000-0000-0000-0000000341e5' and status = 'cancelled'))
+     and drop_name = 'Mid Valley' and drop_address = 'Lingkaran Syed Putra, Kuala Lumpur'
+     and drop_lat = 3.1177 and drop_lng = 101.6774
+     and distance_km = 8.0 and duration_min = 20
+     and ride_fare = 20 and fare = 20
+     and drop_change_count = 0
+     and drop_change_requested_at is not null and drop_change_requested_by = 'rider'
+     and drop_change_name = 'Sunway Pyramid'
+     and drop_change_address = 'Jalan PJS 11/15, Subang Jaya'
+     and drop_change_lat = 3.0733 and drop_change_lng = 101.6078
+     and drop_change_distance_km = 21.5 and drop_change_duration_min = 38
+     and drop_change_fare = 35
+     and drop_change_outcome is null and drop_change_outcome_by is null
+     and drop_change_outcome_at is null
+$$;
+select pg_temp.check(pg_temp.ended_with_change_held(),
+  'one ride is completed and one cancelled, each as booked with its change still held');
+
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e4', true)$q$,
+                       'not_ongoing', 'the ride''s driver accepting a held change after the ride was completed');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e4', false)$q$,
+                       'not_ongoing', 'the ride''s driver declining a held change after the ride was completed');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e5', true)$q$,
+                       'not_ongoing', 'the ride''s driver accepting a held change after the ride was cancelled');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e5', false)$q$,
+                       'not_ongoing', 'the ride''s driver declining a held change after the ride was cancelled');
+-- Anybody else is still told only that the ride is not theirs to answer for.
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e4', true)$q$,
+                       'not_authorized', 'the rider accepting their own change after the ride was completed');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341c1');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e5', false)$q$,
+                       'not_authorized', 'a stranger declining the change after the ride was cancelled');
+reset role;
+select pg_temp.check(pg_temp.ended_with_change_held(),
+  'the refused answers changed nothing: the fare, the drop and the held change are as they were');
+
+-- 8. The rider withdraws a held change --------------------------------------------------------------
+-- Their own cancel, or the passenger's app when the response window runs out
+-- (ride_drop_change_withdraw). A dearer drop is held on the last ride.
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.check(
+  public.ride_drop_change_request('00000000-0000-0000-0000-0000000341e6', 'Sunway Pyramid',
+                                  'Jalan PJS 11/15, Subang Jaya', 3.0733, 101.6078, 21.5, 38, 35)
+    = '{"applied": false, "pending": true, "fare": 35}'::jsonb,
+  'a dearer drop is held on the last ride');
+-- Nobody withdraws it for the rider: not the ride's driver, not a stranger.
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
+select pg_temp.refused($q$select public.ride_drop_change_withdraw('00000000-0000-0000-0000-0000000341e6')$q$,
+                       'not_authorized', 'the ride''s driver withdrawing the rider''s change');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341c1');
+select pg_temp.refused($q$select public.ride_drop_change_withdraw('00000000-0000-0000-0000-0000000341e6')$q$,
+                       'not_authorized', 'a stranger withdrawing the rider''s change');
+reset role;
+select pg_temp.check((select drop_name = 'Mid Valley' and ride_fare = 20 and drop_change_count = 0
+                         and drop_change_requested_at is not null and drop_change_requested_by = 'rider'
+                         and drop_change_name = 'Sunway Pyramid' and drop_change_fare = 35
+                         and drop_change_outcome is null and drop_change_outcome_by is null
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000341e6'),
+  'the refused withdraws changed nothing: the change is still waiting for the driver');
+
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.check(
+  public.ride_drop_change_withdraw('00000000-0000-0000-0000-0000000341e6') = '{"withdrawn": true}'::jsonb,
+  'the rider withdraws the held change');
+reset role;
+select pg_temp.check((select drop_name = 'Mid Valley' and drop_address = 'Lingkaran Syed Putra, Kuala Lumpur'
+                         and drop_lat = 3.1177 and drop_lng = 101.6774
+                         and distance_km = 8.0 and duration_min = 20
+                         and ride_fare = 20 and fare = 20
+                         and drop_change_count = 0
+                         and drop_change_requested_at is null and drop_change_requested_by is null
+                         and drop_change_name is null and drop_change_address is null
+                         and drop_change_lat is null and drop_change_lng is null
+                         and drop_change_distance_km is null and drop_change_duration_min is null
+                         and drop_change_fare is null
+                         and drop_change_outcome = 'expired' and drop_change_outcome_by = 'rider'
+                         and drop_change_outcome_at is not null
+                        from public.ride_requests where id = '00000000-0000-0000-0000-0000000341e6'),
+  'withdrawn: the ride stays as booked, and the change is recorded as expired, by the rider');
+
+-- With nothing held a withdraw changes nothing: not on the ride just
+-- withdrawn, and not on the rides whose change the driver has answered.
+set local role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341a1');
+select pg_temp.check(
+  public.ride_drop_change_withdraw('00000000-0000-0000-0000-0000000341e6') = '{"withdrawn": false}'::jsonb,
+  'a second withdraw finds nothing held');
+select pg_temp.check(
+  public.ride_drop_change_withdraw('00000000-0000-0000-0000-0000000341e2') = '{"withdrawn": false}'::jsonb,
+  'so does a withdraw after the driver accepted the change');
+select pg_temp.check(
+  public.ride_drop_change_withdraw('00000000-0000-0000-0000-0000000341e3') = '{"withdrawn": false}'::jsonb,
+  'and one after the driver declined it');
+-- And the driver has nothing to answer on a change that was withdrawn.
+select pg_temp.as_user('00000000-0000-0000-0000-0000000341b1');
+select pg_temp.refused($q$select public.ride_drop_change_resolve('00000000-0000-0000-0000-0000000341e6', true)$q$,
+                       'no_pending', 'the driver accepting a change the rider withdrew');
+reset role;
+select pg_temp.check((select count(*) = 3 from public.ride_requests
+                       where (id = '00000000-0000-0000-0000-0000000341e2' and drop_name = 'Sunway Pyramid'
+                              and ride_fare = 35 and drop_change_count = 1
+                              and drop_change_outcome = 'accepted' and drop_change_outcome_by = 'partner')
+                          or (id = '00000000-0000-0000-0000-0000000341e3' and drop_name = 'Mid Valley'
+                              and ride_fare = 20 and drop_change_count = 0
+                              and drop_change_outcome = 'declined' and drop_change_outcome_by = 'partner')
+                          or (id = '00000000-0000-0000-0000-0000000341e6' and drop_name = 'Mid Valley'
+                              and ride_fare = 20 and drop_change_count = 0
+                              and drop_change_outcome = 'expired' and drop_change_outcome_by = 'rider')),
+  'the rides are as they were, each with the answer already recorded on it');
+
+-- 9. Still for signed-in callers only, as 0341 granted it -------------------------------------------
 select pg_temp.check(
   has_function_privilege('authenticated', 'public.ride_drop_change_resolve(uuid, boolean)', 'execute')
   and not has_function_privilege('anon', 'public.ride_drop_change_resolve(uuid, boolean)', 'execute'),
@@ -255,6 +426,48 @@ select pg_temp.check((select p.prosecdef and p.proconfig @> array['search_path="
                         from pg_proc p
                        where p.oid = 'public.ride_drop_change_resolve(uuid, boolean)'::regprocedure),
   'ride_drop_change_resolve is security definer with an empty search_path');
+-- And the request, recreated in 0434.
+select pg_temp.check(
+  has_function_privilege('authenticated', 'public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric)', 'execute')
+  and not has_function_privilege('anon', 'public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric)', 'execute'),
+  'ride_drop_change_request is open to signed-in callers and not to anon');
+select pg_temp.check((select p.prosecdef and p.proconfig @> array['search_path=""']
+                        from pg_proc p
+                       where p.oid = 'public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric)'::regprocedure),
+  'ride_drop_change_request is security definer with an empty search_path');
+-- And the withdraw, recreated in 0435.
+select pg_temp.check(
+  has_function_privilege('authenticated', 'public.ride_drop_change_withdraw(uuid)', 'execute')
+  and not has_function_privilege('anon', 'public.ride_drop_change_withdraw(uuid)', 'execute'),
+  'ride_drop_change_withdraw is open to signed-in callers and not to anon');
+select pg_temp.check((select p.prosecdef and p.proconfig @> array['search_path=""']
+                        from pg_proc p
+                       where p.oid = 'public.ride_drop_change_withdraw(uuid)'::regprocedure),
+  'ride_drop_change_withdraw is security definer with an empty search_path');
+
+-- 10. All three functions read the ride under its row lock (0434, 0435) -----------------------------
+-- The request and the answer each read the ride, check the caller and the
+-- ride's status, and then write to the ride. The read is "for update", so the
+-- status cannot change between the check and the write (0434). The withdraw
+-- reads the ride the same way, so the held change it checks is the one it
+-- writes to (0435). One transaction cannot show two calls overlapping, so this
+-- looks at the functions as they are stored: a later migration that recreates
+-- one of them from its body has to keep the lock.
+select pg_temp.check(
+  (select p.prosrc ~* 'from\s+public\.ride_requests\s+where\s+id\s*=\s*p_ride\s+for\s+update\s*;'
+     from pg_proc p
+    where p.oid = 'public.ride_drop_change_request(uuid, text, text, double precision, double precision, numeric, numeric, numeric)'::regprocedure),
+  'ride_drop_change_request reads the ride for update');
+select pg_temp.check(
+  (select p.prosrc ~* 'from\s+public\.ride_requests\s+where\s+id\s*=\s*p_ride\s+for\s+update\s*;'
+     from pg_proc p
+    where p.oid = 'public.ride_drop_change_resolve(uuid, boolean)'::regprocedure),
+  'ride_drop_change_resolve reads the ride for update');
+select pg_temp.check(
+  (select p.prosrc ~* 'from\s+public\.ride_requests\s+where\s+id\s*=\s*p_ride\s+for\s+update\s*;'
+     from pg_proc p
+    where p.oid = 'public.ride_drop_change_withdraw(uuid)'::regprocedure),
+  'ride_drop_change_withdraw reads the ride for update');
 
 rollback;
 
