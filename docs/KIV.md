@@ -110,6 +110,17 @@ Phase E (phone line) — hardware **decided**, using the owner's own kit:
   than the brain. (Synology DSM can't load DAHDI drivers, which is another reason the bridge is a *network*
   FXO ATA, not an internal/USB card.)
 
+## iOS UI/UX testing (paused 19 Oct 2026)
+
+A tester session rendered every screen as an iPhone would show it and sent each problem to the fixing session. Paused by the owner; the work is on the branch `claude/bold-rubin-s8wiu3` (not merged), so pick it up from there.
+
+- Where it is: [docs/ios-ux-findings.md](ios-ux-findings.md) lists findings 1 to 57 with file references and status; [docs/ios-ux-benchmark.md](ios-ux-benchmark.md) compares GET.ride with inDrive and Grab and ends with a priority list for the owner; [docs/app-review-calls-video.md](app-review-calls-video.md) is the shot list and App Review notes for the in-app calls video. The screenshot harness is `test/ios_shots_test.dart` (does nothing unless `SHOTS_DIR` is set).
+- Last full check: head 80c624b (18 Oct 2026). The next head, 65c6659 (19 Oct, with the landscape and sheet-height fixes of #431), was not checked before the pause, and a month of changes has landed since, so re-check before acting on anything below.
+- Open then: #28 muted text below AA contrast; #45 phone and code screens in landscape with the keyboard (title behind the bar); #52 Options sheet, Add a driver sheet and admin Vehicle Types in landscape; #53 Offer your fare opens at "RM 68" against a RM68.05 recommended fare; #54 map buttons clipped by the ride sheet in landscape; #55 and #56 the driver's ride-request alert in landscape (no fare or addresses shown, markers drawn three times); #57 confirm card clipped in landscape at large text.
+- Owner decisions from the benchmark: "raise your fare and search again" when no offers come, plate-first driver card with the ETA, one Safety sheet with trusted-contact auto-share, rating tags and tip, Rebook and Report from trips, iPhone portrait lock, home-screen quick actions, a Live Activity for the ride, Sign in with Apple.
+- App Review calls video: needs two real iPhones with the TestFlight build (a cloud session cannot record one). Check first that the build signs with production push and that VoIP pushes go to production APNs.
+- To resume, start a session on this repository with: "Read docs/ios-ux-findings.md on claude/bold-rubin-s8wiu3, rebase it onto main, run test/ios_shots_test.dart with SHOTS_DIR set (and LAND=1 for landscape), and report which open findings are fixed."
+
 ## Follow-ups (23 Nov 2026)
 
 - My Team on a phone (0432): for an approved member, an approver who is not an admin sees "This member is approved, so an admin changes their services." in place of the Courier toggle, and the services read-only in the profile edit sheet. Checked by widget tests only; look at it on a phone once the next app build is out.
