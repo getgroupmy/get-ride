@@ -14,6 +14,7 @@ import '../../core/launch_destination.dart' show mapButtonsRightInset;
 import '../../data/hourly_hire_repository.dart' show hourlyHireConfigProvider;
 import 'hire_parts.dart' show HireTripCard;
 import '../../data/ride_cancel_config.dart';
+import '../../data/ride_live_fix_repository.dart' show rideCarFixesProvider;
 import '../../core/rider_audio.dart' show RiderAudioAt;
 import '../../data/rider_audio_repository.dart' show riderAudioAtProvider, riderAudioSupported;
 import '../safety/rider_audio_controller.dart' show riderAudioProvider;
@@ -183,6 +184,9 @@ class _TrackingMap extends ConsumerWidget {
     return LiveRideMap(
       ride: r,
       riderPosition: ref.read(riderPositionStreamProvider),
+      // The driver's phone's fixes, about one a second: the car is drawn
+      // where it is now while they come (migration 0426).
+      carFixes: ref.read(rideCarFixesProvider(ride.id)),
       topButton: LocationShareButton(ride: r),
     );
   }

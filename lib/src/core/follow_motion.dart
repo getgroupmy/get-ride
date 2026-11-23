@@ -62,6 +62,18 @@ const followCoarseMetres = 20.0;
 const followLateWindow = 10;
 const followLateMost = 0.5;
 
+/// The most lateness (seconds) made up for in a fix that came from another
+/// phone, over the network: one is held up there far longer than a phone holds
+/// up its own (a poor signal, the server passing them on in batches).
+const followLateMostRemote = 1.5;
+
+/// How much faster than the car itself (m/s) a car followed from another
+/// phone's fixes is drawn making up ground it has lost. Its fixes go missing
+/// for seconds at a time, as a phone's own do not, and the car is then drawn
+/// some way short of where it is: it makes that up as a car would, driving
+/// faster for a moment, and not in a single lurch.
+const followCatchUpRemote = 15.0;
+
 /// A fix older than the one in hand by less than this (seconds) is dropped: a
 /// cached position handed over when the stream restarts, or two that crossed on
 /// the way. Older than that and the clock itself has been moved, so it is taken.
@@ -220,11 +232,12 @@ LatLng settledFix(LatLng? drawn, LatLng fix, {required double? speedMps, require
 /// brought up to date here): a fix that took 0.3 s longer than the promptest of
 /// them is 0.3 s late. Without this a fix held up for a moment (a busy phone,
 /// Android batching them) pulled the dot back and then let it catch up — a
-/// hitch each time. Never more than [followLateMost].
-double fixLateness(List<double> lags, double lag) {
+/// hitch each time. Never more than [most] ([followLateMost] for a phone's own
+/// fixes).
+double fixLateness(List<double> lags, double lag, {double most = followLateMost}) {
   lags.add(lag);
   if (lags.length > followLateWindow) lags.removeAt(0);
-  return (lag - lags.reduce(math.min)).clamp(0.0, followLateMost).toDouble();
+  return (lag - lags.reduce(math.min)).clamp(0.0, most).toDouble();
 }
 
 /// The acceleration (m/s², braking negative) between a fix at [earlierMps] and
@@ -250,6 +263,19 @@ typedef FixTaken = ({double? gap, double? speed, double? course});
 /// It keeps no clock or ticker of its own, so whatever draws the dot decides
 /// when frames run — and a test can run them one at a time.
 class FixFollower {
+  /// [lateMost] is the most lateness (seconds) a fix is carried forward for
+  /// from the start ([fixLateness]): [followLateMost] for the phone's own GPS,
+  /// more for fixes that come from another phone ([followLateMostRemote]).
+  ///
+  /// [catchUp] is how much faster than the device itself (m/s) the drawn point
+  /// may move to close on where the device is; null leaves the ease to close
+  /// any gap at its own pace, as for the phone's own GPS, where there is never
+  /// much of one ([followCatchUpRemote] for another phone's fixes).
+  FixFollower({this.lateMost = followLateMost, this.catchUp});
+
+  final double lateMost;
+  final double? catchUp;
+
   /// Where the latest fix is taken as putting the device ([settledFix]), and
   /// the fix as the GPS gave it.
   LatLng? _fix, _lastFix;
@@ -307,7 +333,11 @@ class FixFollower {
     // carried forward by that from the start.
     final late = time == null
         ? 0.0
-        : fixLateness(_lags, clock().difference(time).inMicroseconds / Duration.microsecondsPerSecond);
+        : fixLateness(
+            _lags,
+            clock().difference(time).inMicroseconds / Duration.microsecondsPerSecond,
+            most: lateMost,
+          );
     // A fix that comes without a velocity — a platform or a moment that gives
     // none — gets what the move from the last fix amounts to, so the motion is
     // still continuous.
@@ -354,17 +384,28 @@ class FixFollower {
     // steady speed: the two cancel, and the dot sits on the device.
     final ahead = _age + followEaseSeconds;
     final now = deadReckon(fix, speedMps: _speed, courseDegrees: _course, ageSeconds: ahead, accelMps2: _accel);
+    final carrying = _course != null && carryWeight(_speed) > 0 && ahead < followCoastSeconds;
     final was = shown;
     final LatLng next;
     if (was == null) {
       next = now;
     } else {
       final off = metresApart(was, now);
-      // A big gap jumps; a hair's breadth is there.
-      next = off > followSnapMetres || off < 0.03 ? now : pointBetween(was, now, easeFraction(dt, followEaseSeconds));
+      if (off > followSnapMetres || off < 0.03) {
+        // A big gap jumps; a hair's breadth is there.
+        next = now;
+      } else {
+        var part = easeFraction(dt, followEaseSeconds);
+        final faster = catchUp;
+        if (faster != null) {
+          // No faster than the device is going, and [catchUp] over.
+          final going = carrying ? carryWeight(_speed) * math.max(0.0, _speed + _accel * ahead) : 0.0;
+          part = math.min(part, (going + faster) * dt / off);
+        }
+        next = pointBetween(was, now, part);
+      }
     }
     shown = next;
-    final carrying = _course != null && carryWeight(_speed) > 0 && ahead < followCoastSeconds;
     return carrying || next != now;
   }
 }

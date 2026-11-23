@@ -2,6 +2,8 @@
 // Settings → Permissions enforces is done (features/shell/permission_gate.dart),
 // and the admin's card for those rules.
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart' show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,12 +17,40 @@ import 'package:get_ride/src/data/permission_rules.dart';
 import 'package:get_ride/src/features/permissions/permission_actions.dart';
 import 'package:get_ride/src/features/shell/permission_gate.dart';
 import 'package:get_ride/src/providers.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class _Probe implements PermissionProbe {
-  _Probe({this.service = true, this.loc = PermState.granted, this.notif = PermState.granted, this.locAsk, this.notifAsk});
+  _Probe({
+    this.service = true,
+    this.loc = PermState.granted,
+    this.notif = PermState.granted,
+    this.locAsk,
+    this.notifAsk,
+    this.precise,
+    this.preciseAsk,
+  });
   bool service;
   PermState loc;
   PermState notif;
+
+  /// Whether the location allowed is the precise one (null: can't say), and
+  /// what asking for it answers (null: precise from then on).
+  bool? precise;
+  AskResult? preciseAsk;
+  var preciseAsked = 0;
+
+  @override
+  Future<bool?> locationPrecise() async => precise;
+
+  @override
+  Future<AskResult> askLocationPrecise() async {
+    preciseAsked++;
+    final r = preciseAsk ?? const AskResult(AskAnswer.granted);
+    if (r.answer == AskAnswer.granted) precise = true;
+    return r;
+  }
 
   /// What the next ask answers (null: allowed).
   AskResult? locAsk, notifAsk;
@@ -210,6 +240,125 @@ void main() {
     expect(find.byKey(const ValueKey('permission-block-notificationsOff')), findsNothing);
   });
 
+  group('precise location, when the admin has switched it on', () {
+    const rules = PermissionRules(user: PermissionChecks(locationPrecise: true));
+
+    Future<void> on(TargetPlatform platform, Future<void> Function() body) async {
+      debugDefaultTargetPlatformOverride = platform;
+      try {
+        await body();
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
+      }
+    }
+
+    for (final dark in [false, true]) {
+      testWidgets('Android, approximate only: told why, asked by the phone, and through (${dark ? 'dark' : 'light'})', (
+        tester,
+      ) async {
+        await on(TargetPlatform.android, () async {
+          final probe = _Probe(precise: false);
+          await pump(tester, probe, rules: rules, theme: dark ? ThemeData.dark() : ThemeData.light());
+          expect(find.byKey(const ValueKey('permissions-required')), findsOneWidget);
+          expect(find.byKey(const ValueKey('permission-block-notPrecise')), findsOneWidget);
+          expect(find.text('Precise location'), findsOneWidget);
+          expect(find.textContaining('only allowed your approximate location'), findsOneWidget);
+          expect(find.textContaining('Use precise location'), findsOneWidget, reason: 'where it is in Settings');
+          expect(find.widgetWithText(FilledButton, 'Allow precise location'), findsOneWidget);
+          expect(find.text('Home map'), findsOneWidget, reason: 'under the page');
+          await tester.tap(find.byKey(const ValueKey('permission-fix-notPrecise')));
+          await tester.pumpAndSettle();
+          expect(probe.preciseAsked, 1);
+          expect(probe.appSettings, 0, reason: "the phone's own question was enough");
+          expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
+        });
+      });
+    }
+
+    testWidgets("Android, told to keep it approximate in the phone's question: still held, and nothing opened on top", (
+      tester,
+    ) async {
+      await on(TargetPlatform.android, () async {
+        final probe = _Probe(precise: false, preciseAsk: const AskResult(AskAnswer.denied));
+        await pump(tester, probe, rules: rules);
+        await tester.tap(find.byKey(const ValueKey('permission-fix-notPrecise')));
+        await tester.pumpAndSettle();
+        expect(probe.preciseAsked, 1);
+        expect(probe.appSettings, 0);
+        expect(find.byKey(const ValueKey('permission-block-notPrecise')), findsOneWidget);
+      });
+    });
+
+    testWidgets('Android will not ask any more: its Settings; back with it precise, through', (tester) async {
+      await on(TargetPlatform.android, () async {
+        final probe = _Probe(precise: false, preciseAsk: const AskResult(AskAnswer.blocked, prompted: false));
+        await pump(tester, probe, rules: rules);
+        await tester.tap(find.byKey(const ValueKey('permission-fix-notPrecise')));
+        await tester.pumpAndSettle();
+        expect(probe.appSettings, 1);
+        expect(find.byKey(const ValueKey('permission-block-notPrecise')), findsOneWidget);
+        // "Use precise location" switched on there.
+        probe.precise = true;
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
+      });
+    });
+
+    testWidgets('an iPhone with Precise Location off: the button opens its Settings', (tester) async {
+      await on(TargetPlatform.iOS, () async {
+        final probe = _Probe(precise: false, preciseAsk: const AskResult(AskAnswer.blocked, prompted: false));
+        await pump(tester, probe, rules: rules);
+        expect(find.byKey(const ValueKey('permission-block-notPrecise')), findsOneWidget);
+        expect(find.text('Settings > GET.ride > Location > Precise Location'), findsOneWidget);
+        expect(find.widgetWithText(FilledButton, 'Open settings'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('permission-fix-notPrecise')));
+        await tester.pumpAndSettle();
+        expect(probe.appSettings, 1);
+      });
+    });
+
+    testWidgets('precise already, or a phone that cannot say: nothing in the way', (tester) async {
+      await on(TargetPlatform.android, () async {
+        await pump(tester, _Probe(precise: true), rules: rules);
+        expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
+        await pump(tester, _Probe(), rules: rules);
+        expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
+      });
+    });
+
+    testWidgets('location not allowed at all is said first: precise is not asked on top of it', (tester) async {
+      await on(TargetPlatform.android, () async {
+        await pump(tester, _Probe(loc: PermState.denied, precise: false), rules: rules);
+        expect(find.byKey(const ValueKey('permission-block-locationOff')), findsOneWidget);
+        expect(find.byKey(const ValueKey('permission-block-notPrecise')), findsNothing);
+      });
+    });
+
+    testWidgets('a partner is held to the partners\' switch, a rider to the users\'', (tester) async {
+      await on(TargetPlatform.android, () async {
+        final partner = Partner({'id': 'p1', 'partner_types': const ['eHailing']});
+        const partnersOnly = PermissionRules(partner: PermissionChecks(locationPrecise: true));
+        await pump(tester, _Probe(precise: false), rules: partnersOnly, location: '/drive', partner: partner);
+        expect(find.byKey(const ValueKey('permission-block-notPrecise')), findsOneWidget);
+        await pump(tester, _Probe(precise: false), rules: partnersOnly);
+        expect(find.byKey(const ValueKey('permissions-required')), findsNothing, reason: 'the users\' switch is off');
+        // And the other way about.
+        await pump(tester, _Probe(precise: false), rules: rules, location: '/drive', partner: partner);
+        expect(find.byKey(const ValueKey('permissions-required')), findsNothing, reason: 'the partners\' switch is off');
+      });
+    });
+  });
+
+  testWidgets('approximate location holds nobody up unless the admin has switched precise location on', (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    await pump(tester, _Probe(precise: false));
+    expect(find.byKey(const ValueKey('permissions-required')), findsNothing);
+    expect(find.text('Home map'), findsOneWidget);
+    debugDefaultTargetPlatformOverride = null;
+  });
+
   for (final dark in [false, true]) {
     testWidgets("the admin's card shows each rule by audience (${dark ? 'dark' : 'light'})", (tester) async {
       const rules = PermissionRules(user: PermissionChecks(notifications: false), showPermissionsCard: false);
@@ -230,11 +379,92 @@ void main() {
       // Android's "All the time" is off unless the admin turns it on.
       expect(on('partner-location-always-android'), isFalse);
       expect(on('partner-notifications'), isTrue);
+      // Precise location too: one switch for users, one for partners.
+      expect(on('user-location-precise'), isFalse);
+      expect(on('partner-location-precise'), isFalse);
       expect(on('show-card'), isFalse);
-      expect(find.textContaining('\nBypassed'), findsNWidgets(2));
+      expect(find.textContaining('\nBypassed'), findsNWidgets(4));
       expect(find.text('Hidden'), findsOneWidget);
     });
   }
+
+  testWidgets("the admin's card shows each audience its own precise-location switch", (tester) async {
+    Future<(bool, bool)> shown(PermissionRules rules) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          key: UniqueKey(),
+          overrides: [permissionRulesProvider.overrideWith((_) async => rules)],
+          child: const MaterialApp(
+            home: Scaffold(body: SingleChildScrollView(child: PermissionRulesCard(canEdit: true))),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      bool on(String key) => tester.widget<SwitchListTile>(find.byKey(ValueKey('permission-rule-$key'))).value;
+      return (on('user-location-precise'), on('partner-location-precise'));
+    }
+
+    expect(await shown(const PermissionRules(user: PermissionChecks(locationPrecise: true))), (true, false));
+    expect(await shown(const PermissionRules(partner: PermissionChecks(locationPrecise: true))), (false, true));
+    expect(find.textContaining('partners are asked for the precise one before going online'), findsOneWidget);
+    expect(find.textContaining('users are asked for the precise one before the home map'), findsOneWidget);
+  });
+
+  testWidgets("the admin's card: precise location is switched on for users and for partners separately", (tester) async {
+    // A server that keeps what it is sent, as set_permission_rules does.
+    final saved = <Map<String, dynamic>>[];
+    var rules = const PermissionRules(partner: PermissionChecks(locationAlways: true));
+    final db = SupabaseClient(
+      'http://localhost',
+      'anon',
+      authOptions: const AuthClientOptions(autoRefreshToken: false),
+      httpClient: MockClient((r) async {
+        expect(r.url.path, endsWith('/rpc/set_permission_rules'));
+        final sent = (jsonDecode(r.body) as Map<String, dynamic>)['p_rules'] as Map<String, dynamic>;
+        saved.add(sent);
+        rules = PermissionRules.fromJson(sent);
+        return http.Response(jsonEncode(sent), 200, headers: {'content-type': 'application/json'}, request: r);
+      }),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          supabaseProvider.overrideWithValue(db),
+          permissionRulesProvider.overrideWith((_) async => rules),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: SingleChildScrollView(child: PermissionRulesCard(canEdit: true))),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Precise location'), findsNWidgets(2));
+    expect(find.textContaining('up to a few kilometres out'), findsNWidgets(2));
+
+    Future<void> flip(String key) async {
+      final tile = find.byKey(ValueKey('permission-rule-$key'));
+      await tester.ensureVisible(tile);
+      // The switch itself: the tile is taller than the screen is wide.
+      await tester.runAsync(() async {
+        tester.widget<SwitchListTile>(tile).onChanged!(true);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pumpAndSettle();
+      if (find.text('OK').evaluate().isNotEmpty) {
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+      }
+    }
+
+    await flip('user-location-precise');
+    expect(saved.single['user'], containsPair('locationPrecise', true));
+    expect(saved.single['partner'], containsPair('locationPrecise', false));
+    expect(saved.single['partner'], containsPair('locationAlways', true), reason: 'the others as they were');
+    expect(tester.widget<SwitchListTile>(find.byKey(const ValueKey('permission-rule-user-location-precise'))).value, isTrue);
+    await flip('partner-location-precise');
+    expect(saved.last['partner'], containsPair('locationPrecise', true));
+    expect(saved.last['user'], containsPair('locationPrecise', true));
+  });
 
   testWidgets('without edit access the switches are read-only', (tester) async {
     await tester.pumpWidget(

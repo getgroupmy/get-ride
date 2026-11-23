@@ -212,6 +212,73 @@ void main() {
       expect(lags, hasLength(followLateWindow));
     });
 
+    test('fixLateness: more is made up for in a fix from another phone', () {
+      final lags = <double>[];
+      expect(fixLateness(lags, -3.20, most: followLateMostRemote), 0);
+      // Held up for 1.2 s on the way: all of it, where a phone's own fix would
+      // be given half a second.
+      expect(fixLateness(lags, -2.00, most: followLateMostRemote), closeTo(1.20, 1e-9));
+      expect(fixLateness(lags, 4.00, most: followLateMostRemote), followLateMostRemote, reason: 'and no more than this');
+      expect(followLateMostRemote, greaterThan(followLateMost));
+      expect(followLateMostRemote, lessThan(followCoastSeconds), reason: 'never carried further than a fix is carried at all');
+    });
+
+    test('FixFollower: a fix from another phone is carried forward by how late it reached this one', () {
+      final start = const LatLng(3.15, 101.7);
+      // A car doing 10 m/s north, a fix a second; the driver's GPS clock is
+      // 37 s ahead of this phone's, and each fix takes 0.4 s to get here.
+      DateTime gps(double t) => DateTime.utc(2026, 11, 22, 4, 0, 37).add(Duration(microseconds: (t * 1e6).round()));
+      DateTime here(double t) => DateTime.utc(2026, 11, 22, 4).add(Duration(microseconds: (t * 1e6).round()));
+      LatLng at(double t) => movedAlong(start, 10 * t, 0);
+      for (final (most, carried) in [(followLateMostRemote, 1.2), (followLateMost, followLateMost)]) {
+        final follower = FixFollower(lateMost: most);
+        for (var k = 0; k < 4; k++) {
+          follower.take(at(k.toDouble()), speed: 10, course: 0, time: gps(k.toDouble()), clock: () => here(k + 0.4));
+        }
+        // The fix of 4 s is held up: it arrives 1.6 s after it was taken.
+        follower.take(at(4), speed: 10, course: 0, time: gps(4), clock: () => here(5.6));
+        expect(follower.ageSeconds, closeTo(carried, 1e-9), reason: 'late by 1.2 s more than the others');
+      }
+    });
+
+    test('FixFollower: ground lost is made up no faster than the car and a little, when told so', () {
+      final start = const LatLng(3.15, 101.7);
+      const dt = 1 / 60;
+      double fastest(FixFollower follower) {
+        // Drawn 30 m short of a car doing 10 m/s north.
+        follower.shown = start;
+        follower.take(movedAlong(start, 30, 0), speed: 10, course: 0, time: null);
+        var most = 0.0;
+        for (var i = 0; i < 240; i++) {
+          final was = follower.shown!;
+          follower.advance(dt);
+          most = math.max(most, metresApart(was, follower.shown!) / dt);
+        }
+        // Either way it gets there: on the car, where it is by now.
+        expect(metresApart(follower.shown!, movedAlong(start, 30 + 10 * followCoastSeconds, 0)), lessThan(0.5));
+        return most;
+      }
+
+      expect(fastest(FixFollower()), greaterThan(60), reason: "a phone's own fixes: the ease closes the gap at its own pace");
+      final capped = fastest(FixFollower(catchUp: followCatchUpRemote));
+      expect(capped, lessThanOrEqualTo(10 + followCatchUpRemote + 1e-6));
+      expect(capped, greaterThan(10 + followCatchUpRemote - 0.5), reason: 'and it does hurry');
+    });
+
+    test('FixFollower: a standing car that has ground to make up is not held to a crawl', () {
+      final start = const LatLng(3.15, 101.7);
+      const dt = 1 / 60;
+      final follower = FixFollower(catchUp: followCatchUpRemote)..shown = start;
+      // The car is 20 m on and standing there.
+      follower.take(movedAlong(start, 20, 0), speed: 0, course: null, time: null);
+      var seconds = 0.0;
+      while (follower.advance(dt) && seconds < 10) {
+        seconds += dt;
+      }
+      expect(metresApart(follower.shown!, movedAlong(start, 20, 0)), lessThan(0.05));
+      expect(seconds, inInclusiveRange(1.0, 2.5), reason: 'at about $followCatchUpRemote m/s');
+    });
+
     test('fixIsStill: next to no speed measured, or none and only good to tens of metres', () {
       expect(fixIsStill(speedMps: 0, accuracyMetres: 5), isTrue);
       expect(fixIsStill(speedMps: followCarryFrom, accuracyMetres: 5), isTrue);

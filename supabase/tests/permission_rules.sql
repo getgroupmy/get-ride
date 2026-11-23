@@ -1,6 +1,7 @@
 -- ============================================================================
--- Regression test for migrations 0196 and 0215: the permission rules riders and
--- partners are held to, read by everyone signed in, changed by admins only.
+-- Regression test for migrations 0196, 0215 and 0427: the permission rules
+-- riders and partners are held to, read by everyone signed in, changed by
+-- admins only.
 --
 --   psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/permission_rules.sql
 --
@@ -49,6 +50,11 @@ select pg_temp.check((select r #>> '{user,notifications}' = 'true' and r #>> '{p
                              and r #>> '{partner,locationAlwaysAndroid}' = 'false'
                              and r ->> 'showPermissionsCard' = 'true'
                         from (select public.permission_rules() r) s), 'all enforced by default');
+-- Precise location (0427) is the admin's to turn on: off for both until then.
+select pg_temp.check((select r #>> '{user,locationPrecise}' = 'false' and r #>> '{partner,locationPrecise}' = 'false'
+                        from (select public.permission_rules() r) s), 'precise location off by default');
+select pg_temp.refused($q$select public.set_permission_rules('{"user":{"locationPrecise":true}}')$q$,
+  'a rider turning precise location on');
 
 -- 2. A rider can read them but not change them ---------------------------------------------
 select pg_temp.refused($q$select public.set_permission_rules('{"user":{"notifications":false}}')$q$,
@@ -74,9 +80,31 @@ select pg_temp.check((select r #>> '{partner,locationAlwaysAndroid}' = 'true'
                         from (select public.set_permission_rules('{"partner":{"locationAlways":false}}') r) s),
   'the iPhone switch changed alone');
 
+-- 3c. Precise location (0427): one switch for users, one for partners -------------------
+select pg_temp.check((select r #>> '{user,locationPrecise}' = 'true' and r #>> '{partner,locationPrecise}' = 'false'
+                             and r #>> '{user,location}' = 'true' and r #>> '{user,notifications}' = 'false'
+                             and r #>> '{partner,locationAlwaysAndroid}' = 'true'
+                        from (select public.set_permission_rules('{"user":{"locationPrecise":true}}') r) s),
+  'precise location switched on for users alone, the rest kept');
+select pg_temp.check((select r #>> '{partner,locationPrecise}' = 'true' and r #>> '{user,locationPrecise}' = 'true'
+                        from (select public.set_permission_rules('{"partner":{"locationPrecise":"on"}}') r) s),
+  'and for partners, the users'' kept');
+select pg_temp.check((select r #>> '{user,locationPrecise}' = 'false' and r #>> '{partner,locationPrecise}' = 'true'
+                        from (select public.set_permission_rules('{"user":{"locationPrecise":false}}') r) s),
+  'and off again for users alone');
+-- It is kept where the rules are kept, beside the others.
+select pg_temp.check((select value #>> '{partner,locationPrecise}' = 'true' and value #>> '{user,locationPrecise}' = 'false'
+                        from public.app_settings where key = 'permission_rules'),
+  'stored with the other rules');
+-- A change to another switch leaves it as it was.
+select pg_temp.check((select r #>> '{partner,locationPrecise}' = 'true' and r #>> '{user,location}' = 'false'
+                        from (select public.set_permission_rules('{"user":{"location":false}}') r) s),
+  'another switch changed, precise location kept');
+
 -- 4. What the rider now reads --------------------------------------------------------------
 select pg_temp.as_user('00000000-0000-0000-0000-0000000196a1');
 select pg_temp.check((select r #>> '{user,notifications}' = 'false' and r ->> 'showPermissionsCard' = 'false'
+                             and r #>> '{partner,locationPrecise}' = 'true' and r #>> '{user,locationPrecise}' = 'false'
                         from (select public.permission_rules() r) s), 'riders read the new rules');
 
 reset role;
