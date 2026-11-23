@@ -50,7 +50,10 @@ import '../../core/drop_change.dart';
 import '../../core/early_end.dart' show rideTariffCard;
 import '../../core/fare.dart' show RideService;
 import '../../core/fare_tariff.dart' show FareTariff;
+import '../../core/fare_timing.dart' show FareTiming;
+import '../../core/route_estimate.dart' show estimateCoversStops;
 import 'map_place_picker.dart' show pickPlaceOnMap;
+import '../../widgets/drop_change_prompt.dart' show DropChangeReviewDialog;
 import '../../data/fare_coin_store.dart';
 import '../../data/models.dart';
 import '../../data/shared_location.dart';
@@ -469,9 +472,9 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     }
   }
 
-  /// The rider moves the drop-off mid-ride (0341): pick a new place, re-quote
-  /// the fare, confirm, then send it. A cheaper or small change applies at
-  /// once; a bigger increase waits for the driver.
+  /// The rider moves the drop-off mid-ride (0341): pick a new place, ask
+  /// the server what it comes to (0431), confirm, then send it. The server
+  /// says whether it applies at once or waits for the driver.
   Future<void> _changeDrop(RideRequest r) async {
     if (_busy || _isDemo) return;
     final start = (r.dropLat != null && r.dropLng != null) ? LatLng(r.dropLat!, r.dropLng!) : null;
@@ -479,13 +482,20 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
     if (place == null || !mounted) return;
     final to = place.point;
 
-    // The new route for the whole trip, pickup → new drop (as it was booked).
+    // The new route for the whole trip, pickup → new drop (as it was booked),
+    // through the ride's stops. Asked of the route service itself, never of
+    // Apple Maps on the phone: the server prices the change on the route it
+    // measured, which is this answer.
     final from = (r.pickupLat != null && r.pickupLng != null) ? LatLng(r.pickupLat!, r.pickupLng!) : null;
+    final via = [for (final s in r.stops) s.point];
     double? km;
     double? mins;
     if (from != null) {
-      final est = await ref.read(routeEstimateRepositoryProvider).estimate(from, to);
-      if (est != null) {
+      final est = (await ref
+              .read(routeEstimateRepositoryProvider)
+              .estimateDetailed(from, to, via: via, timing: const FareTiming(deviceApple: false)))
+          ?.estimate;
+      if (est != null && estimateCoversStops(est, via.length)) {
         km = est.distanceKm;
         mins = est.durationMin;
       }
@@ -498,32 +508,57 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
       if (mins < 1) mins = 1;
     }
 
-    // Re-price on the ride's own tariff, the way the booking priced it.
-    final cards = ref.read(fareTariffsProvider).value ?? const <FareTariff>[];
-    RideService? svc;
-    for (final s in ref.read(rideServicesProvider).value ?? const <RideService>[]) {
-      if (s.id != null && s.id == r.service) {
-        svc = s;
-        break;
-      }
-    }
-    final card = rideTariffCard(cards, r.raw, vehicleServiceId: r.service, serviceTypes: const {});
-    final newFare = quoteDropChangeFare(
-      card: card,
-      distanceKm: km,
-      durationMin: mins ?? 0,
-      multiplier: svc?.multiplier ?? 1,
-      rates: svc?.rates,
-      pricing: r.pricing,
-    );
-    final rules = ref.read(cityRideConfigProvider).value?.dropChange ?? DropChangeSettings.standard;
+    // The fare is the server's: the ride's fare card over the route it
+    // measured (the fare the ride has, where it has nothing to price the
+    // change on), and whether the driver is asked.
     final oldFare = r.effectiveFare ?? 0;
-    final kind = dropChangeKind(oldFare: oldFare, newFare: newFare, rules: rules);
+    final DropChangeQuote? quote;
+    try {
+      quote = await ref.read(rideRepositoryProvider).quoteDropChange(
+            rideId: r.id,
+            lat: to.latitude,
+            lng: to.longitude,
+            distanceKm: km,
+            durationMin: mins,
+          );
+    } catch (e) {
+      if (mounted) showError(context, e);
+      return;
+    }
+    if (!mounted) return;
+    final double newFare;
+    final DropChangeKind kind;
+    if (quote != null) {
+      newFare = quote.fare ?? oldFare;
+      kind = quote.kind;
+    } else {
+      // A database before 0431 doesn't say: the phone's own quote, on the
+      // ride's tariff, as it sent before.
+      final cards = ref.read(fareTariffsProvider).value ?? const <FareTariff>[];
+      RideService? svc;
+      for (final s in ref.read(rideServicesProvider).value ?? const <RideService>[]) {
+        if (s.id != null && s.id == r.service) {
+          svc = s;
+          break;
+        }
+      }
+      final card = rideTariffCard(cards, r.raw, vehicleServiceId: r.service, serviceTypes: const {});
+      newFare = quoteDropChangeFare(
+        card: card,
+        distanceKm: km,
+        durationMin: mins ?? 0,
+        multiplier: svc?.multiplier ?? 1,
+        rates: svc?.rates,
+        pricing: r.pricing,
+      );
+      final rules = ref.read(cityRideConfigProvider).value?.dropChange ?? DropChangeSettings.standard;
+      kind = dropChangeKind(oldFare: oldFare, newFare: newFare, rules: rules);
+    }
 
     final go = await showAppDialog<bool>(
       id: 'ride.drop-change-review',
       context: context,
-      builder: (_) => _DropChangeReviewDialog(
+      builder: (_) => DropChangeReviewDialog(
         oldLabel: r.dropLabel,
         newLabel: place.address.isNotEmpty ? place.address : place.name,
         oldFare: oldFare,
@@ -543,10 +578,10 @@ class _RidePanelState extends ConsumerState<_RidePanel> {
             lng: to.longitude,
             distanceKm: km,
             durationMin: mins,
-            newFare: newFare,
+            shownFare: newFare,
           );
       if (mounted && res.applied) {
-        showInfo(context, 'Drop-off updated — ${r.fareText(newFare)}.');
+        showInfo(context, 'Drop-off updated — ${r.fareText(res.fare ?? newFare)}.');
       }
     });
   }
@@ -1912,91 +1947,6 @@ class _CancelReasonDialogState extends State<_CancelReasonDialog> {
         FilledButton(
           onPressed: value == null ? null : () => Navigator.pop(context, value),
           child: Text(status == RideStatus.onTrip ? 'Request cancellation' : 'Cancel ride'),
-        ),
-      ],
-    );
-  }
-}
-
-/// The review before a drop-off change is sent (0341): the new place, the old
-/// → new fare, and whether it applies at once or waits for the driver.
-class _DropChangeReviewDialog extends StatelessWidget {
-  const _DropChangeReviewDialog({
-    required this.oldLabel,
-    required this.newLabel,
-    required this.oldFare,
-    required this.newFare,
-    required this.fareText,
-    required this.kind,
-  });
-
-  final String oldLabel, newLabel;
-  final double oldFare, newFare;
-  final String Function(num?) fareText;
-  final DropChangeKind kind;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context);
-    final delta = newFare - oldFare;
-    final deltaText = '${delta >= 0 ? '+' : '−'}${fareText(delta.abs())}';
-    final instant = kind == DropChangeKind.instant;
-    return AlertDialog(
-      key: const ValueKey('drop-change-review-dialog'),
-      icon: Icon(Icons.edit_location_alt_outlined, color: t.colorScheme.primary),
-      title: const Text('Change drop-off'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            dense: true,
-            leading: const Icon(Icons.location_on_outlined),
-            title: Text(newLabel),
-            subtitle: Text('was $oldLabel'),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                fareText(oldFare),
-                style: t.textTheme.titleMedium?.copyWith(
-                  color: t.colorScheme.onSurfaceVariant,
-                  decoration: TextDecoration.lineThrough,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.arrow_forward, size: 18),
-              const SizedBox(width: 8),
-              Text(fareText(newFare), style: t.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700)),
-              const SizedBox(width: 8),
-              Text(deltaText, style: t.textTheme.bodyMedium?.copyWith(color: t.colorScheme.onSurfaceVariant)),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            instant
-                ? 'This applies straight away.'
-                : 'Your driver needs to accept the new drop-off and fare first.',
-            textAlign: TextAlign.center,
-            style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey('drop-change-review-cancel'),
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Keep original'),
-        ),
-        FilledButton(
-          key: const ValueKey('drop-change-review-confirm'),
-          onPressed: () => Navigator.pop(context, true),
-          child: Text(instant ? 'Change drop-off' : 'Request change'),
         ),
       ],
     );

@@ -100,9 +100,10 @@ class _DropChangeRulesCardState extends ConsumerState<DropChangeRulesCard> {
                     style: t.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(
-                  'A passenger can move the drop-off during an ongoing ride; the fare re-computes. A cheaper '
-                  'change (or an increase within the threshold below) applies at once; a bigger increase is held '
-                  'for the driver to accept or reject.',
+                  'A passenger can move the drop-off during an ongoing ride. The server works out the new fare '
+                  'from the fare card and the route it measured. An increase within the threshold below applies '
+                  'at once; a bigger one is held for the driver to accept or reject. Where the server cannot '
+                  'price the change, the fare stays and the driver is asked.',
                   style: t.textTheme.bodySmall?.copyWith(color: muted),
                 ),
                 const SizedBox(height: 4),
@@ -119,7 +120,10 @@ class _DropChangeRulesCardState extends ConsumerState<DropChangeRulesCard> {
                     key: const ValueKey('drop-change-cheaper'),
                     contentPadding: EdgeInsets.zero,
                     title: const Text('Auto-approve when it is cheaper'),
-                    subtitle: const Text('A change that lowers or keeps the fare applies instantly, no driver ask.'),
+                    subtitle: const Text(
+                      'A change that keeps the fare, or lowers it for a trip that got shorter to match, applies '
+                      'instantly. Any other lower fare is held for the driver.',
+                    ),
                     value: _cheaper,
                     onChanged: widget.canEdit ? (v) => setState(() => _cheaper = v) : null,
                   ),
