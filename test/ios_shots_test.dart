@@ -7,7 +7,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_map/flutter_map.dart' show FlutterMap;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -481,7 +481,7 @@ class _FakeOnboarding extends PartnerOnboardingRepository {
   OnboardingState state;
 
   @override
-  Future<OnboardingState> load() async => state;
+  Future<OnboardingState> load({bool mayStart = true}) async => state;
 
   @override
   Future<Map<String, dynamic>> patchPartner(
@@ -1300,8 +1300,9 @@ Future<void> _shot(
             ? 260.0
             : 336.0)
       : 0;
-  if (keyboard)
+  if (keyboard) {
     tester.view.viewInsets = FakeViewPadding(bottom: _frameKeyboard * dpr);
+  }
   tester.platformDispatcher.textScaleFactorTestValue = textScale;
   tester.platformDispatcher.platformBrightnessTestValue = dark
       ? Brightness.dark
@@ -1444,8 +1445,9 @@ Future<void> _shot(
       _log.writeln('  ! ${e.split('\n').take(3).join(' | ')}');
     }
     File('$_outDir/log.txt').writeAsStringSync(_log.toString());
-    if (_audit.isNotEmpty)
+    if (_audit.isNotEmpty) {
       File('$_outDir/audit.txt').writeAsStringSync(_audit.toString());
+    }
   }
 }
 
