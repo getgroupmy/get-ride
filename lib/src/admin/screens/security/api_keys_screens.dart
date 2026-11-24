@@ -227,6 +227,11 @@ class _ApiServicesState extends ConsumerState<AdminApiServicesScreen> {
     }, success: 'Key added to ${result.services.length} service${result.services.length == 1 ? '' : 's'}');
   }
 
+  Future<void> _setMonitor(bool on) async {
+    await _mutate(context, ref, (l) => setProviderMonitor(l, widget.providerId, on),
+        success: on ? 'Monitoring on' : 'Monitoring off');
+  }
+
   @override
   Widget build(BuildContext context) {
     final canEdit = _canEdit(ref, 'admin-settings-api-keys-services');
@@ -255,6 +260,30 @@ class _ApiServicesState extends ConsumerState<AdminApiServicesScreen> {
             maxWidth: 760,
             child: ListView(padding: EdgeInsets.only(top: 12, bottom: addActionListBottomPadding(context)), children: [
               Text('${provider.services.length} services', style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: 8),
+              // Server monitor (0440): ping this provider's self-hosted server and push the admins if
+              // it stops answering. The face match server keeps its own built-in watcher (0347).
+              if (builtinMonitorProviders.contains(provider.id))
+                const Card(
+                  child: ListTile(
+                    leading: Icon(Icons.monitor_heart_outlined),
+                    title: Text('Monitored automatically'),
+                    subtitle: Text('This server has a built-in health watch — admins are pushed if it stops answering.'),
+                    trailing: Icon(Icons.check_circle, color: Colors.green),
+                  ),
+                )
+              else
+                Card(
+                  child: SwitchListTile(
+                    secondary: const Icon(Icons.monitor_heart_outlined),
+                    title: const Text('Monitor this server'),
+                    subtitle: const Text(
+                        'For a self-hosted server (eKYC, Umami, a custom server): checks its health every minute and '
+                        'pushes the admins if it stops answering — again every 6 hours while down, and once when it is back.'),
+                    value: providerMonitorOn(provider),
+                    onChanged: canEdit ? _setMonitor : null,
+                  ),
+                ),
               const SizedBox(height: 8),
               TextField(
                 decoration: const InputDecoration(

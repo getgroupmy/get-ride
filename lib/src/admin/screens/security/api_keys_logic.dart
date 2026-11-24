@@ -335,6 +335,33 @@ List<ApiProviderDef> addProvider(List<ApiProviderDef> list, String name, {String
 List<ApiProviderDef> removeProvider(List<ApiProviderDef> list, String providerId) =>
     list.where((p) => p.id != providerId).toList();
 
+// ---- Server monitor (migration 0440) -----------------------------------------
+
+/// Providers that already have their own built-in offline watcher (the face
+/// match server, migration 0347), so the per-provider monitor skips them and
+/// the screen shows them as always-watched instead of a switch.
+const builtinMonitorProviders = {'face_match'};
+
+/// Whether this provider's self-hosted server is watched: the `provider-health`
+/// function pings it and pushes the admins if it stops answering (0440). Stored
+/// as `monitor` on the provider, so an app that doesn't know it leaves it be.
+bool providerMonitorOn(ApiProviderDef p) => p.extra['monitor'] == true;
+
+/// Turns the server monitor on or off for [providerId].
+List<ApiProviderDef> setProviderMonitor(List<ApiProviderDef> list, String providerId, bool on) => [
+      for (final p in list)
+        p.id == providerId
+            ? ApiProviderDef(
+                id: p.id,
+                name: p.name,
+                description: p.description,
+                category: p.category,
+                services: p.services,
+                extra: {...p.extra, 'monitor': on},
+              )
+            : p,
+    ];
+
 List<ApiProviderDef> _mapServices(
   List<ApiProviderDef> list,
   String providerId,
