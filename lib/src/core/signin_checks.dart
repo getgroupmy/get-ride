@@ -367,6 +367,7 @@ String? faceProviderText(Object? provider) => switch (provider) {
   'self_hosted' => 'NAS',
   'aws' => 'AWS',
   'browser' => 'in-browser',
+  'ekyc' => 'GET eKYC',
   _ => null,
 };
 
@@ -658,6 +659,7 @@ String? readSourceText(Object? source) => switch (source) {
   'phone' => 'the phone',
   'vision' => 'Google Vision',
   'nas' => 'the office NAS',
+  'ekyc' => 'GET eKYC',
   _ => null,
 };
 

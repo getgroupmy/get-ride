@@ -67,6 +67,10 @@ dependencies:
   wakelock_plus: ^1.8.0
   android_intent_plus: ^6.1.0
   webview_flutter: ^4.14.1
+  # GET eKYC's Flutter SDK (getgroupmy/get.ekyc, sdk/flutter/get_ekyc, also
+  # downloadable from the eKYC console). The ID check runs inside the app.
+  get_ekyc:
+    path: packages/get_ekyc
   flutter_native_contact_picker: ^0.0.12
   web: ^1.1.1
   # Passkey sign-in on Android and iOS (Credential Manager and

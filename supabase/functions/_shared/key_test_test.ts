@@ -265,3 +265,27 @@ Deno.test("the face match server: /health with the key, and a key that isn't one
     d(200, "{}"));
   assertEquals((bad.body as { title: string }).title, "Not a face server key");
 });
+
+Deno.test("GET eKYC: /health with the API key", async () => {
+  const keys = [{ id: "ekyc", services: [{ id: "server", keys: [{ id: "e1", value: "https://ekyc.getride.my:ek_0123456789abcdefghij" }] }] }];
+  const sent: HttpRequest[] = [];
+  const d = (status: number, text: string): KeyTestDeps => ({
+    settings: () => Promise.resolve({ apiProviders: keys, config: null }),
+    fetch: (r) => {
+      sent.push(r);
+      return Promise.resolve({ status, text });
+    },
+    now: () => 0,
+  });
+  const run = (status: number, text: string) =>
+    runKeyTest({ provider: "ekyc", service: "server", key: "e1", test: "ekyc_server_health" }, d(status, text));
+  const ok = await run(200, '{"status":"ok","model":"SFace","key":"ok"}');
+  assertEquals((ok.body as { result: string }).result, "ok");
+  assertEquals(sent[0].url, "https://ekyc.getride.my/health");
+  assertEquals(sent[0].headers?.["x-api-key"], "ek_0123456789abcdefghij");
+  assert(!JSON.stringify(ok.body).includes("ek_0123456789abcdefghij"), "the key is never shown");
+  assertEquals(((await run(200, '{"status":"degraded","key":"ok"}')).body as { result: string }).result, "warn");
+  assertEquals(((await run(401, '{"error":"bad_key"}')).body as { title: string }).title, "GET eKYC refused the key");
+  assertEquals(((await run(530, "error code: 1033")).body as { title: string }).title, "GET eKYC isn't answering");
+  assertEquals(testsFor("ekyc", "server")[0].id, "ekyc_server_health");
+});

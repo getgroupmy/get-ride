@@ -494,6 +494,19 @@ export const TESTS: KeyTest[] = [
       return { url: signed.url, method: "POST", headers: signed.headers, body };
     },
   },
+  // ---- GET eKYC (0439): the same /health as the face server, which checks the key ---------------
+  {
+    id: "ekyc_server_health",
+    provider: "ekyc",
+    label: "GET eKYC · health",
+    about: "Asks GET eKYC whether it is up and takes this API key. No photos are sent.",
+    services: ["server"],
+    request: (k) => {
+      const server = parseFaceServer(k);
+      if (!server) throw new Error("not a GET eKYC key");
+      return healthRequest(server);
+    },
+  },
   // ---- The self-hosted face match server (sign-in checks, 0283) ------------------------------
   {
     id: "face_server_health",
@@ -646,6 +659,19 @@ export function verdictOf(test: KeyTest, status: number, body: J, text: string):
     return verified.length
       ? { result: "ok", title: "Works", detail: `Resend accepts the key. Verified to send from: ${verified.join(", ")}.` }
       : { result: "warn", title: "The key works, but no domain is verified", detail: "Verify the sender's domain (e.g. getride.my) in Resend, or the emails will be refused." };
+  }
+  if (test.provider === "ekyc") {
+    if (status === 401 || status === 403) {
+      return { result: "fail", title: "GET eKYC refused the key", detail: "Create a key in its console (API clients) and save it here." };
+    }
+    if (okStatus && body?.key === "ok") {
+      return body?.status === "ok"
+        ? { result: "ok", title: "Works", detail: "GET eKYC is up and takes the key." }
+        : { result: "warn", title: "The key works, but the engine is degraded", detail: "Check its models on the Mac mini (console header)." };
+    }
+    if (status === 530 || status === 502 || status === 503) {
+      return { result: "fail", title: "GET eKYC isn't answering", detail: "Check the Mac mini is on and its server and Cloudflare tunnel are running." };
+    }
   }
   if (test.provider === "face_match") {
     if (status === 401 || status === 403) {

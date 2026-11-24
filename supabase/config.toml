@@ -400,6 +400,14 @@ verify_jwt = false
 [functions.id-read]
 verify_jwt = false
 
+# GET eKYC (0439): ekyc-start checks the user's token itself; ekyc-webhook is
+# called by our eKYC server, which has no user token, and checks the signature.
+[functions.ekyc-start]
+verify_jwt = false
+
+[functions.ekyc-webhook]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

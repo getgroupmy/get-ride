@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/signin_checks.dart';
 import '../../data/auth_repository.dart';
+import '../../data/ekyc_repository.dart' show ekycConfigProvider;
 import '../../data/identity_repository.dart';
 import '../../widgets/app_notice.dart';
 import '../../widgets/busy.dart';
@@ -22,6 +23,7 @@ import '../../widgets/date_boxes.dart';
 import '../../widgets/live_selfie.dart';
 import '../../widgets/live_selfie/on_device.dart' as on_device;
 import '../../widgets/page_style_host.dart';
+import '../identity/ekyc_check.dart' show runEkycCheck;
 
 typedef TakeSelfie = Future<LiveSelfie?> Function(BuildContext context);
 typedef PickIdPhoto = Future<PickedImage?> Function(BuildContext context);
@@ -335,6 +337,19 @@ class _IdUploadFormState extends ConsumerState<IdUploadForm> {
     }
   }
 
+  Future<void> _runEkyc() async {
+    setState(() => _busy = true);
+    try {
+      final end = await runEkycCheck(context, ref, 'first');
+      if (end.sent) {
+        ref.invalidate(dispatchChecksProvider);
+        widget.onSent?.call();
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Widget _slot(String label, PickedImage? photo, bool front) {
     final t = Theme.of(context);
     return Expanded(
@@ -388,6 +403,24 @@ class _IdUploadFormState extends ConsumerState<IdUploadForm> {
     };
     final renew = c.id.state == RecordState.renew;
     final expired = c.id.state == RecordState.expired;
+    // GET eKYC, when the admin turned it on for these checks (0439): one
+    // button, and its page takes the card and a selfie inside the app.
+    if (ref.watch(ekycConfigProvider).value?.uses('first') ?? false) {
+      return _StepCard(
+        icon: Icons.badge_outlined,
+        title: renew || expired ? 'Check a new ID' : 'Check your ID',
+        text: renew && c.id.expiry != null
+            ? 'Your ID runs out on ${formatDateForUser(c.id.expiry)}. Check a new one so your role keeps working.'
+            : 'Your MyKad or passport: photos of the card and a short selfie with a head turn, inside the app.',
+        top: rejected == null ? null : RejectedBanner(what: 'ID', reason: rejected),
+        child: FilledButton.icon(
+          key: const ValueKey('id-ekyc'),
+          onPressed: _busy ? null : _runEkyc,
+          icon: const Icon(Icons.verified_user_outlined),
+          label: const Text('Start ID check'),
+        ),
+      );
+    }
     final read = _read;
     final today = DateUtils.dateOnly(DateTime.now());
     return _StepCard(

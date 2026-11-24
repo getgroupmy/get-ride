@@ -23,6 +23,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/ekyc.dart' show ekycVerdictText;
 import '../../core/signin_checks.dart';
 import '../../data/identity_repository.dart';
 import '../../data/storage_links.dart' show signedStorageUrl;
@@ -426,6 +427,7 @@ class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
           if (!selfie && c['read_birth'] != null) 'Birth date read': formatStoredDateForUser(c['read_birth']),
           if (!selfie && c['read_nationality'] != null) 'Nationality read': c['read_nationality'],
           if (!selfie && readBy != null) 'Read by': readBy,
+          'GET eKYC': ?ekycVerdictText(c['ekyc_status'], c['ekyc_reasons']),
           if (!selfie && c['expiry_date'] != null) 'Expiry': formatStoredDateForUser(c['expiry_date']),
           'Face match': faceMatchText(
             c['face_state'],

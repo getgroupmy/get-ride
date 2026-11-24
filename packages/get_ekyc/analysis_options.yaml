@@ -1,0 +1,8 @@
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+  errors:
+    # material.dart stays: GET-Ride and most apps are on Flutter versions before material_ui
+    deprecated_member_use: ignore
