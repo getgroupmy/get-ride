@@ -18,7 +18,9 @@ insert into auth.users (id, phone) values
   ('00000000-0000-0000-0000-0000000439b3', '60100004394')   -- stand staff (dispatch)
 on conflict do nothing;
 insert into public.profiles (id, name, ic, nationality)
-select id, 'Ali bin Abu', '900514-10-5231', 'Malaysia'
+select id, 'Ali bin Abu',
+       case right(id::text, 2) when 'b1' then '900514-10-5231' when 'b2' then '880101-14-1112' end,  -- IC numbers are unique
+       'Malaysia'
   from auth.users where id::text like '00000000-0000-0000-0000-0000000439%'
 on conflict (id) do update set name = excluded.name, ic = excluded.ic, nationality = excluded.nationality,
   id_verified = null, id_image = null;
