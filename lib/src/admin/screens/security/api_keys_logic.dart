@@ -272,6 +272,15 @@ final defaultApiProviders = <ApiProviderDef>[
     _svc('server', 'Self-hosted server',
         "Compares a selfie with the ID photo on your own server. Save as the server's https address, a colon, then its key: https://face.getride.my:FACE_API_KEY"),
   ]),
+  // GET eKYC (0439, getgroupmy/get.ekyc on the office Mac mini): runs the
+  // whole ID check in its own page inside the app; ekyc-start creates the
+  // check with the server key and ekyc-webhook checks the result's signature.
+  ApiProviderDef(id: 'ekyc', name: 'GET eKYC', description: 'Our own eKYC server (ID, selfie and liveness checks)', category: 'Identity', services: [
+    _svc('server', 'Server',
+        "Starts identity checks. Save as the server's https address, a colon, then the API key from its console: https://ekyc.getride.my:ek_…"),
+    _svc('webhook', 'Webhook secret',
+        "Proves a result really came from GET eKYC. The webhook secret its console showed for this app (set its webhook to …/functions/v1/ekyc-webhook)"),
+  ]),
   // Visitor stats on the office NAS (0321, deploy/nas-stats): the nas-stats
   // function reads today's numbers from Umami with it.
   ApiProviderDef(id: 'umami', name: 'Umami', description: 'Visitor stats on the office NAS (deploy/nas-stats)', category: 'Analytics', services: [

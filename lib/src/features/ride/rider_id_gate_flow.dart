@@ -21,6 +21,9 @@ import '../../widgets/live_selfie.dart' show LiveSelfie, takeLiveSelfie;
 import '../../widgets/live_selfie/on_device.dart' show readImageText;
 import '../../widgets/page_style_host.dart';
 import '../../data/rider_id_gate_repository.dart';
+import '../../core/ekyc.dart' show EkycConfig;
+import '../../data/ekyc_repository.dart' show ekycConfigProvider;
+import '../identity/ekyc_check.dart' show runEkycCheck;
 
 /// The server's refusal when a booking needs ID verification first (0342).
 bool isRiderIdRequired(Object error) => '$error'.contains('RIDER_ID_REQUIRED');
@@ -56,6 +59,13 @@ Future<bool> _runVerify(BuildContext context, WidgetRef ref, RiderIdGateRule rul
     builder: (_) => _IdVerifyIntro(rule: rule),
   );
   if (go != true || !context.mounted) return false;
+
+  // GET eKYC, when the admin turned it on for riders (0439): its page takes
+  // the ID, the selfie and the head turns inside the app, and the server
+  // verifies the rider when GET eKYC approved and the face match is strong.
+  final ekyc = await ref.read(ekycConfigProvider.future).catchError((_) => EkycConfig.off);
+  if (!context.mounted) return false;
+  if (ekyc.uses('rider_gate')) return (await runEkycCheck(context, ref, 'rider_gate')).verified;
 
   // The ID photo. When saved photos aren't allowed, the camera only.
   Uint8List? idBytes;

@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/signin_checks.dart';
 import '../../../data/identity_repository.dart';
 import '../../../widgets/common.dart';
+import 'ekyc_settings_fields.dart';
 
 class IdentityProviderFields extends ConsumerStatefulWidget {
   const IdentityProviderFields({super.key, this.enabled = true});
@@ -124,6 +125,7 @@ class _IdentityProviderFieldsState extends ConsumerState<IdentityProviderFields>
         ),
         note(c.visionNote, 'id-read-note'),
         note(nasMissing, 'id-read-nas-note'),
+        EkycSettingsFields(enabled: widget.enabled),
       ],
     );
   }

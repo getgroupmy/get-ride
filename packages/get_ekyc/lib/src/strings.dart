@@ -1,0 +1,94 @@
+/// The SDK's own words, in English and Bahasa Melayu. (The consent notice
+/// itself comes from the server.)
+class EkycStrings {
+  EkycStrings(String lang) : _m = lang == 'ms' ? _ms : _en;
+  final Map<String, String> _m;
+
+  String call(String key, [Map<String, String> vars = const {}]) {
+    var s = _m[key] ?? _en[key] ?? key;
+    vars.forEach((k, v) => s = s.replaceAll('{$k}', v));
+    return s;
+  }
+
+  static const _en = {
+    'title': 'Identity check',
+    'welcome': 'Confirm your identity',
+    'welcomeMsg': '{c} needs to confirm who you are. It takes about 2 minutes.',
+    'agree': 'I agree to this',
+    'start': 'Start',
+    'cancel': 'Cancel',
+    'front': 'Photograph the front',
+    'frontMsg': 'Fill the frame with the document. No glare, no fingers over the text.',
+    'back': 'Now the back',
+    'backMsg': 'Turn the card over and photograph the back.',
+    'useIt': 'Use this photo',
+    'retake': 'Retake',
+    'reading': 'Reading the document…',
+    'uploading': 'Uploading…',
+    'seen': 'We see: {d}',
+    'unclear': "We couldn't read this clearly. Retake in better light, or continue anyway.",
+    'face': 'Now your face',
+    'faceMsg': 'Hold the phone at eye level. Remove glasses and hats; find good light.',
+    'go': 'Continue',
+    'selfie': 'Look straight at the camera',
+    'center': 'Look straight at the camera',
+    'left': 'Slowly turn your head to one side',
+    'right': 'Now turn your head to the other side',
+    'noFace': 'Fit your face in the oval',
+    'hold': 'Hold still…',
+    'shutter': 'Take photo',
+    'checking': 'Checking your details…',
+    'checkingMsg': 'This usually takes under a minute.',
+    'done': 'All done',
+    'doneMsg': 'Thank you. Your identity check has been sent.',
+    'reviewMsg': 'Thank you. Our team will look at your check shortly.',
+    'stillChecking': 'Still checking. We will let you know the result.',
+    'ok': 'OK',
+    'error': 'Something went wrong: {e}',
+    'tryAgain': 'Try again',
+    'camDenied': 'Camera access is off. Allow the camera for this app in Settings, then try again.',
+    'expired': 'This link has expired. Go back and start again.',
+    'invalid': 'This link is not valid. Go back and start again.',
+  };
+
+  static const _ms = {
+    'title': 'Semakan identiti',
+    'welcome': 'Sahkan identiti anda',
+    'welcomeMsg': '{c} perlu mengesahkan identiti anda. Ia mengambil masa kira-kira 2 minit.',
+    'agree': 'Saya bersetuju',
+    'start': 'Mula',
+    'cancel': 'Batal',
+    'front': 'Ambil gambar bahagian depan',
+    'frontMsg': 'Penuhkan bingkai dengan dokumen. Elakkan silau dan jari menutup tulisan.',
+    'back': 'Sekarang bahagian belakang',
+    'backMsg': 'Terbalikkan kad dan ambil gambar bahagian belakang.',
+    'useIt': 'Guna gambar ini',
+    'retake': 'Ambil semula',
+    'reading': 'Membaca dokumen…',
+    'uploading': 'Memuat naik…',
+    'seen': 'Dikesan: {d}',
+    'unclear': 'Kami tidak dapat membaca dengan jelas. Ambil semula di tempat lebih terang, atau teruskan.',
+    'face': 'Sekarang wajah anda',
+    'faceMsg': 'Pegang telefon setinggi mata. Tanggalkan cermin mata dan topi; cari tempat terang.',
+    'go': 'Teruskan',
+    'selfie': 'Pandang tepat ke kamera',
+    'center': 'Pandang tepat ke kamera',
+    'left': 'Pusingkan kepala perlahan-lahan ke satu sisi',
+    'right': 'Sekarang pusingkan kepala ke sisi yang lain',
+    'noFace': 'Letakkan wajah dalam bujur',
+    'hold': 'Jangan bergerak…',
+    'shutter': 'Ambil gambar',
+    'checking': 'Menyemak butiran anda…',
+    'checkingMsg': 'Biasanya kurang dari satu minit.',
+    'done': 'Selesai',
+    'doneMsg': 'Terima kasih. Semakan identiti anda telah dihantar.',
+    'reviewMsg': 'Terima kasih. Pasukan kami akan menyemak sebentar lagi.',
+    'stillChecking': 'Masih menyemak. Keputusan akan dimaklumkan.',
+    'ok': 'OK',
+    'error': 'Ralat: {e}',
+    'tryAgain': 'Cuba lagi',
+    'camDenied': 'Akses kamera dimatikan. Benarkan kamera untuk aplikasi ini dalam Tetapan, kemudian cuba lagi.',
+    'expired': 'Pautan ini telah tamat tempoh. Kembali dan mulakan semula.',
+    'invalid': 'Pautan ini tidak sah. Kembali dan mulakan semula.',
+  };
+}
