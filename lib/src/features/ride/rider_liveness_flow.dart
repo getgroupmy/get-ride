@@ -65,16 +65,20 @@ Future<bool> _capture(BuildContext context, WidgetRef ref) async {
   final go = await showAppDialog<bool>(
     id: 'ride.liveness-intro',
     context: context,
-    builder: (_) => AlertDialog(
+    // The buttons pop the dialog's own context, not the outer screen's:
+    // showAppDialog pushes on the root navigator, so popping the screen
+    // context would dismiss the page under the dialog (a blank screen)
+    // instead of the dialog itself.
+    builder: (dialogContext) => AlertDialog(
       title: const Text('Take a live selfie'),
       content: const Text(
           'Your profile needs a fresh live selfie before you can continue. It '
           'takes a few seconds and goes to an approver to verify.'),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Not now')),
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Not now')),
         FilledButton(
           key: const ValueKey('liveness-intro-go'),
-          onPressed: () => Navigator.pop(context, true),
+          onPressed: () => Navigator.pop(dialogContext, true),
           child: const Text('Take selfie')),
       ],
     ),
