@@ -125,3 +125,35 @@ bool riderIdGateBlocks({
   if (rule == null || !rule.require || verified) return false;
   return priorBookings >= (rule.nthBooking - 1);
 }
+
+/// The admin's single per-country choice for how riders verify, combining the
+/// eKYC/ID gate (0342) and the live-selfie gate (0401). It is derived from the
+/// two rules' require flags, and written back to both. Pure.
+enum RiderVerifyMethod {
+  none,
+  liveSelfie,
+  ekyc,
+  both;
+
+  /// Whether this method requires the eKYC/ID gate (0342).
+  bool get idRequired => this == ekyc || this == both;
+
+  /// Whether this method requires the live-selfie gate (0401).
+  bool get selfieRequired => this == liveSelfie || this == both;
+
+  /// The admin-facing name.
+  String get label => switch (this) {
+        none => 'Not required',
+        liveSelfie => 'Live selfie',
+        ekyc => 'eKYC (ID)',
+        both => 'eKYC + live selfie',
+      };
+
+  /// The method the two gates add up to.
+  static RiderVerifyMethod of({required bool idRequired, required bool selfieRequired}) {
+    if (idRequired && selfieRequired) return both;
+    if (idRequired) return ekyc;
+    if (selfieRequired) return liveSelfie;
+    return none;
+  }
+}

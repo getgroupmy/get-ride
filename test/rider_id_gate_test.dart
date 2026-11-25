@@ -108,4 +108,26 @@ void main() {
       );
     });
   });
+
+  group('RiderVerifyMethod (combines the eKYC and live-selfie gates)', () {
+    test('derives from the two gates', () {
+      expect(RiderVerifyMethod.of(idRequired: false, selfieRequired: false), RiderVerifyMethod.none);
+      expect(RiderVerifyMethod.of(idRequired: true, selfieRequired: false), RiderVerifyMethod.ekyc);
+      expect(RiderVerifyMethod.of(idRequired: false, selfieRequired: true), RiderVerifyMethod.liveSelfie);
+      expect(RiderVerifyMethod.of(idRequired: true, selfieRequired: true), RiderVerifyMethod.both);
+    });
+
+    test('maps back to the two gate requirements', () {
+      expect([RiderVerifyMethod.none.idRequired, RiderVerifyMethod.none.selfieRequired], [false, false]);
+      expect([RiderVerifyMethod.ekyc.idRequired, RiderVerifyMethod.ekyc.selfieRequired], [true, false]);
+      expect([RiderVerifyMethod.liveSelfie.idRequired, RiderVerifyMethod.liveSelfie.selfieRequired], [false, true]);
+      expect([RiderVerifyMethod.both.idRequired, RiderVerifyMethod.both.selfieRequired], [true, true]);
+    });
+
+    test('round-trips through the two flags', () {
+      for (final m in RiderVerifyMethod.values) {
+        expect(RiderVerifyMethod.of(idRequired: m.idRequired, selfieRequired: m.selfieRequired), m);
+      }
+    });
+  });
 }
