@@ -118,12 +118,12 @@ void main() {
 
       final c = normalizeFareAi(null).copyWith(
         chain: ['waze', 'gmap', 'ai', 'osrm'],
-        wazeServers: [WazeServer.create(id: 'w1', label: 'Waze NAS', url: 'https://route.getride.my', key: 'kw')],
+        wazeServers: [WazeServer.create(id: 'w1', label: 'Waze console', url: 'https://waze.getcdn.link', key: 'kw')],
         gmapServers: [WazeServer.create(id: 'g1', label: 'Maps NAS', url: 'https://traffic.getride.my', key: 'kg')],
       );
       final back = normalizeFareAi(c.toJson());
       expect(back.chain, ['waze', 'gmap', 'ai', 'osrm']);
-      expect([for (final s in back.wazeServers) (s.id, s.url)], [('w1', 'https://route.getride.my')]);
+      expect([for (final s in back.wazeServers) (s.id, s.url)], [('w1', 'https://waze.getcdn.link')]);
       expect([for (final s in back.gmapServers) (s.id, s.label, s.url, s.key)],
           [('g1', 'Maps NAS', 'https://traffic.getride.my', 'kg')]);
       expect(back.activeGmapServerCount, 1);
