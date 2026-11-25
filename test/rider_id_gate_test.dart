@@ -58,4 +58,54 @@ void main() {
       expect(riderIdGateBlocks(config: cfg, country: 'Nowhere', priorBookings: 99, verified: false), isFalse);
     });
   });
+
+  group('RiderIdGateConfig.ruleForRider (matches the server order)', () {
+    final cfg = RiderIdGateConfig.fromJson({
+      'master': {'require': false},
+      'Malaysia': {'require': true, 'nthBooking': 1},
+    });
+
+    test('where the rider is now wins over nationality', () {
+      expect(cfg.ruleForRider(currentCountry: 'Malaysia', nationality: 'Singapore')?.require, isTrue);
+    });
+
+    test('falls back to nationality, then master', () {
+      expect(cfg.ruleForRider(nationality: 'Malaysia')?.require, isTrue);
+      expect(cfg.ruleForRider(currentCountry: 'Nowhere', nationality: 'Nowhere')?.require, isFalse); // master
+    });
+
+    test('a blank current country is ignored', () {
+      expect(cfg.ruleForRider(currentCountry: '  ', nationality: 'Malaysia')?.require, isTrue);
+    });
+  });
+
+  group('riderIdGateBlocks uses current country first', () {
+    final cfg = RiderIdGateConfig.fromJson({
+      'master': {'require': false},
+      'Malaysia': {'require': true, 'nthBooking': 1},
+    });
+
+    test('a rider in Malaysia is gated even when their nationality differs', () {
+      expect(
+        riderIdGateBlocks(
+            config: cfg, currentCountry: 'Malaysia', country: 'Singapore', priorBookings: 0, verified: false),
+        isTrue,
+      );
+    });
+
+    test('nationality still gates when the current country is unknown', () {
+      expect(
+        riderIdGateBlocks(config: cfg, country: 'Malaysia', priorBookings: 0, verified: false),
+        isTrue,
+      );
+    });
+
+    test('a verified rider in Malaysia is never gated', () {
+      expect(
+        riderIdGateBlocks(
+            config: cfg, currentCountry: 'Malaysia', country: 'Singapore', priorBookings: 0, verified: true),
+        isFalse,
+      );
+    });
+  });
 }

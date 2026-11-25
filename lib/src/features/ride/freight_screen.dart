@@ -71,7 +71,7 @@ import 'delivery_look.dart';
 import 'freight_parts.dart';
 import 'map_place_picker.dart';
 import 'pickup_time_sheet.dart';
-import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
+import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, invalidateRiderIdGate, isRiderIdRequired;
 import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired;
 import 'place_search.dart';
 import 'scheduled_rides_screen.dart' show pickupLabel;
@@ -628,7 +628,7 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     prohibitedAck: _ack,
   );
 
-  Future<void> _create() async {
+  Future<void> _create({bool retried = false}) async {
     final a = _pickup, b = _drop, v = _vehicle;
     final problem = freightDraftProblem(_draft) ?? _addonProblem;
     if (problem != null) return showInfo(context, problem);
@@ -764,13 +764,12 @@ class _FreightScreenState extends ConsumerState<FreightScreen> with SingleTicker
     } on DuplicateRideRequest catch (e) {
       if (mounted) showInfo(context, e.toString());
     } catch (e) {
-      // The server's ID gate (0342): verify, then invite them to send again.
-      if (isRiderIdRequired(e)) {
-        if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
-          showInfo(context, 'You can send your booking now.');
-        }
-      } else if (isLivenessRequired(e)) {
-        if (mounted) await ensureLivenessOk(context, ref);
+      // The server's ID / live-selfie gates (0342 / 0401): refresh a stale rule
+      // and run the booking again so the verify flow runs and it is sent
+      // without a second tap. The retry guard stops any loop.
+      if (isRiderIdRequired(e) || isLivenessRequired(e)) {
+        if (isRiderIdRequired(e)) invalidateRiderIdGate(ref);
+        if (!retried && mounted) await _create(retried: true);
       }
       // Refused by the server's service check (0302): its own modal.
       else if (mounted && !showServiceNotOffered(context, e)) {

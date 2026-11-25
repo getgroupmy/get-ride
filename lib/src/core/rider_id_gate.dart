@@ -98,6 +98,17 @@ class RiderIdGateConfig {
   /// master default, else none.
   RiderIdGateRule? ruleFor(String? country) =>
       (country != null ? rules[country] : null) ?? rules['master'];
+
+  /// The rule for a rider, matched exactly as the server does
+  /// (rider_id_gate_block): where they are now first, then their nationality,
+  /// then the master default, else none.
+  RiderIdGateRule? ruleForRider({String? currentCountry, String? nationality}) =>
+      _exact(currentCountry) ?? _exact(nationality) ?? rules['master'];
+
+  RiderIdGateRule? _exact(String? country) {
+    final key = country?.trim() ?? '';
+    return key.isEmpty ? null : rules[key];
+  }
 }
 
 /// Whether a rider in [country] with [priorBookings] completed and
@@ -106,10 +117,11 @@ class RiderIdGateConfig {
 bool riderIdGateBlocks({
   required RiderIdGateConfig config,
   required String? country,
+  String? currentCountry,
   required int priorBookings,
   required bool verified,
 }) {
-  final rule = config.ruleFor(country);
+  final rule = config.ruleForRider(currentCountry: currentCountry, nationality: country);
   if (rule == null || !rule.require || verified) return false;
   return priorBookings >= (rule.nthBooking - 1);
 }
