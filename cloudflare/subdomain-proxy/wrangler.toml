@@ -38,7 +38,10 @@ TARGET_HOST = "www.getride.my"
 # traffic: the Google Maps Traffic Scraper on the office NAS, through the same
 # tunnel (getgroupmy/get.route.backup, deploy/nas), the Google Maps server in
 # Admin › Fare AI. Same reason.
-PASS_THROUGH = "stats,route,traffic,apple"
+# route-mac: the GET.route Waze pool on the office Mac mini, its own tunnel
+# (getgroupmy/get.route, GET.route/deploy/mac), the first Waze server in
+# Admin › Fare AI with the NAS's route behind it. Same reason.
+PASS_THROUGH = "stats,route,traffic,apple,route-mac"
 
 # The backend's second address (see "api.getride.my" in worker.js): this
 # subdomain is passed straight through to the Supabase project, for phones
