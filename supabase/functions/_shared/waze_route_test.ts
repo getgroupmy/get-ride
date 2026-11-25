@@ -217,7 +217,7 @@ Deno.test("askWazeServer: a slow server is given up within the trip budget", asy
 
 Deno.test("gmapServersOf: its own list, ids and labels", () => {
   const config = {
-    wazeServers: [{ url: "https://route.getride.my", key: "w" }],
+    wazeServers: [{ url: "https://waze.getcdn.link", key: "w" }],
     gmapServers: [
       { url: "https://traffic.getride.my/", key: " k " },
       { url: "http://insecure.example", key: "k" },
@@ -285,7 +285,7 @@ Deno.test("healthVerdict: names Google Maps for its servers", () => {
 
 Deno.test("appleServersOf: its own list, ids, labels and its own time", () => {
   const config = {
-    wazeServers: [{ url: "https://route.getride.my", key: "w" }],
+    wazeServers: [{ url: "https://waze.getcdn.link", key: "w" }],
     appleServers: [
       { url: "https://apple.getride.my", key: "a" },
       { url: "https://apple2.getride.my", key: "", enabled: true },
@@ -294,7 +294,7 @@ Deno.test("appleServersOf: its own list, ids, labels and its own time", () => {
   assertEquals(appleServersOf(config), [
     { id: "apple-1", label: "Apple Maps server 1", url: "https://apple.getride.my", key: "a", enabled: true },
   ]);
-  assertEquals(routeServersOf(config, WAZE_KIND).map((s) => s.url), ["https://route.getride.my"]);
+  assertEquals(routeServersOf(config, WAZE_KIND).map((s) => s.url), ["https://waze.getcdn.link"]);
   assertEquals(appleServersOf({}), []);
   assertEquals(APPLE_KIND.provider, "apple");
   assertEquals(APPLE_KIND.budgetMs, APPLE_TRIP_BUDGET_MS);
