@@ -156,7 +156,7 @@ import '../../core/courier.dart' show courierPageRoute;
 import '../../core/freight.dart' show freightPageRoute, isCourierService, isFreightService;
 import '../../data/freight_repository.dart' show courierAvailableProvider, freightAvailableProvider;
 import 'ride_tracking_screen.dart' show rideStreamProvider;
-import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
+import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, invalidateRiderIdGate, isRiderIdRequired;
 import '../meter/meter_auto_launch.dart';
 import 'unavailable_sheet.dart';
 import '../../admin/screens/commerce/get_coin.dart' show rideRewardCoins;
@@ -2344,7 +2344,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     if (r.find && canFind) await _find();
   }
 
-  Future<void> _book() async {
+  Future<void> _book({bool retried = false}) async {
     final a = _pickup, b = _drop, r = _basis;
     if (a == null || b == null || r == null) return;
     final forWhom = _forOtherOn ? bookedFor(_otherName.text, _otherPhone.text) : null;
@@ -2629,13 +2629,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
       setState(() => _gap = gap);
       _showGap(gap);
     } catch (e) {
-      // The server's ID gate (0342): verify, then invite them to send again.
-      if (isRiderIdRequired(e)) {
-        if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
-          showInfo(context, 'You can send your booking now.');
-        }
-      } else if (isLivenessRequired(e)) {
-        if (mounted) await ensureLivenessOk(context, ref);
+      // The server's ID / live-selfie gates (0342 / 0401): our cached rule may
+      // be stale (e.g. just switched on), so refresh it and run the booking
+      // again — the retry's own pre-checks verify the rider and then send, with
+      // no second tap. The retry guard stops any loop.
+      if (isRiderIdRequired(e) || isLivenessRequired(e)) {
+        if (isRiderIdRequired(e)) invalidateRiderIdGate(ref);
+        if (!retried && mounted) await _book(retried: true);
       }
       // Refused by the server's service check (0302): its own modal.
       else if (mounted && !showServiceNotOffered(context, e, service: _service.name)) {
@@ -3195,6 +3195,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     List<Place> stops = const [],
     Future<void> Function(Map<String, dynamic> row)? bookHireDays,
     required Future<void> Function(Booked booked) onBooked,
+    bool retried = false,
   }) async {
     final a = _pickup;
     if (a == null) return;
@@ -3315,13 +3316,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> with SingleTickerProvid
     } on DuplicateRideRequest catch (e) {
       if (mounted) showInfo(context, e.toString());
     } catch (e) {
-      // The server's ID gate (0342): verify, then invite them to send again.
-      if (isRiderIdRequired(e)) {
-        if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
-          showInfo(context, 'You can book now.');
+      // The server's ID / live-selfie gates (0342 / 0401): refresh a stale rule
+      // and run the hire again so the verify flow runs and it is sent without a
+      // second tap. The retry guard stops any loop.
+      if (isRiderIdRequired(e) || isLivenessRequired(e)) {
+        if (isRiderIdRequired(e)) invalidateRiderIdGate(ref);
+        if (!retried && mounted) {
+          await _submitHire(
+            service: service,
+            fare: fare,
+            durationMin: durationMin,
+            at: at,
+            hireHours: hireHours,
+            payments: payments,
+            paymentPick: paymentPick,
+            stops: stops,
+            bookHireDays: bookHireDays,
+            onBooked: onBooked,
+            retried: true,
+          );
         }
-      } else if (isLivenessRequired(e)) {
-        if (mounted) await ensureLivenessOk(context, ref);
       } else if (mounted) {
         showError(context, HireError.wrap(e));
       }

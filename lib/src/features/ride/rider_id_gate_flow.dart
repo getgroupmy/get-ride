@@ -28,6 +28,11 @@ import '../identity/ekyc_check.dart' show runEkycCheck;
 /// The server's refusal when a booking needs ID verification first (0342).
 bool isRiderIdRequired(Object error) => '$error'.contains('RIDER_ID_REQUIRED');
 
+/// Drop the cached rule after the server's gate fired despite the pre-check:
+/// the client's copy was stale (e.g. the admin just switched the rule on), so
+/// the next [ensureRiderIdVerified] re-reads the live rule and runs the flow.
+void invalidateRiderIdGate(WidgetRef ref) => ref.invalidate(riderIdGateConfigProvider);
+
 /// Whether the rider may book now. Returns true at once when no rule applies;
 /// otherwise runs the verify flow and returns whether they got through.
 Future<bool> ensureRiderIdVerified(BuildContext context, WidgetRef ref) async {
@@ -37,12 +42,14 @@ Future<bool> ensureRiderIdVerified(BuildContext context, WidgetRef ref) async {
     final profile = await ref.read(profileProvider.future);
     final blocked = riderIdGateBlocks(
       config: config,
+      currentCountry: profile?.currentCountry,
       country: profile?.nationality,
       priorBookings: profile?.totalRides ?? 0,
       verified: profile?.isIdVerified ?? false,
     );
     if (!blocked) return true;
-    rule = config.ruleFor(profile?.nationality) ?? RiderIdGateRule.standard;
+    rule = config.ruleForRider(currentCountry: profile?.currentCountry, nationality: profile?.nationality) ??
+        RiderIdGateRule.standard;
   } catch (_) {
     // The rule or profile is unreadable (a transient error, a test without
     // these providers): don't block — the server trigger still enforces it.
