@@ -8,14 +8,14 @@ const providers = [
   {
     id: "ekyc",
     services: [
-      { id: "server", keys: [{ value: "https://old.example:ek_disabledkey12345678", disabled: true }, { value: "https://ekyc.getride.my:ek_abcdefghijklmnopqrstuv" }] },
+      { id: "server", keys: [{ value: "https://old.example:ek_disabledkey12345678", disabled: true }, { value: "https://ekyc.getcdn.link:ek_abcdefghijklmnopqrstuv" }] },
       { id: "webhook", keys: [{ value: "short" }, { value: "whsec-0123456789abcdef" }] },
     ],
   },
 ];
 
 Deno.test("the server key and webhook secrets come from Admin → API Keys", () => {
-  assertEquals(ekycServer(providers), { url: "https://ekyc.getride.my", secret: "ek_abcdefghijklmnopqrstuv" });
+  assertEquals(ekycServer(providers), { url: "https://ekyc.getcdn.link", secret: "ek_abcdefghijklmnopqrstuv" });
   assertEquals(ekycServer({ providers }), ekycServer(providers));
   assertEquals(ekycServer([]), null);
   assertEquals(ekycWebhookSecrets(providers), ["whsec-0123456789abcdef"]);
