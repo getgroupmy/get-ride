@@ -103,12 +103,24 @@ void main() {
       );
     });
 
-    test('an unverified partner picking a citizens-only service is always gated', () {
-      // Even where the admin gate is off, the citizens-only pick requires it.
+    test('the citizen rule applies only to an already-verified partner', () {
+      // Unverified: the general per-country gate decides. A citizens-only pick
+      // does not independently force verification where the gate is off — the
+      // services step still filters a service a non-citizen cannot take.
       expect(
         partnerIdGateBlocks(
           config: on,
           country: 'Thailand',
+          verified: false,
+          pickedCitizensOnly: true,
+        ),
+        isFalse,
+      );
+      // But where the gate is on, an unverified partner is gated regardless.
+      expect(
+        partnerIdGateBlocks(
+          config: on,
+          country: 'Malaysia',
           verified: false,
           pickedCitizensOnly: true,
         ),

@@ -55,6 +55,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:admin.media-upload', SurfaceKind.modal, 'Admin · Media upload', 'lib/src/admin/screens/meterapp/media_upload_dialog.dart'),
   SurfaceEntry('modal:admin.online-selfie-go-offline', SurfaceKind.modal, 'Admin · Online selfie go offline', 'lib/src/admin/screens/online_selfie_check_screen.dart'),
   SurfaceEntry('modal:admin.online-selfie-looked', SurfaceKind.modal, 'Admin · Online selfie looked', 'lib/src/admin/screens/online_selfie_check_screen.dart'),
+  SurfaceEntry('modal:admin.partner-id-gate', SurfaceKind.modal, 'Admin · Partner id gate', 'lib/src/admin/screens/partner_id_gate_card.dart'),
   SurfaceEntry('modal:admin.premium-model', SurfaceKind.modal, 'Admin · Premium model', 'lib/src/admin/screens/premium_plus/premium_plus_screen.dart'),
   SurfaceEntry('modal:admin.premium-plus-remove', SurfaceKind.modal, 'Admin · Premium plus remove', 'lib/src/admin/screens/premium_plus/premium_plus_screen.dart'),
   SurfaceEntry('modal:admin.promo-code', SurfaceKind.modal, 'Admin · Promo code', 'lib/src/admin/screens/promo_codes_screen.dart'),

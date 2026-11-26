@@ -50,12 +50,15 @@ bool idProvesCitizenship(IdDocType? type, String? nationality) =>
 /// Whether a partner must verify their identity before registering now.
 ///
 /// [verified] is profiles.id_verified == 'Verified'; [country] the country the
-/// gate is read for; [config] the admin rule. The normal rule: an unverified
-/// partner must verify where the admin turned the gate on, a verified one need
-/// not. The citizen exception overrides both: when a citizens-only service is
-/// among the picks ([pickedCitizensOnly]) and the partner's ID
-/// ([idType]/[nationality]) does not prove citizenship, they must (re)verify
-/// with a citizen ID — even if already verified on a passport, MyPR or licence.
+/// gate is read for; [config] the admin rule.
+///
+/// An **unverified** partner must verify where the admin turned the gate on for
+/// their country (the citizens-only pick does not independently force it — the
+/// general gate decides). An **already-verified** partner is normally let
+/// through, except the citizen rule: when a citizens-only service is among the
+/// picks ([pickedCitizensOnly]) and their ID ([idType]/[nationality]) does not
+/// prove citizenship (a passport, MyPR or licence), they are sent back to
+/// (re)verify with a citizen ID.
 bool partnerIdGateBlocks({
   required PartnerIdGateConfig config,
   required String? country,
@@ -64,8 +67,10 @@ bool partnerIdGateBlocks({
   IdDocType? idType,
   String? nationality,
 }) {
-  final citizenGap = pickedCitizensOnly && !idProvesCitizenship(idType, nationality);
-  if (citizenGap) return true;
-  if (verified) return false;
+  if (verified) {
+    // The one reason a verified partner is sent back: a citizens-only pick on
+    // an ID that does not prove citizenship.
+    return pickedCitizensOnly && !idProvesCitizenship(idType, nationality);
+  }
   return config.requiredIn(country);
 }

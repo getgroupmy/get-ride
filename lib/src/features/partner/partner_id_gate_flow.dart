@@ -89,15 +89,17 @@ Future<bool> ensurePartnerIdVerified(
   if (go != true) return verified;
   if (!context.mounted) return false;
 
-  final ok = await runIdVerification(
+  final result = await runIdVerification(
     context,
     ref,
     RiderIdGateRule.standard,
     verifiedMessage: 'Identity verified. You can continue your registration.',
     pendingMessage:
-        'Thanks — your ID is being reviewed. You can continue your registration once it is approved, usually shortly.',
+        'Thanks — your ID is being submitted for review. You can continue your registration now.',
   );
-  return ok || verified;
+  // Once a check is submitted the partner may go on — the admin reviews the
+  // whole application. An already-verified partner may go on regardless.
+  return result.submitted || verified;
 }
 
 /// The intro before a partner verifies their identity at registration.
