@@ -66,13 +66,36 @@ Future<bool> _runVerify(BuildContext context, WidgetRef ref, RiderIdGateRule rul
     builder: (_) => _IdVerifyIntro(rule: rule),
   );
   if (go != true || !context.mounted) return false;
+  return runIdVerification(
+    context,
+    ref,
+    rule,
+    verifiedMessage: 'Identity verified. You can book now.',
+    pendingMessage: 'Thanks — your ID is being reviewed. You can book once it is approved, usually shortly.',
+  );
+}
 
-  // GET eKYC, when the admin turned it on for riders (0439): its page takes
-  // the ID, the selfie and the head turns inside the app, and the server
-  // verifies the rider when GET eKYC approved and the face match is strong.
+/// Runs the identity capture and verification and returns whether the person
+/// is now verified. GET eKYC when the admin turned it on for [purpose] (0439),
+/// else the ID-photo + live-selfie fallback scored on the server. Both set
+/// profiles.id_verified on a strong face match and leave the person pending an
+/// admin review otherwise. Shared by the rider ID gate and the partner
+/// registration gate; the caller owns the intro dialog and the final messages.
+Future<bool> runIdVerification(
+  BuildContext context,
+  WidgetRef ref,
+  RiderIdGateRule rule, {
+  String purpose = 'rider_gate',
+  String verifiedMessage = 'Identity verified. You can continue.',
+  String pendingMessage =
+      'Thanks — your ID is being reviewed. You can continue once it is approved, usually shortly.',
+}) async {
+  // GET eKYC, when the admin turned it on (0439): its page takes the ID, the
+  // selfie and the head turns inside the app, and the server verifies the
+  // person when GET eKYC approved and the face match is strong.
   final ekyc = await ref.read(ekycConfigProvider.future).catchError((_) => EkycConfig.off);
   if (!context.mounted) return false;
-  if (ekyc.uses('rider_gate')) return (await runEkycCheck(context, ref, 'rider_gate')).verified;
+  if (ekyc.uses(purpose)) return (await runEkycCheck(context, ref, purpose)).verified;
 
   // The ID photo. When saved photos aren't allowed, the camera only.
   Uint8List? idBytes;
@@ -133,12 +156,11 @@ Future<bool> _runVerify(BuildContext context, WidgetRef ref, RiderIdGateRule rul
     return false;
   }
   if (result.verified) {
-    showInfo(context, 'Identity verified. You can book now.');
+    showInfo(context, verifiedMessage);
     ref.invalidate(profileProvider);
     return true;
   }
-  showInfo(context,
-      'Thanks — your ID is being reviewed. You can book once it is approved, usually shortly.');
+  showInfo(context, pendingMessage);
   return false;
 }
 

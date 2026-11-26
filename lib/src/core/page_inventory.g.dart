@@ -276,6 +276,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:partner-type.ask-name', SurfaceKind.modal, 'Partner type · Name', 'lib/src/admin/screens/catalogue/partner_type_screen.dart'),
   SurfaceEntry('modal:partner.documents-cleared', SurfaceKind.modal, 'Partner · Documents cleared', 'lib/src/features/partner/partner_screen.dart'),
   SurfaceEntry('modal:partner.drop-change', SurfaceKind.modal, 'Partner · Drop change', 'lib/src/widgets/drop_change_prompt.dart'),
+  SurfaceEntry('modal:partner.id-verify-intro', SurfaceKind.modal, 'Partner · Id verify intro', 'lib/src/features/partner/partner_id_gate_flow.dart'),
   SurfaceEntry('modal:partner.offer', SurfaceKind.modal, 'Partner · Offer', 'lib/src/features/partner/partner_screen.dart'),
   SurfaceEntry('modal:partner.online-selfie', SurfaceKind.modal, 'Partner · Online selfie', 'lib/src/features/partner/online_selfie_check.dart'),
   SurfaceEntry('modal:partner.online-selfie-result', SurfaceKind.modal, 'Partner · Online selfie result', 'lib/src/features/partner/online_selfie_check.dart'),
