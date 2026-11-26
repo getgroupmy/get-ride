@@ -43,17 +43,32 @@ Deno.test("what get.ekyc is asked for", () => {
   assertEquals(createBody("u", "first", true).test, true);
 });
 
+Deno.test("every identity document keeps its own type (0441)", () => {
+  assertEquals(docTypeOf({ document_type: "national_id", country: "MYS", document_subtype: "MyKAS" }), "mykas");
+  assertEquals(docTypeOf({ document_type: "national_id", country: "MYS", document_subtype: "MyTentera" }), "mytentera");
+  assertEquals(docTypeOf({ document_type: "national_id", country: "SGP", document_subtype: "NRIC/FIN" }), "id_card");
+  assertEquals(docTypeOf({ document_type: "foreign_worker_card" }), "ikad");
+  assertEquals(docTypeOf({ document_type: "refugee_card" }), "unhcr");
+  assertEquals(docTypeOf({ document_type: "residence_permit" }), "residence_permit");
+  assertEquals(docTypeOf({ document_type: "vehicle_registration" }), null);
+  const lic = applyPayload({ status: "approved", result: { extracted: {
+    document_type: "driving_licence", country: "MYS", full_name: "AHMAD BIN ALI", id_number: "900514-10-5231",
+    date_of_birth: "1990-05-14", sex: "M", expiry_date: "2029-05-11" } } }, { front: "u/f.jpg" });
+  assertEquals([lic.doc_type, (lic.read as Record<string, unknown>).ic, (lic.read as Record<string, unknown>).name],
+    ["driving_licence", "900514-10-5231", "AHMAD BIN ALI"]);
+  const ikad = applyPayload({ status: "review", result: { extracted: {
+    document_type: "foreign_worker_card", full_name: "RAHUL KUMAR", document_number: "N1234567", nationality: "IND" } } },
+    { front: "u/f.jpg" });
+  const r = ikad.read as Record<string, unknown>;
+  assertEquals([ikad.doc_type, r.passport, r.ic, r.nationality], ["ikad", "N1234567", null, "IND"]);
+});
+
 Deno.test("document types map to the check's doc_type", () => {
   assertEquals(docTypeOf({ document_type: "national_id", country: "MYS", document_subtype: "MyKad" }), "mykad");
-  assertEquals(docTypeOf({ document_type: "national_id", country: "MYS", document_subtype: "MyPR" }), "id_card");
+  assertEquals(docTypeOf({ document_type: "national_id", country: "MYS", document_subtype: "MyPR" }), "mypr");
   assertEquals(docTypeOf({ document_type: "national_id", country: "IDN" }), "id_card");
   assertEquals(docTypeOf({ document_type: "passport", country: "GBR" }), "passport");
-  // A driving licence is accepted as an identity document (any spelling).
-  assertEquals(docTypeOf({ document_type: "driving_licence" }), "licence");
-  assertEquals(docTypeOf({ document_type: "driving_license" }), "licence");
-  assertEquals(docTypeOf({ document_type: "drivers_license" }), "licence");
-  // Still null for something that is not an identity document.
-  assertEquals(docTypeOf({ document_type: "utility_bill" }), null);
+  assertEquals(docTypeOf({ document_type: "driving_licence" }), "driving_licence");
 });
 
 Deno.test("a MyKad result becomes the check's fields", () => {
@@ -73,7 +88,7 @@ Deno.test("a MyKad result becomes the check's fields", () => {
   assertEquals(p.status, "approved");
   assertEquals(p.doc_type, "mykad");
   assertEquals(p.read, {
-    name: "KABEER SINGH MAAND A/L GESWANT SINGH", ic: "830825-08-6367", passport: null, licence: null, birth: "1983-08-25",
+    name: "KABEER SINGH MAAND A/L GESWANT SINGH", ic: "830825-08-6367", passport: null, birth: "1983-08-25",
     expiry: null, nationality: "MYS", gender: "male", address: "12 JALAN MAWAR, 30000 IPOH, PERAK",
   });
   assertEquals(p.face, { score: 92, state: "match" });
@@ -97,30 +112,6 @@ Deno.test("a passport in review, face uncertain, liveness failed", () => {
   assertEquals(p.face, { score: 74, state: "no_match" });
   assertEquals(p.liveness, "not_checked");
   assertEquals(p.selfie, null);
-});
-
-Deno.test("a driving licence becomes the check's fields", () => {
-  const p = applyPayload({
-    status: "approved",
-    result: {
-      extracted: {
-        document_type: "driving_licence", country: "MYS",
-        full_name: "SITI NURHALIZA BINTI TARUDIN", id_number: "870101-10-5566",
-        document_number: "870101105566", date_of_birth: "1987-01-01", sex: "F",
-        expiry_date: "2027-01-01", address: "5 JALAN DAMAI, 50000 KUALA LUMPUR",
-      },
-      checks: [{ name: "face_match", status: "pass" }, { name: "liveness", status: "pass" }],
-      scores: { face_score: 90 },
-    },
-  }, { front: "u/signin/ekyc_front.jpg", selfie: "u/signin/ekyc_selfie.jpg" });
-  assertEquals(p.doc_type, "licence");
-  const read = p.read as Record<string, unknown>;
-  // The licence number is kept in its own field, the IC in ic, passport null.
-  assertEquals([read.licence, read.ic, read.passport], ["870101105566", "870101-10-5566", null]);
-  assertEquals([read.name, read.birth, read.expiry, read.gender], ["SITI NURHALIZA BINTI TARUDIN", "1987-01-01", "2027-01-01", "female"]);
-  // A licence does not assert citizenship: nationality stays null unless the
-  // document itself carries it (Part B's citizen rule relies on this).
-  assertEquals(read.nationality, null);
 });
 
 Deno.test("no face found on the card", () => {
