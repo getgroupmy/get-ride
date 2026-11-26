@@ -22,6 +22,7 @@ import 'partner_type_rules.dart' show permitRequirements;
 import 'vehicle_onboarding.dart';
 
 enum OnboardingStep {
+  identity('identity', 'Verify your identity'),
   avatar('avatar', 'Profile photo'),
   serviceArea('service-area', 'Service area'),
   partnerType('partner-type', 'Partner Service type'),
@@ -42,6 +43,7 @@ enum OnboardingStep {
 
   /// Every step a partner may fill in, in order (without [done]).
   static const wizard = [
+    identity,
     avatar,
     serviceArea,
     partnerType,
@@ -57,11 +59,14 @@ enum OnboardingStep {
   /// The steps this partner fills in: the optional ones only when [needs]
   /// says so; without [includePhoto] (a photo already taken when the form
   /// opened) the photo step is left out.
-  static List<OnboardingStep> stepsFor(RegistrationNeeds needs, {bool includePhoto = true}) => [
+  static List<OnboardingStep> stepsFor(RegistrationNeeds needs, {bool includePhoto = true, bool identity = false}) => [
+        // The identity step leads where the admin requires it, and replaces the
+        // National ID step (it captures the ID and a live selfie itself).
+        if (identity) OnboardingStep.identity,
         if (includePhoto) avatar,
         serviceArea,
         partnerType,
-        id,
+        if (!identity) id,
         details,
         if (needs.company) company,
         if (needs.driverPermit) driverPermit,
@@ -83,17 +88,26 @@ OnboardingStep firstIncompleteStep(
   Map<String, dynamic>? partner, {
   RegistrationNeeds? needs,
   bool onPhone = false,
+  bool identityRequired = false,
 }) {
   if (partner?['documents_ok'] == true) return OnboardingStep.done;
-  if (!photoStepDone(profile, partner, onPhone: onPhone)) return OnboardingStep.avatar;
+  final done = registrationStepsDone(partner);
+  final verified = '${profile?['id_verified'] ?? ''}' == 'Verified';
+  // Where the admin requires it, the identity step leads the wizard until the
+  // partner has been through it: verified, or a check submitted and the step
+  // confirmed (regStepIdentity).
+  if (identityRequired && !verified && !done.contains(regStepIdentity)) return OnboardingStep.identity;
+  // A verified identity replaces the photo step's live check — the identity
+  // step already took a live selfie — so any photo will do.
+  if (!photoStepDone(profile, partner, onPhone: onPhone && !verified)) return OnboardingStep.avatar;
   if (_len(partner?['service_countries']) == 0 ||
       _len(partner?['service_states']) == 0 ||
       _len(partner?['service_cities']) == 0) {
     return OnboardingStep.serviceArea;
   }
   if (_len(partner?['partner_types']) == 0) return OnboardingStep.partnerType;
-  if (!idStepDone(profile)) return OnboardingStep.id;
-  final done = registrationStepsDone(partner);
+  // A verified identity also replaces the National ID step.
+  if (!verified && !idStepDone(profile)) return OnboardingStep.id;
   if (!done.contains(regStepDetails)) return OnboardingStep.details;
   final n = needs ?? RegistrationNeeds.fromConfirmed(partner);
   if (n.company && !done.contains(regStepCompany)) return OnboardingStep.company;

@@ -58,7 +58,8 @@ class RiderIdGateCard extends ConsumerWidget {
       final id = switch (r.idType) {
         'national' => 'National ID',
         'passport' => 'Passport',
-        _ => 'National ID or Passport',
+        'licence' => 'Driving licence',
+        _ => 'National ID, Passport or Driving licence',
       };
       final when = r.nthBooking == 1 ? 'before booking #1' : 'before booking #${r.nthBooking}';
       parts.add('eKYC: $id · $when');
@@ -292,7 +293,8 @@ class _RiderVerifyDialogState extends State<_RiderVerifyDialog> {
                   items: const [
                     DropdownMenuItem(value: 'national', child: Text('National ID')),
                     DropdownMenuItem(value: 'passport', child: Text('Passport')),
-                    DropdownMenuItem(value: 'either', child: Text('Either')),
+                    DropdownMenuItem(value: 'licence', child: Text('Driving licence')),
+                    DropdownMenuItem(value: 'either', child: Text('Any (ID, passport or licence)')),
                   ],
                   onChanged: (v) => setState(() => _idType = v ?? _idType),
                 ),

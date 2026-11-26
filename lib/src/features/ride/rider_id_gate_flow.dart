@@ -66,13 +66,45 @@ Future<bool> _runVerify(BuildContext context, WidgetRef ref, RiderIdGateRule rul
     builder: (_) => _IdVerifyIntro(rule: rule),
   );
   if (go != true || !context.mounted) return false;
+  // Riders stay blocked until verified; a pending check is not enough to book.
+  final result = await runIdVerification(
+    context,
+    ref,
+    rule,
+    verifiedMessage: 'Identity verified. You can book now.',
+    pendingMessage: 'Thanks — your ID is being reviewed. You can book once it is approved, usually shortly.',
+  );
+  return result.verified;
+}
 
-  // GET eKYC, when the admin turned it on for riders (0439): its page takes
-  // the ID, the selfie and the head turns inside the app, and the server
-  // verifies the rider when GET eKYC approved and the face match is strong.
+/// Runs the identity capture and verification, returning whether the person is
+/// now [verified] and whether a check was [submitted] (completed, even when it
+/// is pending an admin review). GET eKYC when the admin turned it on for
+/// [purpose] (0439), else the ID-photo + live-selfie fallback scored on the
+/// server. Both set profiles.id_verified on a strong face match and leave the
+/// person pending otherwise. Shared by the rider ID gate (which blocks until
+/// verified) and the partner registration gate (which proceeds once submitted,
+/// the admin review being the backstop); the caller owns the intro and the
+/// final messages.
+Future<({bool verified, bool submitted})> runIdVerification(
+  BuildContext context,
+  WidgetRef ref,
+  RiderIdGateRule rule, {
+  String purpose = 'rider_gate',
+  String verifiedMessage = 'Identity verified. You can continue.',
+  String pendingMessage =
+      'Thanks — your ID is being reviewed. You can continue once it is approved, usually shortly.',
+}) async {
+  const none = (verified: false, submitted: false);
+  // GET eKYC, when the admin turned it on (0439): its page takes the ID, the
+  // selfie and the head turns inside the app, and the server verifies the
+  // person when GET eKYC approved and the face match is strong.
   final ekyc = await ref.read(ekycConfigProvider.future).catchError((_) => EkycConfig.off);
-  if (!context.mounted) return false;
-  if (ekyc.uses('rider_gate')) return (await runEkycCheck(context, ref, 'rider_gate')).verified;
+  if (!context.mounted) return none;
+  if (ekyc.uses(purpose)) {
+    final e = await runEkycCheck(context, ref, purpose);
+    return (verified: e.verified, submitted: e.sent);
+  }
 
   // The ID photo. When saved photos aren't allowed, the camera only.
   Uint8List? idBytes;
@@ -83,18 +115,26 @@ Future<bool> _runVerify(BuildContext context, WidgetRef ref, RiderIdGateRule rul
     final shot = await ImagePicker().pickImage(source: ImageSource.camera, imageQuality: 85);
     idBytes = shot == null ? null : await shot.readAsBytes();
   }
-  if (idBytes == null || !context.mounted) return false;
+  if (idBytes == null || !context.mounted) return none;
 
   // The live selfie (on a phone this cannot be a saved photo).
   final LiveSelfie? selfie = await takeLiveSelfie(context);
-  if (selfie == null || !context.mounted) return false;
+  if (selfie == null || !context.mounted) return none;
 
   // Read what we can off the ID on-device (best-effort). This is only a
   // FALLBACK: the server re-reads the ID with Vision and that read wins, so a
   // client can't pass off a fake name / DOB / gender. The server fills the
   // profile (where empty) when the face match is strong.
-  final docType = rule.idType == 'passport' ? 'passport' : 'national';
-  final idDoc = docType == 'passport' ? IdDocType.passport : IdDocType.mykad;
+  final docType = switch (rule.idType) {
+    'passport' => 'passport',
+    'licence' => 'licence',
+    _ => 'national',
+  };
+  final idDoc = switch (docType) {
+    'passport' => IdDocType.passport,
+    'licence' => IdDocType.licence,
+    _ => IdDocType.mykad,
+  };
   final text = await readImageText(idBytes);
   final IdRead r = text == null ? const IdRead() : readIdText(text, idDoc);
   final gender = text == null
@@ -110,7 +150,7 @@ Future<bool> _runVerify(BuildContext context, WidgetRef ref, RiderIdGateRule rul
     'address': ?r.address,
     if (r.expiry != null) 'expiry': _iso(r.expiry!),
   };
-  if (!context.mounted) return false;
+  if (!context.mounted) return none;
 
   final result = await _withWorking(context, () => ref.read(riderIdGateRepositoryProvider).riderVerify(
         docType: docType,
@@ -118,20 +158,19 @@ Future<bool> _runVerify(BuildContext context, WidgetRef ref, RiderIdGateRule rul
         selfie: selfie,
         read: read,
       ));
-  if (!context.mounted) return false;
+  if (!context.mounted) return none;
 
   if (result == null) {
     showError(context, "We couldn't verify your ID. Please try again.");
-    return false;
+    return none;
   }
   if (result.verified) {
-    showInfo(context, 'Identity verified. You can book now.');
+    showInfo(context, verifiedMessage);
     ref.invalidate(profileProvider);
-    return true;
+    return (verified: true, submitted: true);
   }
-  showInfo(context,
-      'Thanks — your ID is being reviewed. You can book once it is approved, usually shortly.');
-  return false;
+  showInfo(context, pendingMessage);
+  return (verified: false, submitted: true);
 }
 
 /// Runs [task] behind a non-dismissible working dialog; null on any failure.
@@ -178,7 +217,8 @@ class _IdVerifyIntro extends StatelessWidget {
     final idWord = switch (rule.idType) {
       'national' => 'National ID',
       'passport' => 'Passport',
-      _ => 'National ID or Passport',
+      'licence' => 'driving licence',
+      _ => 'National ID, passport or driving licence',
     };
     return AlertDialog(
       key: const ValueKey('rider-id-verify-intro'),

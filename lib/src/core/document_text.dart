@@ -135,7 +135,8 @@ String? _plateIn(String s) {
 enum IdDocType {
   mykad('mykad', 'MyKad', 'Malaysian citizens.'),
   mypr('mypr', 'MyPR', 'Permanent residents (red card).'),
-  passport('passport', 'Passport', 'Everyone else.');
+  passport('passport', 'Passport', 'Everyone else.'),
+  licence('licence', 'Licence', 'A driving licence with your photo.');
 
   const IdDocType(this.key, this.label, this.hint);
 
@@ -365,13 +366,33 @@ DateTime? _mrzDate(String yymmdd, {required bool future, DateTime? now}) {
   return null;
 }
 
+/// A driving licence's front: the holder's identity number (a MyKad number in
+/// Malaysia, which the date of birth is taken from), the name above it and the
+/// address below, and the licence's validity end date (the latest date on the
+/// card). Nationality is left unknown on purpose — a licence does not
+/// establish citizenship, so it never stands in for a MyKad where citizenship
+/// must be proven.
+IdRead readLicenceText(String text, {DateTime? now}) {
+  final base = readMyKadText(text, type: IdDocType.mykad, now: now);
+  final dates = datesIn(text);
+  final expiry = dates.isEmpty ? null : dates.reduce((a, b) => a.isAfter(b) ? a : b);
+  return IdRead(
+    number: base.number,
+    name: base.name,
+    dateOfBirth: base.dateOfBirth,
+    address: base.address,
+    expiry: expiry,
+  );
+}
+
 /// What an ID photo's text says, for the ID type the driver chose: a
-/// passport's machine lines, else the MyKad / MyPR layout (a passport
-/// without readable machine lines reads empty).
+/// passport's machine lines, a driving licence's layout, else the MyKad /
+/// MyPR layout (a passport without readable machine lines reads empty).
 IdRead readIdText(String text, IdDocType type, {DateTime? now}) {
   final mrz = readPassportMrz(text, now: now);
   if (mrz != null) return mrz.read;
   if (type == IdDocType.passport) return const IdRead();
+  if (type == IdDocType.licence) return readLicenceText(text, now: now);
   return readMyKadText(text, type: type, now: now);
 }
 

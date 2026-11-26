@@ -25,7 +25,8 @@ class RiderIdGateRule {
   /// Whether a rider must verify before booking in this country.
   final bool require;
 
-  /// Which ID is accepted: 'national', 'passport' or 'either'.
+  /// Which ID is accepted: 'national', 'passport', 'licence' or 'either' (any
+  /// of the three). A driving licence counts as an identity document.
   final String idType;
 
   /// They may take nthBooking-1 bookings first, then must verify before #nth.
@@ -48,7 +49,7 @@ class RiderIdGateRule {
     final t = json['idType'];
     return RiderIdGateRule(
       require: json['require'] == true,
-      idType: (t == 'national' || t == 'passport' || t == 'either') ? t as String : 'either',
+      idType: (t == 'national' || t == 'passport' || t == 'licence' || t == 'either') ? t as String : 'either',
       nthBooking: n('nthBooking', defaultNthBooking, minNth, maxNth),
       selfie: json['selfie'] != false,
       allowPhoto: json['allowPhoto'] != false,
