@@ -10,6 +10,8 @@ void main() {
       final r = RiderIdGateRule.fromJson({'require': true, 'idType': 'x', 'nthBooking': 999, 'autoVerifyScore': 10});
       expect([r.require, r.idType, r.nthBooking, r.autoVerifyScore], [true, 'either', 50, 60]);
       expect(RiderIdGateRule.fromJson(r.toJson()), r);
+      // A driving licence is an accepted ID type (not coerced to 'either').
+      expect(RiderIdGateRule.fromJson({'idType': 'licence'}).idType, 'licence');
     });
   });
 

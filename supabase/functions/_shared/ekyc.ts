@@ -98,10 +98,13 @@ interface Check {
   code?: string;
 }
 
-/** mykad | passport | id_card, or null for a document that is not an ID. */
-export function docTypeOf(extracted: Record<string, unknown>): "mykad" | "passport" | "id_card" | null {
+/** mykad | passport | id_card | licence, or null for a document that is not an ID. */
+export function docTypeOf(extracted: Record<string, unknown>): "mykad" | "passport" | "id_card" | "licence" | null {
   const t = extracted.document_type;
   if (t === "passport") return "passport";
+  // A driving licence counts as an identity document too; get.ekyc may spell
+  // it either way.
+  if (t === "driving_licence" || t === "driving_license" || t === "drivers_license") return "licence";
   if (t === "national_id") {
     const sub = String(extracted.document_subtype ?? "").toLowerCase();
     return extracted.country === "MYS" && (sub === "" || sub === "mykad") ? "mykad" : "id_card";
@@ -125,6 +128,7 @@ export function applyPayload(
 
   const docType = docTypeOf(ex);
   const isPassport = docType === "passport";
+  const isLicence = docType === "licence";
   const sex = String(ex.sex ?? "").toUpperCase();
   const nat = typeof ex.nationality === "string" && /^[A-Z]{3}$/.test(ex.nationality)
     ? ex.nationality
@@ -149,8 +153,9 @@ export function applyPayload(
     selfie: photos.selfie ?? null,
     read: {
       name: s(ex.full_name, 120),
-      ic: isPassport ? null : s(ex.id_number ?? ex.document_number, 40),
+      ic: isPassport ? null : s(isLicence ? ex.id_number : (ex.id_number ?? ex.document_number), 40),
       passport: isPassport ? s(ex.document_number, 40) : null,
+      licence: isLicence ? s(ex.document_number ?? ex.id_number, 40) : null,
       birth: day(ex.date_of_birth),
       expiry: day(ex.expiry_date),
       nationality: nat,

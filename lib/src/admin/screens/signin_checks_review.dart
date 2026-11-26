@@ -424,6 +424,7 @@ class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
           if (!selfie) 'Name read': c['read_name'] ?? 'Not read',
           if (!selfie) 'IC read': c['read_ic'] ?? 'Not read',
           if (!selfie && c['read_passport'] != null) 'Passport no. read': c['read_passport'],
+          if (!selfie && c['read_licence'] != null) 'Licence no. read': c['read_licence'],
           if (!selfie && c['read_birth'] != null) 'Birth date read': formatStoredDateForUser(c['read_birth']),
           if (!selfie && c['read_nationality'] != null) 'Nationality read': c['read_nationality'],
           if (!selfie && readBy != null) 'Read by': readBy,

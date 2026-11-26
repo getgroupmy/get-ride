@@ -93,8 +93,16 @@ Future<bool> _runVerify(BuildContext context, WidgetRef ref, RiderIdGateRule rul
   // FALLBACK: the server re-reads the ID with Vision and that read wins, so a
   // client can't pass off a fake name / DOB / gender. The server fills the
   // profile (where empty) when the face match is strong.
-  final docType = rule.idType == 'passport' ? 'passport' : 'national';
-  final idDoc = docType == 'passport' ? IdDocType.passport : IdDocType.mykad;
+  final docType = switch (rule.idType) {
+    'passport' => 'passport',
+    'licence' => 'licence',
+    _ => 'national',
+  };
+  final idDoc = switch (docType) {
+    'passport' => IdDocType.passport,
+    'licence' => IdDocType.licence,
+    _ => IdDocType.mykad,
+  };
   final text = await readImageText(idBytes);
   final IdRead r = text == null ? const IdRead() : readIdText(text, idDoc);
   final gender = text == null
@@ -178,7 +186,8 @@ class _IdVerifyIntro extends StatelessWidget {
     final idWord = switch (rule.idType) {
       'national' => 'National ID',
       'passport' => 'Passport',
-      _ => 'National ID or Passport',
+      'licence' => 'driving licence',
+      _ => 'National ID, passport or driving licence',
     };
     return AlertDialog(
       key: const ValueKey('rider-id-verify-intro'),
