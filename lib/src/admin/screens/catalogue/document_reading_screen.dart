@@ -31,6 +31,7 @@ IconData _icon(DocReaderId id) => switch (id) {
       DocReaderId.nas => Icons.storage,
       DocReaderId.gpu => Icons.dns,
       DocReaderId.cloud => Icons.cloud_outlined,
+      DocReaderId.getOcr => Icons.document_scanner_outlined,
     };
 
 class DocumentReadingScreen extends ConsumerStatefulWidget {

@@ -38,4 +38,15 @@ void main() {
   test('the face match server is the built-in-watched provider', () {
     expect(builtinMonitorProviders.contains('face_match'), isTrue);
   });
+
+  test('GET OCR is in the catalogue with a monitorable server key', () {
+    final ocr = defaultApiProviders.firstWhere((p) => p.id == 'ocr');
+    expect(ocr.name, 'GET OCR');
+    expect(ocr.services.map((s) => s.id), contains('server'));
+    // No built-in watcher of its own, so the "Monitor this server" switch is
+    // what watches it (provider-health, 0440).
+    expect(builtinMonitorProviders.contains('ocr'), isFalse);
+    final on = setProviderMonitor(defaultApiProviders, 'ocr', true);
+    expect(providerMonitorOn(on.firstWhere((p) => p.id == 'ocr')), isTrue);
+  });
 }

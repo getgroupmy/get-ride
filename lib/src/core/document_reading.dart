@@ -5,6 +5,7 @@
 /// - nas:   the office NAS, plates and document numbers in the background
 /// - gpu:   a GPU reading PC, whole documents (listed once one is connected)
 /// - cloud: Google Cloud Vision or the vision AI set in API Keys
+/// - getOcr: our own get.ocr server (ocr.getcdn.link), off until turned on
 ///
 /// The server keeps the same shape (`document_reading_normalize`). Pure.
 library;
@@ -13,7 +14,8 @@ enum DocReaderId {
   phone('Driver\'s phone', 'Photo check and the fields, at upload. Free and instant.'),
   nas('Office NAS', 'Plates and document numbers, read in the background.'),
   gpu('GPU reading PC', 'Whole documents, read in-house.'),
-  cloud('Cloud reader', 'Google Cloud Vision or the vision AI set in API Keys. Whole documents.');
+  cloud('Cloud reader', 'Google Cloud Vision or the vision AI set in API Keys. Whole documents.'),
+  getOcr('GET OCR', 'Our own get.ocr server reads the whole document. Needs its key in API Keys.');
 
   const DocReaderId(this.label, this.help);
   final String label;
@@ -72,6 +74,8 @@ class DocumentReadingConfig {
       DocReaderSlot(DocReaderId.nas, true),
       DocReaderSlot(DocReaderId.gpu, true),
       DocReaderSlot(DocReaderId.cloud, true),
+      // get.ocr is opt-in: it appears in the chain off, for the admin to turn on.
+      DocReaderSlot(DocReaderId.getOcr, false),
     ],
     nasJobs: {NasJob.plates: true, NasJob.numbers: true, NasJob.qr: true, NasJob.checks: true},
   );
@@ -92,7 +96,8 @@ class DocumentReadingConfig {
       }
     }
     for (final id in DocReaderId.values) {
-      if (seen.add(id)) readers.add(DocReaderSlot(id, true));
+      // Missing readers join at the end, on; get.ocr joins off (opt-in).
+      if (seen.add(id)) readers.add(DocReaderSlot(id, id != DocReaderId.getOcr));
     }
     final jobs = m['nasJobs'] is Map ? m['nasJobs'] as Map : const {};
     final pass = m['passOnBelow'];
