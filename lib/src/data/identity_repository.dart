@@ -212,10 +212,16 @@ class IdentityRepository {
 
   /// The id-read function's text of the person's own registration document
   /// [fileUrl] (0288), when the admin's ID card reading allows the server;
-  /// null when it isn't allowed, set up or read.
-  Future<String?> readRegistrationText(String fileUrl) async {
+  /// null when it isn't allowed, set up or read. [reader] picks the OCR:
+  /// the default cloud read (Google Vision), or 'getOcr' for the get.ocr
+  /// server (0443) when that reader is next in the chain.
+  Future<String?> readRegistrationText(String fileUrl, {String? reader}) async {
     try {
-      final res = await _db.functions.invoke('id-read', body: {'file_url': fileUrl, 'purpose': 'registration'});
+      final res = await _db.functions.invoke('id-read', body: {
+        'file_url': fileUrl,
+        'purpose': 'registration',
+        'reader': ?reader,
+      });
       final m = _map(res.data);
       final text = '${m['text'] ?? ''}'.trim();
       return m['state'] == 'read' && text.isNotEmpty ? text : null;

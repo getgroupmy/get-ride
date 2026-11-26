@@ -52,6 +52,8 @@ import {
   visionKey,
   visionRequest,
 } from "../_shared/id_read.ts";
+import { type FaceServer } from "../_shared/face_server.ts";
+import { handleOcrRead, isOcrReader, OCR_TIMEOUT_MS, ocrRequest } from "../_shared/doc_ocr.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,6 +95,18 @@ async function download(bucket: string, path: string): Promise<Uint8Array | null
 async function annotate(key: string, image: Uint8Array) {
   const r = visionRequest(key, image);
   const res = await fetch(r.url, { method: r.method, headers: r.headers, body: r.body, signal: AbortSignal.timeout(20000) });
+  return { status: res.status, body: await res.json().catch(() => null) };
+}
+
+// get.ocr (0443): POST the registration document to our own OCR server.
+async function ocrCall(server: FaceServer, image: Uint8Array) {
+  const r = ocrRequest(server, image);
+  const res = await fetch(r.url, {
+    method: r.method,
+    headers: r.headers,
+    body: r.body,
+    signal: AbortSignal.timeout(OCR_TIMEOUT_MS),
+  });
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
@@ -157,18 +171,33 @@ Deno.serve(async (req) => {
     return reply(r.body, r.status);
   }
   if (isRegistrationRead(input)) {
-    const r = await handleRegistrationRead(input, req.headers.get("Authorization"), {
+    const authorization = req.headers.get("Authorization");
+    const owns = async (uid: string, bucket: string, path: string) => {
+      const { data, error } = await db.rpc("registration_file_owned", { p_uid: uid, p_bucket: bucket, p_path: path });
+      if (error) throw error;
+      return data === true;
+    };
+    const spend = async (uid: string, limit: number) => {
+      const { data, error } = await db.rpc("registration_text_read_spend", { p_user: uid, p_limit: limit });
+      if (error) throw error;
+      return data === true;
+    };
+    // get.ocr reader (0443): our own OCR server in place of Google Vision.
+    if (isOcrReader(input)) {
+      const r = await handleOcrRead(input, authorization, {
+        caller: callerId,
+        owns,
+        spend,
+        apiProviders: () => setting("api_providers"),
+        download,
+        ocr: ocrCall,
+      });
+      return reply(r.body, r.status);
+    }
+    const r = await handleRegistrationRead(input, authorization, {
       caller: callerId,
-      async owns(uid, bucket, path) {
-        const { data, error } = await db.rpc("registration_file_owned", { p_uid: uid, p_bucket: bucket, p_path: path });
-        if (error) throw error;
-        return data === true;
-      },
-      async spend(uid, limit) {
-        const { data, error } = await db.rpc("registration_text_read_spend", { p_user: uid, p_limit: limit });
-        if (error) throw error;
-        return data === true;
-      },
+      owns,
+      spend,
       verifySettings: () => setting("dispatch_verify"),
       apiProviders: () => setting("api_providers"),
       download,
