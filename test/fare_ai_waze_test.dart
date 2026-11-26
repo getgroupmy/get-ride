@@ -119,15 +119,15 @@ void main() {
       final c = normalizeFareAi(null).copyWith(
         chain: ['waze', 'gmap', 'ai', 'osrm'],
         wazeServers: [WazeServer.create(id: 'w1', label: 'Waze console', url: 'https://waze.getcdn.link', key: 'kw')],
-        gmapServers: [WazeServer.create(id: 'g1', label: 'Maps NAS', url: 'https://traffic.getride.my', key: 'kg')],
+        gmapServers: [WazeServer.create(id: 'g1', label: 'Maps NAS', url: 'https://gmap.getcdn.link', key: 'kg')],
       );
       final back = normalizeFareAi(c.toJson());
       expect(back.chain, ['waze', 'gmap', 'ai', 'osrm']);
       expect([for (final s in back.wazeServers) (s.id, s.url)], [('w1', 'https://waze.getcdn.link')]);
       expect([for (final s in back.gmapServers) (s.id, s.label, s.url, s.key)],
-          [('g1', 'Maps NAS', 'https://traffic.getride.my', 'kg')]);
+          [('g1', 'Maps NAS', 'https://gmap.getcdn.link', 'kg')]);
       expect(back.activeGmapServerCount, 1);
-      expect(normalizeFareAi({'gmapServers': [{'url': 'https://traffic.getride.my', 'key': 'k'}]}).gmapServers.single.label,
+      expect(normalizeFareAi({'gmapServers': [{'url': 'https://gmap.getcdn.link', 'key': 'k'}]}).gmapServers.single.label,
           'Google Maps server');
       expect(normalizeFareAi(null).gmapServers, isEmpty);
     });
@@ -303,7 +303,7 @@ void main() {
 
     await tester.tap(find.byKey(const ValueKey('add-gmap-server')));
     await tester.pumpAndSettle();
-    await tester.enterText(find.widgetWithText(TextField, 'Server URL'), 'https://traffic.getride.my');
+    await tester.enterText(find.widgetWithText(TextField, 'Server URL'), 'https://gmap.getcdn.link');
     await tester.enterText(find.widgetWithText(TextField, 'Key'), 'm4ps');
     await tester.pump();
 
@@ -319,7 +319,7 @@ void main() {
     final c = repo.saved.single;
     expect(c.chain, ['waze', 'gmap', 'ai', 'osrm']);
     expect(c.wazeServers, isEmpty);
-    expect([for (final s in c.gmapServers) (s.url, s.key)], [('https://traffic.getride.my', 'm4ps')]);
+    expect([for (final s in c.gmapServers) (s.url, s.key)], [('https://gmap.getcdn.link', 'm4ps')]);
   });
 
   testWidgets('admin picks Waze, Apple Maps, AI, OSRM from the search and adds an Apple Maps server', (tester) async {

@@ -219,13 +219,13 @@ Deno.test("gmapServersOf: its own list, ids and labels", () => {
   const config = {
     wazeServers: [{ url: "https://waze.getcdn.link", key: "w" }],
     gmapServers: [
-      { url: "https://traffic.getride.my/", key: " k " },
+      { url: "https://gmap.getcdn.link/", key: " k " },
       { url: "http://insecure.example", key: "k" },
       { url: "https://off.example", key: "k", enabled: false },
     ],
   };
   assertEquals(gmapServersOf(config), [
-    { id: "gmap-1", label: "Google Maps server 1", url: "https://traffic.getride.my", key: "k", enabled: true },
+    { id: "gmap-1", label: "Google Maps server 1", url: "https://gmap.getcdn.link", key: "k", enabled: true },
   ]);
   assertEquals(wazeServersOf(config).map((s) => s.id), ["waze-1"]);
   assertEquals(gmapServersOf({}), []);
@@ -249,7 +249,7 @@ Deno.test("askWazeServer: a Traffic Scraper answer becomes a Google Maps estimat
     seen.push(`${url} ${(init.headers as Record<string, string>)["X-Route-Key"]}`);
     return Promise.resolve(new Response(JSON.stringify(answer), { status: 200 }));
   };
-  const server = gmapServersOf({ gmapServers: [{ url: "https://traffic.getride.my", key: "k" }] })[0];
+  const server = gmapServersOf({ gmapServers: [{ url: "https://gmap.getcdn.link", key: "k" }] })[0];
   const r = await askWazeServer(
     server,
     [{ latitude: -34.9285, longitude: 138.6007 }, { latitude: -34.9462, longitude: 138.5312 }],
@@ -267,7 +267,7 @@ Deno.test("askWazeServer: a Traffic Scraper answer becomes a Google Maps estimat
     tolls: [],
   });
   assertEquals(seen, [
-    "https://traffic.getride.my/routes/search?from=-34.928500%2C138.600700&to=-34.946200%2C138.531200&max_routes=1 k",
+    "https://gmap.getcdn.link/routes/search?from=-34.928500%2C138.600700&to=-34.946200%2C138.531200&max_routes=1 k",
   ]);
 });
 
