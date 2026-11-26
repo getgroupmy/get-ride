@@ -654,6 +654,21 @@ bool visionReadNeeded(String mode, CardRead? phoneRead) => switch (mode) {
   _ => false,
 };
 
+/// An ID check's document (identity_checks.doc_type, 0441), as admins read it.
+/// Checks from before 0441 have no type and were all MyKad or passport.
+String idDocumentWord(String? docType) => switch (docType) {
+  'passport' => 'Passport',
+  'mypr' => 'MyPR',
+  'mykas' => 'MyKAS',
+  'mytentera' => 'MyTentera',
+  'id_card' => 'ID card',
+  'driving_licence' => 'Driving licence',
+  'ikad' => 'i-Kad',
+  'unhcr' => 'UNHCR card',
+  'residence_permit' => 'Residence permit',
+  _ => 'MyKad',
+};
+
 /// What the card was read by, for the admin.
 String? readSourceText(Object? source) => switch (source) {
   'phone' => 'the phone',
