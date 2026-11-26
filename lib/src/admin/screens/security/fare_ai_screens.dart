@@ -35,7 +35,7 @@ class AdminFareAiScreen extends ConsumerStatefulWidget {
 /// fare-order step, also the prefix of the widgets' keys.
 enum _ServerKind {
   waze('waze', 'Waze servers', 'Waze server', 'https://route1.getride.my'),
-  gmap('gmap', 'Google Maps servers', 'Google Maps server', 'https://traffic.getride.my'),
+  gmap('gmap', 'Google Maps servers', 'Google Maps server', 'https://gmap.getcdn.link'),
   apple('apple', 'Apple Maps servers', 'Apple Maps server', 'https://apple.getride.my');
 
   const _ServerKind(this.step, this.title, this.serverLabel, this.urlHint);
