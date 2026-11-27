@@ -25,7 +25,8 @@ class RiderIdGateRule {
   /// Whether a rider must verify before booking in this country.
   final bool require;
 
-  /// Which ID is accepted: 'national', 'passport' or 'either'.
+  /// Which ID is accepted: 'national', 'passport', 'licence' or 'either' (any
+  /// of the three). A driving licence counts as an identity document.
   final String idType;
 
   /// They may take nthBooking-1 bookings first, then must verify before #nth.
@@ -48,7 +49,7 @@ class RiderIdGateRule {
     final t = json['idType'];
     return RiderIdGateRule(
       require: json['require'] == true,
-      idType: (t == 'national' || t == 'passport' || t == 'either') ? t as String : 'either',
+      idType: (t == 'national' || t == 'passport' || t == 'licence' || t == 'either') ? t as String : 'either',
       nthBooking: n('nthBooking', defaultNthBooking, minNth, maxNth),
       selfie: json['selfie'] != false,
       allowPhoto: json['allowPhoto'] != false,
@@ -98,6 +99,17 @@ class RiderIdGateConfig {
   /// master default, else none.
   RiderIdGateRule? ruleFor(String? country) =>
       (country != null ? rules[country] : null) ?? rules['master'];
+
+  /// The rule for a rider, matched exactly as the server does
+  /// (rider_id_gate_block): where they are now first, then their nationality,
+  /// then the master default, else none.
+  RiderIdGateRule? ruleForRider({String? currentCountry, String? nationality}) =>
+      _exact(currentCountry) ?? _exact(nationality) ?? rules['master'];
+
+  RiderIdGateRule? _exact(String? country) {
+    final key = country?.trim() ?? '';
+    return key.isEmpty ? null : rules[key];
+  }
 }
 
 /// Whether a rider in [country] with [priorBookings] completed and
@@ -106,10 +118,43 @@ class RiderIdGateConfig {
 bool riderIdGateBlocks({
   required RiderIdGateConfig config,
   required String? country,
+  String? currentCountry,
   required int priorBookings,
   required bool verified,
 }) {
-  final rule = config.ruleFor(country);
+  final rule = config.ruleForRider(currentCountry: currentCountry, nationality: country);
   if (rule == null || !rule.require || verified) return false;
   return priorBookings >= (rule.nthBooking - 1);
+}
+
+/// The admin's single per-country choice for how riders verify, combining the
+/// eKYC/ID gate (0342) and the live-selfie gate (0401). It is derived from the
+/// two rules' require flags, and written back to both. Pure.
+enum RiderVerifyMethod {
+  none,
+  liveSelfie,
+  ekyc,
+  both;
+
+  /// Whether this method requires the eKYC/ID gate (0342).
+  bool get idRequired => this == ekyc || this == both;
+
+  /// Whether this method requires the live-selfie gate (0401).
+  bool get selfieRequired => this == liveSelfie || this == both;
+
+  /// The admin-facing name.
+  String get label => switch (this) {
+        none => 'Not required',
+        liveSelfie => 'Live selfie',
+        ekyc => 'eKYC (ID)',
+        both => 'eKYC + live selfie',
+      };
+
+  /// The method the two gates add up to.
+  static RiderVerifyMethod of({required bool idRequired, required bool selfieRequired}) {
+    if (idRequired && selfieRequired) return both;
+    if (idRequired) return ekyc;
+    if (selfieRequired) return liveSelfie;
+    return none;
+  }
 }

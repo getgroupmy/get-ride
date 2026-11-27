@@ -68,6 +68,7 @@ List<String> vehicleServicesOf(List<String> types, Iterable<Map<String, dynamic>
     ];
 
 /// The steps confirmed with their button, kept in `partners.registration_steps`.
+const regStepIdentity = 'identity';
 const regStepDetails = 'details';
 const regStepCompany = 'company';
 const regStepDriverPermit = 'driver-permit';

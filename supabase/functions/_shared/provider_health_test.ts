@@ -72,6 +72,20 @@ Deno.test("monitorTargets: tolerates the wrapped { providers: [...] } shape and 
   );
 });
 
+Deno.test("GET OCR (ocr.getcdn.link) is read and watched like the eKYC server", () => {
+  const OCR_SECRET = "ocr_live_0123456789abcdef";
+  assertEquals(serverFromKeyValue(`https://ocr.getcdn.link:${OCR_SECRET}`), {
+    url: "https://ocr.getcdn.link",
+    apiKey: OCR_SECRET,
+  });
+  const providers = [
+    { id: "ocr", name: "GET OCR", monitor: true, services: [{ id: "server", keys: [{ value: `https://ocr.getcdn.link:${OCR_SECRET}` }] }] },
+  ];
+  assertEquals(monitorTargets(providers), [
+    { id: "ocr", label: "GET OCR", url: "https://ocr.getcdn.link", apiKey: OCR_SECRET },
+  ]);
+});
+
 Deno.test("healthState: down only when unreachable or 5xx", () => {
   assertEquals(healthState({ status: 200 }), "ok");
   assertEquals(healthState({ status: 401 }), "ok", "answered but key refused is still up");

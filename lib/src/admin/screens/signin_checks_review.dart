@@ -81,7 +81,7 @@ String checkKindText(Map<String, dynamic> c) => switch ((c['kind'], c['purpose']
   ('selfie', 'recheck', _) => 'Selfie: new phone',
   ('selfie', _, _) => 'Selfie',
   ('id', _, 'passport') => 'Passport',
-  ('id', _, _) => 'MyKad',
+  ('id', _, final String? doc) => idDocumentWord(doc),
   _ => 'Upload',
 };
 

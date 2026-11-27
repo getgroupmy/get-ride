@@ -22,8 +22,8 @@ import '../../data/geo_service.dart' show Place;
 import '../../providers.dart';
 import '../store_review/demo_flows.dart' show playDemoBooking;
 import '../../widgets/busy.dart';
-import '../../widgets/common.dart' show showError, showInfo;
-import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
+import '../../widgets/common.dart' show showError;
+import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, invalidateRiderIdGate, isRiderIdRequired;
 import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired;
 import '../../widgets/date_boxes.dart';
 import '../../widgets/page_style_host.dart';
@@ -220,7 +220,7 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
     if (mounted) setState(() => _step++);
   }
 
-  Future<void> _book() async {
+  Future<void> _book({bool retried = false}) async {
     final q = _quote, r = _route, leave = _leaveAt, fare = _fare, pay = _payment;
     if (q == null || r == null || leave == null || fare == null || pay == null) return;
     // ID verification (0342–0344): an admin country rule may require it.
@@ -259,12 +259,12 @@ class _C2cStepsScreenState extends ConsumerState<C2cStepsScreen> {
       }
       await openC2cTrip(context, b.id, replace: true);
     } catch (e) {
-      if (isRiderIdRequired(e)) {
-        if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
-          showInfo(context, 'You can book now.');
-        }
-      } else if (isLivenessRequired(e)) {
-        if (mounted) await ensureLivenessOk(context, ref);
+      // The server's ID / live-selfie gates (0342 / 0401): refresh a stale rule
+      // and book again so the verify flow runs and it is sent without a second
+      // tap. The retry guard stops any loop.
+      if (isRiderIdRequired(e) || isLivenessRequired(e)) {
+        if (isRiderIdRequired(e)) invalidateRiderIdGate(ref);
+        if (!retried && mounted) await _book(retried: true);
       } else if (mounted) {
         showError(context, e);
       }

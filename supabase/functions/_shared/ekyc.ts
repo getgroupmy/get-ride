@@ -98,15 +98,32 @@ interface Check {
   code?: string;
 }
 
-/** mykad | passport | id_card, or null for a document that is not an ID. */
-export function docTypeOf(extracted: Record<string, unknown>): "mykad" | "passport" | "id_card" | null {
-  const t = extracted.document_type;
-  if (t === "passport") return "passport";
-  if (t === "national_id") {
-    const sub = String(extracted.document_subtype ?? "").toLowerCase();
-    return extracted.country === "MYS" && (sub === "" || sub === "mykad") ? "mykad" : "id_card";
+export type EkycDocType =
+  | "mykad" | "mypr" | "mykas" | "mytentera" | "id_card" | "passport"
+  | "driving_licence" | "ikad" | "unhcr" | "residence_permit";
+
+/** The check's doc_type (0441) for what GET eKYC read, or null for a document that is not an ID. */
+export function docTypeOf(extracted: Record<string, unknown>): EkycDocType | null {
+  switch (extracted.document_type) {
+    case "passport":
+      return "passport";
+    case "national_id": {
+      if (extracted.country !== "MYS") return "id_card";
+      const sub = String(extracted.document_subtype ?? "").toLowerCase();
+      if (sub === "" || sub === "mykad") return "mykad";
+      return sub === "mypr" || sub === "mykas" || sub === "mytentera" ? sub : "id_card";
+    }
+    case "driving_licence":
+      return "driving_licence";
+    case "foreign_worker_card":
+      return "ikad";
+    case "refugee_card":
+      return "unhcr";
+    case "residence_permit":
+      return "residence_permit";
+    default:
+      return null;
   }
-  return null;
 }
 
 /**
@@ -124,7 +141,8 @@ export function applyPayload(
   const byName = (n: string) => checks.find((c) => c?.name === n);
 
   const docType = docTypeOf(ex);
-  const isPassport = docType === "passport";
+  // An i-Kad is numbered by the holder's passport.
+  const isPassport = docType === "passport" || docType === "ikad";
   const sex = String(ex.sex ?? "").toUpperCase();
   const nat = typeof ex.nationality === "string" && /^[A-Z]{3}$/.test(ex.nationality)
     ? ex.nationality

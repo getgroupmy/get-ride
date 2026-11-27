@@ -36,16 +36,16 @@ delete from public.app_settings where key = 'document_reading';
 -- 1. The settings: defaults, every reader once, known readers only ---------------------------
 select pg_temp.check(
   (select string_agg(r->>'id', ',') from jsonb_array_elements(public.document_reading_config()->'readers') r)
-    = 'phone,nas,gpu,cloud',
-  'default order: phone, NAS, GPU PC, cloud');
+    = 'phone,nas,gpu,cloud,getOcr',
+  'default order: phone, NAS, GPU PC, cloud, get.ocr (0443)');
 select pg_temp.check((public.document_reading_config()->>'passOnBelow')::int = 90, 'pass on below 90% by default');
 select pg_temp.check(
   (select string_agg((r->>'id') || ':' || (r->>'on'), ',')
      from jsonb_array_elements(public.document_reading_normalize(
        '{"readers":[{"id":"cloud","on":false},{"id":"evil"},{"id":"cloud","on":true},{"id":"phone","on":true}],
          "passOnBelow":12}')->'readers') r)
-    = 'cloud:false,phone:true,nas:true,gpu:true',
-  'saved order kept, unknown and repeated readers dropped, missing ones added on');
+    = 'cloud:false,phone:true,nas:true,gpu:true,getOcr:false',
+  'saved order kept, unknown and repeated readers dropped, missing ones added on (get.ocr off)');
 select pg_temp.check(
   (public.document_reading_normalize('{"passOnBelow":12}')->>'passOnBelow')::int = 50
   and (public.document_reading_normalize('{"passOnBelow":"x"}')->>'passOnBelow')::int = 90,

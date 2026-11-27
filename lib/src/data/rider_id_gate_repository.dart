@@ -20,6 +20,20 @@ final riderIdGateConfigProvider = FutureProvider<RiderIdGateConfig>((ref) async 
   }
 });
 
+/// The per-country live-selfie rule map (migration 0401): country name ->
+/// required. 'master' is the default. Read from profile_selfie_config().
+final profileSelfieGateConfigProvider = FutureProvider<Map<String, bool>>((ref) async {
+  try {
+    final raw = await ref.watch(supabaseProvider).rpc('profile_selfie_config');
+    final map = raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    return {
+      for (final e in map.entries) e.key: (e.value is Map && (e.value as Map)['require'] == true),
+    };
+  } catch (_) {
+    return const {};
+  }
+});
+
 class RiderIdGateRepository {
   RiderIdGateRepository(this._ref);
   final Ref _ref;

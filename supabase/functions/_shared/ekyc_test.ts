@@ -43,12 +43,32 @@ Deno.test("what get.ekyc is asked for", () => {
   assertEquals(createBody("u", "first", true).test, true);
 });
 
+Deno.test("every identity document keeps its own type (0441)", () => {
+  assertEquals(docTypeOf({ document_type: "national_id", country: "MYS", document_subtype: "MyKAS" }), "mykas");
+  assertEquals(docTypeOf({ document_type: "national_id", country: "MYS", document_subtype: "MyTentera" }), "mytentera");
+  assertEquals(docTypeOf({ document_type: "national_id", country: "SGP", document_subtype: "NRIC/FIN" }), "id_card");
+  assertEquals(docTypeOf({ document_type: "foreign_worker_card" }), "ikad");
+  assertEquals(docTypeOf({ document_type: "refugee_card" }), "unhcr");
+  assertEquals(docTypeOf({ document_type: "residence_permit" }), "residence_permit");
+  assertEquals(docTypeOf({ document_type: "vehicle_registration" }), null);
+  const lic = applyPayload({ status: "approved", result: { extracted: {
+    document_type: "driving_licence", country: "MYS", full_name: "AHMAD BIN ALI", id_number: "900514-10-5231",
+    date_of_birth: "1990-05-14", sex: "M", expiry_date: "2029-05-11" } } }, { front: "u/f.jpg" });
+  assertEquals([lic.doc_type, (lic.read as Record<string, unknown>).ic, (lic.read as Record<string, unknown>).name],
+    ["driving_licence", "900514-10-5231", "AHMAD BIN ALI"]);
+  const ikad = applyPayload({ status: "review", result: { extracted: {
+    document_type: "foreign_worker_card", full_name: "RAHUL KUMAR", document_number: "N1234567", nationality: "IND" } } },
+    { front: "u/f.jpg" });
+  const r = ikad.read as Record<string, unknown>;
+  assertEquals([ikad.doc_type, r.passport, r.ic, r.nationality], ["ikad", "N1234567", null, "IND"]);
+});
+
 Deno.test("document types map to the check's doc_type", () => {
   assertEquals(docTypeOf({ document_type: "national_id", country: "MYS", document_subtype: "MyKad" }), "mykad");
-  assertEquals(docTypeOf({ document_type: "national_id", country: "MYS", document_subtype: "MyPR" }), "id_card");
+  assertEquals(docTypeOf({ document_type: "national_id", country: "MYS", document_subtype: "MyPR" }), "mypr");
   assertEquals(docTypeOf({ document_type: "national_id", country: "IDN" }), "id_card");
   assertEquals(docTypeOf({ document_type: "passport", country: "GBR" }), "passport");
-  assertEquals(docTypeOf({ document_type: "driving_licence" }), null);
+  assertEquals(docTypeOf({ document_type: "driving_licence" }), "driving_licence");
 });
 
 Deno.test("a MyKad result becomes the check's fields", () => {

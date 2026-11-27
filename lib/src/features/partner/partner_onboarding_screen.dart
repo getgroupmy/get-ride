@@ -11,9 +11,10 @@ import '../../admin/screens/people/people_logic.dart';
 import '../../admin/screens/people/people_widgets.dart';
 import '../../core/app_display.dart' show partnerRegistrationPausedMessage, partnerRegistrationPausedTitle;
 import '../../core/partner_doc_check.dart' show ServiceReadiness, renewalWindowDays, summarizeDocIssues;
+import '../../core/partner_id_gate.dart' show PartnerIdGateConfig;
 import '../../core/partner_onboarding.dart';
 import '../../core/partner_registration.dart';
-import '../../core/partner_type_rules.dart' show EffectiveTypeRules, partnerTypesAvailableIn;
+import '../../core/partner_type_rules.dart' show EffectiveTypeRules, citizensOnlyTypes, partnerTypesAvailableIn;
 import '../../core/provided_permits.dart';
 import '../../core/document_text.dart' show IdDocType;
 import '../../core/registration_rules.dart';
@@ -31,6 +32,7 @@ import '../../widgets/live_selfie.dart';
 import '../../widgets/loading_skeleton.dart';
 import '../../widgets/side_menu_host.dart';
 import '../../widgets/net_image.dart';
+import 'partner_id_gate_flow.dart';
 import 'registration_parts.dart';
 import 'registration_rules_parts.dart';
 import 'registration_steps.dart';
@@ -117,6 +119,10 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
   /// The photo step is listed only when the photo was missing on opening.
   bool _photoStep = true;
 
+  /// Whether the admin requires partners to verify their identity here
+  /// (partner_id_gate, 0442), read once on load for the partner's country.
+  bool _identityRequired = false;
+
   /// The vehicle registered in this application.
   Map<String, dynamic>? _vehicle;
   List<Map<String, dynamic>> _vehicleStatuses = const [];
@@ -153,13 +159,18 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         ServiceArea.fromRow(partner),
       );
 
-  OnboardingStep _reached(OnboardingState s) =>
-      firstIncompleteStep(s.profile, s.partner, needs: _needsFor(s.partner), onPhone: _onPhone);
+  OnboardingStep _reached(OnboardingState s) => firstIncompleteStep(
+        s.profile,
+        s.partner,
+        needs: _needsFor(s.partner),
+        onPhone: _onPhone,
+        identityRequired: _identityRequired,
+      );
 
   List<OnboardingStep> _stepsFor(OnboardingState s) =>
       // The photo step always counts, done or not, so "Step 2 of 6" means
       // the same from one visit to the next.
-      OnboardingStep.stepsFor(_needsFor(s.partner));
+      OnboardingStep.stepsFor(_needsFor(s.partner), identity: _identityRequired);
 
   @override
   void initState() {
@@ -219,11 +230,17 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         } catch (_) {}
       }
       final vehicle = await _loadVehicle(s.partner);
+      // The partner identity gate (0442), read for the partner's country (their
+      // first service country, else nationality — at the identity step, before
+      // the service area is picked, that is the nationality).
+      final idGate = await ref.read(partnerIdGateConfigProvider.future).catchError((_) => PartnerIdGateConfig.empty);
+      final idCountry = uploadCountry(s.partner, s.profile);
       if (!mounted) return;
       setState(() {
         _typeEntries = settled[1] as _Entries;
         _s = s.copyWith(needs: _needsFor(s.partner));
         _photoStep = !photoStepDone(s.profile, s.partner, onPhone: _onPhone);
+        _identityRequired = idGate.requiredIn(idCountry.isEmpty ? null : idCountry);
         // Opened for one step (`?step=`): there, unless an earlier one is
         // still missing. Only on the first load.
         if (_viewing == null && widget.startAt != null) {
@@ -331,6 +348,47 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
 
   // ---- Steps -----------------------------------------------------------------
 
+  Widget _identityStep(OnboardingState s) {
+    final verified = '${s.profile?['id_verified'] ?? ''}' == 'Verified';
+    return _section(
+      title: 'Verify your identity',
+      subtitle: 'Before you register, confirm who you are with your ID and a quick selfie. '
+          'It takes a minute, and you will not be asked for your ID again later.',
+      children: [
+        if (verified) ...[
+          const RegNotice(
+            key: ValueKey('identity-verified'),
+            icon: Icons.verified_user,
+            tone: NoticeTone.done,
+            children: [Text('Your identity is verified.')],
+          ),
+          const SizedBox(height: 12),
+        ],
+        _continue(_verifyIdentity, label: verified ? 'Continue' : 'Verify my identity'),
+      ],
+    );
+  }
+
+  Future<void> _verifyIdentity() async {
+    final s = _s!;
+    final country = uploadCountry(s.partner, s.profile);
+    // At the identity step the services are not picked yet, so the
+    // citizens-only check does not apply here — it is run at the services step.
+    final ok = await ensurePartnerIdVerified(
+      context,
+      ref,
+      country: country.isEmpty ? null : country,
+      pickedCitizensOnly: false,
+    );
+    if (!ok || !mounted) return;
+    // Record the step and pull the fresh profile (id_verified) into state, so
+    // the National ID and photo-live-check steps are skipped.
+    await save((st) async {
+      await _repo.patchPartner(st, withRegistrationStep(st.partner, regStepIdentity));
+      return _repo.load();
+    });
+  }
+
   Future<void> _pickAvatar() async {
     final selfie = await widget.takeSelfie(context);
     if (selfie == null || !mounted) return;
@@ -355,6 +413,21 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
         _types.where((t) => !EffectiveTypeRules.of(t, typeValues).availableIn(ServiceArea.fromRow(_s!.partner))).toList();
     if (unavailable.isNotEmpty) {
       return showNotice(context, message: '${unavailable.join(', ')} is not offered in your service area.');
+    }
+    // Citizens-only pick: if the partner's ID does not prove citizenship, send
+    // them through the identity gate to verify a citizen ID (updating their
+    // eKYC). An unverified partner must get through; an already-verified one is
+    // offered it and may go on (the services step and admin review still filter
+    // what a non-citizen can take).
+    if (citizensOnlyTypes(_types, typeValues, ServiceArea.fromRow(_s!.partner)).isNotEmpty) {
+      final country = uploadCountry(_s!.partner, _s!.profile);
+      final proceed = await ensurePartnerIdVerified(
+        context,
+        ref,
+        country: country.isEmpty ? null : country,
+        pickedCitizensOnly: true,
+      );
+      if (!proceed || !mounted) return;
     }
     await save((s) async {
       try {
@@ -567,6 +640,7 @@ class _PartnerOnboardingScreenState extends ConsumerState<PartnerOnboardingScree
   }
 
   Widget _stepBody(OnboardingState s, OnboardingStep step) => switch (step) {
+        OnboardingStep.identity => _identityStep(s),
         OnboardingStep.avatar => _avatarStep(s),
         OnboardingStep.serviceArea => _section(
             title: 'Where will you work?',

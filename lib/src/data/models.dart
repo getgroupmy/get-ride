@@ -513,6 +513,11 @@ class Profile {
   int get riderRatingsCount => _i(raw['rider_ratings_count']) ?? 0;
   String? get status => raw['status'] as String?;
   String? get nationality => raw['nationality'] as String?;
+
+  /// Where the rider currently is. The ID-verification gate matches this
+  /// first, then [nationality], then the master rule — as the server does
+  /// (rider_id_gate_block, 0342).
+  String? get currentCountry => raw['current_country'] as String?;
   String? get idNumber => raw['ic'] as String?;
   String? get address => raw['address'] as String?;
   String? get idImage => raw['id_image'] as String?;
