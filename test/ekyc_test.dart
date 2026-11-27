@@ -23,8 +23,8 @@ void main() {
   });
 
   test('the start answer must be an https page and a session', () {
-    expect(parseEkycStart({'url': 'https://ekyc.getride.my/v/abc', 'session_id': 's1'}),
-        (url: 'https://ekyc.getride.my/v/abc', sessionId: 's1'));
+    expect(parseEkycStart({'url': 'https://ekyc.getcdn.link/v/abc', 'session_id': 's1'}),
+        (url: 'https://ekyc.getcdn.link/v/abc', sessionId: 's1'));
     expect(parseEkycStart({'url': 'http://evil.example/v/abc', 'session_id': 's1'}), isNull);
     expect(parseEkycStart({'error': 'ekyc_off'}), isNull);
     expect(ekycStartError(Exception('{"error":"ekyc_off"}')), contains('not available'));

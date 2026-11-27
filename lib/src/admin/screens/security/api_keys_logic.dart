@@ -277,7 +277,7 @@ final defaultApiProviders = <ApiProviderDef>[
   // check with the server key and ekyc-webhook checks the result's signature.
   ApiProviderDef(id: 'ekyc', name: 'GET eKYC', description: 'Our own eKYC server (ID, selfie and liveness checks)', category: 'Identity', services: [
     _svc('server', 'Server',
-        "Starts identity checks. Save as the server's https address, a colon, then the API key from its console: https://ekyc.getride.my:ek_…"),
+        "Starts identity checks. Save as the server's https address, a colon, then the API key from its console: https://ekyc.getcdn.link:ek_…"),
     _svc('webhook', 'Webhook secret',
         "Proves a result really came from GET eKYC. The webhook secret its console showed for this app (set its webhook to …/functions/v1/ekyc-webhook)"),
   ]),

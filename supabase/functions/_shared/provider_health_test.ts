@@ -6,8 +6,8 @@ const EKYC_SECRET = "ek_live_0123456789abcdef";
 const FACE_SECRET = "0123456789abcdef0123";
 
 Deno.test("serverFromKeyValue: a face / eKYC key gives the address and the key", () => {
-  assertEquals(serverFromKeyValue(`https://ekyc.getride.my:${EKYC_SECRET}`), {
-    url: "https://ekyc.getride.my",
+  assertEquals(serverFromKeyValue(`https://ekyc.getcdn.link:${EKYC_SECRET}`), {
+    url: "https://ekyc.getcdn.link",
     apiKey: EKYC_SECRET,
   });
   assertEquals(serverFromKeyValue(`https://face.getride.my:${FACE_SECRET}`), {
@@ -34,7 +34,7 @@ Deno.test("serverFromKeyValue: not a server address", () => {
 
 Deno.test("monitorTargets: only providers switched on, with a server, and not built-in watched", () => {
   const providers = [
-    { id: "ekyc", name: "GET eKYC", monitor: true, services: [{ id: "server", keys: [{ value: `https://ekyc.getride.my:${EKYC_SECRET}` }] }] },
+    { id: "ekyc", name: "GET eKYC", monitor: true, services: [{ id: "server", keys: [{ value: `https://ekyc.getcdn.link:${EKYC_SECRET}` }] }] },
     { id: "umami", name: "Umami", monitor: true, services: [{ id: "api", keys: [{ value: "https://stats.getride.my getride:PW" }] }] },
     { id: "google", name: "Google", monitor: true, services: [{ id: "maps", keys: [{ value: "AIzaKeyNotAServer" }] }] },
     { id: "face_match", name: "Face match server", monitor: true, services: [{ id: "server", keys: [{ value: `https://face.getride.my:${FACE_SECRET}` }] }] },
@@ -42,7 +42,7 @@ Deno.test("monitorTargets: only providers switched on, with a server, and not bu
   ];
   const targets = monitorTargets(providers);
   assertEquals(targets.map((t) => t.id), ["ekyc", "umami"]);
-  assertEquals(targets[0], { id: "ekyc", label: "GET eKYC", url: "https://ekyc.getride.my", apiKey: EKYC_SECRET });
+  assertEquals(targets[0], { id: "ekyc", label: "GET eKYC", url: "https://ekyc.getcdn.link", apiKey: EKYC_SECRET });
   assertEquals(targets[1], { id: "umami", label: "Umami", url: "https://stats.getride.my", apiKey: undefined });
 });
 
@@ -55,7 +55,7 @@ Deno.test("monitorTargets: face_match is the built-in-watched one, and the first
       monitor: true,
       services: [
         { id: "webhook", keys: [{ value: "ek_webhook_secret_not_a_url" }] },
-        { id: "server", keys: [{ value: `https://ekyc.getride.my:${EKYC_SECRET}`, disabled: true }, { value: `https://ekyc2.getride.my:${EKYC_SECRET}` }] },
+        { id: "server", keys: [{ value: `https://ekyc.getcdn.link:${EKYC_SECRET}`, disabled: true }, { value: `https://ekyc2.getride.my:${EKYC_SECRET}` }] },
       ],
     },
   ];

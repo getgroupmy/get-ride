@@ -4,7 +4,7 @@
  * inside the app, and tells us the result by a signed webhook.
  *
  * Admin → API Keys → GET eKYC keeps two keys:
- *   server   "https://ekyc.getride.my:ek_…"  the address and the API key
+ *   server   "https://ekyc.getcdn.link:ek_…"  the address and the API key
  *   webhook  the webhook secret get.ekyc showed once for this client
  *
  * Pure: the functions ekyc-start and ekyc-webhook do the I/O.
