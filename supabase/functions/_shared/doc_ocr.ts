@@ -76,6 +76,47 @@ export function isOcrReader(input: unknown): boolean {
   return (input as { reader?: unknown } | null)?.reader === OCR_READER;
 }
 
+/** How long to wait for GET.ocr's /v1/extract (its model reads the fields). */
+export const OCR_EXTRACT_TIMEOUT_MS = 45000;
+
+/**
+ * POST /v1/extract with type=custom: GET.ocr's own model reads the named fields
+ * off a document and answers with them. [fields] is the spec GET.ocr takes — a
+ * map of field name to its kind ("string" | "number" | "date") or to a
+ * { type, description }. The image is the base64 the caller already holds. Used
+ * for vehicle documents (plate, make, expiry) that Gemini reads today: GET.ocr
+ * is tried first (migration 0444) and Gemini is the fallback.
+ */
+export function ocrExtractRequest(server: FaceServer, imageBase64: string, fields: Record<string, unknown>) {
+  return {
+    url: `${server.url}/v1/extract`,
+    method: "POST" as const,
+    headers: { "Content-Type": "application/json", "X-API-Key": server.secret },
+    body: JSON.stringify({ file: imageBase64, type: "custom", fields: JSON.stringify(fields) }),
+  };
+}
+
+/**
+ * The extracted field map from a /v1/extract answer — the top-level "fields", or
+ * the first of several documents scanned together — or what went wrong. An empty
+ * map (model degraded, nothing found) comes back as { fields: {} }, which the
+ * caller treats as "nothing read" and falls back.
+ */
+export function readOcrExtract(status: number, body: unknown): { fields: Record<string, unknown> } | { error: string } {
+  const b = (body ?? {}) as Record<string, unknown>;
+  if (status < 200 || status >= 300) {
+    const why = typeof b.message === "string" ? b.message : typeof b.error === "string" ? b.error : `HTTP ${status}`;
+    return { error: `GET.ocr: ${String(why).slice(0, 160)}` };
+  }
+  const flat = (v: unknown): Record<string, unknown> | null =>
+    v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null;
+  const top = flat(b.fields);
+  if (top) return { fields: top };
+  const docs = b.documents;
+  const first = Array.isArray(docs) ? flat((docs[0] as { fields?: unknown } | undefined)?.fields) : null;
+  return { fields: first ?? {} };
+}
+
 /**
  * The document-reading readers that can read a stored image on the server, in
  * the admin's configured order, switched on only: "getOcr" (get.ocr) and

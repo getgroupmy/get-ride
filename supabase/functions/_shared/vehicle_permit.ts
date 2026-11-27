@@ -76,3 +76,12 @@ export function normalizePermit(raw: unknown): PermitFields {
 export function hasAnyField(f: PermitFields): boolean {
   return Object.values(f).some((v) => v !== null);
 }
+
+/** The fields GET.ocr's /v1/extract (type=custom) is asked to read — the same
+ *  keys normalizePermit expects. */
+export const PERMIT_EXTRACT_FIELDS: Record<string, string> = {
+  document_number: "string",
+  expiry_date: "date",
+  plate: "string",
+  authority: "string",
+};

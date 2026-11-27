@@ -68,3 +68,18 @@ export function normalizeRegistration(raw: unknown): RegistrationFields {
 export function hasAnyField(f: RegistrationFields): boolean {
   return Object.values(f).some((v) => v !== null);
 }
+
+/** The fields GET.ocr's /v1/extract (type=custom) is asked to read — the same
+ *  keys normalizeRegistration expects, so GET.ocr's answer feeds the same
+ *  normaliser as Gemini's. */
+export const REGISTRATION_EXTRACT_FIELDS: Record<string, string> = {
+  plate: "string",
+  make: "string",
+  model: "string",
+  seats: "number",
+  color: "string",
+  year: "string",
+  vin: "string",
+  engine_number: "string",
+  document_number: "string",
+};
