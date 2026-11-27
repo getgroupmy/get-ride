@@ -6,8 +6,13 @@ import '../../admin/screens/meterapp/pick_image.dart';
 import '../../core/avatar.dart';
 import '../../core/contact_phone.dart';
 import '../../core/profile_identity.dart';
+import '../../core/ekyc.dart' show EkycConfig;
+import '../../core/rider_id_gate.dart' show RiderIdGateRule;
+import '../../data/ekyc_repository.dart' show ekycConfigProvider;
 import '../../data/identity_repository.dart' show recordProfileSelfie;
+import '../../data/rider_id_gate_repository.dart' show riderIdGateConfigProvider;
 import '../../providers.dart';
+import '../ride/rider_id_gate_flow.dart' show runIdVerification;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart';
 import '../../widgets/live_selfie.dart';
@@ -108,9 +113,34 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
     }
   }
 
-  /// Photographs the passport or ID and saves it straight away, like the
-  /// profile photo; the number and address still need Save.
+  /// The passport or ID. When GET.eKYC is configured on (0439, migration 2b),
+  /// the full GET.eKYC capture (ID + selfie) runs as the primary check —
+  /// verified on a strong match, otherwise pending an admin review — falling
+  /// back to the photo + live selfie face match if GET.eKYC is down. With
+  /// GET.eKYC off it is the plain photo upload, saved straight away like the
+  /// profile photo; the number and address still need Save either way.
   Future<void> _changeIdPhoto() async {
+    final ekyc = await ref.read(ekycConfigProvider.future).catchError((_) => EkycConfig.off);
+    if (!mounted) return;
+    if (ekyc.on) {
+      final rule = await _riderIdRule();
+      if (!mounted) return;
+      setState(() => _uploadingId = true);
+      try {
+        await runIdVerification(
+          context,
+          ref,
+          rule,
+          verifiedMessage: 'Identity verified.',
+          pendingMessage: 'Thanks — your ID is being reviewed. We will let you know shortly.',
+        );
+        if (mounted) ref.invalidate(profileProvider);
+      } finally {
+        if (mounted) setState(() => _uploadingId = false);
+      }
+      return;
+    }
+
     final PickedImage? photo;
     try {
       photo = await widget.pickPhoto(context);
@@ -132,6 +162,20 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
       if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _uploadingId = false);
+    }
+  }
+
+  /// The rider verification rule for this profile's country (where they are,
+  /// then their nationality), else the standard rule — it carries the
+  /// GET.eKYC-down fallback's capture settings (idType, live-only, score).
+  Future<RiderIdGateRule> _riderIdRule() async {
+    try {
+      final config = await ref.read(riderIdGateConfigProvider.future);
+      final profile = await ref.read(profileProvider.future);
+      return config.ruleForRider(currentCountry: profile?.currentCountry, nationality: profile?.nationality) ??
+          RiderIdGateRule.standard;
+    } catch (_) {
+      return RiderIdGateRule.standard;
     }
   }
 
