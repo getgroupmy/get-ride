@@ -15,6 +15,16 @@ void main() {
     expect(c.toJson(), {'on': true, 'riderGate': true, 'dispatchId': false, 'test': false});
   });
 
+  test('the next step after a GET.eKYC check (primary, with a fallback)', () {
+    expect(ekycNext(sent: true, verified: true, unavailable: false), EkycNext.accept);
+    expect(ekycNext(sent: true, verified: false, unavailable: false), EkycNext.accept,
+        reason: 'a submitted check waits for an admin review — it is not a fallback');
+    expect(ekycNext(sent: false, verified: false, unavailable: true), EkycNext.fallBack,
+        reason: 'GET.eKYC could not start — fall back to the photo-and-selfie face match');
+    expect(ekycNext(sent: false, verified: false, unavailable: false), EkycNext.stop,
+        reason: 'the person cancelled the check');
+  });
+
   test('admins are told which key is missing', () {
     expect(EkycConfig.fromJson({'serverKey': true, 'webhookKey': true}).missingKeys, isNull);
     expect(EkycConfig.fromJson({'serverKey': false, 'webhookKey': true}).missingKeys, contains('API key'));

@@ -17,21 +17,27 @@ import '../../widgets/common.dart' show showError, showInfo;
 import '../../widgets/in_app_page.dart' show webViewSupported;
 import '../../widgets/page_style_host.dart';
 
-/// How a GET.eKYC check ended: [sent] when the person finished it, and
-/// [verified] when the server already verified them (riders, 0343).
-typedef EkycCheckEnd = ({bool sent, bool verified});
+/// How a GET.eKYC check ended: [sent] when the person finished it, [verified]
+/// when the server already verified them (riders, 0343), and [unavailable]
+/// when the check could not START — the signal for a caller to fall back to
+/// the next validator (the ID-photo + live-selfie face match).
+typedef EkycCheckEnd = ({bool sent, bool verified, bool unavailable});
 
 /// Runs a GET.eKYC check for [purpose] ('rider_gate' or 'first') and tells
-/// the person how it went. Never throws.
-Future<EkycCheckEnd> runEkycCheck(BuildContext context, WidgetRef ref, String purpose) async {
-  const none = (sent: false, verified: false);
+/// the person how it went. Never throws. When [canFallBack] is set, a failure
+/// to start the check is left silent and reported only through [unavailable],
+/// so the caller can fall through to its own flow; otherwise the start error
+/// is shown to the person as before.
+Future<EkycCheckEnd> runEkycCheck(BuildContext context, WidgetRef ref, String purpose,
+    {bool canFallBack = false}) async {
+  const none = (sent: false, verified: false, unavailable: false);
   final repo = ref.read(ekycRepositoryProvider);
   final ({String url, String sessionId}) started;
   try {
     started = await _working(context, 'Starting the identity check…', () => repo.start(purpose));
   } catch (e) {
-    if (context.mounted) showError(context, ekycStartError(e));
-    return none;
+    if (context.mounted && !canFallBack) showError(context, ekycStartError(e));
+    return (sent: false, verified: false, unavailable: true);
   }
   if (!context.mounted) return none;
 
@@ -48,7 +54,7 @@ Future<EkycCheckEnd> runEkycCheck(BuildContext context, WidgetRef ref, String pu
       : await _inBrowserTab(context, repo, started);
   final outcome = result?.outcome ?? EkycOutcome.cancelled;
   final sent = result?.sent ?? false;
-  if (!context.mounted) return (sent: sent, verified: false);
+  if (!context.mounted) return (sent: sent, verified: false, unavailable: false);
 
   var verified = false;
   if (sent) {
@@ -61,12 +67,12 @@ Future<EkycCheckEnd> runEkycCheck(BuildContext context, WidgetRef ref, String pu
       } catch (_) {}
     }
   }
-  if (!context.mounted) return (sent: sent, verified: verified);
+  if (!context.mounted) return (sent: sent, verified: verified, unavailable: false);
   final msg = ekycEndMessage(outcome, verified: verified);
   if (msg != null) {
     sent || verified ? showInfo(context, msg) : showError(context, msg);
   }
-  return (sent: sent, verified: verified);
+  return (sent: sent, verified: verified, unavailable: false);
 }
 
 /// The web and desktop apps: the check's page in a new browser tab, then the

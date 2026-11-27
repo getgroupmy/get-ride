@@ -88,6 +88,31 @@ String? ekycEndMessage(EkycOutcome outcome, {required bool verified}) {
   };
 }
 
+/// What the ID flow does after a GET.eKYC check runs as the primary validator.
+enum EkycNext {
+  /// The check ran to the end — take its result (verified, or pending an
+  /// admin review).
+  accept,
+
+  /// GET.eKYC was down / could not start — fall through to the next validator
+  /// in the sequence (the ID-photo + live-selfie face match).
+  fallBack,
+
+  /// The person cancelled the check — stop, they are not verified.
+  stop,
+}
+
+/// Decide the ID flow's next step from how a GET.eKYC check ended. GET.eKYC is
+/// the primary validator; a completed check ([sent] or [verified]) is taken as
+/// it stands, a check that could not start ([unavailable]) falls back to the
+/// face match, and anything else is the person cancelling. Pure, so it is
+/// tested without a phone.
+EkycNext ekycNext({required bool sent, required bool verified, required bool unavailable}) {
+  if (verified || sent) return EkycNext.accept;
+  if (unavailable) return EkycNext.fallBack;
+  return EkycNext.stop;
+}
+
 /// GET.eKYC's own verdict on a check, for the admin reviewing it: what it
 /// decided and why ("Needs review: face match uncertain, name mismatch").
 String? ekycVerdictText(Object? status, Object? reasons) {
