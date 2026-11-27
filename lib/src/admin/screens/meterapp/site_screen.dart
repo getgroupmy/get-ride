@@ -35,7 +35,7 @@ import '../driver_rating_admin.dart';
 import '../rider_ratings_card.dart';
 import '../cancel_rules_card.dart';
 import '../drop_change_rules_card.dart';
-import '../profile_selfie_gate_card.dart';
+import '../partner_id_gate_card.dart';
 import '../rider_id_gate_card.dart';
 import '../trip_safety_card.dart';
 import 'app_icon_card.dart';
@@ -573,7 +573,7 @@ class _AdminSiteSettingsScreenState extends ConsumerState<AdminSiteSettingsScree
                 const SizedBox(height: 8),
                 RiderIdGateCard(canEdit: canEdit),
                 const SizedBox(height: 8),
-                ProfileSelfieGateCard(canEdit: canEdit),
+                PartnerIdGateCard(canEdit: canEdit),
                 const SizedBox(height: 8),
                 TripSafetyCard(canEdit: canEdit),
                 const SizedBox(height: 8),

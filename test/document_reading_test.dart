@@ -13,6 +13,7 @@ import 'package:get_ride/src/core/document_reading.dart';
 import 'package:get_ride/src/data/document_ai_repository.dart';
 import 'package:get_ride/src/data/document_reading_repository.dart';
 import 'package:get_ride/src/data/document_text_reader.dart';
+import 'package:get_ride/src/data/identity_repository.dart';
 import 'package:get_ride/src/providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -45,6 +46,16 @@ class _Repo extends DocumentReadingRepository {
 
   @override
   Future<void> remove(String id) async => removed.add(id);
+}
+
+class _FakeIdentity extends IdentityRepository {
+  _FakeIdentity() : super(_db);
+  String? lastReader;
+  @override
+  Future<String?> readRegistrationText(String fileUrl, {String? reader}) async {
+    lastReader = reader;
+    return 'GET OCR TEXT';
+  }
 }
 
 final _nas = ReadersState.fromJson({
@@ -100,7 +111,7 @@ void main() {
         'nasJobs': {'qr': false},
         'passOnBelow': 12,
       });
-      expect(_order(c), 'cloud-off,phone,nas,gpu');
+      expect(_order(c), 'cloud-off,phone,nas,gpu,getOcr-off');
       expect(c.nasJobs[NasJob.qr], isFalse);
       expect(c.nasJobs[NasJob.plates], isTrue);
       expect(c.passOnBelow, 50);
@@ -111,12 +122,12 @@ void main() {
     test('move, switch, and the order of the switched-on readers', () {
       var c = DocumentReadingConfig.defaults;
       c = c.move(DocReaderId.cloud, -1);
-      expect(_order(c), 'phone,nas,cloud,gpu');
+      expect(_order(c), 'phone,nas,cloud,gpu,getOcr-off');
       expect(c.move(DocReaderId.phone, -1), same(c), reason: 'the first can\'t go up');
       // A hidden GPU PC keeps its place: moving the cloud reader down past it does nothing.
       final shown = {DocReaderId.phone, DocReaderId.nas, DocReaderId.cloud};
       expect(c.move(DocReaderId.cloud, 1, shown: shown), same(c));
-      expect(_order(c.move(DocReaderId.cloud, -1, shown: shown)), 'phone,cloud,nas,gpu');
+      expect(_order(c.move(DocReaderId.cloud, -1, shown: shown)), 'phone,cloud,nas,gpu,getOcr-off');
       c = c.toggled(DocReaderId.nas, false);
       expect(c.order, [DocReaderId.phone, DocReaderId.cloud, DocReaderId.gpu]);
       expect(c.isOn(DocReaderId.nas), isFalse);
@@ -126,7 +137,7 @@ void main() {
     test('the GPU PC is listed once connected; the summary in words', () {
       final c = DocumentReadingConfig.defaults;
       expect([for (final r in shownReaders(c, gpuConnected: false)) r.id], isNot(contains(DocReaderId.gpu)));
-      expect(shownReaders(c, gpuConnected: true).length, 4);
+      expect(shownReaders(c, gpuConnected: true).length, 5);
       expect(readingSummary(shownReaders(c, gpuConnected: false)),
           "Documents go to: Driver's phone, then Office NAS, then Cloud reader.");
       expect(readingSummary(const [DocReaderSlot(DocReaderId.phone, false)]),
@@ -152,7 +163,7 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('doc-reader-up-cloud')));
       await tester.pumpAndSettle();
-      expect(_order(repo.saves.last), 'phone,cloud,nas,gpu');
+      expect(_order(repo.saves.last), 'phone,cloud,nas,gpu,getOcr-off');
 
       await tester.tap(find.byKey(const ValueKey('doc-reader-switch-phone')));
       await tester.pumpAndSettle();
@@ -218,6 +229,21 @@ void main() {
       addTearDown(container.dispose);
       final read = container.read(documentTextReaderProvider);
       expect(await read(Uint8List.fromList([1, 2, 3]), fileUrl: 'https://x/a.jpg'), isNull);
+    });
+
+    test('get.ocr on: the document text reader routes to the get.ocr reader', () async {
+      final fake = _FakeIdentity();
+      final container = ProviderContainer(overrides: [
+        documentReadingConfigProvider.overrideWith((_) async => DocumentReadingConfig.defaults
+            .toggled(DocReaderId.phone, false)
+            .toggled(DocReaderId.cloud, false)
+            .toggled(DocReaderId.getOcr, true)),
+        identityRepositoryProvider.overrideWithValue(fake),
+      ]);
+      addTearDown(container.dispose);
+      final read = container.read(documentTextReaderProvider);
+      expect(await read(Uint8List.fromList([1, 2, 3]), fileUrl: 'https://x/a.jpg'), 'GET OCR TEXT');
+      expect(fake.lastReader, 'getOcr');
     });
   });
 }

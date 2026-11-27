@@ -140,6 +140,36 @@ void main() {
       expect('Step ${p.step} of ${p.of} · ${p.label}', 'Step 4 of 8 · National ID');
       expect(onboardingProgress(null, {..._partner(), 'documents_ok': true}), isNull);
     });
+
+    test('the identity step leads and replaces the National ID + photo-live check (0442)', () {
+      final typedArea = {...area, 'partner_types': const ['TEKSI']};
+      // Unverified + the admin gate on: the identity step comes first.
+      expect(firstIncompleteStep(null, null, identityRequired: true), OnboardingStep.identity);
+      // Verified: identity is done and replaces the National ID step — a
+      // verified partner with the area and types picked goes straight to details.
+      expect(
+        firstIncompleteStep(
+          const {'id_verified': 'Verified', 'profile_image': 'p.png'},
+          typedArea,
+          identityRequired: true,
+        ),
+        OnboardingStep.details,
+      );
+      // Verified replaces the photo's live check too: a photo on file is
+      // enough even on a phone (no fresh live selfie needed).
+      expect(
+        firstIncompleteStep(const {'id_verified': 'Verified'}, area, identityRequired: true, onPhone: true),
+        OnboardingStep.partnerType,
+        reason: 'the live selfie was taken at the identity step',
+      );
+    });
+
+    test('stepsFor leads with the identity step and drops National ID when required', () {
+      expect(
+        OnboardingStep.stepsFor(RegistrationNeeds.none, identity: true).map((s) => s.key),
+        ['identity', 'avatar', 'service-area', 'partner-type', 'details', 'requirements'],
+      );
+    });
   });
 
   test('a stub row is not an active partner until a type is chosen', () {

@@ -172,6 +172,7 @@ String _idSays(IdDocType? type, String number) {
   return switch (type) {
     IdDocType.passport => 'Your ID is a passport$n.',
     IdDocType.mypr => 'Your ID is a MyPR$n: permanent residents are not citizens.',
+    IdDocType.licence => 'Your ID is a driving licence$n: a licence does not show citizenship.',
     IdDocType.mykad => 'Your ID shows you are not a citizen.',
     null => 'Add your National ID first.',
   };
@@ -539,6 +540,7 @@ String ruleFailureWhy(RuleFailure f) {
     RegRule.citizensOnly => switch (p.idType) {
         IdDocType.passport => 'passport, not a citizen ID',
         IdDocType.mypr => 'MyPR, not a citizen ID',
+        IdDocType.licence => 'driving licence, not a citizen ID',
         IdDocType.mykad => 'not a citizen there',
         null => 'no ID added',
       },

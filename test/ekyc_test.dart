@@ -3,7 +3,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ekyc/get_ekyc.dart' show EkycOutcome;
 import 'package:get_ride/src/core/ekyc.dart';
-import 'package:get_ride/src/core/signin_checks.dart' show faceProviderText, readSourceText;
+import 'package:get_ride/src/core/signin_checks.dart' show faceProviderText, idDocumentWord, readSourceText;
 
 void main() {
   test('switches: off by default, each use only when the master is on', () {
@@ -45,5 +45,14 @@ void main() {
     expect(ekycVerdictText(null, null), isNull);
     expect(faceProviderText('ekyc'), 'GET eKYC');
     expect(readSourceText('ekyc'), 'GET eKYC');
+  });
+
+  test('each identity document is named for the admin (0441)', () {
+    expect(idDocumentWord('driving_licence'), 'Driving licence');
+    expect(idDocumentWord('ikad'), 'i-Kad');
+    expect(idDocumentWord('unhcr'), 'UNHCR card');
+    expect(idDocumentWord('mypr'), 'MyPR');
+    expect(idDocumentWord('id_card'), 'ID card');
+    expect(idDocumentWord(null), 'MyKad', reason: 'checks from before 0441');
   });
 }

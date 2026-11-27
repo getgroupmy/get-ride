@@ -34,11 +34,19 @@ final documentTextReaderProvider = Provider<DocumentTextRead>((ref) {
       return identity.readRegistrationText(fileUrl);
     }
 
+    // get.ocr reads the whole document (migration 0443). The chain's on/off
+    // switch is the gate, so there is no separate server setting to check.
+    Future<String?> getOcr() async {
+      if (fileUrl == null || fileUrl.isEmpty) return null;
+      return ref.read(identityRepositoryProvider).readRegistrationText(fileUrl, reader: 'getOcr');
+    }
+
     final cfg = await ref.read(documentReadingConfigProvider.future);
     for (final id in cfg.order) {
       final text = switch (id) {
         DocReaderId.phone => await phone(),
         DocReaderId.cloud => await cloud(),
+        DocReaderId.getOcr => await getOcr(),
         // The NAS and a GPU PC read in the background, after the upload.
         DocReaderId.nas || DocReaderId.gpu => null,
       };

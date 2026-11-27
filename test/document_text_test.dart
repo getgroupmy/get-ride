@@ -79,6 +79,41 @@ WARGANEGARA
     });
   });
 
+  group('Driving licence', () {
+    const front = '''
+LESEN MEMANDU MALAYSIA
+MALAYSIAN DRIVING LICENCE
+880214-08-5123
+LIM CHEE KEONG
+NO 8 JALAN MERPATI
+31400 IPOH
+01/06/2023
+31/05/2026
+''';
+
+    test('number, name, date of birth and the validity end date', () {
+      final r = readIdText(front, IdDocType.licence, now: _now);
+      expect(r.number, '880214-08-5123');
+      expect(r.name, 'LIM CHEE KEONG');
+      expect(r.dateOfBirth, DateTime(1988, 2, 14));
+      // The latest date on the card is the licence's expiry.
+      expect(r.expiry, DateTime(2026, 5, 31));
+    });
+
+    test('a licence does not assert citizenship', () {
+      final r = readIdText(front, IdDocType.licence, now: _now);
+      // Nationality is left unknown on purpose (Part B's citizen rule relies
+      // on this), so a licence is never flagged as showing a non-citizen.
+      expect(r.nationality, isNull);
+      expect(idShowsNonCitizen(IdDocType.licence, r.nationality), isFalse);
+    });
+
+    test('the licence type carries the photo and the default two sides', () {
+      expect(IdDocType.licence.photoSides, ('Front', 'Back'));
+      expect(IdDocType.parse('licence'), IdDocType.licence);
+    });
+  });
+
   group('passport machine lines', () {
     // A made-up specimen, laid out as ICAO 9303.
     const page = '''

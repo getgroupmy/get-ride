@@ -55,7 +55,7 @@ import '../../core/business_accounts.dart';
 import '../../data/business_repository.dart';
 import '../business/business_booking.dart';
 import 'confirm_parts.dart' show paymentLook;
-import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
+import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, invalidateRiderIdGate, isRiderIdRequired;
 import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired;
 import 'delivery_addons_parts.dart';
 import 'delivery_look.dart';
@@ -381,7 +381,7 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     offer: _offer,
   );
 
-  Future<void> _create() async {
+  Future<void> _create({bool retried = false}) async {
     final a = _pickup, b = _drop, v = _vehicle;
     final problem = courierDraftProblem(_draft, _config) ?? _addonProblem;
     if (problem != null) return showInfo(context, problem);
@@ -496,15 +496,12 @@ class _CourierScreenState extends ConsumerState<CourierScreen> with SingleTicker
     } on DuplicateRideRequest catch (e) {
       if (mounted) showInfo(context, e.toString());
     } catch (e) {
-      // The server's ID gate (0342): verify, then invite them to send again.
-      if (isRiderIdRequired(e)) {
-        if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
-          showInfo(context, 'You can send your booking now.');
-        }
-      }
-      // The server's liveness gate (0401): capture a fresh live selfie.
-      else if (isLivenessRequired(e)) {
-        if (mounted) await ensureLivenessOk(context, ref);
+      // The server's ID / live-selfie gates (0342 / 0401): refresh a stale rule
+      // and run the booking again so the verify flow runs and it is sent
+      // without a second tap. The retry guard stops any loop.
+      if (isRiderIdRequired(e) || isLivenessRequired(e)) {
+        if (isRiderIdRequired(e)) invalidateRiderIdGate(ref);
+        if (!retried && mounted) await _create(retried: true);
       }
       // Refused by the server's service check (0302): its own modal.
       else if (mounted && !showServiceNotOffered(context, e)) {

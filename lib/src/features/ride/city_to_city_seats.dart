@@ -35,7 +35,7 @@ import '../../providers.dart' show profileProvider, storeReviewProvider;
 import '../store_review/demo_flows.dart' show playDemoBooking;
 import '../../widgets/busy.dart';
 import '../../widgets/common.dart' show EmptyState, showError, showInfo;
-import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, isRiderIdRequired;
+import 'rider_id_gate_flow.dart' show ensureRiderIdVerified, invalidateRiderIdGate, isRiderIdRequired;
 import 'rider_liveness_flow.dart' show ensureLivenessOk, isLivenessRequired;
 import '../../widgets/date_boxes.dart';
 import '../../widgets/phone_number_field.dart' show PhoneNumberField;
@@ -438,7 +438,7 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
     return null;
   }
 
-  Future<void> _book() async {
+  Future<void> _book({bool retried = false}) async {
     final x = widget.trip;
     final pay = _payment;
     if (pay == null || _problem != null) return;
@@ -494,12 +494,12 @@ class _C2cSeatBookScreenState extends ConsumerState<C2cSeatBookScreen> {
       );
       if (mounted) await openC2cTrip(context, r.id, replace: true);
     } catch (e) {
-      if (isRiderIdRequired(e)) {
-        if (mounted && await ensureRiderIdVerified(context, ref) && mounted) {
-          showInfo(context, 'You can book now.');
-        }
-      } else if (isLivenessRequired(e)) {
-        if (mounted) await ensureLivenessOk(context, ref);
+      // The server's ID / live-selfie gates (0342 / 0401): refresh a stale rule
+      // and book again so the verify flow runs and it is sent without a second
+      // tap. The retry guard stops any loop.
+      if (isRiderIdRequired(e) || isLivenessRequired(e)) {
+        if (isRiderIdRequired(e)) invalidateRiderIdGate(ref);
+        if (!retried && mounted) await _book(retried: true);
       } else if (mounted) {
         showError(context, e);
       }

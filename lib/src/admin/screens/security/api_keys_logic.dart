@@ -281,6 +281,15 @@ final defaultApiProviders = <ApiProviderDef>[
     _svc('webhook', 'Webhook secret',
         "Proves a result really came from GET eKYC. The webhook secret its console showed for this app (set its webhook to …/functions/v1/ekyc-webhook)"),
   ]),
+  // GET OCR (get.ocr on ocr.getcdn.link): our own OCR server for reading a
+  // document's photo. A selectable reader in Admin > Settings > Document
+  // reading (DocReaderId.getOcr), and watched here when "Monitor this server"
+  // is on — provider-health reads the https address from this key and pings
+  // ocr.getcdn.link/health.
+  ApiProviderDef(id: 'ocr', name: 'GET OCR', description: 'Our own OCR server for reading documents', category: 'Identity', services: [
+    _svc('server', 'Server',
+        "Reads a document's photo (IDs, permits, vehicle papers). Save as the server's https address, a colon, then the API key from its console: https://ocr.getcdn.link:ocr_…"),
+  ]),
   // Visitor stats on the office NAS (0321, deploy/nas-stats): the nas-stats
   // function reads today's numbers from Umami with it.
   ApiProviderDef(id: 'umami', name: 'Umami', description: 'Visitor stats on the office NAS (deploy/nas-stats)', category: 'Analytics', services: [
