@@ -295,6 +295,17 @@ Deno.serve(async (req) => {
       if (error) console.log("[id-read] secret check:", error.message);
       return data === true;
     },
+    // get.ocr is the primary reader; Google Vision is the fallback (0444). The
+    // order follows Admin → Settings → Document reading, shared with the admin
+    // profile read; the sign-in gate above (Vision on) still decides whether the
+    // person may ask the server at all.
+    serverReaders: async () => serverReaders(await setting("document_reading")),
+    async ocrText(image) {
+      const server = ocrServer(await setting("api_providers"));
+      if (!server) return null;
+      const ans = await ocrCall(server, image);
+      return readOcr(ans.status, ans.body);
+    },
   }, req.headers.get("x-push-secret"));
   return reply(result.body, result.status);
 });

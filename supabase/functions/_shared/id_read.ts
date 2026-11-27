@@ -1,8 +1,10 @@
 /**
- * id-read (migration 0283): Google Cloud Vision reads a MyKad's or
- * passport's front, for a sign-in check, when the phone can't (web, desktop,
- * a photo ML Kit can't read) or the admin asks for it always. What was read
- * is kept on the check and checked against the profile again
+ * id-read (migration 0283): the server reads a MyKad's or passport's front,
+ * for a sign-in check, when the phone can't (web, desktop, a photo ML Kit can't
+ * read) or the admin asks for it always. GET.ocr is the primary reader and
+ * Google Vision the fallback, in the admin's Document reading order (0444); the
+ * Vision switch below still decides whether the server may be asked at all. What
+ * was read is kept on the check and checked against the profile again
  * (identity_check_store_read → identity_read_mismatch).
  *
  * Who may ask:
@@ -345,6 +347,15 @@ export interface IdReadDeps {
   nasReading?(id: string): Promise<boolean>;
   /** Whether the x-push-secret header is the database's webhook secret (0320). */
   webhookSecretOk?(secret: string): Promise<boolean>;
+  /** The server-side document readers in the admin's order (document_reading):
+   *  "getOcr" (GET.ocr) and "cloud" (Google Vision), switched on only, GET.ocr
+   *  first by default (migration 0444). Absent → Vision only, the behaviour
+   *  before GET.ocr was a reader. */
+  serverReaders?(): Promise<("getOcr" | "cloud")[]>;
+  /** Read [image] with GET.ocr; null when no GET.ocr key is set, { error } when
+   *  the server failed. Google Vision stays this module's own call (annotate),
+   *  so get.ocr's import never has to reach this shared module. */
+  ocrText?(image: Uint8Array): Promise<{ text: string } | { error: string } | null>;
 }
 
 export interface Result {
@@ -375,7 +386,7 @@ export async function handleIdRead(
       if (!visionOn(verify)) return { status: 403, body: { error: "vision_off" } };
       if (row.status !== "Pending Review") return { status: 409, body: { error: "not_waiting" } };
       if (row.read_source === "vision") return { status: 409, body: { error: "already_read" } };
-      return await readWithVision(row, apiProviders, deps);
+      return await readServerSide(row, apiProviders, deps);
     }
     const uid = await deps.caller(authorization);
     if (!uid) return { status: 401, body: { error: "not_signed_in" } };
@@ -397,24 +408,53 @@ export async function handleIdRead(
         return { status: 200, body: { state: "not_read", reason: "nas" } };
       }
     }
-    return await readWithVision(row!, apiProviders, deps);
+    return await readServerSide(row!, apiProviders, deps);
   } catch {
     return { status: 503, body: { error: "unavailable" } };
   }
 }
 
-async function readWithVision(row: IdCheckRow, apiProviders: unknown, deps: IdReadDeps): Promise<Result> {
+// The server reads the ID: GET.ocr first when it is the admin's primary reader
+// (document_reading, migration 0444), then Google Vision as the fallback. Vision
+// keeps every response it gave before, so an admin with no GET.ocr reader reads
+// exactly as it did. The read is spent on whichever reader answers.
+async function readServerSide(row: IdCheckRow, apiProviders: unknown, deps: IdReadDeps): Promise<Result> {
+  const order = deps.serverReaders ? await deps.serverReaders() : [];
+  if (deps.ocrText && order[0] === "getOcr") {
+    const where = storageObject(row.file_url);
+    const image = where ? await deps.download(where.bucket, where.path) : null;
+    if (!image) return { status: 200, body: { state: "not_read", reason: "no_photo" } };
+    if (image.length > MAX_IMAGE_BYTES) return { status: 200, body: { state: "not_read", reason: "too_big" } };
+    const v = await deps.ocrText(image);
+    if (v && !("error" in v) && v.text.trim()) return await storeRead(row, readCardText(v.text), deps);
+    // No GET.ocr key, GET.ocr down, or nothing read → Google Vision, same image.
+    return await readWithVision(row, apiProviders, deps, image);
+  }
+  return await readWithVision(row, apiProviders, deps);
+}
+
+async function readWithVision(
+  row: IdCheckRow,
+  apiProviders: unknown,
+  deps: IdReadDeps,
+  image?: Uint8Array | null,
+): Promise<Result> {
   const key = visionKey(apiProviders);
   if (!key) return { status: 200, body: { state: "not_read", reason: "no_key" } };
-  const where = storageObject(row.file_url);
-  const image = where ? await deps.download(where.bucket, where.path) : null;
+  if (image === undefined) {
+    const where = storageObject(row.file_url);
+    image = where ? await deps.download(where.bucket, where.path) : null;
+  }
   if (!image) return { status: 200, body: { state: "not_read", reason: "no_photo" } };
   if (image.length > MAX_IMAGE_BYTES) return { status: 200, body: { state: "not_read", reason: "too_big" } };
   const answer = await deps.annotate(key, image);
   const v = readVision(answer.status, answer.body);
   if ("error" in v) return { status: 200, body: { state: "error", detail: v.error } };
-  const read = readCardText(v.text);
-  // Kept even when nothing was found, so the person's one read is spent.
+  return await storeRead(row, readCardText(v.text), deps);
+}
+
+// The read is kept even when nothing was found, so the person's one read is spent.
+async function storeRead(row: IdCheckRow, read: CardRead, deps: IdReadDeps): Promise<Result> {
   const stored = await deps.store(row.id, read);
   const found = read.name !== null || read.ic !== null || read.passport !== null || read.expiry !== null;
   return {
