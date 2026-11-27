@@ -480,8 +480,9 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
     }
   }
 
-  /// Reads the ID image with Vision (admin), so the reviewer can compare the
-  /// read fields with what the user keyed and keep either, per field.
+  /// Reads the ID image with the document reader (get.ocr first, then Vision —
+  /// Admin › Settings › Document reading), so the reviewer can compare the read
+  /// fields with what the user keyed and keep either, per field.
   Future<void> _readId() async {
     setState(() => _reading = true);
     Map<String, dynamic>? read;
@@ -495,7 +496,8 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
       _choice.clear();
     });
     if (read == null && mounted) {
-      showInfo(context, "Couldn't read the ID image — check the Cloud Vision key and that the photo is sharp.");
+      showInfo(context,
+          "Couldn't read the ID image — check the reader keys in API Keys (GET OCR / Cloud Vision) and that the photo is sharp.");
     }
   }
 

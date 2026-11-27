@@ -5,8 +5,10 @@
 /// - nas:   the office NAS, plates and document numbers in the background
 /// - gpu:   a GPU reading PC, whole documents (listed once one is connected)
 /// - cloud: Google Cloud Vision or the vision AI set in API Keys
-/// - getOcr: our own get.ocr server (ocr.getcdn.link), off until turned on
+/// - getOcr: our own get.ocr server (ocr.getcdn.link), the primary reader
 ///
+/// get.ocr leads the order (the others are its fallback sequence); the admin
+/// can re-arrange it in Admin › Settings › Document reading.
 /// The server keeps the same shape (`document_reading_normalize`). Pure.
 library;
 
@@ -70,18 +72,18 @@ class DocumentReadingConfig {
 
   static const defaults = DocumentReadingConfig(
     readers: [
+      // get.ocr is the primary reader; the rest are its fallback sequence.
+      DocReaderSlot(DocReaderId.getOcr, true),
       DocReaderSlot(DocReaderId.phone, true),
       DocReaderSlot(DocReaderId.nas, true),
       DocReaderSlot(DocReaderId.gpu, true),
       DocReaderSlot(DocReaderId.cloud, true),
-      // get.ocr is opt-in: it appears in the chain off, for the admin to turn on.
-      DocReaderSlot(DocReaderId.getOcr, false),
     ],
     nasJobs: {NasJob.plates: true, NasJob.numbers: true, NasJob.qr: true, NasJob.checks: true},
   );
 
   /// Read leniently, like the server: unknown and repeated readers dropped,
-  /// missing ones added at the end, on.
+  /// missing ones added on — get.ocr at the front (the primary reader).
   factory DocumentReadingConfig.fromJson(Object? json) {
     final m = json is Map ? json : const {};
     final seen = <DocReaderId>{};
@@ -96,8 +98,14 @@ class DocumentReadingConfig {
       }
     }
     for (final id in DocReaderId.values) {
-      // Missing readers join at the end, on; get.ocr joins off (opt-in).
-      if (seen.add(id)) readers.add(DocReaderSlot(id, id != DocReaderId.getOcr));
+      // Missing readers join on; get.ocr joins as the primary (at the front).
+      if (seen.add(id)) {
+        if (id == DocReaderId.getOcr) {
+          readers.insert(0, const DocReaderSlot(DocReaderId.getOcr, true));
+        } else {
+          readers.add(DocReaderSlot(id, true));
+        }
+      }
     }
     final jobs = m['nasJobs'] is Map ? m['nasJobs'] as Map : const {};
     final pass = m['passOnBelow'];

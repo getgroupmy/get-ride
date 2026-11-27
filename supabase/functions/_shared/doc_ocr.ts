@@ -76,6 +76,26 @@ export function isOcrReader(input: unknown): boolean {
   return (input as { reader?: unknown } | null)?.reader === OCR_READER;
 }
 
+/**
+ * The document-reading readers that can read a stored image on the server, in
+ * the admin's configured order, switched on only: "getOcr" (get.ocr) and
+ * "cloud" (Google Vision). The phone, NAS and GPU readers do not read a stored
+ * image here. An absent or unreadable config falls back to get.ocr first, then
+ * Vision, so get.ocr is the primary reader by default (migration 0444).
+ */
+export function serverReaders(documentReading: unknown): ("getOcr" | "cloud")[] {
+  const readers = (documentReading as { readers?: unknown } | null)?.readers;
+  if (!Array.isArray(readers)) return ["getOcr", "cloud"];
+  const out: ("getOcr" | "cloud")[] = [];
+  for (const r of readers) {
+    const id = (r as { id?: unknown })?.id;
+    if ((id === "getOcr" || id === "cloud") && (r as { on?: unknown })?.on === true) {
+      out.push(id);
+    }
+  }
+  return out;
+}
+
 export interface OcrReadDeps {
   /** The signed-in user's id; null when the token is missing or not accepted. */
   caller(authorization: string | null): Promise<string | null>;

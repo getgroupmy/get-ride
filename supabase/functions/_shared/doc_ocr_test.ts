@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@1.0.19";
 
-import { isOcrReader, ocrRequest, ocrServer, readOcr } from "./doc_ocr.ts";
+import { isOcrReader, ocrRequest, ocrServer, readOcr, serverReaders } from "./doc_ocr.ts";
 
 const OCR_SECRET = "ocr_live_0123456789abcdef";
 const providers = [
@@ -54,4 +54,35 @@ Deno.test("isOcrReader: only when the reader is getOcr", () => {
   assertEquals(isOcrReader({ file_url: "x", purpose: "registration" }), false, "the Vision registration read");
   assertEquals(isOcrReader({ reader: "cloud" }), false);
   assertEquals(isOcrReader(null), false);
+});
+
+Deno.test("serverReaders: the on server readers in order, get.ocr first by default", () => {
+  // An absent or unreadable config falls back to get.ocr first, then Vision.
+  assertEquals(serverReaders(null), ["getOcr", "cloud"]);
+  assertEquals(serverReaders({}), ["getOcr", "cloud"]);
+  assertEquals(serverReaders({ readers: "x" }), ["getOcr", "cloud"]);
+  // The full default chain: only get.ocr and the cloud read a stored image here.
+  assertEquals(
+    serverReaders({
+      readers: [
+        { id: "getOcr", on: true },
+        { id: "phone", on: true },
+        { id: "nas", on: true },
+        { id: "gpu", on: true },
+        { id: "cloud", on: true },
+      ],
+    }),
+    ["getOcr", "cloud"],
+  );
+  assertEquals(
+    serverReaders({ readers: [{ id: "getOcr", on: false }, { id: "cloud", on: true }] }),
+    ["cloud"],
+    "get.ocr off: Vision only",
+  );
+  assertEquals(
+    serverReaders({ readers: [{ id: "cloud", on: true }, { id: "getOcr", on: true }] }),
+    ["cloud", "getOcr"],
+    "the admin's order is kept",
+  );
+  assertEquals(serverReaders({ readers: [{ id: "getOcr", on: false }, { id: "cloud", on: false }] }), []);
 });

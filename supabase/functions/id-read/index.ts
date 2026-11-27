@@ -53,7 +53,15 @@ import {
   visionRequest,
 } from "../_shared/id_read.ts";
 import { type FaceServer } from "../_shared/face_server.ts";
-import { handleOcrRead, isOcrReader, OCR_TIMEOUT_MS, ocrRequest } from "../_shared/doc_ocr.ts";
+import {
+  handleOcrRead,
+  isOcrReader,
+  OCR_TIMEOUT_MS,
+  ocrRequest,
+  ocrServer,
+  readOcr,
+  serverReaders,
+} from "../_shared/doc_ocr.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -121,30 +129,9 @@ async function profileIdImage(profileId: string): Promise<string | null> {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
-async function handleProfileRead(
-  profileId: string,
-  authorization: string | null,
-): Promise<{ body: Record<string, unknown>; status: number }> {
-  if (!/^[0-9a-f-]{36}$/i.test(profileId)) return { body: { error: "bad_request" }, status: 400 };
-  const allowed = await callerCanEditHere(authorization, DOCUMENT_PAGES);
-  if (allowed === null) return { body: { error: "not_signed_in" }, status: 401 };
-  if (!allowed) return { body: { error: "not_authorized" }, status: 403 };
-
-  const url = await profileIdImage(profileId);
-  if (!url) return { body: { state: "not_read", reason: "no_image" }, status: 200 };
-  const key = visionKey(await setting("api_providers"));
-  if (!key) return { body: { state: "not_read", reason: "vision_off" }, status: 200 };
-  const where = url.length <= 1000 ? storageObject(url) : null;
-  const image = where ? await download(where.bucket, where.path) : null;
-  if (!image) return { body: { state: "not_read", reason: "no_image" }, status: 200 };
-  if (image.length > MAX_IMAGE_BYTES) return { body: { state: "not_read", reason: "too_big" }, status: 200 };
-
-  const ann = await annotate(key, image);
-  const v = readVision(ann.status, ann.body);
-  if ("error" in v) return { body: { state: "error", reason: v.error }, status: 200 };
-  if (!v.text.trim()) return { body: { state: "not_read", reason: "no_text" }, status: 200 };
-
-  const full = readIdFull(v.text);
+/** The read ID fields as the admin review tool shows them. */
+function profileFields(text: string): { body: Record<string, unknown>; status: number } {
+  const full = readIdFull(text);
   return {
     body: {
       state: "read",
@@ -158,6 +145,80 @@ async function handleProfileRead(
     },
     status: 200,
   };
+}
+
+async function handleProfileRead(
+  profileId: string,
+  authorization: string | null,
+): Promise<{ body: Record<string, unknown>; status: number }> {
+  if (!/^[0-9a-f-]{36}$/i.test(profileId)) return { body: { error: "bad_request" }, status: 400 };
+  const allowed = await callerCanEditHere(authorization, DOCUMENT_PAGES);
+  if (allowed === null) return { body: { error: "not_signed_in" }, status: 401 };
+  if (!allowed) return { body: { error: "not_authorized" }, status: 403 };
+
+  const url = await profileIdImage(profileId);
+  if (!url) return { body: { state: "not_read", reason: "no_image" }, status: 200 };
+  const where = url.length <= 1000 ? storageObject(url) : null;
+  const image = where ? await download(where.bucket, where.path) : null;
+  if (!image) return { body: { state: "not_read", reason: "no_image" }, status: 200 };
+  if (image.length > MAX_IMAGE_BYTES) return { body: { state: "not_read", reason: "too_big" }, status: 200 };
+
+  // get.ocr is the primary reader; Google Vision is the fallback (migration
+  // 0444). The order follows Admin → Settings → Document reading, and Vision is
+  // tried as a last resort so the review tool is never left with nothing.
+  const apiProviders = await setting("api_providers");
+  const order = serverReaders(await setting("document_reading"));
+  let visionTried = false;
+  let lastReason = "no_text";
+
+  const tryOcr = async (): Promise<string | null> => {
+    const server = ocrServer(apiProviders);
+    if (!server) {
+      lastReason = "ocr_off";
+      return null;
+    }
+    const ans = await ocrCall(server, image);
+    const v = readOcr(ans.status, ans.body);
+    if ("error" in v) {
+      lastReason = "ocr_down";
+      return null;
+    }
+    if (!v.text.trim()) {
+      lastReason = "no_text";
+      return null;
+    }
+    return v.text;
+  };
+
+  const tryVision = async (): Promise<string | null> => {
+    visionTried = true;
+    const key = visionKey(apiProviders);
+    if (!key) {
+      lastReason = "vision_off";
+      return null;
+    }
+    const ann = await annotate(key, image);
+    const v = readVision(ann.status, ann.body);
+    if ("error" in v) {
+      lastReason = v.error;
+      return null;
+    }
+    if (!v.text.trim()) {
+      lastReason = "no_text";
+      return null;
+    }
+    return v.text;
+  };
+
+  for (const rid of order) {
+    const text = rid === "getOcr" ? await tryOcr() : await tryVision();
+    if (text) return profileFields(text);
+  }
+  if (!visionTried) {
+    const text = await tryVision();
+    if (text) return profileFields(text);
+  }
+  return { body: { state: "not_read", reason: lastReason }, status: 200 };
 }
 
 Deno.serve(async (req) => {
