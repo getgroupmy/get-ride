@@ -93,7 +93,10 @@ Deno.serve(async (req) => {
       const path = `${session.user_id}/signin/ekyc_${kind}_${stamp}.${ext}`;
       const { error } = await db.storage.from("ID_Image").upload(path, bytes, { contentType: type, upsert: true });
       if (error) throw new Error(`${kind}: upload ${error.message}`);
-      return path;
+      // The bucket's public-form URL (the same shape the rider-verify face match
+      // stores), so the admin review screens and the profile can sign and show
+      // it; ekyc_apply still binds it to the person (ekyc_photo_bound).
+      return db.storage.from("ID_Image").getPublicUrl(path).data.publicUrl;
     };
     const front = await copy("document_front");
     if (!front) throw new Error("no document photo");
