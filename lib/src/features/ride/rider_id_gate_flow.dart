@@ -21,7 +21,7 @@ import '../../widgets/live_selfie.dart' show LiveSelfie, takeLiveSelfie;
 import '../../widgets/live_selfie/on_device.dart' show readImageText;
 import '../../widgets/page_style_host.dart';
 import '../../data/rider_id_gate_repository.dart';
-import '../../core/ekyc.dart' show EkycConfig;
+import '../../core/ekyc.dart' show EkycConfig, EkycNext, ekycNext;
 import '../../data/ekyc_repository.dart' show ekycConfigProvider;
 import '../identity/ekyc_check.dart' show runEkycCheck;
 
@@ -96,14 +96,26 @@ Future<({bool verified, bool submitted})> runIdVerification(
       'Thanks — your ID is being reviewed. You can continue once it is approved, usually shortly.',
 }) async {
   const none = (verified: false, submitted: false);
-  // GET.eKYC, when the admin turned it on (0439): its page takes the ID, the
-  // selfie and the head turns inside the app, and the server verifies the
-  // person when GET.eKYC approved and the face match is strong.
+  // GET.eKYC is the primary ID validator wherever it is configured and on
+  // (0439): its page takes the ID, the selfie and the head turns inside the
+  // app, and the server verifies the person on a strong match. The per-country
+  // Rider/Partner verification cards decide which countries must verify;
+  // GET.eKYC is how. If GET.eKYC is down it falls through to the ID-photo +
+  // live-selfie face match below, and a weak match on either waits for an
+  // admin review.
   final ekyc = await ref.read(ekycConfigProvider.future).catchError((_) => EkycConfig.off);
   if (!context.mounted) return none;
-  if (ekyc.uses(purpose)) {
-    final e = await runEkycCheck(context, ref, purpose);
-    return (verified: e.verified, submitted: e.sent);
+  if (ekyc.on) {
+    final e = await runEkycCheck(context, ref, purpose, canFallBack: true);
+    switch (ekycNext(sent: e.sent, verified: e.verified, unavailable: e.unavailable)) {
+      case EkycNext.accept:
+        return (verified: e.verified, submitted: e.sent || e.verified);
+      case EkycNext.stop:
+        return none;
+      case EkycNext.fallBack:
+        break; // GET.eKYC is down — fall through to the face match below.
+    }
+    if (!context.mounted) return none;
   }
 
   // The ID photo. When saved photos aren't allowed, the camera only.

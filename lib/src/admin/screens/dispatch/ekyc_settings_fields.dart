@@ -39,9 +39,11 @@ class _EkycSettingsFieldsState extends ConsumerState<EkycSettingsFields> {
     }
   }
 
-  EkycConfig _with(EkycConfig c, {bool? on, bool? riderGate, bool? dispatchId, bool? test}) => EkycConfig(
+  // riderGate is kept as stored (riders are now chosen per country in Rider
+  // verification), so an older config round-trips unchanged.
+  EkycConfig _with(EkycConfig c, {bool? on, bool? dispatchId, bool? test}) => EkycConfig(
         on: on ?? c.on,
-        riderGate: riderGate ?? c.riderGate,
+        riderGate: c.riderGate,
         dispatchId: dispatchId ?? c.dispatchId,
         test: test ?? c.test,
         serverKey: c.serverKey,
@@ -78,9 +80,16 @@ class _EkycSettingsFieldsState extends ConsumerState<EkycSettingsFields> {
         ),
         tile('ekyc-on', 'Use GET.eKYC', 'Switch off to go back to the photo and selfie steps at once', c.on,
             on ? (v) => _set(_with(c, on: v)) : null),
-        tile('ekyc-rider', 'Rider ID check before booking',
-            'Verified straight away when GET.eKYC approves and the face match meets the country\'s auto-verify score',
-            c.riderGate, on && c.on ? (v) => _set(_with(c, riderGate: v)) : null),
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 4),
+          child: Text(
+            'Riders verify per country: pick GET.eKYC (or a live selfie) for each country under App Settings, '
+            'Rider verification. GET.eKYC is the primary check wherever it is on here; if it is ever down the '
+            'photo-and-selfie face match takes over, and a weak match waits for an admin review.',
+            key: const ValueKey('ekyc-rider-note'),
+            style: muted,
+          ),
+        ),
         tile('ekyc-dispatch', 'Dispatch sign-in: the ID step',
             'An admin still approves each ID; the selfie step on a new phone stays as it is',
             c.dispatchId, on && c.on ? (v) => _set(_with(c, dispatchId: v)) : null),
