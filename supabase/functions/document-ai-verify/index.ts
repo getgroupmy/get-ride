@@ -36,21 +36,25 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 import {
+  applyOcrFields,
   bearerToken,
   keyRefused,
   buildUserText,
   DEFAULT_VISION_MODELS,
+  docOcrExtractFields,
   type InlineImage,
   IMAGE_TYPES,
   isVisionProvider,
   MAX_IMAGE_BYTES,
   normalizeResult,
+  ocrReferenceText,
   parseContext,
   parseImage,
   parseStorageImageUrl,
   responseText,
   visionRequest,
 } from "../_shared/doc_ai.ts";
+import { OCR_EXTRACT_TIMEOUT_MS, ocrExtractRequest, ocrServer, readOcrExtract } from "../_shared/doc_ocr.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -230,10 +234,36 @@ Deno.serve(async (req: Request) => {
   const usable = keys.filter((k) => !cooling.has(k.id));
   if (usable.length === 0) return json({ ok: true, result: null, reason: "keys_cooling_down" });
 
+  // GET.ocr reads the document's fields + type from the front first (migration
+  // 0444): it is the authoritative document reader, so its text wins over the
+  // AI's, and the AI is handed the reading as a reference for what the document
+  // is. The AI still judges authenticity. No GET.ocr key — or any failure —
+  // leaves exactly the AI-only flow as before.
+  let ocrFields: Record<string, unknown> | null = null;
+  const { data: ocrRow } = await admin.from("app_settings").select("value").eq("key", "api_providers").maybeSingle();
+  const ocrSrv = ocrServer(ocrRow?.value);
+  if (ocrSrv) {
+    try {
+      const r = ocrExtractRequest(ocrSrv, front.base64, docOcrExtractFields(ctx));
+      const res = await fetch(r.url, {
+        method: r.method,
+        headers: r.headers,
+        body: r.body,
+        signal: AbortSignal.timeout(OCR_EXTRACT_TIMEOUT_MS),
+      });
+      const read = readOcrExtract(res.status, await res.json().catch(() => null));
+      if (!("error" in read) && Object.keys(read.fields).length > 0) ocrFields = read.fields;
+      else if ("error" in read) console.log(`[document-ai-verify] GET.ocr extract: ${read.error}`);
+    } catch (e) {
+      console.log(`[document-ai-verify] GET.ocr extract: ${e instanceof Error ? e.message : e}`);
+    }
+  }
+  const ocrRef = ocrFields ? ocrReferenceText(ocrFields) : null;
+
   // The next key is tried only when this one was refused (401/403): any other
   // failure (bad image, quota, timeout, an answer that doesn't parse) would
   // repeat on every key, so the first one ends the check.
-  const userText = buildUserText(ctx, images.length > 1);
+  const userText = buildUserText(ctx, images.length > 1) + (ocrRef ? ` ${ocrRef}` : "");
   for (const k of usable) {
     const request = visionRequest(provider, model, k.key.trim(), userText, images);
     try {
@@ -251,7 +281,7 @@ Deno.serve(async (req: Request) => {
       }
       const text = responseText(provider, await res.json());
       const result = text ? normalizeResult(text, ctx, new Date()) : null;
-      if (result) return json({ ok: true, result });
+      if (result) return json({ ok: true, result: ocrFields ? applyOcrFields(result, ocrFields, ctx) : result });
       console.log(`[document-ai-verify] ${provider} key ${k.label ?? k.id}: unparseable answer`);
       break;
     } catch (e) {
