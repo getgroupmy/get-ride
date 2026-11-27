@@ -288,6 +288,27 @@ class IdentityRepository {
     }
   }
 
+  /// Admin → User ID Documents, "Run GET.eKYC again": the id of [profileId]'s
+  /// newest rider-gate ID check (a GET.eKYC capture or the face-match
+  /// fallback), to re-score its face against the stored selfie; null when the
+  /// rider has none — a plain profile upload, with no selfie to match.
+  Future<String?> latestRiderIdCheck(String profileId) async {
+    try {
+      final row = await _db
+          .from('identity_checks')
+          .select('id')
+          .eq('user_id', profileId)
+          .eq('kind', 'id')
+          .eq('purpose', 'rider_gate')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      return row?['id'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Users → Edit User: the person's dispatch roles, checks and phones.
   Future<Map<String, dynamic>> person(String userId) async =>
       _map(await _db.rpc('identity_person', params: {'p_user': userId}));
