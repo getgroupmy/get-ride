@@ -272,21 +272,21 @@ final defaultApiProviders = <ApiProviderDef>[
     _svc('server', 'Self-hosted server',
         "Compares a selfie with the ID photo on your own server. Save as the server's https address, a colon, then its key: https://face.getride.my:FACE_API_KEY"),
   ]),
-  // GET eKYC (0439, getgroupmy/get.ekyc on the office Mac mini): runs the
+  // GET.eKYC (0439, getgroupmy/get.ekyc on the office Mac mini): runs the
   // whole ID check in its own page inside the app; ekyc-start creates the
   // check with the server key and ekyc-webhook checks the result's signature.
-  ApiProviderDef(id: 'ekyc', name: 'GET eKYC', description: 'Our own eKYC server (ID, selfie and liveness checks)', category: 'Identity', services: [
+  ApiProviderDef(id: 'ekyc', name: 'GET.eKYC', description: 'Our own eKYC server (ID, selfie and liveness checks)', category: 'Identity', services: [
     _svc('server', 'Server',
         "Starts identity checks. Save as the server's https address, a colon, then the API key from its console: https://ekyc.getcdn.link:ek_…"),
     _svc('webhook', 'Webhook secret',
-        "Proves a result really came from GET eKYC. The webhook secret its console showed for this app (set its webhook to …/functions/v1/ekyc-webhook)"),
+        "Proves a result really came from GET.eKYC. The webhook secret its console showed for this app (set its webhook to …/functions/v1/ekyc-webhook)"),
   ]),
-  // GET OCR (get.ocr on ocr.getcdn.link): our own OCR server for reading a
+  // GET.ocr (get.ocr on ocr.getcdn.link): our own OCR server for reading a
   // document's photo. A selectable reader in Admin > Settings > Document
   // reading (DocReaderId.getOcr), and watched here when "Monitor this server"
   // is on — provider-health reads the https address from this key and pings
   // ocr.getcdn.link/health.
-  ApiProviderDef(id: 'ocr', name: 'GET OCR', description: 'Our own OCR server for reading documents', category: 'Identity', services: [
+  ApiProviderDef(id: 'ocr', name: 'GET.ocr', description: 'Our own OCR server for reading documents', category: 'Identity', services: [
     _svc('server', 'Server',
         "Reads a document's photo (IDs, permits, vehicle papers). Save as the server's https address, a colon, then the API key from its console: https://ocr.getcdn.link:ocr_…"),
   ]),

@@ -2,7 +2,7 @@
 // registers, the admin's per-country rule may require them to verify their
 // identity. [ensurePartnerIdVerified] decides whether verification is owed
 // (the pure partnerIdGateBlocks), and when it is, runs the shared
-// runIdVerification (GET eKYC when on, else the ID-photo + live-selfie
+// runIdVerification (GET.eKYC when on, else the ID-photo + live-selfie
 // fallback) — the same flow the rider gate uses, which sets profiles.id_verified
 // and so lets the wizard skip the National ID and photo-liveness steps. The
 // admin review of every partner is the real backstop.

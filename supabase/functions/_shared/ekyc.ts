@@ -1,9 +1,9 @@
 /**
- * GET eKYC (migration 0439): our own eKYC server, get.ekyc on the office Mac
+ * GET.eKYC (migration 0439): our own eKYC server, get.ekyc on the office Mac
  * mini. It runs the whole ID check in its own page, which the app shows
  * inside the app, and tells us the result by a signed webhook.
  *
- * Admin → API Keys → GET eKYC keeps two keys:
+ * Admin → API Keys → GET.eKYC keeps two keys:
  *   server   "https://ekyc.getcdn.link:ek_…"  the address and the API key
  *   webhook  the webhook secret get.ekyc showed once for this client
  *
@@ -102,7 +102,7 @@ export type EkycDocType =
   | "mykad" | "mypr" | "mykas" | "mytentera" | "id_card" | "passport"
   | "driving_licence" | "ikad" | "unhcr" | "residence_permit";
 
-/** The check's doc_type (0441) for what GET eKYC read, or null for a document that is not an ID. */
+/** The check's doc_type (0441) for what GET.eKYC read, or null for a document that is not an ID. */
 export function docTypeOf(extracted: Record<string, unknown>): EkycDocType | null {
   switch (extracted.document_type) {
     case "passport":

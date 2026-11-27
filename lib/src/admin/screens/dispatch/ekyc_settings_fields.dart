@@ -1,7 +1,7 @@
-// GET eKYC (migration 0439): our own eKYC server running the whole ID check
+// GET.eKYC (migration 0439): our own eKYC server running the whole ID check
 // in its page inside the app, switched on per use. Shown under "Checking
 // their photos" (IdentityProviderFields). Each change is saved as it is
-// made. GET eKYC never rejects anyone: its verdict and reasons are shown on
+// made. GET.eKYC never rejects anyone: its verdict and reasons are shown on
 // the check, and a rider is auto-verified only when it approved AND the face
 // match meets the country's auto-verify score.
 import 'package:material_ui/material_ui.dart';
@@ -69,22 +69,22 @@ class _EkycSettingsFieldsState extends ConsumerState<EkycSettingsFields> {
       mainAxisSize: MainAxisSize.min,
       children: [
         const SizedBox(height: 16),
-        Text('GET eKYC', style: t.textTheme.titleSmall),
+        Text('GET.eKYC', style: t.textTheme.titleSmall),
         Text(
           'Our own eKYC server runs the whole check in its page, inside the app: the ID front and back, a selfie '
           'with head turns, reading the card, the face match and sanctions screening. The result lands here as a '
           'check to review, with its verdict and reasons. It never rejects anyone.',
           style: muted,
         ),
-        tile('ekyc-on', 'Use GET eKYC', 'Switch off to go back to the photo and selfie steps at once', c.on,
+        tile('ekyc-on', 'Use GET.eKYC', 'Switch off to go back to the photo and selfie steps at once', c.on,
             on ? (v) => _set(_with(c, on: v)) : null),
         tile('ekyc-rider', 'Rider ID check before booking',
-            'Verified straight away when GET eKYC approves and the face match meets the country\'s auto-verify score',
+            'Verified straight away when GET.eKYC approves and the face match meets the country\'s auto-verify score',
             c.riderGate, on && c.on ? (v) => _set(_with(c, riderGate: v)) : null),
         tile('ekyc-dispatch', 'Dispatch sign-in: the ID step',
             'An admin still approves each ID; the selfie step on a new phone stays as it is',
             c.dispatchId, on && c.on ? (v) => _set(_with(c, dispatchId: v)) : null),
-        tile('ekyc-test', 'Test mode', 'Checks are marked as tests on GET eKYC and deleted there after 48 hours', c.test,
+        tile('ekyc-test', 'Test mode', 'Checks are marked as tests on GET.eKYC and deleted there after 48 hours', c.test,
             on ? (v) => _set(_with(c, test: v)) : null),
         if (c.missingKeys != null)
           Padding(

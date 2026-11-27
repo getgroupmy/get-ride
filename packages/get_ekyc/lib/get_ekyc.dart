@@ -1,4 +1,4 @@
-/// GET eKYC for Flutter (iOS and Android).
+/// GET.eKYC for Flutter (iOS and Android).
 ///
 /// Your server creates the verification with its API key and gives the app
 /// only the `hosted_url`. Then, in the app:
@@ -31,7 +31,7 @@ enum EkycMode {
   /// tracking. Best experience; screen changes come with SDK updates.
   native,
 
-  /// GET eKYC's hosted page inside the app (WebView). Every change on the
+  /// GET.eKYC's hosted page inside the app (WebView). Every change on the
   /// server reaches users at once, with no app update.
   webView,
 }

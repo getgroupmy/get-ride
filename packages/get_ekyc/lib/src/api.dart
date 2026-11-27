@@ -3,13 +3,13 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
-/// A call to GET eKYC failed.
+/// A call to GET.eKYC failed.
 class EkycApiException implements Exception {
   EkycApiException(this.statusCode, this.message);
   final int statusCode;
   final String message;
   @override
-  String toString() => 'GET eKYC ($statusCode): $message';
+  String toString() => 'GET.eKYC ($statusCode): $message';
 }
 
 /// What the server says this verification needs. Everything the SDK shows
@@ -65,7 +65,7 @@ class EkycApi {
     final u = Uri.parse(hostedUrl.trim());
     final i = u.pathSegments.indexOf('v');
     if (!u.hasScheme || i < 0 || i + 1 >= u.pathSegments.length || u.pathSegments[i + 1].isEmpty) {
-      throw ArgumentError('not a GET eKYC hosted_url: $hostedUrl');
+      throw ArgumentError('not a GET.eKYC hosted_url: $hostedUrl');
     }
     final prefix = u.pathSegments.sublist(0, i);
     return u.replace(pathSegments: [...prefix, 'v1', 'hosted', u.pathSegments[i + 1]], query: null, fragment: null);

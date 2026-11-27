@@ -79,7 +79,7 @@ Future<bool> _runVerify(BuildContext context, WidgetRef ref, RiderIdGateRule rul
 
 /// Runs the identity capture and verification, returning whether the person is
 /// now [verified] and whether a check was [submitted] (completed, even when it
-/// is pending an admin review). GET eKYC when the admin turned it on for
+/// is pending an admin review). GET.eKYC when the admin turned it on for
 /// [purpose] (0439), else the ID-photo + live-selfie fallback scored on the
 /// server. Both set profiles.id_verified on a strong face match and leave the
 /// person pending otherwise. Shared by the rider ID gate (which blocks until
@@ -96,9 +96,9 @@ Future<({bool verified, bool submitted})> runIdVerification(
       'Thanks — your ID is being reviewed. You can continue once it is approved, usually shortly.',
 }) async {
   const none = (verified: false, submitted: false);
-  // GET eKYC, when the admin turned it on (0439): its page takes the ID, the
+  // GET.eKYC, when the admin turned it on (0439): its page takes the ID, the
   // selfie and the head turns inside the app, and the server verifies the
-  // person when GET eKYC approved and the face match is strong.
+  // person when GET.eKYC approved and the face match is strong.
   final ekyc = await ref.read(ekycConfigProvider.future).catchError((_) => EkycConfig.off);
   if (!context.mounted) return none;
   if (ekyc.uses(purpose)) {

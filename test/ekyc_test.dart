@@ -1,5 +1,5 @@
-// GET eKYC (migration 0439): the admin's switches, the start answer, and the
-// words for how a check ended and for GET eKYC's verdict.
+// GET.eKYC (migration 0439): the admin's switches, the start answer, and the
+// words for how a check ended and for GET.eKYC's verdict.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ekyc/get_ekyc.dart' show EkycOutcome;
 import 'package:get_ride/src/core/ekyc.dart';
@@ -34,17 +34,17 @@ void main() {
     expect(ekycEndMessage(EkycOutcome.approved, verified: true), 'Identity verified.');
     expect(ekycEndMessage(EkycOutcome.approved, verified: false), contains('being reviewed'));
     expect(ekycEndMessage(EkycOutcome.rejected, verified: false), contains('being reviewed'),
-        reason: 'GET eKYC never rejects anyone by itself; an admin decides');
+        reason: 'GET.eKYC never rejects anyone by itself; an admin decides');
     expect(ekycEndMessage(EkycOutcome.cancelled, verified: false), isNull);
     expect(ekycEndMessage(EkycOutcome.expired, verified: false), contains('timed out'));
   });
 
-  test("GET eKYC's verdict for the admin", () {
+  test("GET.eKYC's verdict for the admin", () {
     expect(ekycVerdictText('approved', []), 'Approved');
     expect(ekycVerdictText('review', ['face_match_uncertain', 'name_mismatch']), 'Needs review: face match uncertain, name mismatch');
     expect(ekycVerdictText(null, null), isNull);
-    expect(faceProviderText('ekyc'), 'GET eKYC');
-    expect(readSourceText('ekyc'), 'GET eKYC');
+    expect(faceProviderText('ekyc'), 'GET.eKYC');
+    expect(readSourceText('ekyc'), 'GET.eKYC');
   });
 
   test('each identity document is named for the admin (0441)', () {

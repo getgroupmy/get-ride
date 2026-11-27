@@ -17,7 +17,7 @@ enum DocReaderId {
   nas('Office NAS', 'Plates and document numbers, read in the background.'),
   gpu('GPU reading PC', 'Whole documents, read in-house.'),
   cloud('Cloud reader', 'Google Cloud Vision or the vision AI set in API Keys. Whole documents.'),
-  getOcr('GET OCR', 'Our own get.ocr server reads the whole document. Needs its key in API Keys.');
+  getOcr('GET.ocr', 'Our own GET.ocr server reads the whole document. Needs its key in API Keys.');
 
   const DocReaderId(this.label, this.help);
   final String label;

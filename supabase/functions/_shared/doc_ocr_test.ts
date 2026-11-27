@@ -19,7 +19,7 @@ const providers = [
   },
 ];
 
-Deno.test("ocrServer: the address and key from Admin → API Keys → GET OCR", () => {
+Deno.test("ocrServer: the address and key from Admin → API Keys → GET.ocr", () => {
   assertEquals(ocrServer(providers), { url: "https://ocr.getcdn.link", secret: OCR_SECRET });
   assertEquals(ocrServer({ providers }), ocrServer(providers));
   assertEquals(ocrServer([]), null);
@@ -44,9 +44,9 @@ Deno.test("readOcr: the full text on success, a short reason on failure", () => 
   });
   assertEquals(readOcr(200, { pages: [] }), { text: "" }, "no text in the answer");
   assertEquals(readOcr(401, { error: "unauthorized", message: "invalid or missing X-API-Key" }), {
-    error: "GET OCR: invalid or missing X-API-Key",
+    error: "GET.ocr: invalid or missing X-API-Key",
   });
-  assertEquals(readOcr(503, null), { error: "GET OCR: HTTP 503" });
+  assertEquals(readOcr(503, null), { error: "GET.ocr: HTTP 503" });
 });
 
 Deno.test("isOcrReader: only when the reader is getOcr", () => {

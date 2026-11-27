@@ -1,9 +1,9 @@
 // ============================================================================
 // ekyc-webhook — Supabase Edge Function
 // ----------------------------------------------------------------------------
-// GET eKYC (migration 0439): our eKYC server calls this when an identity
+// GET.eKYC (migration 0439): our eKYC server calls this when an identity
 // check started by ekyc-start is decided. Signed with the client's webhook
-// secret (Admin → API Keys → GET eKYC → webhook): HMAC-SHA256 over
+// secret (Admin → API Keys → GET.eKYC → webhook): HMAC-SHA256 over
 // "timestamp.body", refused when wrong or older than 5 minutes.
 //
 // Then, with the API key: the full result and the photos are fetched, the

@@ -1,11 +1,11 @@
 /**
- * GET OCR (get.ocr on ocr.getcdn.link): our own OCR server reads a document's
+ * GET.ocr (get.ocr on ocr.getcdn.link): our own OCR server reads a document's
  * photo and answers with its text. It is a selectable reader in the document
  * reading chain (DocReaderId.getOcr, migration 0443). The id-read function
  * calls it for a registration document when that reader is next:
  *   POST { file_url, purpose: "registration", reader: "getOcr" }.
  *
- * The server key is Admin → API Keys → GET OCR (provider "ocr", service
+ * The server key is Admin → API Keys → GET.ocr (provider "ocr", service
  * "server"), saved as the https address, a colon, then the API key:
  * "https://ocr.getcdn.link:ocr_…" (the face / eKYC server shape).
  *
@@ -66,7 +66,7 @@ export function readOcr(status: number, body: unknown): { text: string } | { err
   if (status < 200 || status >= 300) {
     // get.ocr answers an error as { error, message } (app/errors.py).
     const why = typeof b.message === "string" ? b.message : typeof b.error === "string" ? b.error : `HTTP ${status}`;
-    return { error: `GET OCR: ${String(why).slice(0, 160)}` };
+    return { error: `GET.ocr: ${String(why).slice(0, 160)}` };
   }
   return { text: typeof b.text === "string" ? b.text : "" };
 }

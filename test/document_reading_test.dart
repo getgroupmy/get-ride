@@ -54,7 +54,7 @@ class _FakeIdentity extends IdentityRepository {
   @override
   Future<String?> readRegistrationText(String fileUrl, {String? reader}) async {
     lastReader = reader;
-    return 'GET OCR TEXT';
+    return 'GET.ocr TEXT';
   }
 }
 
@@ -139,7 +139,7 @@ void main() {
       expect([for (final r in shownReaders(c, gpuConnected: false)) r.id], isNot(contains(DocReaderId.gpu)));
       expect(shownReaders(c, gpuConnected: true).length, 5);
       expect(readingSummary(shownReaders(c, gpuConnected: false)),
-          "Documents go to: GET OCR, then Driver's phone, then Office NAS, then Cloud reader.");
+          "Documents go to: GET.ocr, then Driver's phone, then Office NAS, then Cloud reader.");
       expect(readingSummary(const [DocReaderSlot(DocReaderId.phone, false)]),
           'Every reader is off: documents wait for a person.');
     });
@@ -159,7 +159,7 @@ void main() {
     testWidgets('move and switch readers; every change saves', (tester) async {
       final repo = await _pump(tester);
       expect(find.byKey(const ValueKey('doc-reader-gpu')), findsNothing, reason: 'no GPU PC connected');
-      expect(find.text("Documents go to: GET OCR, then Driver's phone, then Office NAS, then Cloud reader."),
+      expect(find.text("Documents go to: GET.ocr, then Driver's phone, then Office NAS, then Cloud reader."),
           findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('doc-reader-up-cloud')));
@@ -169,7 +169,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('doc-reader-switch-phone')));
       await tester.pumpAndSettle();
       expect(repo.saves.last.isOn(DocReaderId.phone), isFalse);
-      expect(find.text('Documents go to: GET OCR, then Cloud reader, then Office NAS. Saved.'), findsOneWidget);
+      expect(find.text('Documents go to: GET.ocr, then Cloud reader, then Office NAS. Saved.'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('doc-reader-job-qr')));
       await tester.pumpAndSettle();
@@ -244,7 +244,7 @@ void main() {
       ]);
       addTearDown(container.dispose);
       final read = container.read(documentTextReaderProvider);
-      expect(await read(Uint8List.fromList([1, 2, 3]), fileUrl: 'https://x/a.jpg'), 'GET OCR TEXT');
+      expect(await read(Uint8List.fromList([1, 2, 3]), fileUrl: 'https://x/a.jpg'), 'GET.ocr TEXT');
       expect(fake.lastReader, 'getOcr');
     });
   });

@@ -427,7 +427,7 @@ class _SignInCheckSheetState extends ConsumerState<SignInCheckSheet> {
           if (!selfie && c['read_birth'] != null) 'Birth date read': formatStoredDateForUser(c['read_birth']),
           if (!selfie && c['read_nationality'] != null) 'Nationality read': c['read_nationality'],
           if (!selfie && readBy != null) 'Read by': readBy,
-          'GET eKYC': ?ekycVerdictText(c['ekyc_status'], c['ekyc_reasons']),
+          'GET.eKYC': ?ekycVerdictText(c['ekyc_status'], c['ekyc_reasons']),
           if (!selfie && c['expiry_date'] != null) 'Expiry': formatStoredDateForUser(c['expiry_date']),
           'Face match': faceMatchText(
             c['face_state'],

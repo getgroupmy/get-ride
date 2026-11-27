@@ -52,7 +52,7 @@ class EkycResult {
 
   /// The return link the hosted page sends the user back to
   /// (`your-redirect?verification_id=…&status=…`). Returns null when the link
-  /// is not a GET eKYC return.
+  /// is not a GET.eKYC return.
   static EkycResult? fromReturnUri(Uri uri) {
     final q = uri.queryParameters;
     if (!q.containsKey('verification_id') || !q.containsKey('status')) return null;

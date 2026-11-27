@@ -497,7 +497,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
     });
     if (read == null && mounted) {
       showInfo(context,
-          "Couldn't read the ID image — check the reader keys in API Keys (GET OCR / Cloud Vision) and that the photo is sharp.");
+          "Couldn't read the ID image — check the reader keys in API Keys (GET.ocr / Cloud Vision) and that the photo is sharp.");
     }
   }
 
