@@ -85,8 +85,9 @@ const providers = [{
 }];
 const MYKAD = "KAD PENGENALAN\n880202-10-1234\nAINA BINTI AHMAD\nSELANGOR";
 
-function deps(over: Partial<IdReadDeps> = {}) {
+function deps(over: Partial<IdReadDeps> & { ocr?: { text: string } | { error: string } | null } = {}) {
   const calls: string[] = [];
+  const { ocr, ...rest } = over;
   const d: IdReadDeps = {
     caller: (a) => Promise.resolve(a === "Bearer u1" ? "u1" : a === "Bearer admin" ? "admin" : a === "Bearer u2" ? "u2" : null),
     canReview: (a) => Promise.resolve(a === "Bearer admin"),
@@ -102,7 +103,18 @@ function deps(over: Partial<IdReadDeps> = {}) {
       calls.push(`store ${id} ${read.name} ${read.ic}`);
       return Promise.resolve({ mismatch: [] });
     },
-    ...over,
+    // GET.ocr is a configured server reader only when a test asks for it: first
+    // in the order (0444). Its answer is what the test passes as `ocr`.
+    ...(ocr !== undefined
+      ? {
+        serverReaders: () => Promise.resolve(["getOcr", "cloud"] as ("getOcr" | "cloud")[]),
+        ocrText: () => {
+          calls.push("ocr");
+          return Promise.resolve(ocr);
+        },
+      }
+      : {}),
+    ...rest,
   };
   return { d, calls };
 }
@@ -257,6 +269,43 @@ Deno.test("the database hands on what the NAS couldn't read, with its secret onl
     check: () => Promise.resolve({ ...card, status: "Approved" }),
   });
   assertEquals((await handleIdRead({ check_id: ID, by: "database" }, null, decided.d, "s")).status, 409);
+});
+
+// ---- 0444: GET.ocr is the primary server reader, Google Vision the fallback ----------------------
+
+Deno.test("GET.ocr reads the ID first; Vision is not asked", async () => {
+  const { d, calls } = deps({ ocr: { text: MYKAD } });
+  const r = await handleIdRead({ check_id: ID }, "Bearer u1", d);
+  assertEquals(r.body, {
+    state: "read",
+    name: "AINA BINTI AHMAD",
+    ic: "880202-10-1234",
+    passport: null,
+    expiry: null,
+    mismatch: [],
+  });
+  assertEquals(calls, ["ocr", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
+});
+
+Deno.test("GET.ocr down, no key, or blank → Google Vision reads it", async () => {
+  for (const ocr of [{ error: "GET.ocr: down" }, null, { text: "   " }] as const) {
+    const { d, calls } = deps({ ocr });
+    assertEquals((await handleIdRead({ check_id: ID }, "Bearer u1", d)).body.state, "read");
+    assertEquals(calls, ["ocr", "annotate vision-key-123", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
+  }
+});
+
+Deno.test("Vision first in the order: GET.ocr is not asked", async () => {
+  const { d, calls } = deps({ ocr: { text: MYKAD }, serverReaders: () => Promise.resolve(["cloud"]) });
+  assertEquals((await handleIdRead({ check_id: ID }, "Bearer u1", d)).body.state, "read");
+  assertEquals(calls, ["annotate vision-key-123", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
+});
+
+Deno.test("the database hand-off reads with GET.ocr first too", async () => {
+  const { d, calls } = deps({ ocr: { text: MYKAD }, webhookSecretOk: () => Promise.resolve(true) });
+  const r = await handleIdRead({ check_id: ID, by: "database" }, null, d, "db-secret");
+  assertEquals(r.body.state, "read");
+  assertEquals(calls, ["ocr", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
 });
 
 // ---- 0288: partner registration documents -----------------------------------------------------------
