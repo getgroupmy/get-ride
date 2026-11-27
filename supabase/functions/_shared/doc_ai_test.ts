@@ -6,15 +6,18 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1.0.19";
 
 import {
+  applyOcrFields,
   keyRefused,
   bearerToken,
   buildUserText,
   DEFAULT_VISION_MODELS,
+  docOcrExtractFields,
   isVisionProvider,
   MAX_IMAGE_BYTES,
   MAX_PERMIT_FIELDS,
   normalizeResult,
   normDate,
+  ocrReferenceText,
   parseContext,
   parseImage,
   parseStorageImageUrl,
@@ -208,4 +211,125 @@ Deno.test("a permit type's own fields: asked by label, read back by key", () => 
   assertEquals(normalizeResult(raw, { docName: "Licence" }, now)!.extracted.permitFields, null);
   const many = Array.from({ length: 30 }, (_, i) => ({ key: `f${i}`, label: `F${i}` }));
   assertEquals(parseContext({ docName: "P", permitFields: many })!.permitFields!.length, MAX_PERMIT_FIELDS);
+});
+
+// ---- 0444: GET.ocr reads the fields + type; the AI keeps the verdict -------------------------------
+
+Deno.test("GET.ocr extract spec: base fields, taxi + permit fields only on demand", () => {
+  const base = docOcrExtractFields({ docName: "Insurance" });
+  assertEquals(base.documentType.type, "string");
+  assertEquals(base.expiryDate.type, "date");
+  assert(!("name" in base), "no taxi fields for a plain document");
+  assert(!("pf_ref" in base));
+
+  const taxi = docOcrExtractFields({ docName: "Permit", isTaxiPermit: true });
+  assertEquals(taxi.validityTo.type, "date");
+  assertEquals(taxi.vehicleNumber.type, "string");
+
+  const permit = docOcrExtractFields({
+    docName: "Permit",
+    permitFields: [
+      { key: "ref", label: "Ref No", labelLocal: "No Ruj", kind: "text" },
+      { key: "until", label: "Until", labelLocal: null, kind: "date" },
+    ],
+  });
+  assertEquals(permit.pf_ref.type, "string");
+  assertEquals(permit.pf_until.type, "date");
+  assertStringIncludes(permit.pf_ref.description, "No Ruj");
+});
+
+Deno.test("GET.ocr reference text: a line for the AI, or null", () => {
+  assertEquals(
+    ocrReferenceText({ documentType: "Vehicle Insurance", documentNumber: "POL-9", expiryDate: "2027-01-02" }),
+    'A text scan (GET.ocr) read this document as type "Vehicle Insurance", number "POL-9", expiry 2027-01-02. ' +
+      "Use this only as a reference to help identify the document; still decide isReal, isRelevant and matchesTitle from the visual evidence alone.",
+  );
+  assertEquals(ocrReferenceText({}), null);
+  assertEquals(ocrReferenceText({ documentType: "", expiryDate: "nope" }), null);
+});
+
+Deno.test("GET.ocr fields win over the AI's; the verdict stays the AI's", () => {
+  const ai = normalizeResult(
+    JSON.stringify({
+      isReal: true, isRelevant: true, matchesTitle: true, detectedTitle: "Insurance", confidence: 0.9, reason: "ok",
+      extracted: {
+        documentNumber: "AI-GUESS", documentNumbers: ["AI-GUESS"], startDate: null, expiryDate: "2020-01-01",
+        insuranceProviderName: "Guessurance", documentName: null, isPwd: false, issuanceCountry: null,
+      },
+    }),
+    { docName: "Insurance" },
+    now,
+  )!;
+  const merged = applyOcrFields(ai, {
+    documentType: "Vehicle Insurance Certificate",
+    documentNumber: "POL-12345",
+    expiryDate: "2027-06-30",
+    insuranceProviderName: "Etiqa",
+    issuanceCountry: "Malaysia",
+  }, { docName: "Insurance" });
+  // GET.ocr's readings win.
+  assertEquals(merged.extracted.documentNumber, "POL-12345");
+  assertEquals(merged.extracted.expiryDate, "2027-06-30");
+  assertEquals(merged.extracted.insuranceProviderName, "Etiqa");
+  assertEquals(merged.extracted.issuanceCountry, "Malaysia");
+  assertEquals(merged.extracted.documentName, "Vehicle Insurance Certificate", "documentType fills the printed name");
+  // What GET.ocr did not read stays the AI's.
+  assertEquals(merged.extracted.startDate, null);
+  assertEquals(merged.extracted.documentNumbers, ["AI-GUESS"], "the candidate list is the AI's");
+  // The verdict is untouched.
+  assertEquals(
+    [merged.isReal, merged.isRelevant, merged.matchesTitle, merged.detectedTitle, merged.confidence, merged.reason],
+    [true, true, true, "Insurance", 0.9, "ok"],
+  );
+});
+
+Deno.test("GET.ocr overlays the taxi permit's text, never its photo / QR", () => {
+  const ai = normalizeResult(
+    JSON.stringify({
+      isReal: true, isRelevant: true, matchesTitle: true,
+      extracted: {
+        taxiPermit: {
+          name: "AI Name", vehicleNumber: null, hasImageOnPermit: true,
+          photoBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, hasQrCode: true,
+        },
+      },
+    }),
+    { docName: "Permit", isTaxiPermit: true },
+    now,
+  )!;
+  const merged = applyOcrFields(
+    ai,
+    { name: "ALI BIN ABU", vehicleNumber: "WXY 1234", validityTo: "2028-12-31" },
+    { docName: "Permit", isTaxiPermit: true },
+  );
+  const tp = merged.extracted.taxiPermit!;
+  assertEquals(tp.name, "ALI BIN ABU", "GET.ocr wins");
+  assertEquals(tp.vehicleNumber, "WXY 1234", "GET.ocr fills what the AI left null");
+  assertEquals(tp.validityTo, "2028-12-31");
+  assertEquals(tp.hasImageOnPermit, true, "the AI's photo verdict is kept");
+  assertEquals(tp.photoBox, { x: 0.1, y: 0.1, width: 0.2, height: 0.2 });
+  assertEquals(tp.hasQrCode, true);
+});
+
+Deno.test("GET.ocr overlays a permit type's own fields; a plain doc's permit/taxi stay null", () => {
+  const ctx = parseContext({
+    docName: "Permit",
+    permitFields: [{ key: "ref", label: "Ref" }, { key: "until", label: "Until", kind: "date" }],
+  })!;
+  const ai = normalizeResult(
+    JSON.stringify({ isReal: true, isRelevant: true, extracted: { permitFields: { ref: "AI-REF", until: null } } }),
+    ctx,
+    now,
+  )!;
+  const merged = applyOcrFields(ai, { pf_ref: "GETOCR-REF", pf_until: "2029-03-04" }, ctx);
+  assertEquals(merged.extracted.permitFields, { ref: "GETOCR-REF", until: "2029-03-04" });
+
+  // A plain document never grows a taxi permit or permit fields from GET.ocr.
+  const plain = applyOcrFields(
+    normalizeResult(JSON.stringify({ isReal: true, isRelevant: true, extracted: {} }), { docName: "x" }, now)!,
+    { name: "X", pf_ref: "Y" },
+    { docName: "x" },
+  );
+  assertEquals(plain.extracted.taxiPermit, null);
+  assertEquals(plain.extracted.permitFields, null);
 });

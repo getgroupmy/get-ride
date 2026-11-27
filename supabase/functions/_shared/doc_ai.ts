@@ -474,6 +474,167 @@ export function normalizeResult(raw: string, ctx: DocumentAiContext, now: Date):
   };
 }
 
+// ---- GET.ocr reads the fields; the AI keeps the verdict (migration 0444) ----------------------------
+//
+// GET.ocr is the authoritative document reader (the owner's "all document
+// reading uses GET.ocr"). The function reads the document's text fields — and a
+// plain document type — with GET.ocr's /v1/extract, hands the AI that reading as
+// a reference so it can tell what the document is, and overlays GET.ocr's fields
+// onto the AI's result. The AI keeps only what it alone can judge: is the
+// document real and the one asked for, and the taxi permit's photo / QR.
+
+/**
+ * The GET.ocr /v1/extract field spec for a document check: the text fields the
+ * AI reads (so GET.ocr can read them instead), plus a plain `documentType` so
+ * GET.ocr helps say what the document is. Dates are typed `date`, the rest
+ * `string`; a permit type's own fields go under `pf_<key>`.
+ */
+export function docOcrExtractFields(ctx: DocumentAiContext): Record<string, { type: string; description: string }> {
+  const f: Record<string, { type: string; description: string }> = {
+    documentType: {
+      type: "string",
+      description:
+        "The kind of document this is, from its printed title (e.g. 'Vehicle Insurance Certificate', 'Driving Licence', 'Company Registration (SSM)').",
+    },
+    documentNumber: {
+      type: "string",
+      description: "The single most prominent ID / policy / licence / reference number printed on the document.",
+    },
+    startDate: { type: "date", description: "Issue / effective / valid-from date." },
+    expiryDate: { type: "date", description: "Expiry / valid-until date." },
+    insuranceProviderName: {
+      type: "string",
+      description: "The insurance company or issuer name, if this is an insurance document.",
+    },
+    issuanceCountry: { type: "string", description: "The country that issued the document, in English." },
+    documentName: { type: "string", description: "The official document name printed on it." },
+  };
+  if (ctx.isTaxiPermit) {
+    Object.assign(f, {
+      name: { type: "string", description: "The driver's full name on the permit." },
+      idNumber: { type: "string", description: "The driver's ID / IC / national identity number." },
+      validityFrom: { type: "date", description: "Validity start / valid-from date." },
+      validityTo: { type: "date", description: "Validity end / valid-until date." },
+      driverType: { type: "string", description: "Driver type / category (e.g. Taxi, e-Hailing)." },
+      licenceReferenceNumber: { type: "string", description: "Licence reference / permit number." },
+      vehicleNumber: { type: "string", description: "Vehicle registration / plate number." },
+      licenceClass: { type: "string", description: "Licence class." },
+      companyName: { type: "string", description: "Operator / company name." },
+      address: { type: "string", description: "Address printed on the permit." },
+    });
+  }
+  if (ctx.permitFields?.length) {
+    for (const pf of ctx.permitFields) {
+      f[`pf_${pf.key}`] = {
+        type: pf.kind === "date" ? "date" : "string",
+        description: pf.labelLocal ? `"${pf.label}" (printed as "${pf.labelLocal}").` : `"${pf.label}".`,
+      };
+    }
+  }
+  return f;
+}
+
+/**
+ * The one-line GET.ocr reading handed to the AI as a reference (appended to the
+ * user text), or null when GET.ocr read nothing usable. It helps the AI name
+ * the document; the system prompt still has it judge isReal / isRelevant /
+ * matchesTitle from the visual evidence alone.
+ */
+export function ocrReferenceText(fields: Record<string, unknown>): string | null {
+  const parts: string[] = [];
+  const dt = clip(fields.documentType);
+  if (dt) parts.push(`type "${dt}"`);
+  const name = clip(fields.documentName);
+  if (name) parts.push(`titled "${name}"`);
+  const num = clip(fields.documentNumber);
+  if (num) parts.push(`number "${num}"`);
+  const exp = normDate(fields.expiryDate);
+  if (exp) parts.push(`expiry ${exp}`);
+  if (parts.length === 0) return null;
+  return `A text scan (GET.ocr) read this document as ${parts.join(", ")}. ` +
+    "Use this only as a reference to help identify the document; still decide isReal, isRelevant and matchesTitle from the visual evidence alone.";
+}
+
+const TAXI_TEXT_KEYS = [
+  "name", "idNumber", "validityFrom", "validityTo", "driverType",
+  "licenceReferenceNumber", "vehicleNumber", "licenceClass", "companyName", "address",
+] as const;
+
+function applyOcrTaxi(
+  existing: TaxiPermitFields | null,
+  fields: Record<string, unknown>,
+  ctx: DocumentAiContext,
+): TaxiPermitFields | null {
+  if (!ctx.isTaxiPermit) return existing; // only a permit has these
+  const base: TaxiPermitFields = existing ?? {
+    name: null, idNumber: null, validityFrom: null, validityTo: null, driverType: null,
+    licenceReferenceNumber: null, vehicleNumber: null, licenceClass: null, companyName: null,
+    address: null, hasImageOnPermit: null, photoBox: null, hasQrCode: null, photoUrl: null,
+  };
+  const merged: TaxiPermitFields = {
+    ...base,
+    name: clip(fields.name) ?? base.name,
+    idNumber: clip(fields.idNumber) ?? base.idNumber,
+    validityFrom: normDate(fields.validityFrom) ?? base.validityFrom,
+    validityTo: normDate(fields.validityTo) ?? base.validityTo,
+    driverType: clip(fields.driverType) ?? base.driverType,
+    licenceReferenceNumber: clip(fields.licenceReferenceNumber) ?? base.licenceReferenceNumber,
+    vehicleNumber: clip(fields.vehicleNumber) ?? base.vehicleNumber,
+    licenceClass: clip(fields.licenceClass) ?? base.licenceClass,
+    companyName: clip(fields.companyName) ?? base.companyName,
+    address: clip(fields.address) ?? base.address,
+    // hasImageOnPermit / photoBox / hasQrCode / photoUrl are the AI's — GET.ocr can't see them.
+  };
+  // Never fabricate an all-empty permit the AI did not return.
+  if (!existing && TAXI_TEXT_KEYS.every((k) => merged[k] == null)) return null;
+  return merged;
+}
+
+function applyOcrPermitFields(
+  existing: Record<string, string | null> | null,
+  fields: Record<string, unknown>,
+  ctx: DocumentAiContext,
+): Record<string, string | null> | null {
+  if (!ctx.permitFields?.length) return existing;
+  const out: Record<string, string | null> = { ...(existing ?? {}) };
+  for (const pf of ctx.permitFields) {
+    const read = pf.kind === "date" ? normDate(fields[`pf_${pf.key}`]) : clip(fields[`pf_${pf.key}`]);
+    if (read != null) out[pf.key] = read;
+    else if (!(pf.key in out)) out[pf.key] = null;
+  }
+  return out;
+}
+
+/**
+ * Overlay GET.ocr's /v1/extract reading onto the AI result: GET.ocr is the
+ * authoritative reader, so each text field it read wins over the AI's, and its
+ * `documentType` / `documentName` fills the printed name. The verdict
+ * (isReal / isRelevant / matchesTitle / detectedTitle / confidence / reason),
+ * the candidate-number list, isPwd and the permit's photo / QR stay the AI's.
+ * [fields] is what readOcrExtract returned for [docOcrExtractFields]. Pure.
+ */
+export function applyOcrFields(
+  result: DocumentAiVerificationResult,
+  fields: Record<string, unknown>,
+  ctx: DocumentAiContext,
+): DocumentAiVerificationResult {
+  const ex = result.extracted;
+  return {
+    ...result,
+    extracted: {
+      ...ex,
+      documentNumber: clip(fields.documentNumber) ?? ex.documentNumber,
+      startDate: normDate(fields.startDate) ?? ex.startDate,
+      expiryDate: normDate(fields.expiryDate) ?? ex.expiryDate,
+      insuranceProviderName: clip(fields.insuranceProviderName) ?? ex.insuranceProviderName,
+      issuanceCountry: clip(fields.issuanceCountry) ?? ex.issuanceCountry,
+      documentName: clip(fields.documentName) ?? clip(fields.documentType) ?? ex.documentName,
+      taxiPermit: applyOcrTaxi(ex.taxiPermit, fields, ctx),
+      permitFields: applyOcrPermitFields(ex.permitFields, fields, ctx),
+    },
+  };
+}
+
 /** The bearer token out of an Authorization header, or null. */
 export function bearerToken(header: string | null): string | null {
   const m = /^Bearer\s+(\S+)$/i.exec(header ?? "");
