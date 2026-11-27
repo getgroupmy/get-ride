@@ -61,6 +61,7 @@ declare
   v_check uuid;
   v_applied jsonb := jsonb_build_object('verified', false, 'pending', true);
   v_paths_ok boolean;
+  v_id_type text;
 begin
   select * into s from public.ekyc_sessions where id = p_session for update;
   if not found then
@@ -80,7 +81,8 @@ begin
   if not v_paths_ok then
     raise exception 'EKYC_BAD_RESULT' using errcode = '22023', hint = 'photo path';
   end if;
-  if v_doc is not null and v_doc not in ('mykad', 'passport', 'id_card') then
+  if v_doc is not null and v_doc not in ('mykad', 'mypr', 'mykas', 'mytentera', 'id_card', 'passport',
+                                         'driving_licence', 'ikad', 'unhcr', 'residence_permit') then
     v_doc := null;
   end if;
   if v_face is not null and v_face not in ('match', 'no_match', 'no_face', 'not_checked') then
@@ -122,8 +124,19 @@ begin
       v_score, coalesce(v_face, 'not_checked'), 'ekyc', now(), 'Pending Review', s.verification_id, v_status, v_reasons);
   end if;
 
+  -- Auto-verify only an identity document the country's rule accepts
+  -- (idType national / passport / either); a driving licence, i-Kad, UNHCR
+  -- card or residence permit is read and kept, and an admin decides.
   if s.purpose = 'rider_gate' and v_status = 'approved' then
-    v_applied := public.rider_id_gate_apply(v_check);
+    select coalesce(public.rider_id_gate_config()->pr.nationality, public.rider_id_gate_config()->'master')->>'idType'
+      into v_id_type from public.profiles pr where pr.id = s.user_id;
+    v_id_type := coalesce(v_id_type, 'either');
+    if (v_id_type = 'passport' and v_doc = 'passport')
+       or (v_id_type = 'national' and v_doc in ('mykad', 'mypr', 'mykas', 'mytentera', 'id_card'))
+       or (v_id_type not in ('passport', 'national')
+           and v_doc in ('mykad', 'mypr', 'mykas', 'mytentera', 'id_card', 'passport')) then
+      v_applied := public.rider_id_gate_apply(v_check);
+    end if;
   end if;
   if (v_applied->>'pending')::boolean then
     begin
