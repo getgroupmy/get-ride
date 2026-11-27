@@ -1,6 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@1.0.19";
 
-import { isOcrReader, ocrRequest, ocrServer, readOcr } from "./doc_ocr.ts";
+import { isOcrReader, ocrRequest, ocrServer, readOcr, serverReaders } from "./doc_ocr.ts";
 
 const OCR_SECRET = "ocr_live_0123456789abcdef";
 const providers = [
@@ -19,7 +19,7 @@ const providers = [
   },
 ];
 
-Deno.test("ocrServer: the address and key from Admin → API Keys → GET OCR", () => {
+Deno.test("ocrServer: the address and key from Admin → API Keys → GET.ocr", () => {
   assertEquals(ocrServer(providers), { url: "https://ocr.getcdn.link", secret: OCR_SECRET });
   assertEquals(ocrServer({ providers }), ocrServer(providers));
   assertEquals(ocrServer([]), null);
@@ -44,9 +44,9 @@ Deno.test("readOcr: the full text on success, a short reason on failure", () => 
   });
   assertEquals(readOcr(200, { pages: [] }), { text: "" }, "no text in the answer");
   assertEquals(readOcr(401, { error: "unauthorized", message: "invalid or missing X-API-Key" }), {
-    error: "GET OCR: invalid or missing X-API-Key",
+    error: "GET.ocr: invalid or missing X-API-Key",
   });
-  assertEquals(readOcr(503, null), { error: "GET OCR: HTTP 503" });
+  assertEquals(readOcr(503, null), { error: "GET.ocr: HTTP 503" });
 });
 
 Deno.test("isOcrReader: only when the reader is getOcr", () => {
@@ -54,4 +54,35 @@ Deno.test("isOcrReader: only when the reader is getOcr", () => {
   assertEquals(isOcrReader({ file_url: "x", purpose: "registration" }), false, "the Vision registration read");
   assertEquals(isOcrReader({ reader: "cloud" }), false);
   assertEquals(isOcrReader(null), false);
+});
+
+Deno.test("serverReaders: the on server readers in order, get.ocr first by default", () => {
+  // An absent or unreadable config falls back to get.ocr first, then Vision.
+  assertEquals(serverReaders(null), ["getOcr", "cloud"]);
+  assertEquals(serverReaders({}), ["getOcr", "cloud"]);
+  assertEquals(serverReaders({ readers: "x" }), ["getOcr", "cloud"]);
+  // The full default chain: only get.ocr and the cloud read a stored image here.
+  assertEquals(
+    serverReaders({
+      readers: [
+        { id: "getOcr", on: true },
+        { id: "phone", on: true },
+        { id: "nas", on: true },
+        { id: "gpu", on: true },
+        { id: "cloud", on: true },
+      ],
+    }),
+    ["getOcr", "cloud"],
+  );
+  assertEquals(
+    serverReaders({ readers: [{ id: "getOcr", on: false }, { id: "cloud", on: true }] }),
+    ["cloud"],
+    "get.ocr off: Vision only",
+  );
+  assertEquals(
+    serverReaders({ readers: [{ id: "cloud", on: true }, { id: "getOcr", on: true }] }),
+    ["cloud", "getOcr"],
+    "the admin's order is kept",
+  );
+  assertEquals(serverReaders({ readers: [{ id: "getOcr", on: false }, { id: "cloud", on: false }] }), []);
 });

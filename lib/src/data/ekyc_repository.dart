@@ -1,4 +1,4 @@
-// GET eKYC (migration 0439): the admin's switches, starting a check on the
+// GET.eKYC (migration 0439): the admin's switches, starting a check on the
 // server (ekyc-start, which holds the API key) and waiting for its result
 // (ekyc-webhook writes it; the person may read their own session).
 import 'package:flutter_riverpod/flutter_riverpod.dart';

@@ -54,7 +54,7 @@ class _FakeIdentity extends IdentityRepository {
   @override
   Future<String?> readRegistrationText(String fileUrl, {String? reader}) async {
     lastReader = reader;
-    return 'GET OCR TEXT';
+    return 'GET.ocr TEXT';
   }
 }
 
@@ -111,7 +111,7 @@ void main() {
         'nasJobs': {'qr': false},
         'passOnBelow': 12,
       });
-      expect(_order(c), 'cloud-off,phone,nas,gpu,getOcr-off');
+      expect(_order(c), 'getOcr,cloud-off,phone,nas,gpu');
       expect(c.nasJobs[NasJob.qr], isFalse);
       expect(c.nasJobs[NasJob.plates], isTrue);
       expect(c.passOnBelow, 50);
@@ -122,14 +122,14 @@ void main() {
     test('move, switch, and the order of the switched-on readers', () {
       var c = DocumentReadingConfig.defaults;
       c = c.move(DocReaderId.cloud, -1);
-      expect(_order(c), 'phone,nas,cloud,gpu,getOcr-off');
-      expect(c.move(DocReaderId.phone, -1), same(c), reason: 'the first can\'t go up');
+      expect(_order(c), 'getOcr,phone,nas,cloud,gpu');
+      expect(c.move(DocReaderId.getOcr, -1), same(c), reason: 'the first can\'t go up');
       // A hidden GPU PC keeps its place: moving the cloud reader down past it does nothing.
-      final shown = {DocReaderId.phone, DocReaderId.nas, DocReaderId.cloud};
+      final shown = {DocReaderId.getOcr, DocReaderId.phone, DocReaderId.nas, DocReaderId.cloud};
       expect(c.move(DocReaderId.cloud, 1, shown: shown), same(c));
-      expect(_order(c.move(DocReaderId.cloud, -1, shown: shown)), 'phone,cloud,nas,gpu,getOcr-off');
+      expect(_order(c.move(DocReaderId.cloud, -1, shown: shown)), 'getOcr,phone,cloud,nas,gpu');
       c = c.toggled(DocReaderId.nas, false);
-      expect(c.order, [DocReaderId.phone, DocReaderId.cloud, DocReaderId.gpu]);
+      expect(c.order, [DocReaderId.getOcr, DocReaderId.phone, DocReaderId.cloud, DocReaderId.gpu]);
       expect(c.isOn(DocReaderId.nas), isFalse);
       expect(c.before(DocReaderId.cloud, DocReaderId.phone), isFalse);
     });
@@ -139,7 +139,7 @@ void main() {
       expect([for (final r in shownReaders(c, gpuConnected: false)) r.id], isNot(contains(DocReaderId.gpu)));
       expect(shownReaders(c, gpuConnected: true).length, 5);
       expect(readingSummary(shownReaders(c, gpuConnected: false)),
-          "Documents go to: Driver's phone, then Office NAS, then Cloud reader.");
+          "Documents go to: GET.ocr, then Driver's phone, then Office NAS, then Cloud reader.");
       expect(readingSummary(const [DocReaderSlot(DocReaderId.phone, false)]),
           'Every reader is off: documents wait for a person.');
     });
@@ -159,16 +159,17 @@ void main() {
     testWidgets('move and switch readers; every change saves', (tester) async {
       final repo = await _pump(tester);
       expect(find.byKey(const ValueKey('doc-reader-gpu')), findsNothing, reason: 'no GPU PC connected');
-      expect(find.text("Documents go to: Driver's phone, then Office NAS, then Cloud reader."), findsOneWidget);
+      expect(find.text("Documents go to: GET.ocr, then Driver's phone, then Office NAS, then Cloud reader."),
+          findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('doc-reader-up-cloud')));
       await tester.pumpAndSettle();
-      expect(_order(repo.saves.last), 'phone,cloud,nas,gpu,getOcr-off');
+      expect(_order(repo.saves.last), 'getOcr,phone,cloud,nas,gpu');
 
       await tester.tap(find.byKey(const ValueKey('doc-reader-switch-phone')));
       await tester.pumpAndSettle();
       expect(repo.saves.last.isOn(DocReaderId.phone), isFalse);
-      expect(find.text('Documents go to: Cloud reader, then Office NAS. Saved.'), findsOneWidget);
+      expect(find.text('Documents go to: GET.ocr, then Cloud reader, then Office NAS. Saved.'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('doc-reader-job-qr')));
       await tester.pumpAndSettle();
@@ -224,7 +225,8 @@ void main() {
       final container = ProviderContainer(overrides: [
         documentReadingConfigProvider.overrideWith((_) async => DocumentReadingConfig.defaults
             .toggled(DocReaderId.phone, false)
-            .toggled(DocReaderId.cloud, false)),
+            .toggled(DocReaderId.cloud, false)
+            .toggled(DocReaderId.getOcr, false)),
       ]);
       addTearDown(container.dispose);
       final read = container.read(documentTextReaderProvider);
@@ -242,7 +244,7 @@ void main() {
       ]);
       addTearDown(container.dispose);
       final read = container.read(documentTextReaderProvider);
-      expect(await read(Uint8List.fromList([1, 2, 3]), fileUrl: 'https://x/a.jpg'), 'GET OCR TEXT');
+      expect(await read(Uint8List.fromList([1, 2, 3]), fileUrl: 'https://x/a.jpg'), 'GET.ocr TEXT');
       expect(fake.lastReader, 'getOcr');
     });
   });

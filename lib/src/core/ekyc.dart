@@ -1,11 +1,11 @@
-// GET eKYC (migration 0439): our own eKYC server runs the whole ID check in
+// GET.eKYC (migration 0439): our own eKYC server runs the whole ID check in
 // its page, shown inside the app. These are the admin's switches and the
 // words for how a check ended. Pure, so it is tested without a phone.
 library;
 
 import 'package:get_ekyc/get_ekyc.dart' show EkycOutcome;
 
-/// Where GET eKYC may run: the rider ID check before booking (0342) and the
+/// Where GET.eKYC may run: the rider ID check before booking (0342) and the
 /// ID step of the dispatch sign-in checks (0281). Purposes as the server
 /// names them: 'rider_gate', 'first'.
 class EkycConfig {
@@ -51,7 +51,7 @@ class EkycConfig {
       if (serverKey == false) 'the server address and API key',
       if (webhookKey == false) 'the webhook secret',
     ];
-    return missing.isEmpty ? null : 'Add ${missing.join(' and ')} in Admin, API Keys, GET eKYC.';
+    return missing.isEmpty ? null : 'Add ${missing.join(' and ')} in Admin, API Keys, GET.eKYC.';
   }
 
   Map<String, Object> toJson() => {'on': on, 'riderGate': riderGate, 'dispatchId': dispatchId, 'test': test};
@@ -88,7 +88,7 @@ String? ekycEndMessage(EkycOutcome outcome, {required bool verified}) {
   };
 }
 
-/// GET eKYC's own verdict on a check, for the admin reviewing it: what it
+/// GET.eKYC's own verdict on a check, for the admin reviewing it: what it
 /// decided and why ("Needs review: face match uncertain, name mismatch").
 String? ekycVerdictText(Object? status, Object? reasons) {
   final word = switch (status) {

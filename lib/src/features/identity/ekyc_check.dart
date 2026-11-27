@@ -1,4 +1,4 @@
-// GET eKYC (migration 0439): the identity check run by our own eKYC server,
+// GET.eKYC (migration 0439): the identity check run by our own eKYC server,
 // its page shown inside the app (never the external browser). The server
 // starts it (ekyc-start, which holds the API key), the page takes the ID's
 // photos, a selfie and the head turns, and the result reaches the server by
@@ -17,11 +17,11 @@ import '../../widgets/common.dart' show showError, showInfo;
 import '../../widgets/in_app_page.dart' show webViewSupported;
 import '../../widgets/page_style_host.dart';
 
-/// How a GET eKYC check ended: [sent] when the person finished it, and
+/// How a GET.eKYC check ended: [sent] when the person finished it, and
 /// [verified] when the server already verified them (riders, 0343).
 typedef EkycCheckEnd = ({bool sent, bool verified});
 
-/// Runs a GET eKYC check for [purpose] ('rider_gate' or 'first') and tells
+/// Runs a GET.eKYC check for [purpose] ('rider_gate' or 'first') and tells
 /// the person how it went. Never throws.
 Future<EkycCheckEnd> runEkycCheck(BuildContext context, WidgetRef ref, String purpose) async {
   const none = (sent: false, verified: false);

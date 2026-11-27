@@ -2,7 +2,7 @@
 // provider-health — Supabase Edge Function (migration 0440)
 // ----------------------------------------------------------------------------
 // A scheduled health ping of the self-hosted servers an admin switched on in
-// Admin → API Keys ("Monitor this server"): GET eKYC, Umami/NAS, a custom
+// Admin → API Keys ("Monitor this server"): GET.eKYC, Umami/NAS, a custom
 // OSRM/Overpass server — each behind a Cloudflare Tunnel, reached on demand, so
 // one going down is otherwise unnoticed until a check fails.
 //

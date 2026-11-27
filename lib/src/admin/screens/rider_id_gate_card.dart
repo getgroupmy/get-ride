@@ -238,8 +238,8 @@ class _RiderVerifyDialogState extends State<_RiderVerifyDialog> {
   String _hint(RiderVerifyMethod m) => switch (m) {
         RiderVerifyMethod.none => 'Riders here book without verifying.',
         RiderVerifyMethod.liveSelfie => 'Riders take a fresh live selfie, kept on record and approver-verified.',
-        RiderVerifyMethod.ekyc => 'Riders verify a photo ID via GET eKYC.',
-        RiderVerifyMethod.both => 'Riders verify a photo ID via GET eKYC and take a live selfie on record.',
+        RiderVerifyMethod.ekyc => 'Riders verify a photo ID via GET.eKYC.',
+        RiderVerifyMethod.both => 'Riders verify a photo ID via GET.eKYC and take a live selfie on record.',
       };
 
   @override

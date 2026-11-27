@@ -11,7 +11,7 @@ import 'strings.dart';
 
 /// The hosted page inside the app (never the external browser). The page
 /// tells the app when it is done through the `EkycBridge` channel; leaving
-/// the GET eKYC site is blocked, and a return link is caught as the result.
+/// the GET.eKYC site is blocked, and a return link is caught as the result.
 class EkycWebViewFlow extends StatefulWidget {
   const EkycWebViewFlow({super.key, required this.hostedUrl, this.language = 'en'});
   final String hostedUrl;
@@ -54,7 +54,7 @@ class _EkycWebViewFlowState extends State<EkycWebViewFlow> {
         : const PlatformWebViewControllerCreationParams();
     final c = WebViewController.fromPlatformCreationParams(
       params,
-      onPermissionRequest: (req) => req.grant(), // camera for the GET eKYC page only (navigation is locked to it)
+      onPermissionRequest: (req) => req.grant(), // camera for the GET.eKYC page only (navigation is locked to it)
     )
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel('EkycBridge', onMessageReceived: (m) {

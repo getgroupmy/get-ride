@@ -1,9 +1,9 @@
 // ============================================================================
 // ekyc-start — Supabase Edge Function
 // ----------------------------------------------------------------------------
-// GET eKYC (migration 0439): starts an identity check for the signed-in user
+// GET.eKYC (migration 0439): starts an identity check for the signed-in user
 // on our eKYC server and returns the one-time page the app opens inside the
-// app. The API key stays here (Admin → API Keys → GET eKYC → server); the
+// app. The API key stays here (Admin → API Keys → GET.eKYC → server); the
 // app only ever sees the page's link. The result arrives at ekyc-webhook.
 //
 // Request:  POST { purpose: "rider_gate" | "first" } with the user's token.
@@ -76,11 +76,11 @@ Deno.serve(async (req) => {
     });
     created = await res.json().catch(() => ({}));
     if (!res.ok || typeof created.id !== "string" || typeof created.hosted_url !== "string") {
-      console.error("ekyc-start: GET eKYC answered", res.status, created?.detail ?? "");
+      console.error("ekyc-start: GET.eKYC answered", res.status, created?.detail ?? "");
       return reply({ error: "unavailable" }, 502);
     }
   } catch (e) {
-    console.error("ekyc-start: GET eKYC unreachable", String(e));
+    console.error("ekyc-start: GET.eKYC unreachable", String(e));
     return reply({ error: "unavailable" }, 502);
   }
 

@@ -5,7 +5,7 @@ import 'package:get_ride/src/admin/screens/security/api_keys_logic.dart';
 
 void main() {
   test('monitor is off by default and flips on then off', () {
-    final list = [const ApiProviderDef(id: 'ekyc', name: 'GET eKYC')];
+    final list = [const ApiProviderDef(id: 'ekyc', name: 'GET.eKYC')];
     expect(providerMonitorOn(list.first), isFalse);
 
     final on = setProviderMonitor(list, 'ekyc', true);
@@ -25,7 +25,7 @@ void main() {
 
   test('setProviderMonitor leaves other providers and existing fields alone', () {
     final list = [
-      const ApiProviderDef(id: 'ekyc', name: 'GET eKYC', description: 'ID checks', category: 'Identity'),
+      const ApiProviderDef(id: 'ekyc', name: 'GET.eKYC', description: 'ID checks', category: 'Identity'),
       const ApiProviderDef(id: 'google', name: 'Google'),
     ];
     final out = setProviderMonitor(list, 'ekyc', true);
@@ -39,9 +39,9 @@ void main() {
     expect(builtinMonitorProviders.contains('face_match'), isTrue);
   });
 
-  test('GET OCR is in the catalogue with a monitorable server key', () {
+  test('GET.ocr is in the catalogue with a monitorable server key', () {
     final ocr = defaultApiProviders.firstWhere((p) => p.id == 'ocr');
-    expect(ocr.name, 'GET OCR');
+    expect(ocr.name, 'GET.ocr');
     expect(ocr.services.map((s) => s.id), contains('server'));
     // No built-in watcher of its own, so the "Monitor this server" switch is
     // what watches it (provider-health, 0440).

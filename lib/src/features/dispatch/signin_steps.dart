@@ -403,7 +403,7 @@ class _IdUploadFormState extends ConsumerState<IdUploadForm> {
     };
     final renew = c.id.state == RecordState.renew;
     final expired = c.id.state == RecordState.expired;
-    // GET eKYC, when the admin turned it on for these checks (0439): one
+    // GET.eKYC, when the admin turned it on for these checks (0439): one
     // button, and its page takes the card and a selfie inside the app.
     if (ref.watch(ekycConfigProvider).value?.uses('first') ?? false) {
       return _StepCard(
