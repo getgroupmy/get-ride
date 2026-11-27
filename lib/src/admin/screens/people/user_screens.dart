@@ -17,7 +17,7 @@ import '../../../data/live_tables.dart';
 import '../../../widgets/storage_image.dart';
 import '../../../widgets/page_style_host.dart';
 import '../../../widgets/date_boxes.dart';
-import '../../../core/signin_checks.dart' show RejectChoice;
+import '../../../core/signin_checks.dart' show RejectChoice, faceMatchText;
 import '../../../core/id_review_compare.dart';
 import '../../../data/identity_repository.dart';
 import '../../widgets/reject_reason.dart';
@@ -419,6 +419,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
   /// The fields Vision read from the ID image (Read from ID), and the
   /// reviewer's per-field choice; null until they read it.
   Map<String, dynamic>? _idRead;
+  Map<String, dynamic>? _faceResult;
   final Map<String, IdSource> _choice = {};
   bool _reading = false;
 
@@ -480,19 +481,26 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
     }
   }
 
-  /// Reads the ID image with the document reader (get.ocr first, then Vision —
-  /// Admin › Settings › Document reading), so the reviewer can compare the read
-  /// fields with what the user keyed and keep either, per field.
+  /// "Run GET.eKYC again": reads the ID image with the document reader (GET.ocr
+  /// first, then Vision — Admin › Settings › Document reading) so the reviewer
+  /// can compare the read fields with what the user keyed and keep either per
+  /// field, and re-scores the rider's stored GET.eKYC ID against their selfie
+  /// (when there is one) to help the decision.
   Future<void> _readId() async {
     setState(() => _reading = true);
     Map<String, dynamic>? read;
+    Map<String, dynamic>? face;
     await runAdminAction(context, () async {
-      read = await ref.read(identityRepositoryProvider).readProfileIdImage(_id);
+      final repo = ref.read(identityRepositoryProvider);
+      final checkId = await repo.latestRiderIdCheck(_id);
+      if (checkId != null) face = await repo.compareDocumentFace('id', checkId);
+      read = await repo.readProfileIdImage(_id);
     });
     if (!mounted) return;
     setState(() {
       _reading = false;
       _idRead = read;
+      _faceResult = face;
       _choice.clear();
     });
     if (read == null && mounted) {
@@ -624,10 +632,17 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
             onPressed: (_busy || _reading) ? null : _readId,
             icon: _reading
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.document_scanner_outlined),
-            child: Text(_reading ? 'Reading…' : (_idRead == null ? 'Read from ID image' : 'Read again')),
+                : const Icon(Icons.verified_user_outlined),
+            child: Text(_reading ? 'Checking…' : (_idRead == null ? 'Run GET.eKYC again' : 'Run again')),
           ),
         ),
+        if (_faceResult != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+                'GET.eKYC face — ${faceMatchText(_faceResult!['state'], _faceResult!['score'], provider: _faceResult!['provider'], reason: _faceResult!['reason'])}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: mutedTextColor(Theme.of(context)))),
+          ),
         if (_idRead != null) _IdCompareTable(rows: idReviewRows(profile: _row, read: _idRead!), choice: _choice,
             genderText: _genderText, onChanged: () => setState(() {})),
       ],
