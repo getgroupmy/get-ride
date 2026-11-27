@@ -4,8 +4,10 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_ride/src/admin/screens/meterapp/pick_image.dart';
+import 'package:get_ride/src/core/ekyc.dart';
 import 'package:get_ride/src/core/profile_identity.dart';
 import 'package:get_ride/src/data/account_repository.dart';
+import 'package:get_ride/src/data/ekyc_repository.dart';
 import 'package:get_ride/src/data/models.dart';
 import 'package:get_ride/src/features/profile/edit_profile_screen.dart';
 import 'package:get_ride/src/providers.dart';
@@ -79,6 +81,9 @@ void main() {
       ProviderScope(
         overrides: [
           accountRepositoryProvider.overrideWithValue(account),
+          // GET.eKYC off: the ID photo is the plain upload (the eKYC-on path
+          // runs runIdVerification, covered by the rider-gate flow's tests).
+          ekycConfigProvider.overrideWith((ref) async => EkycConfig.off),
           profileProvider.overrideWith((ref) async => Profile(profile)),
           if (partnerStatus != null)
             partnerProvider.overrideWith((ref) async => Partner({'id': 'pa', 'status': partnerStatus})),
@@ -158,7 +163,7 @@ void main() {
     expect(tester.widget<TextField>(find.byKey(const ValueKey('profile-id-number'))).enabled, isTrue);
   });
 
-  testWidgets('the ID photo is uploaded straight away', (tester) async {
+  testWidgets('with GET.eKYC off, the ID photo is uploaded straight away', (tester) async {
     final account = await pump(tester, {'id': 'me', 'name': 'Ali'});
     expect(find.text('Photograph passport or ID'), findsOneWidget);
     await tester.ensureVisible(find.byKey(const ValueKey('profile-id-photo')));
