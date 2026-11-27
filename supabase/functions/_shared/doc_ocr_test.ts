@@ -1,6 +1,14 @@
 import { assertEquals } from "jsr:@std/assert@1.0.19";
 
-import { isOcrReader, ocrRequest, ocrServer, readOcr, serverReaders } from "./doc_ocr.ts";
+import {
+  isOcrReader,
+  ocrExtractRequest,
+  ocrRequest,
+  ocrServer,
+  readOcr,
+  readOcrExtract,
+  serverReaders,
+} from "./doc_ocr.ts";
 
 const OCR_SECRET = "ocr_live_0123456789abcdef";
 const providers = [
@@ -85,4 +93,32 @@ Deno.test("serverReaders: the on server readers in order, get.ocr first by defau
     "the admin's order is kept",
   );
   assertEquals(serverReaders({ readers: [{ id: "getOcr", on: false }, { id: "cloud", on: false }] }), []);
+});
+
+Deno.test("ocrExtractRequest: POST /v1/extract, type=custom, fields as JSON", () => {
+  const r = ocrExtractRequest({ url: "https://ocr.getcdn.link", secret: OCR_SECRET }, "YWJj", {
+    plate: "string",
+    seats: "number",
+  });
+  assertEquals(r.url, "https://ocr.getcdn.link/v1/extract");
+  assertEquals(r.method, "POST");
+  assertEquals(r.headers["X-API-Key"], OCR_SECRET);
+  const body = JSON.parse(r.body);
+  assertEquals(body.file, "YWJj");
+  assertEquals(body.type, "custom");
+  assertEquals(JSON.parse(body.fields), { plate: "string", seats: "number" });
+});
+
+Deno.test("readOcrExtract: the fields map, from the top level or the first document", () => {
+  assertEquals(readOcrExtract(200, { fields: { plate: "WXY 1234", make: "Perodua" }, pages: [] }), {
+    fields: { plate: "WXY 1234", make: "Perodua" },
+  });
+  assertEquals(readOcrExtract(200, { documents: [{ fields: { plate: "ABC 1" } }, { fields: {} }] }), {
+    fields: { plate: "ABC 1" },
+  }, "the first of several documents");
+  assertEquals(readOcrExtract(200, { pages: [] }), { fields: {} }, "nothing extracted");
+  assertEquals(readOcrExtract(401, { error: "unauthorized", message: "invalid or missing X-API-Key" }), {
+    error: "GET.ocr: invalid or missing X-API-Key",
+  });
+  assertEquals(readOcrExtract(503, null), { error: "GET.ocr: HTTP 503" });
 });

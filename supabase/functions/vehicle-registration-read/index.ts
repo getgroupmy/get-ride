@@ -9,9 +9,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   hasAnyField,
   normalizeRegistration,
+  REGISTRATION_EXTRACT_FIELDS,
   REGISTRATION_PROMPT,
   REGISTRATION_SYSTEM,
 } from "../_shared/vehicle_registration.ts";
+import {
+  OCR_EXTRACT_TIMEOUT_MS,
+  ocrExtractRequest,
+  ocrServer,
+  readOcrExtract,
+  serverReaders,
+} from "../_shared/doc_ocr.ts";
 
 function bearerToken(header: string | null): string | null {
   if (!header) return null;
@@ -102,6 +110,36 @@ Deno.serve(async (req: Request) => {
   }
   const image = parseDataUrl(body.front);
   if (typeof image === "string") return json({ ok: false, error: image }, 400);
+
+  // GET.ocr first (migration 0444): our own OCR server's extractor reads the
+  // fields; Gemini is the fallback when GET.ocr is off, degraded or blank.
+  const [{ data: docRow }, { data: apiRow }] = await Promise.all([
+    admin.from("app_settings").select("value").eq("key", "document_reading").maybeSingle(),
+    admin.from("app_settings").select("value").eq("key", "api_providers").maybeSingle(),
+  ]);
+  if (serverReaders(docRow?.value ?? null).includes("getOcr")) {
+    const server = ocrServer(apiRow?.value ?? null);
+    if (server) {
+      try {
+        const rq = ocrExtractRequest(server, image.base64, REGISTRATION_EXTRACT_FIELDS);
+        const res = await fetch(rq.url, {
+          method: rq.method,
+          headers: rq.headers,
+          body: rq.body,
+          signal: AbortSignal.timeout(OCR_EXTRACT_TIMEOUT_MS),
+        });
+        const got = readOcrExtract(res.status, await res.json().catch(() => null));
+        if (!("error" in got)) {
+          const fields = normalizeRegistration(got.fields);
+          if (hasAnyField(fields)) return json({ ok: true, fields, read: true });
+        } else {
+          console.log(`[vehicle-registration-read] get.ocr: ${got.error}`);
+        }
+      } catch (e) {
+        console.log(`[vehicle-registration-read] get.ocr error: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+  }
 
   const { data: cfgRow } = await admin.from("app_settings").select("value").eq("key", "fare_ai_provider").maybeSingle();
   const apiKey = geminiKey(cfgRow?.value ?? null);

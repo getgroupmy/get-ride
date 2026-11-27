@@ -51,6 +51,7 @@ import {
 } from "../_shared/face_compare.ts";
 import { compareRequest, FACE_SERVER_TIMEOUT_MS } from "../_shared/face_server.ts";
 import { type IdFull, MAX_IMAGE_BYTES, readIdFull, readVision, visionKey, visionRequest } from "../_shared/id_read.ts";
+import { OCR_TIMEOUT_MS, ocrRequest, ocrServer, readOcr, serverReaders } from "../_shared/doc_ocr.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -142,31 +143,64 @@ const riderGender = (v: unknown): string | null =>
   v === "male" || v === "female" || v === "other" ? v : null;
 
 /**
- * Re-reads the ID image on the server with Google Vision — the TRUSTED read,
- * since a client could lie about the name / DOB / gender it sends. Null when
- * Vision isn't configured, the image is missing/too big, or nothing was read;
- * the caller then falls back to the client's values.
+ * Re-reads the ID image on the server — the TRUSTED read, since a client could
+ * lie about the name / DOB / gender it sends. GET.ocr is the primary reader and
+ * Google Vision the fallback (migration 0444), in the order the admin set in
+ * Document reading; Vision is tried last as a backstop. Null when neither is
+ * configured, the image is missing/too big, or nothing was read; the caller
+ * then falls back to the client's values.
  */
 async function serverReadId(idFrontUrl: string): Promise<IdFull | null> {
   try {
-    const key = visionKey(await setting("api_providers"));
-    if (!key) return null;
     const where = storageObject(idFrontUrl);
     const image = where ? await download(where.bucket, where.path) : null;
     if (!image || image.length > MAX_IMAGE_BYTES) return null;
-    const rq = visionRequest(key, image);
-    const res = await fetch(rq.url, {
-      method: rq.method,
-      headers: rq.headers,
-      body: rq.body,
-      signal: AbortSignal.timeout(15000),
-    });
-    const v = readVision(res.status, await res.json().catch(() => null));
-    if ("error" in v || !v.text.trim()) return null;
-    const full = readIdFull(v.text);
-    const found = full.name || full.ic || full.passport || full.birth || full.gender || full.nationality ||
-      full.address;
-    return found ? full : null;
+    const apiProviders = await setting("api_providers");
+    const order = serverReaders(await setting("document_reading"));
+    let visionTried = false;
+    const parse = (text: string): IdFull | null => {
+      if (!text.trim()) return null;
+      const full = readIdFull(text);
+      const found = full.name || full.ic || full.passport || full.birth || full.gender || full.nationality ||
+        full.address;
+      return found ? full : null;
+    };
+    const tryOcr = async (): Promise<IdFull | null> => {
+      const server = ocrServer(apiProviders);
+      if (!server) return null;
+      const rq = ocrRequest(server, image);
+      const res = await fetch(rq.url, {
+        method: rq.method,
+        headers: rq.headers,
+        body: rq.body,
+        signal: AbortSignal.timeout(OCR_TIMEOUT_MS),
+      });
+      const v = readOcr(res.status, await res.json().catch(() => null));
+      return "error" in v ? null : parse(v.text);
+    };
+    const tryVision = async (): Promise<IdFull | null> => {
+      visionTried = true;
+      const key = visionKey(apiProviders);
+      if (!key) return null;
+      const rq = visionRequest(key, image);
+      const res = await fetch(rq.url, {
+        method: rq.method,
+        headers: rq.headers,
+        body: rq.body,
+        signal: AbortSignal.timeout(15000),
+      });
+      const v = readVision(res.status, await res.json().catch(() => null));
+      return "error" in v ? null : parse(v.text);
+    };
+    for (const rid of order) {
+      const full = rid === "getOcr" ? await tryOcr() : await tryVision();
+      if (full) return full;
+    }
+    if (!visionTried) {
+      const full = await tryVision();
+      if (full) return full;
+    }
+    return null;
   } catch {
     return null;
   }
