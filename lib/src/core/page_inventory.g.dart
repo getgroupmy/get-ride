@@ -154,6 +154,7 @@ const pageInventory = <SurfaceEntry>[
   SurfaceEntry('modal:home.find', SurfaceKind.modal, 'Home · Find', 'lib/src/features/ride/home_screen.dart'),
   SurfaceEntry('modal:home.show-expired', SurfaceKind.modal, 'Home · Expired', 'lib/src/features/ride/home_screen.dart'),
   SurfaceEntry('modal:home.update-route', SurfaceKind.modal, 'Home · Update route', 'lib/src/features/ride/home_screen.dart'),
+  SurfaceEntry('modal:identity.ekyc-browser', SurfaceKind.modal, 'Identity · Ekyc browser', 'lib/src/features/identity/ekyc_check.dart'),
   SurfaceEntry('modal:identity.ekyc-working', SurfaceKind.modal, 'Identity · Ekyc working', 'lib/src/features/identity/ekyc_check.dart'),
   SurfaceEntry('modal:maps.heading', SurfaceKind.modal, 'Maps · Heading', 'lib/src/admin/screens/maps/maps_screen.dart'),
   SurfaceEntry('modal:maps.usage-tab', SurfaceKind.modal, 'Maps · Usage tab', 'lib/src/admin/screens/maps/maps_screen.dart'),

@@ -8,11 +8,13 @@ import 'dart:async';
 import 'package:get_ekyc/get_ekyc.dart' show EkycOutcome, EkycResult, EkycWebViewFlow;
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ekyc.dart';
 import '../../data/ekyc_repository.dart';
 import '../../providers.dart';
 import '../../widgets/common.dart' show showError, showInfo;
+import '../../widgets/in_app_page.dart' show webViewSupported;
 import '../../widgets/page_style_host.dart';
 
 /// How a GET eKYC check ended: [sent] when the person finished it, and
@@ -34,11 +36,16 @@ Future<EkycCheckEnd> runEkycCheck(BuildContext context, WidgetRef ref, String pu
   if (!context.mounted) return none;
 
   final lang = Localizations.localeOf(context).languageCode == 'ms' ? 'ms' : 'en';
-  final result = await Navigator.of(context).push<EkycResult>(AppPageRoute(
-    id: 'identity.ekyc',
-    fullscreenDialog: true,
-    builder: (_) => EkycWebViewFlow(hostedUrl: started.url, language: lang),
-  ));
+  // On Android and iOS the page runs inside the app. The web and desktop
+  // apps can't show a page inside, so it opens in a new tab and the person
+  // taps Done when it says so; the server's record says whether it was sent.
+  final EkycResult? result = webViewSupported
+      ? await Navigator.of(context).push<EkycResult>(AppPageRoute(
+          id: 'identity.ekyc',
+          fullscreenDialog: true,
+          builder: (_) => EkycWebViewFlow(hostedUrl: started.url, language: lang),
+        ))
+      : await _inBrowserTab(context, repo, started);
   final outcome = result?.outcome ?? EkycOutcome.cancelled;
   final sent = result?.sent ?? false;
   if (!context.mounted) return (sent: sent, verified: false);
@@ -60,6 +67,43 @@ Future<EkycCheckEnd> runEkycCheck(BuildContext context, WidgetRef ref, String pu
     sent || verified ? showInfo(context, msg) : showError(context, msg);
   }
   return (sent: sent, verified: verified);
+}
+
+/// The web and desktop apps: the check's page in a new browser tab, then the
+/// person says they are done and the server's record of the session decides.
+Future<EkycResult?> _inBrowserTab(
+  BuildContext context,
+  EkycRepository repo,
+  ({String url, String sessionId}) started,
+) async {
+  var opened = false;
+  try {
+    opened = await launchUrl(Uri.parse(started.url), webOnlyWindowName: '_blank');
+  } catch (_) {}
+  if (!context.mounted) return null;
+  if (!opened) {
+    showError(context, "The identity check page didn't open. Allow pop-ups for this site and try again.");
+    return null;
+  }
+  final done = await showAppDialog<bool>(
+    id: 'identity.ekyc-browser',
+    context: context,
+    barrierDismissible: false,
+    builder: (ctx) => AlertDialog(
+      icon: const Icon(Icons.open_in_new),
+      title: const Text('Finish in the new tab'),
+      content: const Text('Complete the identity check in the tab that just opened. When it says "All done", '
+          'come back here and tap Done.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Done')),
+      ],
+    ),
+  );
+  if (done != true || !context.mounted) return const EkycResult(EkycOutcome.cancelled);
+  final state = await _working(context, 'Checking your ID…',
+      () => repo.waitForResult(started.sessionId, timeout: const Duration(seconds: 15)));
+  return EkycResult(state == 'completed' ? EkycOutcome.submitted : EkycOutcome.cancelled);
 }
 
 /// Runs [task] behind a non-dismissible working dialog and returns its value.
