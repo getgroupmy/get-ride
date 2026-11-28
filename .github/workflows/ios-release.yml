@@ -387,6 +387,41 @@ jobs:
             echo "ADHOC_UUID=" >> "$GITHUB_ENV"
           fi
 
+      # Passport chip (GET.eKYC, NFC): reading an ePassport's chip needs the
+      # NFC Tag Reading entitlement, NOT committed in Runner.entitlements for
+      # the same reason as Associated Domains: it is added only when the
+      # profile carries it. Without it the build goes ahead and the in-app
+      # check simply has no "Read the chip" step on iPhones.
+      - name: NFC Tag Reading
+        if: steps.creds.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
+          ents=ios/Runner/Runner.entitlements
+          key=com.apple.developer.nfc.readersession.formats
+          pb=/usr/libexec/PlistBuddy
+          has_nfc() {
+            security cms -D -i "$1" > "$RUNNER_TEMP/profile-nfc.plist"
+            "$pb" -c "Print :Entitlements:$key" "$RUNNER_TEMP/profile-nfc.plist" > /dev/null 2>&1
+          }
+          if ! has_nfc "$profiles/release.mobileprovision"; then
+            msg="The provisioning profile has no NFC Tag Reading, so iPhones cannot read passport chips in the ID check (the step is skipped)."
+            msg="$msg To fix: Apple Developer -> Certificates, IDs & Profiles -> Identifiers -> $BUNDLE_ID -> tick NFC Tag Reading -> Save;"
+            msg="$msg then regenerate the App Store profile (and the Ad Hoc one, if used) and replace IOS_PROVISIONING_PROFILE (and IOS_ADHOC_PROVISIONING_PROFILE). See docs/store-release.md."
+            echo "::warning::$msg"
+            echo "* Passport chip (NFC): **off** (profile has no NFC Tag Reading; see docs/store-release.md)" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if ! "$pb" -c "Print :$key" "$ents" > /dev/null 2>&1; then
+            "$pb" -c "Add :$key array" "$ents"
+            "$pb" -c "Add :$key:0 string TAG" "$ents"
+          fi
+          echo "* Passport chip (NFC): on" >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "${ADHOC_UUID:-}" ] && ! has_nfc "$profiles/adhoc.mobileprovision"; then
+            echo "::warning::The Ad Hoc profile has no NFC Tag Reading but the App Store one does. Regenerate the Ad Hoc profile from the App ID $BUNDLE_ID and replace IOS_ADHOC_PROVISIONING_PROFILE; this run publishes the App Store IPA instead."
+            echo "ADHOC_UUID=" >> "$GITHUB_ENV"
+          fi
+
       # Google's own map (Admin → Settings → Maps, "Google Maps (native)"):
       # the Maps SDK for iOS key from Admin → API Keys, else the
       # GOOGLE_MAPS_IOS_API_KEY secret, into $GITHUB_ENV; the Archive step

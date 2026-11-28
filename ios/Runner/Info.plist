@@ -6,6 +6,12 @@
 	<string>GET.ride uses Bluetooth (where turned on) to confirm you're getting into the right car at pickup and are still together during the trip (your phone and your driver's find each other, never to find where you are), to connect to a Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer, and to print fares on a Bluetooth receipt printer.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>GET.ride uses Bluetooth (where turned on) to confirm you're getting into the right car at pickup and are still together during the trip (your phone and your driver's find each other, never to find where you are), to connect to a Bluetooth OBD-II reader so Meter Digital can read the vehicle's speed and odometer, and to print fares on a Bluetooth receipt printer.</string>
+	<key>NFCReaderUsageDescription</key>
+	<string>GET.ride reads the chip in your passport, when you choose to, to confirm your identity.</string>
+	<key>com.apple.developer.nfc.readersession.iso7816.select-identifiers</key>
+	<array>
+		<string>A0000002471001</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>GET.ride uses the camera to scan payment and wallet QR codes, to take a live selfie for your profile and sign-in checks, to photograph your ID, documents and vehicle, and to take photos to send in chats.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

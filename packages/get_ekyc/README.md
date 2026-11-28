@@ -54,6 +54,20 @@ your ID and take a selfie for identity verification." ML Kit needs iOS 15.5 or l
 **Android**: `<uses-permission android:name="android.permission.CAMERA"/>` and
 `minSdkVersion 21` or later.
 
+**Passport chip (NFC, optional)**: on a phone with NFC the hosted page offers "Read
+the chip" for an ePassport or an ID card with machine-readable lines (not MyKad: its
+chip is not to the ICAO standard). The SDK opens the chip with BAC from the printed
+MRZ and sends EF.SOD, DG1 and DG2 to get.ekyc, which checks them; the person can
+always skip it.
+
+- iOS: in `ios/Runner/Info.plist`, `NFCReaderUsageDescription` (e.g. "To read the chip
+  in your passport for identity verification") and
+  `com.apple.developer.nfc.readersession.iso7816.select-identifiers` = `[A0000002471001]`;
+  the app's entitlements need `com.apple.developer.nfc.readersession.formats` = `[TAG]`,
+  and the app ID needs the NFC Tag Reading capability in the Apple developer account.
+- Android: nothing more (the NFC permission comes with `flutter_nfc_kit`).
+- Phones without NFC, or with it switched off, never see the step.
+
 Both are already in GET-Ride.
 
 ## Notes
@@ -63,4 +77,5 @@ Both are already in GET-Ride.
   a manual shutter appears.
 - Languages: `'en'` and `'ms'`. The consent notice text comes from the server.
 - The app never holds the API key; the link opens one verification only, for 60 minutes.
-- Tests: `flutter test` (API client, results, pose logic).
+- Tests: `flutter test` (API client, results, pose logic, the chip's BAC and secure
+  messaging against ICAO 9303's worked example).

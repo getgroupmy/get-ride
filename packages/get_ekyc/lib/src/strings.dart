@@ -12,6 +12,8 @@ class EkycStrings {
 
   static const _en = {
     'title': 'Identity check',
+    'chipPrompt': 'Hold your phone against the passport',
+    'chipDone': 'Chip read',
     'welcome': 'Confirm your identity',
     'welcomeMsg': '{c} needs to confirm who you are. It takes about 2 minutes.',
     'agree': 'I agree to this',
@@ -53,6 +55,8 @@ class EkycStrings {
 
   static const _ms = {
     'title': 'Semakan identiti',
+    'chipPrompt': 'Letakkan telefon pada pasport',
+    'chipDone': 'Cip dibaca',
     'welcome': 'Sahkan identiti anda',
     'welcomeMsg': '{c} perlu mengesahkan identiti anda. Ia mengambil masa kira-kira 2 minit.',
     'agree': 'Saya bersetuju',
