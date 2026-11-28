@@ -486,10 +486,17 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         // the document is OK — its name and IC match the keyed ones (0448).
         if (decision == 'Verified' && _idRead != null) {
           final rows = idReviewRows(profile: _row, read: _idRead!);
+          // id_type and documents_ok are only written when the scan actually
+          // identified a document type: with no type the read can't judge the
+          // document, so documents_ok is left be ("unknown", not "not OK") —
+          // which also keeps an older id-read (one that returns no doc_type yet)
+          // from clobbering the flag.
           final fields = <String, dynamic>{
             ...idReviewChosen(rows, _choice),
-            if (idReadType(_idRead!) != null) 'id_type': idReadType(_idRead!),
-            'documents_ok': idDocumentsOk(rows, _idRead!),
+            if (idReadType(_idRead!) != null) ...{
+              'id_type': idReadType(_idRead!),
+              'documents_ok': idDocumentsOk(rows, _idRead!),
+            },
           };
           if (fields.isNotEmpty) await ref.read(identityRepositoryProvider).setProfileIdFields(_id, fields);
         }
