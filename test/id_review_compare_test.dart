@@ -73,4 +73,26 @@ void main() {
       expect(idReviewChosen(rows, const {}), isEmpty);
     });
   });
+
+  group('idReadReasonText', () {
+    test('each reader reason names what the reviewer should fix', () {
+      expect(idReadReasonText('ocr_off'), contains('GET.ocr'));
+      expect(idReadReasonText('vision_off'), contains('API Keys'));
+      expect(idReadReasonText('too_big'), contains('too large'));
+      expect(idReadReasonText('no_text'), contains('no text'));
+      expect(idReadReasonText('nothing_found'), contains('no text'));
+      expect(idReadReasonText('no_image'), contains('No ID image'));
+    });
+
+    test('an empty or null reason is the generic fallback', () {
+      final generic = idReadReasonText(null);
+      expect(generic, contains('check the reader keys'));
+      expect(idReadReasonText(''), generic);
+    });
+
+    test("a reader's own message is passed through as-is", () {
+      const vision = "The Cloud Vision API isn't enabled for the key's project";
+      expect(idReadReasonText(vision), vision);
+    });
+  });
 }

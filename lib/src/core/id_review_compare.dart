@@ -66,3 +66,27 @@ Map<String, dynamic> idReviewChosen(List<IdFieldRow> rows, Map<String, IdSource>
   for (final r in rows)
     if (r.hasRead && (choice[r.key] ?? r.defaultChoice) == IdSource.fromId) r.key: r.read,
 };
+
+/// Why the ID image couldn't be read, in the reviewer's words, from the
+/// id-read function's not_read / error [reason]. A known code becomes a
+/// specific line that names what to fix — a missing reader key, a photo that
+/// is too big, or text the reader couldn't make out. An unknown, non-empty
+/// value is a reader's own message (e.g. a Google Vision error sentence),
+/// shown as-is. An empty reason is the generic fallback.
+String idReadReasonText(Object? reason) {
+  final r = '${reason ?? ''}'.trim();
+  return switch (r) {
+    'no_image' || 'no_photo' => 'No ID image on file to read.',
+    'too_big' => 'The ID image is too large to read — ask for a smaller photo.',
+    'ocr_off' => 'No GET.ocr key is set — add it in Admin > API Keys > GET.ocr.',
+    'ocr_down' => 'GET.ocr could not be reached — try Rescan again in a moment.',
+    'vision_off' =>
+      'No document-reader key is set — add GET.ocr or Cloud Vision in Admin > API Keys.',
+    'no_text' || 'nothing_found' =>
+      'The reader found no text on the ID — it may be blurred, dark or at an angle. '
+          'Ask the user to re-upload a sharper photo.',
+    '' => "The ID image couldn't be read — check the reader keys (GET.ocr / Cloud Vision) "
+        'and that the photo is sharp.',
+    _ => r, // a reader's own message, e.g. a Google Vision error sentence
+  };
+}

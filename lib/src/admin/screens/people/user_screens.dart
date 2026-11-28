@@ -416,12 +416,31 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
   final _notes = TextEditingController();
   bool _busy = false;
 
-  /// The fields Vision read from the ID image (Read from ID), and the
-  /// reviewer's per-field choice; null until they read it.
+  /// The fields the document reader found in the ID image (GET.ocr, then
+  /// Vision), and the reviewer's per-field choice; null until they read it.
   Map<String, dynamic>? _idRead;
   Map<String, dynamic>? _faceResult;
   final Map<String, IdSource> _choice = {};
   bool _reading = false;
+
+  /// Why the last read found nothing (idReadReasonText), shown inline; null
+  /// until a read has failed.
+  String? _readReason;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-run the GET.eKYC face check and the GET.ocr read when a pending ID
+    // opens for review, so the comparison and the face score are ready without
+    // a tap. A manual Rescan re-runs it; an already-decided doc reads on demand.
+    final img = _row['id_image'] as String?;
+    final canEdit = ref.read(pageAccessProvider(UserIdDocumentsScreen.page)) == AccessLevel.edit;
+    if (canEdit && idDisplayStatus(_row) == 'Pending' && img != null && img.startsWith('http') && !isPdfUri(img)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _readId(silent: true);
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -481,12 +500,13 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
     }
   }
 
-  /// "Run GET.eKYC again": reads the ID image with the document reader (GET.ocr
-  /// first, then Vision — Admin › Settings › Document reading) so the reviewer
-  /// can compare the read fields with what the user keyed and keep either per
-  /// field, and re-scores the rider's stored GET.eKYC ID against their selfie
-  /// (when there is one) to help the decision.
-  Future<void> _readId() async {
+  /// Rescan: reads the ID image with the document reader (GET.ocr first, then
+  /// Vision — Admin › Settings › Document reading) so the reviewer can compare
+  /// the read fields with what the user keyed and keep either per field, and
+  /// re-scores the rider's stored GET.eKYC ID against their selfie (when there
+  /// is one). Runs automatically when a pending ID opens. [silent] (the auto
+  /// run) reports a read failure inline only; a manual Rescan also pops it.
+  Future<void> _readId({bool silent = false}) async {
     setState(() => _reading = true);
     Map<String, dynamic>? read;
     Map<String, dynamic>? face;
@@ -497,16 +517,16 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
       read = await repo.readProfileIdImage(_id);
     });
     if (!mounted) return;
+    final r = read;
+    final ok = r != null && r['state'] == 'read';
     setState(() {
       _reading = false;
-      _idRead = read;
+      _idRead = ok ? r : null;
+      _readReason = ok ? null : idReadReasonText(r?['reason']);
       _faceResult = face;
       _choice.clear();
     });
-    if (read == null && mounted) {
-      showInfo(context,
-          "Couldn't read the ID image — check the reader keys in API Keys (GET.ocr / Cloud Vision) and that the photo is sharp.");
-    }
+    if (!ok && !silent && mounted) showInfo(context, _readReason!);
   }
 
   Future<void> _removeImage() async {
@@ -629,11 +649,11 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         Align(
           alignment: Alignment.centerLeft,
           child: BusyButton.text(
-            onPressed: (_busy || _reading) ? null : _readId,
+            onPressed: (_busy || _reading) ? null : () => _readId(),
             icon: _reading
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.verified_user_outlined),
-            child: Text(_reading ? 'Checking…' : (_idRead == null ? 'Run GET.eKYC again' : 'Run again')),
+                : const Icon(Icons.document_scanner_outlined),
+            child: Text(_reading ? 'Reading ID…' : 'Rescan ID'),
           ),
         ),
         if (_faceResult != null)
@@ -642,6 +662,18 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
             child: Text(
                 'GET.eKYC face — ${faceMatchText(_faceResult!['state'], _faceResult!['score'], provider: _faceResult!['provider'], reason: _faceResult!['reason'])}',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(color: mutedTextColor(Theme.of(context)))),
+          ),
+        if (_idRead == null && _readReason != null && !_reading)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.info_outline, size: 16, color: mutedTextColor(Theme.of(context))),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(_readReason!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: mutedTextColor(Theme.of(context)))),
+              ),
+            ]),
           ),
         if (_idRead != null) _IdCompareTable(rows: idReviewRows(profile: _row, read: _idRead!), choice: _choice,
             genderText: _genderText, onChanged: () => setState(() {})),
