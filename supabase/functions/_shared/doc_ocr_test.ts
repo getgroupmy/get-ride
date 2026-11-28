@@ -1,13 +1,17 @@
 import { assertEquals } from "jsr:@std/assert@1.0.19";
 
 import {
+  isMyKadNumber,
   isOcrReader,
+  mykadFromExtract,
   ocrExtractRequest,
   ocrRequest,
   ocrServer,
   readOcr,
   readOcrExtract,
+  readTypedExtract,
   serverReaders,
+  typedExtractRequest,
 } from "./doc_ocr.ts";
 
 const OCR_SECRET = "ocr_live_0123456789abcdef";
@@ -121,4 +125,72 @@ Deno.test("readOcrExtract: the fields map, from the top level or the first docum
     error: "GET.ocr: invalid or missing X-API-Key",
   });
   assertEquals(readOcrExtract(503, null), { error: "GET.ocr: HTTP 503" });
+});
+
+Deno.test("typedExtractRequest: POST /v1/extract naming a built-in type, no field spec", () => {
+  const r = typedExtractRequest({ url: "https://ocr.getcdn.link", secret: OCR_SECRET }, "YWJj", "mykad");
+  assertEquals(r.url, "https://ocr.getcdn.link/v1/extract");
+  assertEquals(r.method, "POST");
+  assertEquals(r.headers["X-API-Key"], OCR_SECRET);
+  assertEquals(JSON.parse(r.body), { file: "YWJj", type: "mykad" });
+});
+
+Deno.test("readTypedExtract: the fields and read_by, or a short reason", () => {
+  assertEquals(
+    readTypedExtract(200, { document_type: "mykad", read_by: "labels", model_calls: 0, fields: { name: "AHMAD" } }),
+    { fields: { name: "AHMAD" }, readBy: "labels" },
+  );
+  assertEquals(readTypedExtract(200, { read_by: "model", fields: {} }), { fields: {}, readBy: "model" });
+  assertEquals(readTypedExtract(200, { fields: "x" }), { fields: {}, readBy: "" }, "no usable fields or read_by");
+  assertEquals(readTypedExtract(503, null), { error: "GET.ocr: HTTP 503" });
+});
+
+Deno.test("isMyKadNumber: 12 digits, dashes optional", () => {
+  assertEquals(isMyKadNumber("850412-10-5759"), true);
+  assertEquals(isMyKadNumber("850412105759"), true);
+  assertEquals(isMyKadNumber("A1234567"), false, "a passport number");
+  assertEquals(isMyKadNumber("85041210575"), false, "11 digits");
+  assertEquals(isMyKadNumber(null), false);
+  assertEquals(isMyKadNumber(123), false, "not a string");
+});
+
+Deno.test("mykadFromExtract: GET.ocr's position read mapped to id-read's answer", () => {
+  assertEquals(
+    mykadFromExtract("labels", {
+      id_number: "850412-10-5759",
+      name: "RAVI A/L MUTHUSAMY",
+      address: "NO 70 LADANG, TANJUNG BARU, JALAN SINTOK, 06010 CHANGLUN, KEDAH",
+      date_of_birth: "1985-04-12",
+      gender: "male",
+      citizenship: "WARGANEGARA",
+      religion: "HINDU",
+    }),
+    {
+      name: "RAVI A/L MUTHUSAMY",
+      ic: "850412-10-5759",
+      birth: "1985-04-12",
+      gender: "male",
+      nationality: "MYS",
+      address: "NO 70 LADANG, TANJUNG BARU, JALAN SINTOK, 06010 CHANGLUN, KEDAH",
+      expiry: null,
+    },
+  );
+});
+
+Deno.test("mykadFromExtract: null (falls back to text) unless the reader followed the card", () => {
+  const ok = { id_number: "850412105759", name: "AHMAD BIN ALI" };
+  assertEquals(mykadFromExtract("model", ok), null, "GET.ocr used its model");
+  assertEquals(mykadFromExtract("", ok), null, "no read_by");
+  assertEquals(mykadFromExtract("labels", { name: "AHMAD BIN ALI" }), null, "no number");
+  assertEquals(mykadFromExtract("labels", { id_number: "850412105759" }), null, "no name");
+  assertEquals(mykadFromExtract("labels", { id_number: "8504", name: "AHMAD" }), null, "not a MyKad number");
+});
+
+Deno.test("mykadFromExtract: a non-citizen has no MYS nationality; gender letters and bad dates", () => {
+  const base = { id_number: "900101105678", name: "TAN MEI LING" };
+  assertEquals(mykadFromExtract("labels", { ...base, citizenship: "BUKAN WARGANEGARA" })?.nationality, null);
+  assertEquals(mykadFromExtract("labels", { ...base, gender: "female" })?.gender, "female");
+  assertEquals(mykadFromExtract("labels", { ...base, gender: "F" })?.gender, "female");
+  assertEquals(mykadFromExtract("labels", { ...base, gender: "M" })?.gender, "male");
+  assertEquals(mykadFromExtract("labels", { ...base, date_of_birth: "12 Apr 1985" })?.birth, null, "a non-ISO date");
 });

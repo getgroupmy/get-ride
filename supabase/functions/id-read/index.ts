@@ -52,15 +52,21 @@ import {
   visionKey,
   visionRequest,
 } from "../_shared/id_read.ts";
-import { type FaceServer } from "../_shared/face_server.ts";
+import { base64, type FaceServer } from "../_shared/face_server.ts";
 import {
   handleOcrRead,
+  isMyKadNumber,
   isOcrReader,
+  type MyKadRead,
+  mykadFromExtract,
   OCR_TIMEOUT_MS,
+  OCR_TYPED_EXTRACT_TIMEOUT_MS,
   ocrRequest,
   ocrServer,
   readOcr,
+  readTypedExtract,
   serverReaders,
+  typedExtractRequest,
 } from "../_shared/doc_ocr.ts";
 
 const corsHeaders = {
@@ -118,15 +124,42 @@ async function ocrCall(server: FaceServer, image: Uint8Array) {
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
-// Admin → People → User ID Documents: read a profile's ID image with Vision
-// so the reviewer can compare the read fields with what the user keyed and
-// pick per field which to keep. Admin-only; reads nothing but the image, and
-// writes nothing (no check row, no profile change).
-async function profileIdImage(profileId: string): Promise<string | null> {
-  const { data, error } = await db.from("profiles").select("id_image").eq("id", profileId).maybeSingle();
+// Admin → People → User ID Documents: a profile's ID image and the keyed IC
+// (the IC's MyKad shape gates reading the card by position). Admin-only; reads
+// nothing but the image, and writes nothing (no check row, no profile change).
+async function profileIdDoc(profileId: string): Promise<{ url: string; ic: string | null } | null> {
+  const { data, error } = await db.from("profiles").select("id_image, ic").eq("id", profileId).maybeSingle();
   if (error) throw error;
-  const v = data?.id_image;
-  return typeof v === "string" && v.length > 0 ? v : null;
+  const url = data?.id_image;
+  if (typeof url !== "string" || url.length === 0) return null;
+  return { url, ic: typeof data?.ic === "string" ? data.ic : null };
+}
+
+// A MyKad read straight off GET.ocr's own position reader (POST /v1/extract
+// type "mykad"), or null when its reader did not follow the card or GET.ocr is
+// absent — then the text readers run. A short timeout caps GET.ocr falling back
+// to its slow model on a picture its reader can't follow.
+async function readProfileMykad(apiProviders: unknown, image: Uint8Array): Promise<MyKadRead | null> {
+  const server = ocrServer(apiProviders);
+  if (!server) return null;
+  try {
+    const r = typedExtractRequest(server, base64(image), "mykad");
+    const res = await fetch(r.url, {
+      method: r.method,
+      headers: r.headers,
+      body: r.body,
+      signal: AbortSignal.timeout(OCR_TYPED_EXTRACT_TIMEOUT_MS),
+    });
+    const read = readTypedExtract(res.status, await res.json().catch(() => null));
+    if ("error" in read) {
+      console.log(`[id-read] mykad extract: ${read.error}`);
+      return null;
+    }
+    return mykadFromExtract(read.readBy, read.fields);
+  } catch (e) {
+    console.log(`[id-read] mykad extract: ${e instanceof Error ? e.message : e}`);
+    return null;
+  }
 }
 
 /** The read ID fields as the admin review tool shows them. */
@@ -156,17 +189,27 @@ async function handleProfileRead(
   if (allowed === null) return { body: { error: "not_signed_in" }, status: 401 };
   if (!allowed) return { body: { error: "not_authorized" }, status: 403 };
 
-  const url = await profileIdImage(profileId);
-  if (!url) return { body: { state: "not_read", reason: "no_image" }, status: 200 };
-  const where = url.length <= 1000 ? storageObject(url) : null;
+  const doc = await profileIdDoc(profileId);
+  if (!doc) return { body: { state: "not_read", reason: "no_image" }, status: 200 };
+  const where = doc.url.length <= 1000 ? storageObject(doc.url) : null;
   const image = where ? await download(where.bucket, where.path) : null;
   if (!image) return { body: { state: "not_read", reason: "no_image" }, status: 200 };
   if (image.length > MAX_IMAGE_BYTES) return { body: { state: "not_read", reason: "too_big" }, status: 200 };
 
-  // get.ocr is the primary reader; Google Vision is the fallback (migration
-  // 0444). The order follows Admin → Settings → Document reading, and Vision is
-  // tried as a last resort so the review tool is never left with nothing.
   const apiProviders = await setting("api_providers");
+
+  // A MyKad is read by position off GET.ocr's own reader (no text parsing),
+  // which keeps the address and a two-line name intact where the text path cuts
+  // them. Gated on the keyed IC's MyKad shape, and it falls back to the text
+  // readers below whenever GET.ocr's reader did not follow the card.
+  if (isMyKadNumber(doc.ic)) {
+    const mykad = await readProfileMykad(apiProviders, image);
+    if (mykad) return { body: { state: "read", ...mykad }, status: 200 };
+  }
+
+  // get.ocr is the primary text reader; Google Vision is the fallback (0444).
+  // The order follows Admin → Settings → Document reading, and Vision is tried
+  // as a last resort so the review tool is never left with nothing.
   const order = serverReaders(await setting("document_reading"));
   let visionTried = false;
   let lastReason = "no_text";
