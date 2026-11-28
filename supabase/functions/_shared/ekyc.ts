@@ -127,12 +127,33 @@ export function docTypeOf(extracted: Record<string, unknown>): EkycDocType | nul
 }
 
 /**
+ * The MyKad fields GET.ocr's own position reader gives (migration 0447's
+ * switch), used in place of GET.eKYC's own extraction for a MyKad: a two-line
+ * name and the address survive where text extraction cuts them, while GET.eKYC
+ * keeps the verdict. A MyKad does not expire and is not a passport, so the
+ * webhook never fills those from here. Structurally the id-read MyKadRead minus
+ * its always-null expiry; kept local so this module does not import doc_ocr.
+ */
+export interface MyKadFields {
+  name: string | null;
+  ic: string | null;
+  birth: string | null;
+  gender: "male" | "female" | null;
+  nationality: string | null;
+  address: string | null;
+}
+
+/**
  * What ekyc_apply stores, from get.ekyc's GET /v1/verifications/{id} answer
- * and the ID_Image paths the photos were copied to.
+ * and the ID_Image paths the photos were copied to. When [mykad] is given
+ * (GET.ocr read the MyKad by position, the admin switch on — the webhook owns
+ * that gate), its fields stand in for GET.eKYC's own extraction, while the
+ * verdict, face match and liveness stay GET.eKYC's.
  */
 export function applyPayload(
   v: Record<string, unknown>,
   photos: { front: string; back?: string | null; selfie?: string | null },
+  mykad: MyKadFields | null = null,
 ): Record<string, unknown> {
   const result = (v.result ?? {}) as Record<string, unknown>;
   const ex = (result.extracted ?? {}) as Record<string, unknown>;
@@ -158,14 +179,21 @@ export function applyPayload(
     ? "match"
     : "no_match";
 
-  return {
-    status: v.status,
-    reasons: Array.isArray(v.reasons) ? v.reasons.filter((r) => typeof r === "string").slice(0, 20) : [],
-    doc_type: docType,
-    front: photos.front,
-    back: photos.back ?? null,
-    selfie: photos.selfie ?? null,
-    read: {
+  // GET.ocr's MyKad position read stands in for GET.eKYC's own extraction when
+  // the webhook read one (a MyKad, the admin switch on); otherwise GET.eKYC's
+  // fields, exactly as before. A MyKad has no passport and does not expire.
+  const read = mykad
+    ? {
+      name: mykad.name,
+      ic: mykad.ic,
+      passport: null,
+      birth: mykad.birth,
+      expiry: null,
+      nationality: mykad.nationality,
+      gender: mykad.gender,
+      address: mykad.address,
+    }
+    : {
       name: s(ex.full_name, 120),
       ic: isPassport ? null : s(ex.id_number ?? ex.document_number, 40),
       passport: isPassport ? s(ex.document_number, 40) : null,
@@ -174,7 +202,16 @@ export function applyPayload(
       nationality: nat,
       gender: sex === "M" ? "male" : sex === "F" ? "female" : null,
       address: s(ex.address, 300),
-    },
+    };
+
+  return {
+    status: v.status,
+    reasons: Array.isArray(v.reasons) ? v.reasons.filter((r) => typeof r === "string").slice(0, 20) : [],
+    doc_type: docType,
+    front: photos.front,
+    back: photos.back ?? null,
+    selfie: photos.selfie ?? null,
+    read,
     face: { score, state: faceState },
     liveness: byName("liveness")?.status === "pass" ? "passed" : "not_checked",
   };

@@ -96,6 +96,54 @@ Deno.test("a MyKad result becomes the check's fields", () => {
   assertEquals(p.back, "u/signin/ekyc_back.jpg");
 });
 
+// ---- 0447: GET.ocr reads a MyKad's fields, GET.eKYC keeps the verdict -----------------------------
+
+Deno.test("GET.ocr's MyKad read replaces GET.eKYC's fields; the verdict stays GET.eKYC's", () => {
+  const p = applyPayload({
+    status: "approved",
+    reasons: [],
+    result: {
+      extracted: {
+        document_type: "national_id", country: "MYS", document_subtype: "MyKad", citizenship: "citizen",
+        // GET.eKYC's own extraction cut the two-line name and dropped the address.
+        full_name: "KABEER SINGH MAAND A/L", id_number: "830825-08-6367", date_of_birth: "1983-08-25", sex: "M",
+      },
+      checks: [{ name: "face_match", status: "pass" }, { name: "liveness", status: "pass" }],
+      scores: { face_score: 92 },
+    },
+  }, { front: "u/signin/ekyc_front.jpg", selfie: "u/signin/ekyc_selfie.jpg" }, {
+    // GET.ocr read the card by position: the full name and the address intact.
+    name: "KABEER SINGH MAAND A/L GESWANT SINGH", ic: "830825-08-6367", birth: "1983-08-25",
+    gender: "male", nationality: "MYS", address: "12 JALAN MAWAR, 30000 IPOH, PERAK",
+  });
+  assertEquals(p.read, {
+    name: "KABEER SINGH MAAND A/L GESWANT SINGH", ic: "830825-08-6367", passport: null, birth: "1983-08-25",
+    expiry: null, nationality: "MYS", gender: "male", address: "12 JALAN MAWAR, 30000 IPOH, PERAK",
+  });
+  // The verdict, face match and liveness are untouched — GET.eKYC still decides.
+  assertEquals([p.status, p.doc_type], ["approved", "mykad"]);
+  assertEquals(p.face, { score: 92, state: "match" });
+  assertEquals(p.liveness, "passed");
+});
+
+Deno.test("no MyKad override → GET.eKYC's own fields, exactly as before", () => {
+  const base = {
+    status: "approved",
+    result: {
+      extracted: {
+        document_type: "national_id", country: "MYS", document_subtype: "MyKad", citizenship: "citizen",
+        full_name: "SITI BINTI YUSOF", id_number: "900101-14-5678", date_of_birth: "1990-01-01", sex: "F",
+        address: "1 JALAN A",
+      },
+    },
+  };
+  const absent = applyPayload(base, { front: "u/f.jpg" });
+  const asNull = applyPayload(base, { front: "u/f.jpg" }, null);
+  assertEquals(absent.read, asNull.read, "a null override is the same as none");
+  assertEquals((absent.read as Record<string, unknown>).name, "SITI BINTI YUSOF");
+  assertEquals((absent.read as Record<string, unknown>).gender, "female");
+});
+
 Deno.test("a passport in review, face uncertain, liveness failed", () => {
   const p = applyPayload({
     status: "review",
