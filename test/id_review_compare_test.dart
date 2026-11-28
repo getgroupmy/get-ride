@@ -38,9 +38,80 @@ void main() {
       expect(rows.firstWhere((r) => r.key == 'name').differs, isFalse);
     });
 
-    test('always returns the five fields in order', () {
+    test('always returns the six fields in order', () {
       final rows = idReviewRows(profile: profile, read: const {});
-      expect(rows.map((r) => r.key).toList(), ['name', 'ic', 'birth_date', 'gender', 'address']);
+      expect(rows.map((r) => r.key).toList(), ['name', 'ic', 'birth_date', 'gender', 'address', 'nationality']);
+    });
+  });
+
+  group('nationality', () {
+    test('a code read off the card matches the stored adjective', () {
+      final rows = idReviewRows(profile: {'nationality': 'Malaysian'}, read: {'nationality': 'MYS'});
+      final nat = rows.firstWhere((r) => r.key == 'nationality');
+      expect(nat.read, 'Malaysian'); // shown as the adjective, not the code
+      expect(nat.differs, isFalse); // MYS == Malaysian
+      expect(nat.defaultChoice, IdSource.keyed);
+    });
+
+    test('a different nationality is flagged and shown as an adjective', () {
+      final rows = idReviewRows(profile: {'nationality': 'Malaysian'}, read: {'nationality': 'IDN'});
+      final nat = rows.firstWhere((r) => r.key == 'nationality');
+      expect(nat.read, 'Indonesian');
+      expect(nat.differs, isTrue);
+      expect(nat.defaultChoice, IdSource.fromId);
+      // "Use ID" writes the adjective the profile stores, not the raw code.
+      expect(idReviewChosen(rows, const {})['nationality'], 'Indonesian');
+    });
+
+    test('an unknown code is kept as read and compared case-insensitively', () {
+      final rows = idReviewRows(profile: {'nationality': 'zzz'}, read: {'nationality': 'ZZZ'});
+      final nat = rows.firstWhere((r) => r.key == 'nationality');
+      expect(nat.read, 'ZZZ');
+      expect(nat.differs, isFalse);
+    });
+  });
+
+  group('idReadType', () {
+    test('returns the scan doc_type, trimmed, or null', () {
+      expect(idReadType({'doc_type': 'mykad'}), 'mykad');
+      expect(idReadType({'doc_type': ' passport '}), 'passport');
+      expect(idReadType({'doc_type': ''}), isNull);
+      expect(idReadType(const {}), isNull);
+    });
+  });
+
+  group('idTypeLabel', () {
+    test('maps a known key to its label, keeps an unknown, dashes an empty one', () {
+      expect(idTypeLabel('mykad'), 'MyKad');
+      expect(idTypeLabel('passport'), 'Passport');
+      expect(idTypeLabel('licence'), 'Licence');
+      expect(idTypeLabel('id_card'), 'id_card'); // not an IdDocType key → as stored
+      expect(idTypeLabel(null), '—');
+      expect(idTypeLabel(''), '—');
+    });
+  });
+
+  group('idDocumentsOk', () {
+    final profile = {'name': 'SITI BINTI YUSOF', 'ic': '900101145678'};
+
+    test('OK when the type is recognised and name + IC match the keyed', () {
+      final read = {'doc_type': 'mykad', 'name': 'SITI BINTI YUSOF', 'ic': '900101-14-5678'};
+      expect(idDocumentsOk(idReviewRows(profile: profile, read: read), read), isTrue);
+    });
+
+    test('not OK when the name does not match', () {
+      final read = {'doc_type': 'mykad', 'name': 'SOMEONE ELSE', 'ic': '900101-14-5678'};
+      expect(idDocumentsOk(idReviewRows(profile: profile, read: read), read), isFalse);
+    });
+
+    test('not OK when the IC was not read', () {
+      final read = {'doc_type': 'mykad', 'name': 'SITI BINTI YUSOF'};
+      expect(idDocumentsOk(idReviewRows(profile: profile, read: read), read), isFalse);
+    });
+
+    test('not OK when the document type was not identified', () {
+      final read = {'name': 'SITI BINTI YUSOF', 'ic': '900101-14-5678'};
+      expect(idDocumentsOk(idReviewRows(profile: profile, read: read), read), isFalse);
     });
   });
 

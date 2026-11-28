@@ -268,6 +268,16 @@ export function readIdFull(text: string, now: Date = new Date()): IdFull {
   };
 }
 
+/**
+ * The profile `id_type` a read implies, as an `IdDocType` key: a passport
+ * number means a "passport", a MyKad/IC number means a "mykad", and anything
+ * the reader couldn't type is null (the admin review then leaves id_type be).
+ * The MyKad position reader names its own type; this is for the text path.
+ */
+export function readDocType(read: Pick<CardRead, "ic" | "passport">): "mykad" | "passport" | null {
+  return read.passport ? "passport" : read.ic ? "mykad" : null;
+}
+
 // ---- Google Cloud Vision -------------------------------------------------------------------------
 
 interface KeyEntry {
