@@ -25,8 +25,9 @@
 //
 // Admin ID review (0345): POST { profile_id } with an admin session reads
 // that profile's ID image with Vision and returns the full field set
-// { state, name?, ic?, birth?, gender?, nationality?, address?, expiry? } so
-// the reviewer can compare it with the keyed values. Writes nothing.
+// { state, doc_type?, name?, ic?, birth?, gender?, nationality?, address?,
+// expiry? } so the reviewer can compare it with the keyed values. doc_type is
+// the ID kind read ('mykad'/'passport', 0448). Writes nothing.
 //
 // The office NAS (0320): with the NAS before Google Vision in Admin's ID card
 // reading order, the person's own read answers { state: "not_read",
@@ -47,6 +48,7 @@ import {
   type IdCheckRow,
   isRegistrationRead,
   MAX_IMAGE_BYTES,
+  readDocType,
   readIdFull,
   readVision,
   visionKey,
@@ -178,6 +180,7 @@ function profileFields(text: string): { body: Record<string, unknown>; status: n
   return {
     body: {
       state: "read",
+      doc_type: readDocType(full),
       name: full.name,
       ic: full.ic,
       birth: full.birth,
@@ -219,7 +222,7 @@ async function handleProfileRead(
   // not follow the card.
   if (mykadReaderOn(docReading) && isMyKadNumber(doc.ic)) {
     const mykad = await readProfileMykad(apiProviders, image);
-    if (mykad) return { body: { state: "read", ...mykad }, status: 200 };
+    if (mykad) return { body: { state: "read", ...mykad, doc_type: "mykad" }, status: 200 };
   }
 
   // get.ocr is the primary text reader; Google Vision is the fallback (0444).
