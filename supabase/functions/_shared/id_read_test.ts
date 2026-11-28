@@ -85,9 +85,16 @@ const providers = [{
 }];
 const MYKAD = "KAD PENGENALAN\n880202-10-1234\nAINA BINTI AHMAD\nSELANGOR";
 
-function deps(over: Partial<IdReadDeps> & { ocr?: { text: string } | { error: string } | null } = {}) {
+function deps(
+  over: Partial<IdReadDeps> & {
+    ocr?: { text: string } | { error: string } | null;
+    // A MyKad position read (0447): [card] is what GET.ocr's reader gives (null =
+    // it did not follow the card), [wanted] the switch+IC gate (true by default).
+    mykad?: { card: CardRead | null; wanted?: boolean };
+  } = {},
+) {
   const calls: string[] = [];
-  const { ocr, ...rest } = over;
+  const { ocr, mykad, ...rest } = over;
   const d: IdReadDeps = {
     caller: (a) => Promise.resolve(a === "Bearer u1" ? "u1" : a === "Bearer admin" ? "admin" : a === "Bearer u2" ? "u2" : null),
     canReview: (a) => Promise.resolve(a === "Bearer admin"),
@@ -111,6 +118,15 @@ function deps(over: Partial<IdReadDeps> & { ocr?: { text: string } | { error: st
         ocrText: () => {
           calls.push("ocr");
           return Promise.resolve(ocr);
+        },
+      }
+      : {}),
+    ...(mykad !== undefined
+      ? {
+        mykadReaderWanted: () => Promise.resolve(mykad.wanted ?? true),
+        mykadRead: () => {
+          calls.push("mykad");
+          return Promise.resolve(mykad.card);
         },
       }
       : {}),
@@ -306,6 +322,78 @@ Deno.test("the database hand-off reads with GET.ocr first too", async () => {
   const r = await handleIdRead({ check_id: ID, by: "database" }, null, d, "db-secret");
   assertEquals(r.body.state, "read");
   assertEquals(calls, ["ocr", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
+});
+
+// ---- 0447: a MyKad read by position off GET.ocr's own reader, when switched on -------------------
+
+const MYKAD_CARD: CardRead = { name: "AINA BINTI AHMAD", ic: "880202-10-1234", passport: null, expiry: null };
+
+Deno.test("the MyKad reader reads by position first, when wanted; the text readers are not asked", async () => {
+  let downloads = 0;
+  const { d, calls } = deps({
+    ocr: { text: MYKAD },
+    mykad: { card: MYKAD_CARD },
+    download: () => {
+      downloads++;
+      return Promise.resolve(new Uint8Array([1, 2, 3]));
+    },
+  });
+  const r = await handleIdRead({ check_id: ID }, "Bearer u1", d);
+  assertEquals(r.body, {
+    state: "read",
+    name: "AINA BINTI AHMAD",
+    ic: "880202-10-1234",
+    passport: null,
+    expiry: null,
+    mismatch: [],
+  });
+  // The position reader answered, so neither GET.ocr text nor Vision is asked.
+  assertEquals(calls, ["mykad", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
+  assertEquals(downloads, 1);
+});
+
+Deno.test("the MyKad reader does not follow the card → GET.ocr text reads the same image", async () => {
+  let downloads = 0;
+  const { d, calls } = deps({
+    ocr: { text: MYKAD },
+    mykad: { card: null },
+    download: () => {
+      downloads++;
+      return Promise.resolve(new Uint8Array([1, 2, 3]));
+    },
+  });
+  assertEquals((await handleIdRead({ check_id: ID }, "Bearer u1", d)).body.state, "read");
+  assertEquals(calls, ["mykad", "ocr", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
+  assertEquals(downloads, 1, "the card the MyKad reader fetched is handed to GET.ocr");
+});
+
+Deno.test("the MyKad reader does not follow the card → Vision reads the same image", async () => {
+  let downloads = 0;
+  const { d, calls } = deps({
+    mykad: { card: null },
+    download: () => {
+      downloads++;
+      return Promise.resolve(new Uint8Array([1, 2, 3]));
+    },
+  });
+  assertEquals((await handleIdRead({ check_id: ID }, "Bearer u1", d)).body.state, "read");
+  assertEquals(calls, ["mykad", "annotate vision-key-123", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
+  assertEquals(downloads, 1);
+});
+
+Deno.test("the MyKad reader is off → the card stays on the text readers, unread by position", async () => {
+  const other: CardRead = { name: "WRONG", ic: "000000-00-0000", passport: null, expiry: null };
+  const { d, calls } = deps({ ocr: { text: MYKAD }, mykad: { card: other, wanted: false } });
+  // The text reader's AINA, not the MyKad reader's WRONG.
+  assertEquals((await handleIdRead({ check_id: ID }, "Bearer u1", d)).body.ic, "880202-10-1234");
+  assertEquals(calls, ["ocr", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
+});
+
+Deno.test("the database hand-off reads by MyKad position too, when wanted", async () => {
+  const { d, calls } = deps({ mykad: { card: MYKAD_CARD }, webhookSecretOk: () => Promise.resolve(true) });
+  const r = await handleIdRead({ check_id: ID, by: "database" }, null, d, "db-secret");
+  assertEquals(r.body.state, "read");
+  assertEquals(calls, ["mykad", `store ${ID} AINA BINTI AHMAD 880202-10-1234`]);
 });
 
 // ---- 0288: partner registration documents -----------------------------------------------------------

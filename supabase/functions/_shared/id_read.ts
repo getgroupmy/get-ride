@@ -356,6 +356,18 @@ export interface IdReadDeps {
    *  the server failed. Google Vision stays this module's own call (annotate),
    *  so get.ocr's import never has to reach this shared module. */
   ocrText?(image: Uint8Array): Promise<{ text: string } | { error: string } | null>;
+  /** Whether a MyKad read by position (GET.ocr's own /v1/extract reader) is
+   *  wanted for this check's owner: the admin switched the MyKad reader on
+   *  (document_reading.mykadReader, migration 0447) and the person's keyed IC is
+   *  a MyKad. index.ts owns both tests; false keeps the card on the text readers.
+   *  [userId] is the check's row.user_id. */
+  mykadReaderWanted?(userId: string): Promise<boolean>;
+  /** Read [image] as a MyKad off GET.ocr's position reader (type "mykad") as the
+   *  stored name/IC; null when GET.ocr is absent or its reader did not follow the
+   *  card, so the text readers run. Only asked when mykadReaderWanted answered
+   *  true. GET.ocr's own import stays in index.ts, so this module never reaches
+   *  the doc_ocr helpers (as with ocrText). */
+  mykadRead?(image: Uint8Array): Promise<CardRead | null>;
 }
 
 export interface Result {
@@ -419,10 +431,26 @@ export async function handleIdRead(
 // keeps every response it gave before, so an admin with no GET.ocr reader reads
 // exactly as it did. The read is spent on whichever reader answers.
 async function readServerSide(row: IdCheckRow, apiProviders: unknown, deps: IdReadDeps): Promise<Result> {
+  const where = storageObject(row.file_url);
+
+  // A MyKad read by position off GET.ocr's own reader (migration 0447), before
+  // the text readers, when the admin switched it on for a MyKad holder — index.ts
+  // owns that gate. No text parsing, so a two-line name and the address survive
+  // where readCardText cuts them. The card is downloaded here and handed to the
+  // text readers below, so it is fetched a single time; its reader not following
+  // the card (or an off switch) falls through. image: undefined = not fetched yet.
+  let image: Uint8Array | null | undefined;
+  if (deps.mykadReaderWanted && deps.mykadRead && (await deps.mykadReaderWanted(row.user_id))) {
+    image = where ? await deps.download(where.bucket, where.path) : null;
+    if (image && image.length <= MAX_IMAGE_BYTES) {
+      const card = await deps.mykadRead(image);
+      if (card) return await storeRead(row, card, deps);
+    }
+  }
+
   const order = deps.serverReaders ? await deps.serverReaders() : [];
   if (deps.ocrText && order[0] === "getOcr") {
-    const where = storageObject(row.file_url);
-    const image = where ? await deps.download(where.bucket, where.path) : null;
+    if (image === undefined) image = where ? await deps.download(where.bucket, where.path) : null;
     if (!image) return { status: 200, body: { state: "not_read", reason: "no_photo" } };
     if (image.length > MAX_IMAGE_BYTES) return { status: 200, body: { state: "not_read", reason: "too_big" } };
     const v = await deps.ocrText(image);
@@ -430,7 +458,10 @@ async function readServerSide(row: IdCheckRow, apiProviders: unknown, deps: IdRe
     // No GET.ocr key, GET.ocr down, or nothing read → Google Vision, same image.
     return await readWithVision(row, apiProviders, deps, image);
   }
-  return await readWithVision(row, apiProviders, deps);
+  // image is undefined when the MyKad path did not run (readWithVision downloads
+  // it then), else the already-fetched bytes (or null) to reuse — the vision-key
+  // check still comes first, so a no-key answer is unchanged.
+  return await readWithVision(row, apiProviders, deps, image);
 }
 
 async function readWithVision(
