@@ -136,6 +136,15 @@ async function profileIdDoc(profileId: string): Promise<{ url: string; ic: strin
   return { url, ic: typeof data?.ic === "string" ? data.ic : null };
 }
 
+// A sign-in check's owner profile's keyed IC (its MyKad shape gates reading that
+// person's card by position in the sign-in path, migration 0447). The check row
+// carries no IC; this reads only the one column, and writes nothing.
+async function profileIc(userId: string): Promise<string | null> {
+  const { data, error } = await db.from("profiles").select("ic").eq("id", userId).maybeSingle();
+  if (error) throw error;
+  return typeof data?.ic === "string" ? data.ic : null;
+}
+
 // A MyKad read straight off GET.ocr's own position reader (POST /v1/extract
 // type "mykad"), or null when its reader did not follow the card or GET.ocr is
 // absent — then the text readers run. A short timeout caps GET.ocr falling back
@@ -354,6 +363,21 @@ Deno.serve(async (req) => {
       if (!server) return null;
       const ans = await ocrCall(server, image);
       return readOcr(ans.status, ans.body);
+    },
+    // A MyKad is read by position off GET.ocr's own reader (no text parsing),
+    // keeping a two-line name and the address intact, when the admin switched the
+    // MyKad reader on (Admin → Document reading) and the check owner's keyed IC is
+    // a MyKad — off by default, the switch (not the answer's read_by) deciding,
+    // because today's GET.ocr still answers type "mykad" with the old reader.
+    // Shared with the admin profile read (handleProfileRead); falls through to the
+    // text readers when its reader did not follow the card.
+    async mykadReaderWanted(userId) {
+      if (!mykadReaderOn(await setting("document_reading"))) return false;
+      return isMyKadNumber(await profileIc(userId));
+    },
+    async mykadRead(image) {
+      const mykad = await readProfileMykad(await setting("api_providers"), image);
+      return mykad ? { name: mykad.name, ic: mykad.ic, passport: null, expiry: mykad.expiry } : null;
     },
   }, req.headers.get("x-push-secret"));
   return reply(result.body, result.status);
