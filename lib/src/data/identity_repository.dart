@@ -143,14 +143,19 @@ class IdentityRepository {
     }
   }
 
-  /// Admin → People → User ID Documents: reads [profileId]'s ID image with
-  /// Vision and returns the fields it found ({name, ic, birth, gender,
-  /// nationality, address, expiry}), or null when nothing could be read.
+  /// Admin → People → User ID Documents: reads [profileId]'s ID image with the
+  /// document reader (GET.ocr first, then Vision — Admin › Settings › Document
+  /// reading) and returns the function's answer: {state: 'read', name, ic,
+  /// birth, gender, nationality, address, expiry} on success, or
+  /// {state: 'not_read' | 'error', reason} with why it couldn't — so the
+  /// reviewer sees a specific reason (see idReadReasonText), not a generic one.
+  /// Null only when the call itself failed.
   Future<Map<String, dynamic>?> readProfileIdImage(String profileId) async {
     try {
       final res = await _db.functions.invoke('id-read', body: {'profile_id': profileId});
-      final m = _map(res.data);
-      return m['state'] == 'read' ? m : null;
+      return _map(res.data);
+    } on FunctionException catch (e) {
+      return {'state': 'error', 'reason': '${_map(e.details)['error'] ?? e.status}'};
     } catch (_) {
       return null;
     }
