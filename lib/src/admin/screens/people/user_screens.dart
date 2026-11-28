@@ -482,8 +482,22 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
       () async {
         // Write the fields the reviewer chose from the ID image first, then
         // verify (there is no admin UPDATE policy, so this goes through the RPC).
+        // The scan also captures the document type it read (id_type) and whether
+        // the document is OK — its name and IC match the keyed ones (0448).
         if (decision == 'Verified' && _idRead != null) {
-          final fields = idReviewChosen(idReviewRows(profile: _row, read: _idRead!), _choice);
+          final rows = idReviewRows(profile: _row, read: _idRead!);
+          // id_type and documents_ok are only written when the scan actually
+          // identified a document type: with no type the read can't judge the
+          // document, so documents_ok is left be ("unknown", not "not OK") —
+          // which also keeps an older id-read (one that returns no doc_type yet)
+          // from clobbering the flag.
+          final fields = <String, dynamic>{
+            ...idReviewChosen(rows, _choice),
+            if (idReadType(_idRead!) != null) ...{
+              'id_type': idReadType(_idRead!),
+              'documents_ok': idDocumentsOk(rows, _idRead!),
+            },
+          };
           if (fields.isNotEmpty) await ref.read(identityRepositoryProvider).setProfileIdFields(_id, fields);
         }
         await ref
@@ -637,6 +651,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
         'Phone': _row['phone'] ?? '—',
         'Email': _row['email'] ?? '—',
         'IC': _row['ic'] ?? '—',
+        'ID type': idTypeLabel(_row['id_type']),
         'Date of birth': formatStoredDateForUser(_row['birth_date']),
         'Gender': _genderText(_row['gender']) ?? '—',
         'Nationality': _row['nationality'] ?? '—',
@@ -676,7 +691,7 @@ class _IdReviewSheetState extends ConsumerState<_IdReviewSheet> {
             ]),
           ),
         if (_idRead != null) _IdCompareTable(rows: idReviewRows(profile: _row, read: _idRead!), choice: _choice,
-            genderText: _genderText, onChanged: () => setState(() {})),
+            readType: idReadType(_idRead!), genderText: _genderText, onChanged: () => setState(() {})),
       ],
       if (canEdit) ...[
         Align(
@@ -725,9 +740,18 @@ String? _genderText(Object? g) => switch ('${g ?? ''}'.trim().toLowerCase()) {
 /// Each ID field keyed beside what Vision read, with a Keep-keyed / Use-ID
 /// choice where they differ (migration 0345).
 class _IdCompareTable extends StatelessWidget {
-  const _IdCompareTable({required this.rows, required this.choice, required this.genderText, required this.onChanged});
+  const _IdCompareTable(
+      {required this.rows,
+      required this.choice,
+      required this.readType,
+      required this.genderText,
+      required this.onChanged});
   final List<IdFieldRow> rows;
   final Map<String, IdSource> choice;
+
+  /// The document type the scan identified ('mykad'/'passport'), named in the
+  /// header so the reviewer sees which ID was used; null when unidentified.
+  final String? readType;
   final String? Function(Object?) genderText;
   final VoidCallback onChanged;
 
@@ -747,7 +771,10 @@ class _IdCompareTable extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text('Read from ID — keep the keyed value or the one on the ID, per field',
+          Text(
+              readType == null
+                  ? 'Read from ID — keep the keyed value or the one on the ID, per field'
+                  : 'Read from ID · ${idTypeLabel(readType)} — keep the keyed value or the one on the ID, per field',
               style: t.textTheme.bodySmall?.copyWith(color: muted)),
           const SizedBox(height: 8),
           for (final r in rows) ...[

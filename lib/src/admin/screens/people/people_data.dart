@@ -61,7 +61,7 @@ class PeopleRepository {
   Future<List<Map<String, dynamic>>> idDocuments(String tab) async {
     var q = _db
         .from('profiles')
-        .select('id, name, phone, email, ic, id_image, id_verified, id_expiry_date, documents_ok, nationality, updated_at')
+        .select('id, name, phone, email, ic, id_image, id_verified, birth_date, gender, address, id_expiry_date, documents_ok, nationality, id_type, updated_at')
         .not('id_image', 'is', null);
     q = switch (tab) {
       'Verified' || 'Failed' || 'Expired' => q.eq('id_verified', tab),

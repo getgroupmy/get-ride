@@ -12,6 +12,7 @@ import {
   idReadMode,
   isRegistrationRead,
   readCardText,
+  readDocType,
   readIdFull,
   readVision,
   type RegistrationReadDeps,
@@ -64,6 +65,24 @@ Deno.test("readIdFull: a passport gives nationality, DOB and sex from the machin
   assertEquals(r.birth, "1985-03-12");
   assertEquals(r.gender, "male");
   assertEquals(r.address, null);
+});
+
+Deno.test("readDocType: a passport number means passport, an IC means mykad, neither is null", () => {
+  assertEquals(readDocType({ ic: "900101-14-5678", passport: null }), "mykad");
+  assertEquals(readDocType({ ic: null, passport: "C4821937" }), "passport");
+  assertEquals(readDocType({ ic: null, passport: null }), null);
+  // The admin review uses the full read: a MyKad text gives a mykad type.
+  assertEquals(
+    readDocType(readIdFull("KAD PENGENALAN\n900101-14-5678\nAINA BINTI RAHMAN\nWARGANEGARA", NOW)),
+    "mykad",
+  );
+  assertEquals(
+    readDocType(readIdFull(
+      "P<IDNSANTOSO<<BUDI<HARTONO<<<<<<<<<<<<<<<<<<\nC4821937<2IDN8503125M3001019<<<<<<<<<<<<<<04",
+      NOW,
+    )),
+    "passport",
+  );
 });
 
 const ID = "00000000-0000-0000-0000-000000000283";
