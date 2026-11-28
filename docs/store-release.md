@@ -317,6 +317,10 @@ What you do once:
    same for it and `IOS_ADHOC_PROVISIONING_PROFILE` — an Ad Hoc profile
    without the capability makes that run publish the App Store IPA instead.
    Then run *iOS release* again: links work from that build on.
+   **Passport chips (GET.eKYC NFC)** work the same way: tick **NFC Tag
+   Reading** on the same App ID, regenerate the profiles and replace the
+   secrets. `ios-release.yml` adds the entitlement only when the profile has
+   it; without it iPhones skip the "Read the chip" step (Android needs nothing).
 2. **Google Play: the App Signing key.** An app installed from Play is signed
    by Google's **app signing key**, not the upload key. Play Console → the app
    → Test and release → **App integrity** → App signing → copy the
