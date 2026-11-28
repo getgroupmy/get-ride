@@ -61,7 +61,12 @@ enum NasJob {
 const defaultPassOnBelow = 90;
 
 class DocumentReadingConfig {
-  const DocumentReadingConfig({required this.readers, required this.nasJobs, this.passOnBelow = defaultPassOnBelow});
+  const DocumentReadingConfig({
+    required this.readers,
+    required this.nasJobs,
+    this.passOnBelow = defaultPassOnBelow,
+    this.mykadReader = false,
+  });
 
   /// Every reader once, in reading order.
   final List<DocReaderSlot> readers;
@@ -69,6 +74,12 @@ class DocumentReadingConfig {
 
   /// A NAS reading less sure than this (percent) is passed on.
   final int passOnBelow;
+
+  /// GET.ocr's own MyKad reader (its /v1/extract type "mykad", read by
+  /// position): off until the new GET.ocr reader is live — the old one still
+  /// cuts two-line names and misreads new-generation cards, so the text reader
+  /// is used for a MyKad until the owner turns this on.
+  final bool mykadReader;
 
   static const defaults = DocumentReadingConfig(
     readers: [
@@ -113,6 +124,7 @@ class DocumentReadingConfig {
       readers: readers,
       nasJobs: {for (final j in NasJob.values) j: jobs[j.name] is bool ? jobs[j.name] as bool : true},
       passOnBelow: (pass is num ? pass.round() : defaultPassOnBelow).clamp(50, 100),
+      mykadReader: m['mykadReader'] == true,
     );
   }
 
@@ -120,6 +132,7 @@ class DocumentReadingConfig {
         'readers': [for (final r in readers) r.toJson()],
         'nasJobs': {for (final e in nasJobs.entries) e.key.name: e.value},
         'passOnBelow': passOnBelow,
+        'mykadReader': mykadReader,
       };
 
   bool isOn(DocReaderId id) => readers.any((r) => r.id == id && r.on);
@@ -131,11 +144,17 @@ class DocumentReadingConfig {
   bool before(DocReaderId a, DocReaderId b) =>
       readers.indexWhere((r) => r.id == a) < readers.indexWhere((r) => r.id == b);
 
-  DocumentReadingConfig copyWith({List<DocReaderSlot>? readers, Map<NasJob, bool>? nasJobs, int? passOnBelow}) =>
+  DocumentReadingConfig copyWith({
+    List<DocReaderSlot>? readers,
+    Map<NasJob, bool>? nasJobs,
+    int? passOnBelow,
+    bool? mykadReader,
+  }) =>
       DocumentReadingConfig(
         readers: readers ?? this.readers,
         nasJobs: nasJobs ?? this.nasJobs,
         passOnBelow: passOnBelow ?? this.passOnBelow,
+        mykadReader: mykadReader ?? this.mykadReader,
       );
 
   /// [id] moved up ([by] -1) or down (+1) past the next reader that is

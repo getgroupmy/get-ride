@@ -4,6 +4,7 @@ import {
   isMyKadNumber,
   isOcrReader,
   mykadFromExtract,
+  mykadReaderOn,
   ocrExtractRequest,
   ocrRequest,
   ocrServer,
@@ -193,4 +194,12 @@ Deno.test("mykadFromExtract: a non-citizen has no MYS nationality; gender letter
   assertEquals(mykadFromExtract("labels", { ...base, gender: "F" })?.gender, "female");
   assertEquals(mykadFromExtract("labels", { ...base, gender: "M" })?.gender, "male");
   assertEquals(mykadFromExtract("labels", { ...base, date_of_birth: "12 Apr 1985" })?.birth, null, "a non-ISO date");
+});
+
+Deno.test("mykadReaderOn: only when the admin switched it on", () => {
+  assertEquals(mykadReaderOn({ mykadReader: true }), true);
+  assertEquals(mykadReaderOn({ mykadReader: false }), false);
+  assertEquals(mykadReaderOn({ readers: [{ id: "getOcr", on: true }] }), false, "off by default");
+  assertEquals(mykadReaderOn({}), false);
+  assertEquals(mykadReaderOn(null), false);
 });

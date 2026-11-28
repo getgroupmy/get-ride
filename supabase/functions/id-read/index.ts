@@ -59,6 +59,7 @@ import {
   isOcrReader,
   type MyKadRead,
   mykadFromExtract,
+  mykadReaderOn,
   OCR_TIMEOUT_MS,
   OCR_TYPED_EXTRACT_TIMEOUT_MS,
   ocrRequest,
@@ -197,12 +198,17 @@ async function handleProfileRead(
   if (image.length > MAX_IMAGE_BYTES) return { body: { state: "not_read", reason: "too_big" }, status: 200 };
 
   const apiProviders = await setting("api_providers");
+  const docReading = await setting("document_reading");
 
   // A MyKad is read by position off GET.ocr's own reader (no text parsing),
   // which keeps the address and a two-line name intact where the text path cuts
-  // them. Gated on the keyed IC's MyKad shape, and it falls back to the text
-  // readers below whenever GET.ocr's reader did not follow the card.
-  if (isMyKadNumber(doc.ic)) {
+  // them. Only when the admin switched the MyKad reader on (Admin → Document
+  // reading) and the keyed IC is a MyKad — off by default, because today's
+  // GET.ocr still answers type "mykad" with the old reader that cuts two-line
+  // names and misreads new-generation cards, so the switch (not the answer's
+  // read_by) decides. Falls back to the text readers below when its reader did
+  // not follow the card.
+  if (mykadReaderOn(docReading) && isMyKadNumber(doc.ic)) {
     const mykad = await readProfileMykad(apiProviders, image);
     if (mykad) return { body: { state: "read", ...mykad }, status: 200 };
   }
@@ -210,7 +216,7 @@ async function handleProfileRead(
   // get.ocr is the primary text reader; Google Vision is the fallback (0444).
   // The order follows Admin → Settings → Document reading, and Vision is tried
   // as a last resort so the review tool is never left with nothing.
-  const order = serverReaders(await setting("document_reading"));
+  const order = serverReaders(docReading);
   let visionTried = false;
   let lastReason = "no_text";
 

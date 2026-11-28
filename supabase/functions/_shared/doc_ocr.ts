@@ -242,6 +242,18 @@ export function serverReaders(documentReading: unknown): ("getOcr" | "cloud")[] 
   return out;
 }
 
+/**
+ * Whether the admin switched GET.ocr's MyKad position reader on
+ * (document_reading.mykadReader, Admin → Document reading). Off by default, so
+ * the text path stays the reader for a MyKad until the owner turns it on — when
+ * GET.ocr's own MyKad reader is live. Today's reader still answers type "mykad"
+ * but cuts two-line names and misreads new-generation cards, so this switch, not
+ * the answer's read_by, decides whether its result is used.
+ */
+export function mykadReaderOn(documentReading: unknown): boolean {
+  return (documentReading as { mykadReader?: unknown } | null)?.mykadReader === true;
+}
+
 export interface OcrReadDeps {
   /** The signed-in user's id; null when the token is missing or not accepted. */
   caller(authorization: string | null): Promise<string | null>;

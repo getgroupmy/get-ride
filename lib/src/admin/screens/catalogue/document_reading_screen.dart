@@ -295,6 +295,19 @@ class _OrderCard extends StatelessWidget {
             key: const ValueKey('doc-reading-summary'),
             style: t.textTheme.bodySmall,
           ),
+          const Divider(height: 24),
+          SwitchListTile(
+            key: const ValueKey('doc-reader-mykad'),
+            contentPadding: EdgeInsets.zero,
+            title: const Text('GET.ocr MyKad reader'),
+            subtitle: const Text(
+              'Reads a Malaysian MyKad by position off GET.ocr — keeps the full address and two-line names, where '
+              'reading the text cuts them. Turn on once the new GET.ocr reader is live; until then a MyKad uses the '
+              'readers above.',
+            ),
+            value: cfg.mykadReader,
+            onChanged: canEdit ? (v) => onChange(cfg.copyWith(mykadReader: v)) : null,
+          ),
           if (!gpuConnected) ...[
             const SizedBox(height: 8),
             Wrap(spacing: 12, runSpacing: 4, crossAxisAlignment: WrapCrossAlignment.center, children: [
