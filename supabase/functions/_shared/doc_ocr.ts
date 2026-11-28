@@ -117,6 +117,111 @@ export function readOcrExtract(status: number, body: unknown): { fields: Record<
   return { fields: first ?? {} };
 }
 
+// ---- MyKad read by position (GET.ocr's own reader, no text parsing) ---------------------------------
+//
+// A MyKad's fields come out of GET.ocr's own reader, which reads by position
+// and keeps the address and a two-line name intact where parsing the plain text
+// cuts them (citizenship/religion/gender share the address rows on the card).
+// Used when the keyed IC has the MyKad shape; the caller falls back to the text
+// path whenever the reader did not follow the card (read_by not "labels"), the
+// number or name is missing, or an older GET.ocr has no MyKad reader.
+
+/**
+ * A MyKad read in id-read's answer shape. A MyKad does not expire, so [expiry]
+ * is always null.
+ */
+export interface MyKadRead {
+  name: string | null;
+  ic: string | null;
+  birth: string | null;
+  gender: "male" | "female" | null;
+  nationality: string | null;
+  address: string | null;
+  expiry: null;
+}
+
+/**
+ * How long to wait for GET.ocr's /v1/extract with a built-in reader (type
+ * "mykad" &co.): short, because a picture its reader cannot follow makes GET.ocr
+ * fall back to its slow model, and the caller would rather read the text itself.
+ */
+export const OCR_TYPED_EXTRACT_TIMEOUT_MS = 8000;
+
+/**
+ * POST /v1/extract naming a built-in document type (no field spec): GET.ocr
+ * reads it by position from its own layout, no model. [type] is "mykad" &co.;
+ * the answer carries read_by "labels" when its reader followed the document.
+ */
+export function typedExtractRequest(server: FaceServer, imageBase64: string, type: string) {
+  return {
+    url: `${server.url}/v1/extract`,
+    method: "POST" as const,
+    headers: { "Content-Type": "application/json", "X-API-Key": server.secret },
+    body: JSON.stringify({ file: imageBase64, type }),
+  };
+}
+
+/**
+ * A typed /v1/extract answer: the fields GET.ocr read and how it read them
+ * (read_by "labels" is its own position reader; anything else — e.g. a model
+ * fallback — means the caller should read the text itself), or what went wrong.
+ */
+export function readTypedExtract(
+  status: number,
+  body: unknown,
+): { fields: Record<string, unknown>; readBy: string } | { error: string } {
+  const b = (body ?? {}) as Record<string, unknown>;
+  if (status < 200 || status >= 300) {
+    const why = typeof b.message === "string" ? b.message : typeof b.error === "string" ? b.error : `HTTP ${status}`;
+    return { error: `GET.ocr: ${String(why).slice(0, 160)}` };
+  }
+  const fields = b.fields && typeof b.fields === "object" && !Array.isArray(b.fields)
+    ? b.fields as Record<string, unknown>
+    : {};
+  return { fields, readBy: typeof b.read_by === "string" ? b.read_by : "" };
+}
+
+/**
+ * A MyKad number (12 digits, dashes optional): the gate for reading a profile's
+ * ID as a MyKad by position rather than by parsing its text.
+ */
+export function isMyKadNumber(ic: unknown): boolean {
+  return /^\d{12}$/.test((typeof ic === "string" ? ic : "").replace(/\D/g, ""));
+}
+
+/**
+ * A MyKad's fields from a typed /v1/extract answer mapped to id-read's answer,
+ * or null when they are not usable — the reader did not follow the card
+ * (read_by not "labels"), or the two fields a card is useless without (the
+ * number and the name) are missing — so the caller falls back to the text path.
+ * Pure. ic = id_number (formatted dddddd-dd-dddd), birth = date_of_birth,
+ * nationality = "MYS" only for a citizen (citizenship "WARGANEGARA").
+ */
+export function mykadFromExtract(readBy: string, fields: Record<string, unknown>): MyKadRead | null {
+  if (readBy !== "labels") return null;
+  const str = (v: unknown): string | null => {
+    const t = typeof v === "string" ? v.trim() : "";
+    return t ? t : null;
+  };
+  const name = str(fields.name);
+  const digits = (typeof fields.id_number === "string" ? fields.id_number : "").replace(/\D/g, "");
+  const ic = /^\d{12}$/.test(digits) ? `${digits.slice(0, 6)}-${digits.slice(6, 8)}-${digits.slice(8)}` : null;
+  if (!name || !ic) return null;
+  const sex = String(fields.gender ?? "").trim().toLowerCase();
+  const birth = typeof fields.date_of_birth === "string" && /^\d{4}-\d{2}-\d{2}$/.test(fields.date_of_birth.trim())
+    ? fields.date_of_birth.trim()
+    : null;
+  return {
+    name,
+    ic,
+    birth,
+    gender: sex === "male" || sex === "m" ? "male" : sex === "female" || sex === "f" ? "female" : null,
+    nationality: String(fields.citizenship ?? "").trim().toUpperCase() === "WARGANEGARA" ? "MYS" : null,
+    address: str(fields.address),
+    expiry: null,
+  };
+}
+
 /**
  * The document-reading readers that can read a stored image on the server, in
  * the admin's configured order, switched on only: "getOcr" (get.ocr) and
@@ -135,6 +240,18 @@ export function serverReaders(documentReading: unknown): ("getOcr" | "cloud")[] 
     }
   }
   return out;
+}
+
+/**
+ * Whether the admin switched GET.ocr's MyKad position reader on
+ * (document_reading.mykadReader, Admin → Document reading). Off by default, so
+ * the text path stays the reader for a MyKad until the owner turns it on — when
+ * GET.ocr's own MyKad reader is live. Today's reader still answers type "mykad"
+ * but cuts two-line names and misreads new-generation cards, so this switch, not
+ * the answer's read_by, decides whether its result is used.
+ */
+export function mykadReaderOn(documentReading: unknown): boolean {
+  return (documentReading as { mykadReader?: unknown } | null)?.mykadReader === true;
 }
 
 export interface OcrReadDeps {
